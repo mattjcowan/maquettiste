@@ -398,6 +398,38 @@ end
 func frozen_query(step)
   ret "new FrozenQuery { Process = " + (json p.name) + ", Envelope = new ProcessEnvelope(Instance)" + (step.end ? ", End = " + (json step.end.name) : "") + " }"
 end
+# Whether the scenario makes a revision (revisions-design.md section 11): a step revises the subject (a revise verb step, an event step that
+# can take a move whose verb is revise, or any step while the process has an automatic revise move: transition.verb.key), and the subject's
+# type has revisions (entity.revisions, merged through its bases). The generated interpreter doesn't revise, so the test is skipped:
+# storing revisions is the team's. The subject's type is read only when a step revises, so other scenarios read what they read before.
+auto_revise = false
+for rv in p.transitions
+  if rv.trigger != "event" && rv.verb && rv.verb.key == "revise"
+    auto_revise = true
+  end
+end
+func revises(step)
+  if step.input == "verb"
+    ret step.verb && step.verb.key == "revise"
+  end
+  if step.event
+    for $t in step.event.transitions
+      if $t.verb && $t.verb.key == "revise"
+        ret true
+      end
+    end
+  end
+  ret auto_revise
+end
+makes_revision = false
+if s.subject
+  for rv in s.steps
+    if revises(rv)
+      makes_revision = s.subject.entity.revisions != null
+      break
+    end
+  end
+end
 start = ""
 for a in p.context
   if has(s.start.context, a.name)
@@ -428,7 +460,7 @@ public sealed class {{ test }}
 
     /// <summary>Runs the {{ s.steps.size }} steps of {{ s.name }} and checks each one and the outcome ({{ s.outcome }}).</summary>
     /// <returns>The task.</returns>
-    [Fact]
+    [Fact{{ if makes_revision }}(Skip = "This scenario makes a revision; storing revisions is the team's"){{ end }}]
     public async Task {{ pascal s.name }}()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

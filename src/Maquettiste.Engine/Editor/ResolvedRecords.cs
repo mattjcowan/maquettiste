@@ -95,6 +95,8 @@ public sealed record PackageRecord(string Id, string Kind, string Name, string? 
 /// the JSON, for an entity without any.</param>
 /// <param name="Lifecycles">The ids of the lifecycles that govern the entity or a base of it, by name then id (lifecycle-design.md section 7);
 /// <see langword="null"/>, and left out of the JSON, unless one of them lists its subjects in <c>subjects</c>.</param>
+/// <param name="Revisions">The entity's revisions merged through its bases (revisions-design.md section 8); <see langword="null"/>, and left out
+/// of the JSON, when neither the entity nor a base has a revisions block.</param>
 public sealed record EntityRecord(string Id, string Kind, string Name, string? Package, bool IsAbstract, string? Base, IReadOnlyList<string> Derived,
     IReadOnlyList<AttributeRecord> Attributes, KeyRecord? Key, IReadOnlyList<AlternateKeyRecord> AlternateKeys, IReadOnlyList<NavigationRecord> Navigations,
     IReadOnlyList<string> Relations, IReadOnlyList<EntityMappingRecord> Mappings, bool IsPromoted, string? PromotedFrom, IReadOnlyList<string> Seeds,
@@ -102,7 +104,51 @@ public sealed record EntityRecord(string Id, string Kind, string Name, string? P
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
     IReadOnlyList<EntityBindingRecord> Bindings,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<EntityCheckRecord>? Checks = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Lifecycles = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Lifecycles = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevisionsRecord? Revisions = null);
+
+/// <summary>An entity's revisions, merged through its bases (revisions-design.md section 8); other elements by id.</summary>
+/// <param name="Levels">The levels, from the most significant.</param>
+/// <param name="Separator">Written between two levels that both hold a value; <c>.</c> when neither the entity nor a base writes one.</param>
+/// <param name="FirstRevision">The sequence's start, which a new object takes; empty when level 1 starts empty (no revision).</param>
+/// <param name="BoundAttribute">The id of the attribute that holds the current revision; <see langword="null"/> when the team's system holds it.</param>
+/// <param name="Lifecycles">Every lifecycle that governs the entity, with what a revise does to it; the fallback filled in.</param>
+/// <param name="Attributes">Each attribute a revise doesn't copy.</param>
+/// <param name="Links">Each relation end the entity reaches with a rule for its links.</param>
+public sealed record RevisionsRecord(IReadOnlyList<RevisionLevelRecord> Levels, string Separator, string FirstRevision, string? BoundAttribute,
+    IReadOnlyList<RevisionLifecycleRecord> Lifecycles, IReadOnlyList<RevisionAttributeRecord> Attributes, IReadOnlyList<RevisionLinkRecord> Links);
+
+/// <summary>One level of an entity's revision sequence (revisions-design.md section 8).</summary>
+/// <param name="Number">The level's number, 1 to 3.</param>
+/// <param name="Name">The level's name, or <see langword="null"/>.</param>
+/// <param name="Format"><c>letters</c>, <c>numbers</c> or <c>list</c>.</param>
+/// <param name="Values">The list's values; empty for letters and numbers.</param>
+/// <param name="First">The first value as text.</param>
+/// <param name="Skip">The skipped letters.</param>
+/// <param name="Width">The width numbers are padded to, or <see langword="null"/>.</param>
+/// <param name="StartEmpty">Whether the level holds nothing at first.</param>
+/// <param name="Examples">The level's first five values on their own.</param>
+public sealed record RevisionLevelRecord(int Number, string? Name, string Format, IReadOnlyList<string> Values, string First, IReadOnlyList<string> Skip,
+    int? Width, bool StartEmpty, IReadOnlyList<string> Examples);
+
+/// <summary>What a revise does to a lifecycle that governs the entity (revisions-design.md decision 33).</summary>
+/// <param name="Lifecycle">The lifecycle's id.</param>
+/// <param name="OnRevise"><c>restart</c>, <c>keep</c> or <c>state</c>.</param>
+/// <param name="State">With <c>state</c>, the id of the state entered; else <see langword="null"/>.</param>
+/// <param name="From">The id of the entity whose entry says it; <see langword="null"/> for the fallback.</param>
+public sealed record RevisionLifecycleRecord(string Lifecycle, string OnRevise, string? State, string? From);
+
+/// <summary>What a revise does to an attribute it doesn't copy (revisions-design.md decision 34).</summary>
+/// <param name="Attribute">The attribute's id.</param>
+/// <param name="OnRevise"><c>reset</c> or <c>clear</c>.</param>
+/// <param name="From">The id of the entity whose entry says it.</param>
+public sealed record RevisionAttributeRecord(string Attribute, string OnRevise, string From);
+
+/// <summary>What a revise does to the links through a relation end the entity reaches (revisions-design.md decision 35).</summary>
+/// <param name="End">The relation end's id.</param>
+/// <param name="OnRevise"><c>stay</c>, <c>move</c> or <c>duplicate</c>.</param>
+/// <param name="From">The id of the entity whose entry says it.</param>
+public sealed record RevisionLinkRecord(string End, string OnRevise, string From);
 
 /// <summary>
 /// An expression (next-phase-3-design.md section 3.1): its text printed from current names, its type, and the tree of ids the file holds.
@@ -832,10 +878,13 @@ public sealed record StateRecord(string Id, string Name, string Path, string Typ
 /// <param name="Properties">The custom properties.</param>
 /// <param name="Verb">The key of the verb of the move (verbs-design.md section 6): the transition's own, else its event's; <see langword="null"/>,
 /// and left out of the JSON, when neither names one.</param>
+/// <param name="NextRevision">The revision level, 1 to 3, the move moves (revisions-design.md decision 19); <see langword="null"/>, and left
+/// out of the JSON, when the transition names none.</param>
 public sealed record TransitionRecord(string Id, string Source, IReadOnlyList<string> Targets, string Trigger, string? Event, string? After, long? AfterMs,
     long? AfterTicks, string? Invoke, string? Guard, bool GuardMissing, IReadOnlyList<string> Actions, bool External, string? Gate, string Label,
     bool IsTargetless, string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? NextRevision = null);
 
 /// <summary>An event of a process.</summary>
 /// <param name="Id">The event id.</param>
@@ -1743,8 +1792,16 @@ public static class ResolvedRecords
                 e.Checks.Count == 0 ? null : [.. e.Checks.Select(c => new EntityCheckRecord(c.Id, c.Name, c.Attribute?.Id, Expression(c.Condition), c.Message,
                     c.IsInherited, Ids(c.Bindings), c.DisplayName!, c.PluralName!, c.Description, c.Tags, c.Category?.Id, Keys(c.Stereotypes), Plain(c.Properties),
                     c.Generation))],
-                e.Lifecycles.Any(l => l.ListsSubjects) ? Ids(e.Lifecycles) : null);
+                e.Lifecycles.Any(l => l.ListsSubjects) ? Ids(e.Lifecycles) : null,
+                e.Revisions is { } revisions ? Revisions(revisions) : null);
         }
+
+        private static RevisionsRecord Revisions(RRevisions r) => new(
+            [.. r.Levels.Select(l => new RevisionLevelRecord(l.Number, l.Name, l.Format, l.Values, l.First, l.Skip, l.Width, l.StartEmpty, l.Examples))],
+            r.Separator, r.FirstRevision, r.BoundAttribute?.Id,
+            [.. r.Lifecycles.Select(l => new RevisionLifecycleRecord(l.Lifecycle.Id, l.OnRevise, l.State?.Id, l.From?.Id))],
+            [.. r.Attributes.Select(a => new RevisionAttributeRecord(a.Attribute.Id, a.OnRevise, a.From.Id))],
+            [.. r.Links.Select(l => new RevisionLinkRecord(l.End.Id, l.OnRevise, l.From.Id))]);
 
         public ConstraintRecord Constraint(RConstraint c) => new(c.Id, "constraint", c.Name, c.Package?.Id,
             [.. c.Parameters.Select(p => new ConstraintParameterRecord(p.Id, p.Name, Type(p.Type), p.DisplayName!, p.Description))],
@@ -1850,7 +1907,7 @@ public static class ResolvedRecords
                 s.DisplayName, s.Description, Keys(s.Stereotypes), Plain(s.Properties), s.Code))],
             [.. p.Transitions.Select(t => new TransitionRecord(t.Id, t.Source.Id, Ids(t.Targets), t.Trigger, t.Event?.Id, t.After, t.AfterMs, t.AfterTicks, t.Invoke?.Id,
                 t.Guard?.Id, t.GuardMissing, Ids(t.Actions), t.External, t.Gate?.Id, t.Label, t.IsTargetless, t.DisplayName, t.Description, Keys(t.Stereotypes), Plain(t.Properties),
-                t.Verb?.Key))],
+                t.Verb?.Key, t.NextRevision))],
             [.. p.Events.Select(e => new EventRecord(e.Id, e.Name, [.. e.Payload.Select(a => Attribute(a))], Ids(e.Actors), Ids(e.Transitions),
                 e.DisplayName, e.Description, Keys(e.Stereotypes), Plain(e.Properties), e.Verb?.Key))],
             [.. p.Guards.Select(g => new GuardRecord(g.Id, g.Name, g.Expression, g.IsStub, Ids(g.UsedBy), g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties),

@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JRV000000000000000000Q02",
+  "name": "ReviewLifecycle",
+  "package": "01JRV000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JRV000000000000000000B02",
+      "entity": "01JRV000000000000000000E03"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JRV000000000000000000V11",
+      "name": "review",
+      "verb": "promote"
+    },
+    {
+      "id": "01JRV000000000000000000V12",
+      "name": "revise",
+      "verb": "revise"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JRV000000000000000000S11",
+      "name": "Draft"
+    },
+    {
+      "id": "01JRV000000000000000000S12",
+      "name": "Reviewed"
+    }
+  ],
+  "initial": "01JRV000000000000000000S11",
+  "transitions": [
+    {
+      "id": "01JRV000000000000000000T11",
+      "source": "01JRV000000000000000000S11",
+      "event": "01JRV000000000000000000V11",
+      "targets": [
+        "01JRV000000000000000000S12"
+      ]
+    },
+    {
+      "id": "01JRV000000000000000000T12",
+      "source": "01JRV000000000000000000S12",
+      "event": "01JRV000000000000000000V12",
+      "targets": [
+        "01JRV000000000000000000S11"
+      ]
+    }
+  ]
+}

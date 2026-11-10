@@ -1,0 +1,115 @@
+{{-
+# The revisions page (revisions-design.md section 11), written only when some entity has revisions, so a project without a revisions block
+# gets no file. It is the example of reading entity.revisions (the block merged through the bases, the fallbacks filled in) and
+# transition.next_revision; each part names the member it reads.
+include "_docs.scriban"
+# Every type with revisions: model.entities filtered by entity.revisions, which is null without a block on the type or a base.
+types = []
+for e in model.entities
+  if e.revisions
+    types[types.size] = e
+  end
+end
+if types.size > 0
+  # The lifecycles with a move that revises or gives the next revision: transition.next_revision, and transition.verb.key, which tells a
+  # revise move from one that only gives the object its next revision.
+  moving = []
+  for p in model.processes
+    if p.use == "lifecycle"
+      for t in p.transitions
+        if t.next_revision || (t.verb && t.verb.key == "revise")
+          moving[moving.size] = p
+          break
+        end
+      end
+    end
+  end
+  capture content
+-}}
+{{ banner "<!--" }} -->
+
+# Revisions
+
+What revisions of each type look like, where the current revision is held, and what a revise does to an object of the type. A derived type takes its bases' rules unless it says its own; "said by" names the type whose rule it is.
+{{- for e in types }}
+{{- r = e.revisions }}
+
+## {{ md_cell e.display_name }}
+
+| | |
+| --- | --- |
+| Type | {{ md_code e.name }} |
+| First revision | {{ r.first_revision == "" ? "none until it is first revised" : (md_code r.first_revision) # revisions.first_revision }} |
+| Separator | {{ r.separator == "" ? "none" : (md_code r.separator) # revisions.separator }} |
+| Held in | {{ r.bound_attribute ? (md_code r.bound_attribute.name) : "the team's system" # revisions.bound_attribute }} |
+
+| Level | Name | Values | First | Skipped | Width | Starts empty | Examples |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+{{- for l in r.levels # revisions.levels: number, name, format, values, first, skip, width, start_empty and examples }}
+{{- values = [] }}{{ for v in l.values }}{{ values[values.size] = md_cell v }}{{ end }}
+| {{ l.number }} | {{ l.name ? (md_code l.name) : "" }} | {{ l.format == "list" ? "list: " + (values | array.join ", ") : l.format }} | {{ md_code l.first }} | {{ l.skip | array.join ", " }} | {{ l.width }} | {{ l.start_empty ? "yes" : "no" }} | {{ for x in l.examples }}{{ for.first ? "" : ", " }}{{ md_cell x }}{{ end }} |
+{{- end }}
+
+### When revised
+{{- if r.lifecycles.size > 0 # revisions.lifecycles: every lifecycle that governs the type; from is null for the fallback, a restart }}
+
+| Lifecycle | Does | Said by |
+| --- | --- | --- |
+{{- for x in r.lifecycles }}
+| {{ process_link(x.lifecycle, "") }} | {{ x.on_revise == "keep" ? "keeps its states" : (x.on_revise == "state" ? "goes to " + (x.state ? (md_code x.state.path) : "`?`") : "starts over") }} | {{ x.from ? (md_code x.from.name) : "no rule: the default" }} |
+{{- end }}
+{{- else }}
+
+No lifecycle governs it.
+{{- end }}
+{{- if r.attributes.size > 0 # revisions.attributes: the attributes a revise resets or clears; any other is copied }}
+
+| Attribute | Does | Said by |
+| --- | --- | --- |
+{{- for x in r.attributes }}
+| {{ md_code x.attribute.name }} | {{ x.on_revise == "clear" ? "cleared" : "reset to its default, else empty" }} | {{ md_code x.from.name }} |
+{{- end }}
+
+Other values are copied.
+{{- else }}
+
+Every value is copied.
+{{- end }}
+{{- if r.links.size > 0 # revisions.links: the links through each end with a rule; any other end is the team's }}
+
+| Links through | Does | Said by |
+| --- | --- | --- |
+{{- for x in r.links }}
+| {{ md_code (end_name x.end) }} | {{ x.on_revise == "stay" ? "stay with the earlier revision" : (x.on_revise == "move" ? "move to the new revision" : "each revision keeps a link of its own") }} | {{ md_code x.from.name }} |
+{{- end }}
+
+What happens to links through other ends is the team's to decide.
+{{- else }}
+
+What happens to its links is the team's to decide.
+{{- end }}
+{{- end }}
+{{- if moving.size > 0 }}
+
+## Moves that revise
+
+A revise move makes a new revision to work on, at its level (level 1 when it names none). A move with a level and another verb gives the object its next revision at that level and changes nothing else.
+{{- for p in moving }}
+{{- numbers = transition_numbers(p) }}
+
+### {{ process_link(p, "") }}
+
+| Move | Trigger | From | To | Does | Level |
+| --- | --- | --- | --- | --- | --- |
+{{- for t in p.transitions # transition.next_revision: the level, or null; transition.verb.key: revise, or the verb of a move that gives the next revision }}
+{{- if t.next_revision || (t.verb && t.verb.key == "revise") }}
+| {{ numbers[t.id] }} | {{ trigger_text(t) }} | {{ md_code t.source.path }} | {{ code_paths(t.targets) }} | {{ t.verb && t.verb.key == "revise" ? "makes a new revision" : "gives the next revision" }} | {{ t.next_revision ?? 1 }} |
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{ end -}}
+{{-
+  file "revisions.md" content
+end
+-}}

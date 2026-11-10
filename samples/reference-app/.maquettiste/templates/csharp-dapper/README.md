@@ -375,7 +375,7 @@ For `PurchaseApproval` in package `Purchasing`:
 | `scenario-holdings` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioHoldings.cs`, only when the project uses rights and `testsFolder` is set: the held actors of each step's participant |
 | `scenario-frozen` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioFrozen.cs`, only when the project uses freezing and `testsFolder` is set: whether each step's subject, and a link of it, are frozen before the step |
 | `scenario-triggers` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioTriggers.cs`, only when the project uses trigger points and `testsFolder` is set: each outside check's word from the step's `assume`, and the outside actions and replaces recorded in place of calling them |
-| `scenario-tests` | file blocks | `each scenario` | `<testsFolder>/PurchaseApproval/HappyPathTests.cs`: one xunit test per scenario; only when `testsFolder` is set. Each step acts as the actor the engine worked out (`step.acts_as`), and an event step by a participant signs with the participant's identity unless it names a signer |
+| `scenario-tests` | file blocks | `each scenario` | `<testsFolder>/PurchaseApproval/HappyPathTests.cs`: one xunit test per scenario; only when `testsFolder` is set. Each step acts as the actor the engine worked out (`step.acts_as`), and an event step by a participant signs with the participant's identity unless it names a signer. A scenario with a step that revises a subject whose type has `revisions` is skipped ("This scenario makes a revision; storing revisions is the team's"): the generated interpreter doesn't revise |
 
 ### Lifecycle state codes
 

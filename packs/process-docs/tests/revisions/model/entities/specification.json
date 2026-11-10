@@ -1,0 +1,56 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JRV000000000000000000E03",
+  "name": "Specification",
+  "package": "01JRV000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JRV000000000000000000A21"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JRV000000000000000000A21",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JRV000000000000000000A22",
+      "name": "approvedBy",
+      "type": "string",
+      "length": 100
+    },
+    {
+      "id": "01JRV000000000000000000A23",
+      "name": "reviewNote",
+      "type": "string",
+      "length": 500
+    }
+  ],
+  "revisions": {
+    "levels": [
+      {
+        "format": "numbers",
+        "width": 2
+      }
+    ],
+    "lifecycles": [
+      {
+        "lifecycle": "01JRV000000000000000000Q02",
+        "onRevise": "keep"
+      }
+    ],
+    "attributes": [
+      {
+        "attribute": "01JRV000000000000000000A22",
+        "onRevise": "reset"
+      },
+      {
+        "attribute": "01JRV000000000000000000A23",
+        "onRevise": "clear"
+      }
+    ]
+  }
+}

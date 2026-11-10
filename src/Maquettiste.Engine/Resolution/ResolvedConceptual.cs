@@ -113,6 +113,13 @@ public sealed class REntity : RElement
 
     /// <summary>The operations whose subject is the entity, in <see cref="ResolvedModel.Operations"/> order.</summary>
     public RList<ROperation> Operations { get; internal set; } = RList<ROperation>.Empty;
+
+    /// <summary>
+    /// What revisions of the entity look like and what a revise does to an instance (revisions-design.md section 8), merged through its
+    /// bases; <see langword="null"/> when neither the entity nor a base has a <c>revisions</c> block. A template wanting every type with
+    /// revisions filters <c>model.entities</c> by it.
+    /// </summary>
+    public RRevisions? Revisions { get; internal set; }
 }
 
 /// <summary>A resolved primary key.</summary>

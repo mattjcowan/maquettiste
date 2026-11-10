@@ -2,7 +2,7 @@
   "name": "process-docs",
   "version": "1.0.0",
   "engine": ">=1.0 <2.0",
-  "description": "Markdown documentation of processes: one page per process with a state diagram in diagram text, its transitions, gates, events and actors; one page per actor; one walk-through page per scenario; and an index page.",
+  "description": "Markdown documentation of processes: one page per process with a state diagram in diagram text, its transitions, gates, events and actors; one page per actor; one walk-through page per scenario; a revisions page when some type has revisions; and an index page.",
   "parameters": {
     "diagrams": true,
     "title": "Process documentation"
@@ -39,6 +39,11 @@
     {
       "id": "rights-page",
       "template": "rights-page.scriban",
+      "for": "model"
+    },
+    {
+      "id": "revisions-page",
+      "template": "revisions-page.scriban",
       "for": "model"
     },
     {

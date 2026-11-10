@@ -1,0 +1,71 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JRV000000000000000000Q01",
+  "name": "DrawingLifecycle",
+  "package": "01JRV000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JRV000000000000000000B01",
+      "entity": "01JRV000000000000000000E01"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JRV000000000000000000V01",
+      "name": "approve"
+    },
+    {
+      "id": "01JRV000000000000000000V02",
+      "name": "release",
+      "verb": "promote"
+    },
+    {
+      "id": "01JRV000000000000000000V03",
+      "name": "revise",
+      "verb": "revise"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JRV000000000000000000S01",
+      "name": "InWork"
+    },
+    {
+      "id": "01JRV000000000000000000S02",
+      "name": "Approved"
+    },
+    {
+      "id": "01JRV000000000000000000S03",
+      "name": "Released"
+    }
+  ],
+  "initial": "01JRV000000000000000000S01",
+  "transitions": [
+    {
+      "id": "01JRV000000000000000000T01",
+      "source": "01JRV000000000000000000S01",
+      "event": "01JRV000000000000000000V01",
+      "targets": [
+        "01JRV000000000000000000S02"
+      ]
+    },
+    {
+      "id": "01JRV000000000000000000T02",
+      "source": "01JRV000000000000000000S02",
+      "event": "01JRV000000000000000000V02",
+      "targets": [
+        "01JRV000000000000000000S03"
+      ]
+    },
+    {
+      "id": "01JRV000000000000000000T03",
+      "source": "01JRV000000000000000000S03",
+      "event": "01JRV000000000000000000V03",
+      "targets": [
+        "01JRV000000000000000000S01"
+      ]
+    }
+  ]
+}

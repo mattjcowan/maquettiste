@@ -1,0 +1,21 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JRV000000000000000000Q03",
+  "name": "Approval",
+  "package": "01JRV000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JRV000000000000000000B03",
+      "entity": "01JRV000000000000000000E03"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JRV000000000000000000S21",
+      "name": "Open"
+    }
+  ],
+  "initial": "01JRV000000000000000000S21"
+}
