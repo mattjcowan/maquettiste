@@ -140,8 +140,8 @@ only an example of the shape to expect.
     docker/dev-billing.sh                                                  # the billing fixture on 127.0.0.1:8080; rerunnable
 
 Files: `Dockerfile` (multi-stage: engine packages, site zip, final image), `entrypoint.sh` (first-boot deploy, key seeding,
-local peers), `compose.yaml` (local mode), `pack-site.sh` and `placeholder/` (the site zip when the SPA's own packer is absent),
-`closure/` (the offline NuGet closure the host builds `_functions/` from), `smoke.sh`, `dev-billing.sh`.
+local peers), `compose.yaml` (local mode), `closure/` (the offline NuGet closure the host builds `_functions/` from), `smoke.sh`,
+`dev-billing.sh`.
 
 Two build arguments fill the OCI labels: `MAQUETTISTE_VERSION` (`.version`; it defaults to the `VersionPrefix` of
 `Directory.Build.props`, which a test keeps in step, and the publish workflow passes the tag's version) and `MAQUETTISTE_REVISION`

@@ -49,7 +49,10 @@ export default defineConfig({
     ...(wants("mock") || wants("mock-budgets") || wants("scale")
       ? [
           {
-            command: `npm run build:mock && npm run preview:mock -- --port ${mockPort}`,
+            // MQ_PREBUILT_MOCK: dist-mock is already built (CI builds it once and shares it with every browser job).
+            command: process.env.MQ_PREBUILT_MOCK
+              ? `npm run preview:mock -- --port ${mockPort}`
+              : `npm run build:mock && npm run preview:mock -- --port ${mockPort}`,
             url: mockUrl,
             reuseExistingServer: !ci,
             timeout: 180_000,

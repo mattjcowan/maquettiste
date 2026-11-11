@@ -1,5 +1,19 @@
 name: ci
 
+# One pipeline per push, in which nothing slow runs twice (the owner's rule, 2026-11-11): the solution is built once per OS and the
+# editor image once, and every job below runs on those builds.
+# - build (ubuntu, macos): restore and build the solution (warnings are errors); on ubuntu the functions are also compiled with the
+#   host's default imports. The bin/Release folders go to the other jobs as one artifact per OS.
+# - test (OS x part): the .NET suites in five parts per OS, so the slowest part sets the time. A part's tests are a project, or one
+#   half of one: each "b" filter is the exact complement of its "a" filter, so no test is left out or run twice. The functions'
+#   tests run in the functions job.
+# - functions (OS), typescript pack, determinism (OS): on the same build.
+# - image: the editor image, built once (Docker's layer cache kept in GitHub's cache, so an unchanged base and its packages are not
+#   fetched again) and passed on as an artifact; smoke, upgrade, gate2 and gate3 load it. The upgrade check builds a second image
+#   on purpose: one with a changed engine.
+# - gate2, gate3: on a pull request into main only when their inputs changed; always on main, phase-* and a dispatch. Their
+#   browser walk runs in Microsoft's Playwright image (the version editor.yml checks), so no job installs a browser.
+
 on:
   push:
     branches: [main, "phase-*"]
@@ -13,13 +27,63 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  IMAGE: mattjcowan/maquettiste
+  # The commit for the image's org.opencontainers.image.revision label (the version label is the Dockerfile's default).
+  REVISION: ${{ github.sha }}
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.63.0-noble
+
 jobs:
-  # The .NET suites, each OS in five parallel parts so the slowest part, not the sum, sets the time. Every part builds
-  # the whole solution (warnings are errors). A part's tests are a project, or one half of one: each "b" filter is the
-  # exact complement of its "a" filter, so no test is left out or run twice. The editor's functions run in the
-  # functions job below.
-  build-and-test:
-    name: build and test (${{ matrix.os }}, ${{ matrix.part }})
+  build:
+    name: build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore (locked)
+        run: dotnet restore maquettiste.slnx --locked-mode
+
+      # The host adds LINQPad's default imports when it compiles the site's functions; a type name that becomes ambiguous under them
+      # would fail the deploy. A compile check, the same on every OS; before the solution build, which then rebuilds the functions
+      # with their own imports.
+      - name: Build the functions with the host's default imports
+        if: runner.os == 'Linux'
+        run: dotnet build src/Maquettiste.Functions/Maquettiste.Functions.csproj --configuration Release --no-restore -p:HostUsings=true -o "${{ runner.temp }}/host-usings"
+
+      - name: Build (warnings are errors)
+        run: dotnet build maquettiste.slnx --configuration Release --no-restore
+
+      - name: Pack the build (every bin/Release folder, with paths and modes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          find src tests bench -type d -path '*/bin/Release' -not -path '*/node_modules/*' | LC_ALL=C sort > "$RUNNER_TEMP/dirs.txt"
+          cat "$RUNNER_TEMP/dirs.txt"
+          tar -cf - -T "$RUNNER_TEMP/dirs.txt" | zstd -T0 -3 -q -o "$RUNNER_TEMP/build.tar.zst"
+          ls -l "$RUNNER_TEMP/build.tar.zst"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          path: ${{ runner.temp }}/build.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.part }})
+    needs: build
     strategy:
       fail-fast: false
       matrix:
@@ -42,10 +106,6 @@ jobs:
             projects: tests/Maquettiste.Packs.Tests/Maquettiste.Packs.Tests.csproj tests/Maquettiste.Bench.Tests/Maquettiste.Bench.Tests.csproj
             filter: ""
     runs-on: ${{ matrix.os }}
-    env:
-      DOTNET_NOLOGO: "true"
-      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -53,11 +113,9 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Restore (locked)
-        run: dotnet restore maquettiste.slnx --locked-mode
-
-      - name: Build (warnings are errors)
-        run: dotnet build maquettiste.slnx --configuration Release --no-restore
+      - uses: ./.github/actions/shared-build
+        with:
+          os: ${{ matrix.os }}
 
       - name: Test
         shell: bash
@@ -85,11 +143,8 @@ jobs:
   # skip (no node or compiler) into a failure. Not a gate 3 criterion.
   typescript-pack:
     name: typescript pack
+    needs: build
     runs-on: ubuntu-latest
-    env:
-      DOTNET_NOLOGO: "true"
-      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -97,21 +152,12 @@ jobs:
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-node@v4
+      - name: The editor's packages (the TypeScript compiler and node's types)
+        uses: ./.github/actions/editor-packages
+
+      - uses: ./.github/actions/shared-build
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: src/editor/package-lock.json
-
-      - name: Install the editor's packages (the TypeScript compiler and node's types)
-        working-directory: src/editor
-        run: npm ci
-
-      - name: Restore (locked)
-        run: dotnet restore tests/Maquettiste.Packs.Tests/Maquettiste.Packs.Tests.csproj --locked-mode
-
-      - name: Build
-        run: dotnet build tests/Maquettiste.Packs.Tests/Maquettiste.Packs.Tests.csproj --configuration Release --no-restore
+          os: ubuntu-latest
 
       - name: Test
         env:
@@ -126,20 +172,16 @@ jobs:
           path: TestResults
           if-no-files-found: ignore
 
-  # The editor's functions (phase2-design.md sections 3.9 and 9): the functions also compile with the host's LINQPad default imports
-  # (the host adds them; a type name that becomes ambiguous under them would fail the site's deploy), and their tests run on both
-  # operating systems (file watcher, git status and symbolic-link handling differ on macOS).
+  # The editor's functions (phase2-design.md sections 3.9 and 9): their tests run on both operating systems (file watcher, git
+  # status and symbolic-link handling differ on macOS). The compile with the host's default imports is in build.
   functions:
     name: functions (${{ matrix.os }})
+    needs: build
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      DOTNET_NOLOGO: "true"
-      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -147,14 +189,9 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Restore (locked)
-        run: dotnet restore tests/Maquettiste.Functions.Tests/Maquettiste.Functions.Tests.csproj --locked-mode
-
-      - name: Build the functions with the host's default imports
-        run: dotnet build src/Maquettiste.Functions/Maquettiste.Functions.csproj --configuration Release --no-restore -p:HostUsings=true -o "${{ runner.temp }}/host-usings"
-
-      - name: Build
-        run: dotnet build tests/Maquettiste.Functions.Tests/Maquettiste.Functions.Tests.csproj --configuration Release --no-restore
+      - uses: ./.github/actions/shared-build
+        with:
+          os: ${{ matrix.os }}
 
       - name: Test
         run: dotnet test tests/Maquettiste.Functions.Tests/Maquettiste.Functions.Tests.csproj --configuration Release --no-build --logger "trx;LogFilePrefix=functions-${{ matrix.os }}" --results-directory TestResults
@@ -172,15 +209,12 @@ jobs:
   # snapshots), and fail if the listings differ.
   determinism:
     name: determinism listing (${{ matrix.os }})
+    needs: build
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      DOTNET_NOLOGO: "true"
-      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -188,10 +222,10 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Build the CLI
-        run: |
-          dotnet restore src/Maquettiste.Cli/Maquettiste.Cli.csproj --locked-mode
-          dotnet build src/Maquettiste.Cli/Maquettiste.Cli.csproj --configuration Release --no-restore
+      - uses: ./.github/actions/shared-build
+        with:
+          os: ${{ matrix.os }}
+          restore: "false"
 
       - name: Generate the billing fixture with sql-ddl and csharp-dapper
         shell: bash
@@ -267,3 +301,334 @@ jobs:
             echo "::error::Generated output differs between ubuntu and macos."
             exit 1
           fi
+
+  # The editor image (phase2-design.md sections 6 and 9), built once for every job that runs it. Also decides, for a pull request,
+  # whether gate2 and gate3 run (the paths each one reads, as their own workflows did before).
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    outputs:
+      gate2: ${{ steps.changes.outputs.gate2 }}
+      gate3: ${{ steps.changes.outputs.gate3 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A pull request's merge commit and its first parent (main), for the paths it changes.
+          fetch-depth: 2
+
+      - name: Which gates the change reaches
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            echo "gate2=true" >> "$GITHUB_OUTPUT"; echo "gate3=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "${{ github.base_ref }}" != main ]; then
+            echo "gate2=false" >> "$GITHUB_OUTPUT"; echo "gate3=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          common='^(src/|packs/|schemas/|docker/|global\.json$|Directory\.|\.github/workflows/ci\.yml$|\.github/actions/)'
+          if grep -Eq -e "$common" -e '^samples/reference-app/' "$RUNNER_TEMP/changed.txt"; then g2=true; else g2=false; fi
+          if grep -Eq -e "$common" -e '^bench/' -e '^tests/fixtures/models/processes/' "$RUNNER_TEMP/changed.txt"; then g3=true; else g3=false; fi
+          echo "gate2=$g2" >> "$GITHUB_OUTPUT"; echo "gate3=$g3" >> "$GITHUB_OUTPUT"
+          echo "gate2 $g2, gate3 $g3"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          build-args: MAQUETTISTE_REVISION=${{ env.REVISION }}
+          tags: ${{ env.IMAGE }}:ci
+          outputs: type=docker,dest=${{ runner.temp }}/image.tar
+          cache-from: type=gha,scope=editor-image
+          cache-to: type=gha,scope=editor-image,mode=max
+
+      - name: Compress the image
+        run: zstd -T0 -3 --rm "$RUNNER_TEMP/image.tar" -o "$RUNNER_TEMP/image.tar.zst" && ls -l "$RUNNER_TEMP/image.tar.zst"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: ${{ runner.temp }}/image.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  smoke:
+    name: image smoke test (no network)
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/shared-image
+
+      # Starts the image with --network none on a fresh volume: /api/health "ok" proves the first functions build restored from the
+      # image's local feed; then /data/sites ownership, the project, the index, a save with If-Match, a 409, a plan and an apply.
+      - name: Smoke test (no network)
+        run: sh docker/smoke.sh "$IMAGE:ci"
+
+  # An upgraded image replaces the engine the persistent NuGet cache holds (PD24): the shared image first, then one built with a
+  # changed engine source file on the same volume.
+  upgrade:
+    name: image upgrade replaces the cached engine
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/shared-image
+
+      - name: Start the first image on a named volume
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/model/.maquettiste"
+          cp -r tests/fixtures/models/billing/.maquettiste/. "$RUNNER_TEMP/model/.maquettiste/"
+          chmod -R a+rwX "$RUNNER_TEMP/model"
+          docker volume create mq-upgrade
+          docker run -d --name mq-before --network none -v mq-upgrade:/data \
+            -v "$RUNNER_TEMP/model/.maquettiste:/data/sites/maquettiste.localhost/data" -v "$RUNNER_TEMP/model:/repo" "$IMAGE:ci"
+
+      - name: Read engineBuild from the first image
+        run: |
+          set -eu
+          for i in $(seq 1 180); do
+            if docker exec mq-before curl -fs -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/health | grep -q '"status":"ok"'; then break; fi
+            sleep 1
+          done
+          before=$(docker exec mq-before curl -fsS -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/health | jq -r .engineBuild)
+          test "$before" = "$(docker exec mq-before cat /opt/maquettiste/engine.version)"
+          echo "BEFORE=$before" >> "$GITHUB_ENV"
+          docker rm -f mq-before
+
+      - name: Change an engine source file
+        run: echo '// upgrade check' >> src/Maquettiste.Engine/EngineVersion.cs
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the second image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          build-args: MAQUETTISTE_REVISION=${{ env.REVISION }}
+          tags: ${{ env.IMAGE }}:after
+          load: true
+          cache-from: type=gha,scope=editor-image
+
+      - name: Start the second image on the same volume; engineBuild must be the new engine
+        run: |
+          set -eu
+          docker run -d --name mq-after --network none -v mq-upgrade:/data \
+            -v "$RUNNER_TEMP/model/.maquettiste:/data/sites/maquettiste.localhost/data" -v "$RUNNER_TEMP/model:/repo" "$IMAGE:after"
+          expected=$(docker exec mq-after cat /opt/maquettiste/engine.version)
+          test "$expected" != "$BEFORE"
+          for i in $(seq 1 180); do
+            after=$(docker exec mq-after curl -fs -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/health | jq -r .engineBuild || true)
+            if [ "$after" = "$expected" ]; then echo "engineBuild $BEFORE -> $after"; exit 0; fi
+            sleep 1
+          done
+          docker logs mq-after | tail -60
+          echo "engineBuild is '$after', expected '$expected'"; exit 1
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker rm -f mq-before mq-after || true
+          docker volume rm mq-upgrade || true
+
+  # The gate 2 check (SPEC Section 21, phase2-design.md section 7.2): the 200-entity reference application's data layer is modeled
+  # and generated end to end from the editor, and compiles. Every step is a step of samples/reference-app/tools/gate2.sh, so the
+  # same sequence runs locally: start the image over an empty copy of the sample (tmp/gate2), seed the model through the API
+  # (tools/seed.mjs, compared byte for byte with the committed model), walk the editor with Playwright (gate2.spec.ts: edit an
+  # entity and a relation, plan, diff, apply), then check that the edits reached the output, that every output equals the CLI's
+  # (generate --check over every root) and that Generated/ equals what the CLI generates into a second copy, that the managed
+  # block of src/ReferenceApp.Data/.gitignore was created, dotnet build -warnaserror of ReferenceApp.Data, and the generated DDL
+  # (schema.sql, migrations, seed) against a PostgreSQL 16 service container with the table, view and sequence counts asserted.
+  # The committed sample is checked against its model and packs too: generate, then nothing tracked may change and nothing
+  # untracked may appear. Any failing step fails the run.
+  gate2:
+    name: gate2 (reference application end to end)
+    needs: [build, image]
+    if: needs.image.outputs.gate2 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MAQUETTISTE_IMAGE: mattjcowan/maquettiste:ci
+      MAQUETTISTE_PORT: "8097"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: northwind
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: ./.github/actions/editor-packages
+
+      - uses: ./.github/actions/shared-build
+        with:
+          os: ubuntu-latest
+
+      - uses: ./.github/actions/shared-image
+
+      - name: Pull the Playwright image (the walk runs in it)
+        run: docker pull -q "$PLAYWRIGHT_IMAGE"
+
+      - name: The committed model is build-model.mjs's output, validates, and generating it changes nothing committed
+        run: |
+          set -eu
+          (cd samples/reference-app/tools && npm ci --no-audit --no-fund && npm test)
+          dotnet src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll --repo samples/reference-app validate
+          # Generated/ is not committed, so --check would report it missing: generate, then compare with what is committed.
+          dotnet src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll --repo samples/reference-app generate --quiet
+          git diff --exit-code -- samples/reference-app
+          test -z "$(git status --porcelain --untracked-files=all -- samples/reference-app)" || { git status --porcelain --untracked-files=all -- samples/reference-app; exit 1; }
+
+      - name: Make an editor token for this run
+        run: echo "MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
+      - name: prepare (tmp/gate2, empty model, editor up)
+        run: sh samples/reference-app/tools/gate2.sh prepare
+
+      - name: seed (the model through the editor API)
+        run: sh samples/reference-app/tools/gate2.sh seed
+
+      - name: walk (Playwright live, gate2.spec.ts)
+        run: sh samples/reference-app/tools/gate2.sh walk
+
+      - name: check (edits in the output, validate, every root equals the CLI output, the .gitignore block)
+        run: sh samples/reference-app/tools/gate2.sh check
+
+      - name: build (ReferenceApp.Data, warnings as errors)
+        run: sh samples/reference-app/tools/gate2.sh build
+
+      - name: ddl (schema, migrations and seed against postgres:16, counts asserted)
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: northwind
+        run: sh samples/reference-app/tools/gate2.sh ddl
+
+      - name: Editor logs
+        if: failure()
+        run: docker compose -f docker/compose.yaml --project-directory tmp/gate2 -p nw-gate2 logs --tail 200 || true
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2-playwright
+          path: |
+            src/editor/playwright-report
+            src/editor/test-results
+          if-no-files-found: ignore
+
+      - name: Stop
+        if: always()
+        run: sh samples/reference-app/tools/gate2.sh down
+
+  # The gate 3 check (SPEC Section 21, phase-3-design.md section 8): two processes with parallel states and gates, their scenarios
+  # and the generated C# end to end. Every step is a step of tests/fixtures/models/processes/tools/gate3.sh, so the same sequence
+  # runs locally: start the image over a copy of the fixture (tmp/gate3), walk the editor with Playwright (gate3.spec.ts:
+  # simulate PurchaseApproval and SalesOrderLifecycle in the simulation panel, record both paths as scenarios, plan and apply),
+  # then validate (no error or warning, every file canonical), verify every scenario in the engine, generate (a clean check,
+  # --jobs 1 and --jobs N byte-identical and equal to the editor's output, exports byte-identical), build the fixture's solution
+  # with warnings as errors, run the generated scenario tests (one per scenario, on in-memory SQLite: no database service),
+  # round-trip both processes through XState, and run the bench's process budgets. Any failing step fails the run.
+  gate3:
+    name: gate3 (processes end to end)
+    needs: [build, image]
+    if: needs.image.outputs.gate3 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MAQUETTISTE_IMAGE: mattjcowan/maquettiste:ci
+      MAQUETTISTE_PORT: "8098"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: ./.github/actions/editor-packages
+
+      - uses: ./.github/actions/shared-build
+        with:
+          os: ubuntu-latest
+
+      - uses: ./.github/actions/shared-image
+
+      - name: Pull the Playwright image (the walk runs in it)
+        run: docker pull -q "$PLAYWRIGHT_IMAGE"
+
+      - name: Make an editor token for this run
+        run: echo "MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
+      - name: prepare (tmp/gate3, the fixture, editor up)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh prepare
+
+      - name: walk (Playwright live, gate3.spec.ts)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh walk
+
+      - name: validate (criterion 1)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh validate
+
+      - name: verify (criteria 2 and 3)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh verify
+
+      - name: generate (criteria 4 and 6)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh generate
+
+      - name: build (criterion 4, warnings as errors)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh build
+
+      - name: test (criterion 5, the generated scenario tests)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh test
+
+      - name: roundtrip (criterion 7, XState)
+        run: sh tests/fixtures/models/processes/tools/gate3.sh roundtrip
+
+      # The section 4.5 budgets assume an 8-core machine; on a GitHub-hosted runner (4 vCPUs) they are advisory, as in bench.yml:
+      # the script records them, turns a MISS into a warning and passes. On a self-hosted runner they are binding.
+      - name: bench (criterion 8, the section 4.5 budgets; advisory on hosted runners)
+        env:
+          GATE3_BENCH_ADVISORY: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
+          GATE3_BENCH_NO_BUILD: "1"
+        run: sh tests/fixtures/models/processes/tools/gate3.sh bench
+
+      - name: Editor logs
+        if: failure()
+        run: docker compose -f docker/compose.yaml --project-directory tmp/gate3 -p pr-gate3 logs --tail 200 || true
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate3-playwright
+          path: |
+            src/editor/playwright-report
+            src/editor/test-results
+          if-no-files-found: ignore
+
+      - name: Stop
+        if: always()
+        run: sh tests/fixtures/models/processes/tools/gate3.sh down

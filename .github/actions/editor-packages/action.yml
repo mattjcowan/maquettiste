@@ -1,0 +1,27 @@
+name: editor packages
+description: >-
+  Node 24 and the editor's node_modules, installed once per lockfile: node_modules is kept in GitHub's cache under the lockfile's
+  hash, so only a job that misses runs npm ci. On a hit the postinstall step (the billing fixture copied into src/mocks/fixture)
+  still runs, since the fixture can change while the lockfile does not.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+    - name: Restore node_modules
+      id: modules
+      uses: actions/cache@v4
+      with:
+        path: src/editor/node_modules
+        key: editor-node-modules-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('src/editor/package-lock.json') }}
+    - name: Install (copies the billing fixture into src/mocks/fixture)
+      if: steps.modules.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: src/editor
+      run: npm ci --no-audit --no-fund
+    - name: Copy the billing fixture into src/mocks/fixture (npm ci's postinstall)
+      if: steps.modules.outputs.cache-hit == 'true'
+      shell: bash
+      working-directory: src/editor
+      run: node scripts/copy-fixture.mjs

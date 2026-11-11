@@ -24,7 +24,7 @@ tools/empty-editor.sh    starts the editor image on an empty project for seed.mj
 .maquettiste/            the committed model; templates/ are copies of packs/sql-ddl and packs/csharp-dapper;
                          manifest/<pack>.json and snapshots/main.json are written by maquettiste generate
 tools/db-apply.sh        applies db/main to postgres:16 (schema, migrations, seed twice) and asserts the object counts
-tools/gate2.sh           the gate 2 check, step by step (also what .github/workflows/gate2.yml runs)
+tools/gate2.sh           the gate 2 check, step by step (also what the gate2 job of .github/workflows/ci.yml runs)
 db/main/                 committed sql-ddl output: schema.sql, tables/views/sequences, migrations/, seed.sql; the
                          migrations 0001.sql to 0005.sql keep the names earlier versions gave them and stay owned;
                          a new one is <revision>-<key>.sql, named by its content
@@ -92,7 +92,7 @@ they record no migration facts. It then checks `POST /api/validate` reports noth
 
 ## Gate 2 check
 
-`tools/gate2.sh` runs SPEC Section 21's gate 2 the way `.github/workflows/gate2.yml` does (phase2-design.md 7.2): it copies
+`tools/gate2.sh` runs SPEC Section 21's gate 2 the way the gate2 job of `.github/workflows/ci.yml` does (phase2-design.md 7.2): it copies
 this folder to `tmp/gate2/` without the model, `db/` and build output, starts the image over it, seeds the model through the
 API (`seed.mjs --compare`), runs the Playwright walk `src/editor/tests/e2e/gate2.spec.ts` (add `receivingHours` to
 `Warehouse` in the grid, rename the relation `delivery route departs from warehouse` to `delivery route departs from depot`, plan, open a diff, apply,
