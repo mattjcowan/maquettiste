@@ -1,20 +1,24 @@
 name: editor
 
-# The editor SPA (phase2-design.md sections 4 and 9), in three parallel lanes so the slowest lane, not the sum, sets
-# the time:
-# - checks: install, generated-code drift check, lint, type check, Vitest (store, drafts and undo, client, mock
-#   contract suite, realtime cache patching, token contrast, shell, the site scripts), the production build and
-#   site zip;
-# - e2e, in three shards: Playwright's mock project against the mock build (vite preview) and the dev smoke spec
-#   against the Vite dev server, both started by the config. The mock project's teardown (the chart budgets) runs
+# The editor SPA (phase2-design.md sections 4 and 9). Nothing slow runs twice in one push: the packages are installed once per
+# lockfile (node_modules is kept in GitHub's cache), the mock build is made once and shared, and the browser jobs run in
+# Microsoft's Playwright image, which carries Chromium and its system libraries, so no job downloads a browser or installs
+# packages from Ubuntu's servers. The jobs:
+# - checks: generated-code drift check, format, lint, type check, Vitest, the production build and site zip, and the check that
+#   the Playwright image's version equals the editor's @playwright/test;
+# - mock: the mock build (vite build --mode mock), with the 5,000-entity model of ?mock=large in it (bench write-model, packed by
+#   scripts/gen-scale-model.mjs, cached on the inputs of the generator so a hit skips .NET), uploaded for the jobs below;
+# - e2e, in three shards: Playwright's mock project against that build (vite preview) and the dev smoke spec against the Vite dev
+#   server, both started by the config (MQ_PREBUILT_MOCK skips the build). The mock project's teardown (the chart budgets) runs
 #   once, in the first shard, after its tests; the other shards pass --no-deps so it is not repeated;
-# - scale: the 5,000-entity model (bench write-model, packed by scripts/gen-scale-model.mjs, cached on the inputs
-#   of the generator so a hit skips .NET) opened with ?mock=large, timing the explorer-redesign.md 4.5 targets;
-#   its report (scale-timings.json per test) is uploaded on every run. Its tests run in order in one file, so it
-#   is one job.
+# - scale: ?mock=large on the same build, timing the explorer-redesign.md 4.5 targets; its report (scale-timings.json per test)
+#   is uploaded on every run. Its tests run in order in one file, so it is one job.
+# It runs once per push: on a pull request for the pull request, and on a push only to main and phase-* (a branch with a pull
+# request is not run twice).
 
 on:
   push:
+    branches: [main, "phase-*"]
     paths:
       - "src/editor/**"
       - "docs/api/openapi.yaml"
@@ -24,6 +28,7 @@ on:
       - "packs/csharp-dapper/**"
       - "bench/Maquettiste.Bench/**"
       - ".github/workflows/editor.yml"
+      - ".github/actions/editor-packages/**"
   pull_request:
     paths:
       - "src/editor/**"
@@ -34,10 +39,15 @@ on:
       - "packs/csharp-dapper/**"
       - "bench/Maquettiste.Bench/**"
       - ".github/workflows/editor.yml"
+      - ".github/actions/editor-packages/**"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: editor-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
@@ -49,13 +59,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: src/editor/package-lock.json
-      - name: Install (copies the billing fixture into src/mocks/fixture)
-        run: npm ci
+      - uses: ./.github/actions/editor-packages
+      - name: The Playwright image the workflows run equals the editor's @playwright/test
+        run: node scripts/check-playwright-image.mjs
       - name: Generated client and mock contract are up to date
         run: npm run check:generated
       - name: Format
@@ -71,60 +77,13 @@ jobs:
       - name: Pack the site zip (static part; _functions/ when present)
         run: node scripts/pack-site.mjs --out "$RUNNER_TEMP/site.zip"
 
-  e2e:
-    name: e2e (${{ matrix.shard }}/3)
+  mock:
+    name: mock build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-        include:
-          - shard: 1
-            deps: ""
-          - shard: 2
-            deps: --no-deps
-          - shard: 3
-            deps: --no-deps
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: src/editor/package-lock.json
-      - name: Install (copies the billing fixture into src/mocks/fixture)
-        run: npm ci
-      - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
-      - name: Playwright (mock project on the mock build, dev smoke on the Vite dev server)
-        run: npm run e2e -- --shard=${{ matrix.shard }}/3 ${{ matrix.deps }}
-        env:
-          # The chart's section 4.5 targets (statechart-budget.mock-only.spec.ts) assume an 8-core machine; a hosted
-          # runner gets its own budget, twice the target, and still fails on a real regression.
-          MQ_HOSTED_RUNNER: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-${{ matrix.shard }}
-          path: |
-            src/editor/playwright-report
-            src/editor/test-results
-          if-no-files-found: ignore
-
-  scale:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: src/editor/package-lock.json
-      - name: Install (copies the billing fixture into src/mocks/fixture)
-        run: npm ci
+      - uses: ./.github/actions/editor-packages
       - name: Cache the large mock model (?mock=large)
         id: scale-model
         uses: actions/cache@v4
@@ -140,13 +99,79 @@ jobs:
       - name: Generate the large mock model (bench write-model, then pack)
         if: steps.scale-model.outputs.cache-hit != 'true'
         run: npm run gen:scale
-      - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
+      - name: Mock build
+        run: npm run build:mock
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-mock
+          path: src/editor/dist-mock
+          retention-days: 1
+          if-no-files-found: error
+
+  e2e:
+    name: e2e (${{ matrix.shard }}/3)
+    needs: mock
+    runs-on: ubuntu-latest
+    container:
+      # Its version equals the editor's @playwright/test (scripts/check-playwright-image.mjs checks every workflow).
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+        include:
+          - shard: 1
+            deps: ""
+          - shard: 2
+            deps: --no-deps
+          - shard: 3
+            deps: --no-deps
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/editor-packages
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-mock
+          path: src/editor/dist-mock
+      - name: Playwright (mock project on the mock build, dev smoke on the Vite dev server)
+        run: npm run e2e -- --shard=${{ matrix.shard }}/3 ${{ matrix.deps }}
+        env:
+          MQ_PREBUILT_MOCK: "1"
+          # The chart's section 4.5 targets (statechart-budget.mock-only.spec.ts) assume an 8-core machine; a hosted
+          # runner gets its own budget, twice the target, and still fails on a real regression.
+          MQ_HOSTED_RUNNER: ${{ runner.environment == 'github-hosted' && '1' || '0' }}
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: |
+            src/editor/playwright-report
+            src/editor/test-results
+          if-no-files-found: ignore
+
+  scale:
+    needs: mock
+    runs-on: ubuntu-latest
+    container:
+      # Its version equals the editor's @playwright/test (scripts/check-playwright-image.mjs checks every workflow).
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/editor-packages
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-mock
+          path: src/editor/dist-mock
       - name: Playwright scale project (explorer-redesign.md 4.5 targets on ?mock=large)
         # The scale project is a measurement harness: on a shared runner its timings are annotations and its canvas
         # interactions can time out, so it records (the report is uploaded below) without failing the run.
         continue-on-error: true
         run: npm run e2e:scale
+        env:
+          MQ_PREBUILT_MOCK: "1"
       - name: Upload the scale report
         if: always()
         uses: actions/upload-artifact@v4

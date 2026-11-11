@@ -1,6 +1,6 @@
 #!/bin/sh
 # The gate 3 check (SPEC Section 21, phase-3-design.md section 8), step by step, the same way locally and in
-# .github/workflows/gate3.yml. Run from anywhere; every step prints its wall time and the first failure stops the run.
+# the gate3 job of .github/workflows/ci.yml. Run from anywhere; every step prints its wall time and the first failure stops the run.
 #
 #   tests/fixtures/models/processes/tools/gate3.sh              # all steps, then down
 #   tests/fixtures/models/processes/tools/gate3.sh <step>...    # prepare walk validate verify generate build test roundtrip bench down
@@ -29,7 +29,8 @@
 # MAQUETTISTE_EDITOR_TOKEN (default: made once and kept in tmp/gate3.token), GATE3_DIR (default <repo>/tmp/gate3),
 # COMPOSE_PROJECT_NAME (default pr-gate3), GATE3_BENCH_ARGS (extra time-processes options), GATE3_BENCH_ADVISORY (see bench),
 # MAQUETTISTE_CLI (default: dotnet <repo>/src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll, built when missing).
-# Needs docker, node 20+, the .NET 10 SDK; walk needs `npm ci` and `npx playwright install chromium` in src/editor.
+# Needs docker, node 20+, the .NET 10 SDK; walk needs `npm ci` and `npx playwright install chromium` in src/editor,
+# or PLAYWRIGHT_IMAGE (a mcr.microsoft.com/playwright image of the same version) to run it in that image.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 fixture="$(cd "$here/.." && pwd)"
@@ -104,8 +105,16 @@ step_prepare() {
 }
 
 step_walk() {
-  (cd "$repo/src/editor" && MAQUETTISTE_GATE3=1 MAQUETTISTE_URL="http://maquettiste.localhost:$MAQUETTISTE_PORT" \
-    npx playwright test --project=live tests/e2e/gate3.spec.ts)
+  if [ -n "${PLAYWRIGHT_IMAGE:-}" ]; then
+    # In Microsoft's Playwright image (CI sets PLAYWRIGHT_IMAGE): its Chromium and system libraries, so nothing is installed on
+    # the machine. Host network, so the editor's port is the same; src/editor's node_modules come from the checkout.
+    docker run --rm --network host --ipc host --add-host maquettiste.localhost:127.0.0.1 --user "$(id -u):$(id -g)" \
+      -e HOME=/tmp -e CI -e MAQUETTISTE_EDITOR_TOKEN -e MAQUETTISTE_GATE3=1 -e MAQUETTISTE_URL="http://maquettiste.localhost:$MAQUETTISTE_PORT" \
+      -v "$repo:$repo" -w "$repo/src/editor" "$PLAYWRIGHT_IMAGE" npx playwright test --project=live tests/e2e/gate3.spec.ts
+  else
+    (cd "$repo/src/editor" && MAQUETTISTE_GATE3=1 MAQUETTISTE_URL="http://maquettiste.localhost:$MAQUETTISTE_PORT" \
+      npx playwright test --project=live tests/e2e/gate3.spec.ts)
+  fi
 }
 
 step_validate() {
@@ -212,8 +221,9 @@ step_roundtrip() {
 }
 
 step_bench() {
+  # GATE3_BENCH_NO_BUILD=1 runs the bench as already built (CI builds the solution once and shares it).
   # shellcheck disable=SC2086
-  dotnet run -c Release --project "$repo/bench/Maquettiste.Bench" -- time-processes ${GATE3_BENCH_ARGS:-} | tee "$dir.bench.txt"
+  dotnet run -c Release ${GATE3_BENCH_NO_BUILD:+--no-build} --project "$repo/bench/Maquettiste.Bench" -- time-processes ${GATE3_BENCH_ARGS:-} | tee "$dir.bench.txt"
   grep -q -e " pass" -e "MISS" "$dir.bench.txt" || fail "the bench reported no budget"
   if grep -q "MISS" "$dir.bench.txt"; then
     if [ "${GATE3_BENCH_ADVISORY:-}" = "1" ] || { [ -z "${GATE3_BENCH_ADVISORY:-}" ] && [ "${RUNNER_ENVIRONMENT:-}" = "github-hosted" ]; }; then

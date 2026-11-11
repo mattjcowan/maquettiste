@@ -59,30 +59,34 @@ RUN dotnet publish src/Maquettiste.Cli -c Release -o /cli -p:UseAppHost=false -p
  && echo "maquettiste: cli $(du -sh /cli | cut -f1)"
 
 # ---------------------------------------------------------------- editor: the site zip
-# With the SPA (src/editor, workstream P2-E) the zip is its build plus _functions/ and _variables.json, packed by its pack-site.mjs;
-# without it (a checkout of the functions alone) docker/pack-site.sh packs _functions/, _variables.json and a placeholder page, so
-# the API can be tried before the SPA lands. Both stamp the image's engine version into the zip's Directives.cs.
+# The SPA's build (src/editor) plus _functions/ and _variables.json, packed by its pack-site.mjs (zipped in node, so the stage installs
+# no system package), which stamps the image's engine version into the zip's Directives.cs.
 FROM node:22-bookworm-slim AS editor
-RUN apt-get update && apt-get install -y --no-install-recommends zip && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
 COPY --from=engine /engine.version /engine.version
-RUN mkdir -p /out && if [ -f src/editor/package.json ] && [ -f src/editor/scripts/pack-site.mjs ]; then \
-      cd src/editor && npm ci && npm run build \
-      && node scripts/pack-site.mjs --out /out/site.zip --engine-version "$(cat /engine.version)"; \
-    else \
-      sh docker/pack-site.sh /out/site.zip "$(cat /engine.version)"; \
-    fi
+RUN mkdir -p /out && cd src/editor && npm ci && npm run build \
+ && node scripts/pack-site.mjs --out /out/site.zip --engine-version "$(cat /engine.version)"
 
 # ---------------------------------------------------------------- runtime
 # The runtime-functions image of static-site-hosting 0.4.0 (Ubuntu 24.04, .NET SDK 10.0.401, git, curl and setpriv; runs as app,
 # UID 1654; NUGET_PACKAGES=/data/nuget; VOLUME /data).
 FROM mattjcowan/static-site-hosting:0.4.0
 USER root
-# jq edits the host's apikeys.json in the first-boot shim. The mkdir/chown makes the model mount's parents app-owned: Docker creates
-# missing parents of a mount point as root, and without this the host cannot write .staging/, releases/ or site.json on a new
-# volume (phase2-design.md section 6.1). safe.directory lets git read a bind-mounted repo owned by another UID.
-RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/* \
+# jq edits the host's apikeys.json in the first-boot shim: the release's static binary for the target architecture, checked against
+# its published SHA-256, so the build installs no system package (an apt-get update fails whenever Ubuntu's servers cannot be
+# reached). The mkdir/chown makes the model mount's parents app-owned: Docker creates missing parents of a mount point as root, and
+# without this the host cannot write .staging/, releases/ or site.json on a new volume (phase2-design.md section 6.1).
+# safe.directory lets git read a bind-mounted repo owned by another UID.
+ARG TARGETARCH
+ARG JQ_VERSION=1.8.2
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) sum=b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f ;; \
+      arm64) sum=8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309 ;; \
+      *) echo "maquettiste: no jq binary for $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL --retry 5 -o /usr/local/bin/jq "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-${TARGETARCH:-amd64}" \
+ && echo "$sum  /usr/local/bin/jq" | sha256sum -c - && chmod 755 /usr/local/bin/jq \
  && git config --system --add safe.directory '*' \
  && mkdir -p /data/sites/maquettiste.localhost/data /data/maquettiste/cache && chown -R app:app /data
 COPY --from=engine /feed /opt/maquettiste/nuget

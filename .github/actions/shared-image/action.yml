@@ -1,0 +1,12 @@
+name: shared image
+description: The editor image as ci.yml's image job built it, loaded into Docker as mattjcowan/maquettiste:ci.
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: image
+        path: ${{ runner.temp }}/shared-image
+    - name: Load the image
+      shell: bash
+      run: zstd -dc "$RUNNER_TEMP/shared-image/image.tar.zst" | docker load && rm -rf "$RUNNER_TEMP/shared-image"

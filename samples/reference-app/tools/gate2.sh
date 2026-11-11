@@ -1,6 +1,6 @@
 #!/bin/sh
 # The gate 2 check (SPEC Section 21, phase2-design.md section 7.2), step by step, the same way locally and in
-# .github/workflows/gate2.yml. Run from anywhere; every step prints its wall time.
+# the gate2 job of .github/workflows/ci.yml. Run from anywhere; every step prints its wall time.
 #
 #   samples/reference-app/tools/gate2.sh              # all steps, then down
 #   samples/reference-app/tools/gate2.sh <step>...    # prepare seed walk check build ddl down, in that order
@@ -22,7 +22,8 @@
 # Environment: MAQUETTISTE_IMAGE (default mattjcowan/maquettiste:dev), MAQUETTISTE_PORT (default 8097),
 # MAQUETTISTE_EDITOR_TOKEN (default: made once and kept in tmp/gate2.token), GATE2_DIR (default <repo>/tmp/gate2),
 # MAQUETTISTE_CLI (default: dotnet <repo>/src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll, built when missing).
-# Needs docker, node 20+, the .NET 10 SDK; walk needs `npm ci` and `npx playwright install chromium` in src/editor.
+# Needs docker, node 20+, the .NET 10 SDK; walk needs `npm ci` and `npx playwright install chromium` in src/editor,
+# or PLAYWRIGHT_IMAGE (a mcr.microsoft.com/playwright image of the same version) to run it in that image.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../../.." && pwd)"
@@ -92,8 +93,16 @@ step_seed() {
 }
 
 step_walk() {
-  (cd "$repo/src/editor" && MAQUETTISTE_GATE2=1 MAQUETTISTE_URL="http://maquettiste.localhost:$MAQUETTISTE_PORT" \
-    npx playwright test --project=live tests/e2e/gate2.spec.ts)
+  if [ -n "${PLAYWRIGHT_IMAGE:-}" ]; then
+    # In Microsoft's Playwright image (CI sets PLAYWRIGHT_IMAGE): its Chromium and system libraries, so nothing is installed on
+    # the machine. Host network, so the editor's port is the same; src/editor's node_modules come from the checkout.
+    docker run --rm --network host --ipc host --add-host maquettiste.localhost:127.0.0.1 --user "$(id -u):$(id -g)" \
+      -e HOME=/tmp -e CI -e MAQUETTISTE_EDITOR_TOKEN -e MAQUETTISTE_GATE2=1 -e MAQUETTISTE_URL="http://maquettiste.localhost:$MAQUETTISTE_PORT" \
+      -v "$repo:$repo" -w "$repo/src/editor" "$PLAYWRIGHT_IMAGE" npx playwright test --project=live tests/e2e/gate2.spec.ts
+  else
+    (cd "$repo/src/editor" && MAQUETTISTE_GATE2=1 MAQUETTISTE_URL="http://maquettiste.localhost:$MAQUETTISTE_PORT" \
+      npx playwright test --project=live tests/e2e/gate2.spec.ts)
+  fi
 }
 
 step_check() {
