@@ -1973,9 +1973,9 @@ One resolved query: the trees as the file writes them, with what resolution adds
 | `name` | string | never | The query's name. |
 | `entityId` | string | can be null | The result entity's id, or null for an ad hoc row. |
 | `parameters` | list of [queryParameterView](#queryparameterview) | never | The parameters, in order. |
-| `from` | [querySourceView](#querysourceview) | never | The first source. |
+| `from` | [querySourceView](#querysourceview) | left out when not set | The first source of a built query; null (left out) for a query written as SQL text. |
 | `joins` | list of [querySourceView](#querysourceview) | never | The joined sources. |
-| `select` | list of [queryFieldView](#queryfieldview) | never | The select list. |
+| `select` | list of [queryFieldView](#queryfieldview) | never | The select list; for a query written as SQL text, its declared columns (each without an expression). |
 | `where` | any | can be null | The row filter as the file writes it (a predicate tree), or null. |
 | `groupBy` | list of any | never | The grouping expressions as the file writes them. |
 | `having` | any | can be null | The group filter as the file writes it, or null. |
@@ -1983,9 +1983,9 @@ One resolved query: the trees as the file writes them, with what resolution adds
 | `distinct` | boolean | never | Whether duplicate rows are removed. |
 | `paging` | any | can be null | The paging as the file writes it, or null. |
 | `collections` | list of [queryCollectionView](#querycollectionview) | never | The collections. |
-| `sql` | string | can be null | The SQL for the database's dialect (`@name` placeholders), with the hidden key columns its collections need, or null when it cannot be rendered there. |
+| `sql` | string | can be null | The SQL for the database's dialect (`@name` placeholders), with the hidden key columns its collections need (for a query written as SQL text, its text as written with the white space at both ends removed, a final `;` kept), or null when it cannot be rendered there. |
 | `sqlParameters` | list of string | never | The parameters the SQL names, in first-appearance order. |
-| `uses` | list of string | never | The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads. |
+| `uses` | list of string | never | The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order. |
 | `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
 | `pluralName` | string | can be null | The plural name the table's file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
@@ -1995,6 +1995,10 @@ One resolved query: the trees as the file writes them, with what resolution adds
 | `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 | `boundBy` | list of [boundByView](#boundbyview) | never | The entity bindings that read the query. |
+| `form` | string | left out when not set | `sql` for a query written as SQL text; null (left out) for a built query. |
+| `texts` | map of string | left out when not set | The file's `sql` of a query written as SQL text, as written (dialect name or `*` to text, `:name` placeholders); null (left out) for a built query. |
+| `writes` | list of string | left out when not set | The ids (keys, for a synthesized table) of the tables a query written as SQL text writes, in file order; null (left out) when none. |
+| `with` | list of [namedQueryView](#namedqueryview) | left out when not set | The named queries (a `WITH` clause) of a built query, in order; left out when it has none. |
 
 ### queryParameterView
 
@@ -2028,6 +2032,7 @@ A source of a query.
 | `name` | string | never | The physical name. |
 | `schema` | string | can be null | The schema name, or null. |
 | `on` | any | can be null | The join condition as the file writes it, or null. |
+| `namedQuery` | string | left out when not set | The name of the named query (of the query's `with`) the source reads; left out otherwise. |
 
 ### queryFieldView
 
@@ -2037,11 +2042,12 @@ A field of a select list.
 | --- | --- | --- | --- |
 | `name` | string | never | The field's name in the result row. |
 | `attributeId` | string | can be null | What it fills: an attribute's id, `attributeId.memberId` for a value object member, the relation end a to-one navigation leads to for its foreign key, or null. |
-| `expression` | any | never | The value as the file writes it (an expression tree). |
+| `expression` | any | left out when not set | The value as the file writes it (an expression tree); null (left out) for a declared column of a query written as SQL text. |
 | `type` | string | can be null | The built-in type keyword, or null when unknown. |
 | `nativeType` | string | can be null | The native type, or null when unknown. |
 | `codeType` | string | can be null | The keyword a code type map maps, or null. |
 | `nullable` | boolean | never | Whether the value may be null. |
+| `description` | string | left out when not set | A declared column's description; null (left out) for a select field or without one. |
 
 ### queryCollectionView
 
@@ -2071,6 +2077,18 @@ A correlation key of a collection.
 | `parameter` | string | never | The list parameter of the collection's statement. |
 | `type` | string | can be null | The value's built-in type keyword, or null. |
 | `nativeType` | string | can be null | The value's native type, or null. |
+
+### namedQueryView
+
+A named query of a built query's `with`.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | never | The name sources read it by. |
+| `query` | any | never | The entry as the file writes it, without its repeating part. |
+| `columns` | list of [queryFieldView](#queryfieldview) | never | Its columns: the anchor's field names in order, with their types, and nullable when either part's field is. |
+| `recursive` | any | left out when not set | The repeating part as the file writes it; left out when the named query is not recursive. |
+| `union` | string | left out when not set | How the repeating part's rows are added (`all` or `distinct`); left out when the named query is not recursive. |
 
 ### schemaView
 

@@ -42,7 +42,12 @@ public sealed record QuerySqlText(string Sql, IReadOnlyList<string> Parameters, 
 /// </summary>
 public static class QuerySql
 {
-    /// <summary>Renders a query (its collections excluded, their hidden key columns included).</summary>
+    /// <summary>
+    /// Renders a query (its collections excluded, their hidden key columns included). A query written as SQL text renders its text for
+    /// the dialect (its own, else <c>"*"</c>'s; neither is MQ4029) as written, with only the white space at both ends removed (a final
+    /// <c>;</c> stays), its <c>:name</c> placeholders in the options' style (sql-queries-design.md decision 5);
+    /// <see cref="QuerySqlOptions.Lists"/> does not apply to it.
+    /// </summary>
     /// <param name="query">The resolved query.</param>
     /// <param name="dialect">A dialect name, or <see langword="null"/> for the query's database's.</param>
     /// <param name="options">The options, or <see langword="null"/> for <see cref="QuerySqlOptions.Default"/>.</param>
@@ -52,7 +57,10 @@ public static class QuerySql
     {
         ArgumentNullException.ThrowIfNull(query);
         var writer = new Writer(query, dialect, options);
-        writer.Top(query);
+        if (query.Form == "sql")
+            writer.HandWritten(query);
+        else
+            writer.Top(query);
         return writer.Result();
     }
 
@@ -68,6 +76,31 @@ public static class QuerySql
         var writer = new Writer(collection.Query, dialect, options);
         writer.Collection(collection);
         return writer.Result();
+    }
+
+    /// <summary>
+    /// A query's statement in two parts (sql-queries-design.md decision 16): its <c>WITH</c> clause (empty without named queries) and
+    /// the statement after it, rendered as one text so that the placeholders are numbered in text order; <see cref="QuerySqlText.Parameters"/>
+    /// lists both parts' names. A binding writes the <c>WITH</c> before its own select over the statement. The statement is the body
+    /// of a derived table: a query written as SQL text loses its final <c>;</c> and what follows it (<see cref="Wrapped"/>).
+    /// </summary>
+    internal static (string With, QuerySqlText Statement) RenderParts(RQuery query, string? dialect, QuerySqlOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (query.Form == "sql")
+        {
+            var handWritten = new Writer(query, dialect, options);
+            handWritten.HandWritten(query, wrapped: true);
+            return ("", handWritten.Result());
+        }
+
+        if (query.With.Count == 0)
+            return ("", Render(query, dialect, options));
+        var writer = new Writer(query, dialect, options);
+        writer.Top(query);
+        var whole = writer.Result();
+        var start = writer.StatementStart;
+        return (start == 0 ? "" : whole.Sql[..(start - 1)], whole with { Sql = whole.Sql[start..] });
     }
 
     /// <summary>
@@ -89,7 +122,7 @@ public static class QuerySql
 
     /// <summary>Whether a query is grouped: it has a GROUP BY, or its select list, having or order calls an aggregate function.</summary>
     internal static bool IsGrouped(RQuery query) =>
-        query.GroupBy.Count > 0 || query.Select.Any(f => HasAggregate(f.Expression)) || (query.Having is { } having && HasAggregate(having))
+        query.GroupBy.Count > 0 || query.Select.Any(f => f.Expression is { } e && HasAggregate(e)) || (query.Having is { } having && HasAggregate(having))
         || query.OrderBy.Any(o => HasAggregate(o.Expression));
 
     /// <summary>Whether an expression calls an aggregate function (outside nested queries).</summary>
@@ -149,6 +182,24 @@ public static class QuerySql
         : texts.TryGetValue("*", out text) && !string.IsNullOrWhiteSpace(text) ? text
         : null;
 
+    /// <summary>
+    /// A SQL text as a statement (sql-queries-design.md decision 5): the text as written, with only the white space at both ends
+    /// removed (<see cref="Rendering.SqlText.IsWhite"/>). A final <c>;</c> stays: some statements need one (a SQL Server MERGE, an
+    /// Oracle block's <c>END;</c>) and others refuse one, and only the team knows which.
+    /// </summary>
+    internal static string Statement(string text) => Rendering.SqlText.Trim(text);
+
+    /// <summary>
+    /// A SQL text as the body of a derived table (<c>FROM (&lt;text&gt;) q</c>, decision 5): <see cref="Statement"/>, then cut before its
+    /// final <c>;</c> when it has one (a <c>;</c> outside parentheses, comments, strings and quoted identifiers, with only white space
+    /// and comments after it, which go with it), and the white space at the end removed again.
+    /// </summary>
+    internal static string Wrapped(string text, Dialect dialect)
+    {
+        var statement = Statement(text);
+        return Rendering.SqlText.Scan(statement, dialect).FinalSemicolon is { } at ? Rendering.SqlText.Trim(statement[..at]) : statement;
+    }
+
     /// <summary>The SQL spelling of the functions the renderer knows, per dialect; any other name is written as given.</summary>
     internal static string? FunctionName(string name, Dialect dialect) => name.ToLowerInvariant() switch
     {
@@ -177,6 +228,9 @@ public static class QuerySql
         private readonly List<Diagnostic> _diagnostics = [];
         private readonly StringBuilder _sb = new();
         private string _newline = "\n";
+
+        /// <summary>Where the statement starts after the <c>WITH</c> clause (0 without one).</summary>
+        public int StatementStart { get; private set; }
         private IReadOnlyDictionary<string, string>? _typeMap;
         private EffectiveConventions? _conventions;
 
@@ -220,7 +274,8 @@ public static class QuerySql
 
         public void Top(RQuery query)
         {
-            var columns = query.Select.Select(f => Expression(f.Expression) + " AS " + Q(f.Name)).ToList();
+            With(query.With);
+            var columns = query.Select.Select(f => Expression(f.Expression!) + " AS " + Q(f.Name)).ToList();
             var hidden = new HashSet<string>(StringComparer.Ordinal);
             var hiddenKeys = new List<RQueryExpression>();
             foreach (var collection in query.Collections)
@@ -242,16 +297,141 @@ public static class QuerySql
             Paging(query.Paging);
         }
 
+        /// <summary>
+        /// A query written as SQL text (sql-queries-design.md decisions 4 and 5): the text for the dialect with the white space at both
+        /// ends removed, each <c>:name</c> placeholder the scanner finds written in the options' style; nothing else changes. Wrapped
+        /// in a derived table, it also loses its final <c>;</c> and the comments after it (<see cref="Wrapped"/>).
+        /// </summary>
+        public void HandWritten(RQuery query, bool wrapped = false)
+        {
+            if (SqlFor(query.Texts, _dialectName) is not { } text)
+            {
+                _diagnostics.Add(RuleCatalog.Create("MQ4029",
+                    $"Query '{query.Name}' is written as SQL text without a text for {_dialectName} (and no \"*\" text), so it cannot be rendered there.",
+                    query.Id, null, "/sql"));
+                return;
+            }
+
+            var body = wrapped ? Wrapped(text, _dialect) : Statement(text);
+            var at = 0;
+            foreach (var placeholder in Rendering.SqlText.Scan(body, _dialect).Placeholders)
+            {
+                _sb.Append(body, at, placeholder.Offset - at).Append(Placeholder(placeholder.Name));
+                at = placeholder.Offset + placeholder.Length;
+            }
+
+            _sb.Append(body, at, body.Length - at);
+        }
+
         public void Collection(RQueryCollection collection)
         {
             var query = collection.Query;
-            var columns = query.Select.Select(f => Expression(f.Expression) + " AS " + Q(f.Name)).ToList();
+            // A collection's statement runs on its own: it repeats the named queries it reads, directly or through others, in list order.
+            var reads = new HashSet<RNamedQuery>();
+            NamedReads(query, reads);
+            With([.. reads.OrderBy(n => n.Index)]);
+            var columns = query.Select.Select(f => Expression(f.Expression!) + " AS " + Q(f.Name)).ToList();
             foreach (var key in collection.Keys)
                 columns.Add(Expression(key.Inner) + " AS " + Q(key.ChildField));
             Select(query.Distinct, columns);
             // A grouped collection groups by its key columns too: each group then belongs to one parent row.
             Body(query, query.Where, collection, IsGrouped(query) ? [.. collection.Keys.Select(k => k.Inner)] : []);
             Order(query.OrderBy, false);
+        }
+
+        /// <summary>
+        /// The <c>WITH</c> clause of named queries (sql-queries-design.md decision 14): <c>WITH RECURSIVE</c> where the dialect has the
+        /// keyword and one entry is recursive; each entry with its column list, its clauses indented one level, and a recursive one's
+        /// repeating part after <c>UNION ALL</c> or <c>UNION</c>. Nothing without entries.
+        /// </summary>
+        private void With(IReadOnlyList<RNamedQuery> entries)
+        {
+            if (entries.Count == 0)
+                return;
+            var keyword = entries.Any(e => e.Recursive is not null) && _dialect is Dialect.PostgreSql or Dialect.MySql or Dialect.Sqlite;
+            _sb.Append(keyword ? "WITH RECURSIVE " : "WITH ");
+            var newline = _newline;
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                if (i > 0)
+                    _sb.Append(',').Append(newline);
+                _sb.Append(Q(entry.Name)).Append(" (").Append(string.Join(", ", entry.Columns.Select(c => Q(c.Name)))).Append(") AS (");
+                _newline = newline + "    ";
+                _sb.Append(_newline);
+                Part(entry.Query);
+                if (entry.Recursive is { } recursive)
+                {
+                    _sb.Append(_newline).Append(entry.Union == "distinct" ? "UNION" : "UNION ALL").Append(_newline);
+                    Part(recursive);
+                }
+
+                _newline = newline;
+                _sb.Append(_newline).Append(')');
+            }
+
+            _sb.Append(_newline);
+            StatementStart = _sb.Length;
+        }
+
+        /// <summary>A named query's anchor or repeating part: its select list and body.</summary>
+        private void Part(RQuery part)
+        {
+            Select(part.Distinct, [.. part.Select.Select(f => Expression(f.Expression!) + " AS " + Q(f.Name))]);
+            Body(part, part.Where, null, []);
+        }
+
+        /// <summary>The named queries a query reads through its sources and nested queries, and those they read in turn.</summary>
+        private static void NamedReads(RQuery query, HashSet<RNamedQuery> reads)
+        {
+            foreach (var source in query.Joins.Prepend(query.From))
+            {
+                if (source?.Named is { } named && reads.Add(named))
+                {
+                    NamedReads(named.Query, reads);
+                    if (named.Recursive is { } recursive)
+                        NamedReads(recursive, reads);
+                }
+
+                if (source?.On is { } on)
+                    NamedReads(on, reads);
+            }
+
+            foreach (var expression in query.Select.Select(f => f.Expression).OfType<RQueryExpression>().Concat(query.GroupBy).Concat(query.OrderBy.Select(o => o.Expression)))
+                NamedReads(expression, reads);
+            if (query.Where is { } where)
+                NamedReads(where, reads);
+            if (query.Having is { } having)
+                NamedReads(having, reads);
+        }
+
+        private static void NamedReads(RQueryPredicate predicate, HashSet<RNamedQuery> reads)
+        {
+            if (predicate.Exists is { } exists)
+                NamedReads(exists, reads);
+            foreach (var p in predicate.And.Concat(predicate.Or))
+                NamedReads(p, reads);
+            if (predicate.Not is { } not)
+                NamedReads(not, reads);
+            foreach (var e in predicate.Values.Append(predicate.Left).Append(predicate.Right))
+            {
+                if (e is not null)
+                    NamedReads(e, reads);
+            }
+        }
+
+        private static void NamedReads(RQueryExpression expression, HashSet<RNamedQuery> reads)
+        {
+            foreach (var e in expression.Args.Append(expression.Cast).Append(expression.Else).Concat(expression.Case.Select(w => w.Then)))
+            {
+                if (e is not null)
+                    NamedReads(e, reads);
+            }
+
+            foreach (var when in expression.Case)
+                NamedReads(when.When, reads);
+            if (expression.Pred is { } pred)
+                NamedReads(pred, reads);
         }
 
         private void Select(bool distinct, List<string> columns)
@@ -265,7 +445,7 @@ public static class QuerySql
         /// </summary>
         private void Body(RQuery query, RQueryPredicate? where, RQueryCollection? collection, IReadOnlyList<RQueryExpression> keys)
         {
-            _sb.Append(_newline).Append("FROM ").Append(Source(query.From));
+            _sb.Append(_newline).Append("FROM ").Append(Source(query.From!)); // a SQL text renders apart (sql-queries-design.md section 11)
             foreach (var join in query.Joins)
             {
                 _sb.Append(_newline).Append(join.JoinKind switch

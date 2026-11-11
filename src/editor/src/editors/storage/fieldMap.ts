@@ -4,6 +4,7 @@
 // RBindingColumn), Map by name, and the edits a gesture makes to a binding. Column references follow the engine: a key or
 // a physical name, found by key, then by name, then loosely by name.
 
+import { scanSqlText } from "@/model/sqlText";
 import { coveredTargets } from "./relationStorage";
 
 type Json = Record<string, unknown>;
@@ -240,6 +241,12 @@ export interface BindingSource {
   columns: SourceColumn[];
   /** A table that is not a file of its own (projected by the database's conventions). */
   projected?: boolean;
+  /** A query written as SQL text that writes tables or declares no columns: a binding cannot read through it (MQ4044). */
+  changesData?: boolean;
+  /** Why: it writes tables, or declares no columns (MQ4044's words). */
+  changesWhy?: "writes tables" | "declares no columns";
+  /** SQL Server only: why a SQL text cannot be nested as a derived table (MQ4097's words). */
+  notNestable?: string;
 }
 
 interface TableViewLike {
@@ -270,8 +277,12 @@ interface QueryViewLike {
   id: string;
   name: string;
   select: { name: string; type: string | null; nullable: boolean }[];
+  form?: string;
+  writes?: string[];
+  texts?: Record<string, string>;
 }
 export interface DatabaseViewLike {
+  dialect?: string;
   tables: TableViewLike[];
   views: ViewViewLike[];
   queries?: QueryViewLike[];
@@ -297,6 +308,17 @@ export function tableSource(t: TableViewLike): BindingSource {
   };
 }
 
+/** MQ4097's case: SQL Server nests a query's text as a derived table, which cannot start with WITH or end with a bare ORDER BY. */
+function notNestable(texts: Record<string, string> | undefined): { notNestable?: string } {
+  const text = texts?.sqlserver?.trim() ? texts.sqlserver : texts?.["*"]?.trim() ? texts["*"] : null;
+  if (text === null || text === undefined) return {};
+  const trimmed = text.trim();
+  const scan = scanSqlText(trimmed.endsWith(";") ? trimmed.slice(0, -1).trimEnd() : trimmed, "sqlserver");
+  if (scan.firstWord === "WITH") return { notNestable: "starts with WITH" };
+  if (scan.orderBy && !scan.offsetFetchOrTop) return { notNestable: "has an ORDER BY outside parentheses with no OFFSET, FETCH or TOP" };
+  return {};
+}
+
 /** The tables, views and queries of a database view a binding can read, in that order. */
 export function sourcesOf(view: DatabaseViewLike | null | undefined): BindingSource[] {
   if (!view) return [];
@@ -313,7 +335,17 @@ export function sourcesOf(view: DatabaseViewLike | null | undefined): BindingSou
   return [
     ...view.tables.map(tableSource),
     ...view.views.map((v) => ({ kind: "view" as const, id: v.id, name: v.name, schema: v.schema, columns: v.columns.map(plain) })),
-    ...(view.queries ?? []).map((q) => ({ kind: "query" as const, id: q.id, name: q.name, schema: null, columns: q.select.map(plain) })),
+    ...(view.queries ?? []).map((q) => ({
+      kind: "query" as const,
+      id: q.id,
+      name: q.name,
+      schema: null,
+      columns: q.select.map(plain),
+      ...(q.form === "sql" && ((q.writes?.length ?? 0) > 0 || q.select.length === 0)
+        ? { changesData: true, changesWhy: (q.writes?.length ?? 0) > 0 ? ("writes tables" as const) : ("declares no columns" as const) }
+        : {}),
+      ...(q.form === "sql" && view.dialect === "sqlserver" ? notNestable(q.texts) : {}),
+    })),
   ];
 }
 
@@ -428,8 +460,14 @@ export interface MapProblem {
  * (MQ4047, once with the names), a constant the source lacks (MQ4048), and the stored attributes no field maps (MQ4058, once
  * with the names; a to-one relation key is not an attribute and is left out, as the engine's rule leaves it).
  */
-export function bindingProblems(binding: Binding, attributes: readonly StorageAttribute[], source: BindingSource | undefined): MapProblem[] {
+export function bindingProblems(
+  binding: Binding,
+  attributes: readonly StorageAttribute[],
+  source: BindingSource | undefined,
+  names: { entity: string; database: string } = { entity: "the entity", database: "the database" },
+): MapProblem[] {
   const out: MapProblem[] = [];
+  const subject = `The binding of entity '${names.entity}' to database '${names.database}'`;
   if (!source) {
     out.push({
       rule: "MQ4044",
@@ -438,6 +476,23 @@ export function bindingProblems(binding: Binding, attributes: readonly StorageAt
       pointer: "/source",
     });
     return out;
+  }
+  if (source.changesData) {
+    out.push({
+      rule: "MQ4044",
+      severity: "error",
+      message: `${subject} reads query '${source.name}', which is written as SQL text and ${source.changesWhy ?? "writes tables"}: an entity reads only through a query that returns rows and changes none.`,
+      pointer: "/source",
+    });
+    return out;
+  }
+  if (source.notNestable) {
+    out.push({
+      rule: "MQ4097",
+      severity: "warning",
+      message: `${subject} reads query '${source.name}', whose SQL text ${source.notNestable}, which SQL Server cannot nest as a derived table: rewrite the text, or read the query some other way.`,
+      pointer: "/source",
+    });
   }
   const refs = new Set(attributes.map((a) => a.ref));
   const usedColumns = new Map<string, number>();

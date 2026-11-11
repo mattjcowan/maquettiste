@@ -5,6 +5,10 @@
 # its parent by the correlation keys; a query with collections returns <Name>Result records (the row and one list per
 # collection). The template's own names start with mq_, which the engine reserves (MQ4040), so no parameter, field or
 # collection name collides with them; entity, enum and value object types are written global::-qualified.
+# Both forms of query come here. query.form is "structured" for a query built from parts and "sql" for one written as SQL text;
+# query_sql gives either one's statement with @name placeholders. query.select is the built query's select fields, or the SQL
+# text's declared columns (expression null: column_type_ref finds no table column, so each member takes the column's own type).
+# A query with no columns is a command: it returns no rows, and ExecuteAsync returns the number of rows it changed.
 include "_csharp.scriban"
 include "_dapper.scriban"
 name = cs_class (pascal query.name)
@@ -111,8 +115,12 @@ func entity_assignments(e, fields)
 end
 
 # The type the table column a field reads states as its typeRef (next-phase-2-design.md section 3.2), or null: a field that is
-# not a plain column of a table, or a column of a table file that names no enum, reference type or scalar type.
+# not a plain column of a table (a declared column of a SQL text has no expression), or a column of a table file that names no
+# enum, reference type or scalar type.
 func column_type_ref(f)
+  if !f.expression
+    ret null
+  end
   $c = f.expression.table_column
   ret $c ? $c.type_ref : null
 end
@@ -202,6 +210,7 @@ end
 entity = query.entity
 item_type = entity ? qualified(entity) : name + "Row"
 has_collections = query.collections.size > 0
+is_command = query.select.size == 0
 result_type = has_collections ? name + "Result" : item_type
 
 # A JSON field is a JsonElement.
@@ -285,10 +294,16 @@ namespace {{ base_ns }}.Queries;
 
 {{ doc(query.description, "") }}public partial interface I{{ name }}Query
 {
+{{- if is_command }}
+    /// <summary>Runs the statement, which returns no rows.</summary>
+    /// <returns>The number of rows the statement changed, as the database counts them.</returns>
+    Task<int> ExecuteAsync({{ signature }});
+{{- else }}
     /// <summary>Runs the query{{ if has_collections }} and fills its collections{{ end }}.</summary>
     Task<IReadOnlyList<{{ result_type }}>> ExecuteAsync({{ signature }});
+{{- end }}
 }
-{{- if !entity }}
+{{- if !entity && !is_command }}
 
 /// <summary>One row of query {{ query.name }}.{{ record_code_notes(query.select) }}</summary>
 public sealed partial record {{ name }}Row({{ for f in query.select }}{{ record_member_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
@@ -307,20 +322,26 @@ public sealed partial record {{ result_type }}({{ item_type }} Item{{ for c in q
 {{- end }}
 
 /// <summary>The Dapper implementation of <see cref="I{{ name }}Query"/> (database {{ db.name }}, {{ db.dialect }}).</summary>
+{{- if is_command }}
+/// <remarks>The statement changes data and returns no rows; it runs in the transaction given, if any.</remarks>
+{{- else }}
 /// <remarks>
 /// The results are read-only projections: {{ if entity }}each {{ type_name(entity) }} holds what the query selects and leaves its other
 /// properties at their defaults, so it is not a row to save back through a repository{{ else }}rows of the query's own shape{{ end }}.
 /// </remarks>
+{{- end }}
 public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction? mq_transaction = null) : I{{ name }}Query
 {
-    private const string Sql = """
-{{ indent (query_sql query) 8 }}
-        """;
+{{- mq_sql = query_sql query }}
+    private const string Sql = {{ raw_quotes mq_sql }}
+{{ indent mq_sql 8 }}
+        {{ raw_quotes mq_sql }};
 {{- for c in query.collections }}
+{{- mq_sql = query_collection_sql c }}
 
-    private const string {{ pascal c.name }}Sql = """
-{{ indent (query_collection_sql c) 8 }}
-        """;
+    private const string {{ pascal c.name }}Sql = {{ raw_quotes mq_sql }}
+{{ indent mq_sql 8 }}
+        {{ raw_quotes mq_sql }};
 {{- end }}
 {{- if has_collections }}
 
@@ -329,6 +350,11 @@ public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction
 {{- end }}
 
     /// <inheritdoc/>
+{{- if is_command }}
+    public Task<int> ExecuteAsync({{ signature }}) =>
+        mq_connection.ExecuteAsync(new CommandDefinition(Sql, new { {{ args | array.join ", " }} }, mq_transaction, cancellationToken: mq_cancellationToken));
+}
+{{- else }}
     public async Task<IReadOnlyList<{{ result_type }}>> ExecuteAsync({{ signature }})
     {
         var mq_rows = (await mq_connection.QueryAsync<Row>(new CommandDefinition(Sql, new { {{ args | array.join ", " }} }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false)).ToList();
@@ -425,3 +451,4 @@ public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction
     }
 {{- end }}
 }
+{{- end }}

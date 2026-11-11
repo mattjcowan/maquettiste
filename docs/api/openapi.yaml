@@ -2971,8 +2971,11 @@ paths:
         setting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or
         `OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries
         the correlation columns, the collection's takes their values as the list parameter `mq_keys0` (`mq_keys1`...) and returns
-        each row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with
-        errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.
+        each row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A query written as
+        SQL text renders its own text for the dialect (else its `*` text; neither is MQ4029) as written, with only the white
+        space at both ends removed (a final `;` stays), with its `:name` placeholders in the asked style and no collections; `lists` does not apply to it. Named queries (`with`) render
+        as a WITH clause first. A model with errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql`
+        answers the same.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetQuerySqlAsync(queryId, dialect, options)
       parameters:
@@ -13535,8 +13538,12 @@ components:
         `TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`, a collection's
         `query`) are as the file writes them (`query.json`); resolution adds the sources' tables and views, each field's type,
         the collections' correlation keys and the SQL for the database's dialect.
+
+        A query written as SQL text (`form: sql`, sql-queries-design.md) has `texts`, no `from`, an empty `joins`, `groupBy`,
+        `orderBy` and `collections`, its declared columns as `select` (each without `expression`), its `reads` as `uses` and its
+        `writes`. A built query may have named queries (`with`). Each of `form`, `texts`, `writes` and `with` is left out when unset.
       type: object
-      required: [id, name, entityId, parameters, from, joins, select, where, groupBy, having, orderBy, distinct, paging, collections, sql,
+      required: [id, name, entityId, parameters, joins, select, where, groupBy, having, orderBy, distinct, paging, collections, sql,
         sqlParameters, uses, displayName, pluralName, description, stereotypes, tags, category, properties, generation]
       properties:
         id:
@@ -13552,7 +13559,27 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/QueryParameterView'
+        form:
+          type: string
+          enum: [sql]
+          description: '`sql` for a query written as SQL text; left out for a query built from parts.'
+        texts:
+          description: The file's `sql` of a query written as SQL text, as written (dialect name or `*` to text, `:name` placeholders); left out for a built query.
+          type: object
+          additionalProperties:
+            type: string
+        writes:
+          type: array
+          description: The ids (a synthesized table's key) of the tables a query written as SQL text writes, in file order; left out when none.
+          items:
+            type: string
+        with:
+          type: array
+          description: The named queries (WITH) of a built query, in order; left out when none.
+          items:
+            $ref: '#/components/schemas/NamedQueryView'
         from:
+          description: The first source of a built query; left out for a query written as SQL text.
           $ref: '#/components/schemas/QuerySourceView'
         joins:
           type: array
@@ -13560,6 +13587,7 @@ components:
             $ref: '#/components/schemas/QuerySourceView'
         select:
           type: array
+          description: The select list of a built query, or the declared columns of a query written as SQL text.
           items:
             $ref: '#/components/schemas/QueryFieldView'
         where:
@@ -13598,7 +13626,9 @@ components:
             type: string
         uses:
           type: array
-          description: The ids (a synthesized table's key) of the tables, views, routines and database types the query reads.
+          description: >-
+            The ids (a synthesized table's key) of the tables, views, routines and database types the query reads; for a query
+            written as SQL text, its `reads`, resolved, in file order.
           items:
             type: string
         displayName:
@@ -13631,6 +13661,31 @@ components:
           description: The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before.
           items:
             $ref: '#/components/schemas/BoundByView'
+    NamedQueryView:
+      x-engine-record: Maquettiste.Engine.NamedQueryView
+      description: |
+        A named query of a built query's `with` (a WITH clause): the anchor as the file writes it, its columns with their inferred
+        types, and for a recursive one the repeating part as written and how its rows are added.
+      type: object
+      required: [name, query, columns]
+      properties:
+        name:
+          type: string
+        query:
+          description: The named query's entry as the file writes it, without `recursive`.
+          $ref: '../../schemas/v1/query.json#/$defs/namedQuery'
+        columns:
+          type: array
+          description: Its columns, the anchor's field names in order, with their types (and nullability merged with the repeating part's).
+          items:
+            $ref: '#/components/schemas/QueryFieldView'
+        recursive:
+          description: The repeating part as the file writes it; left out when the named query is not recursive.
+          $ref: '../../schemas/v1/query.json#/$defs/recursivePart'
+        union:
+          type: string
+          enum: [all, distinct]
+          description: How the repeating part's rows are added; left out when the named query is not recursive.
     QueryParameterView:
       x-engine-record: Maquettiste.Engine.QueryParameterView
       description: A parameter of a query.
@@ -13672,12 +13727,15 @@ components:
       properties:
         source:
           type: string
-          description: The source as the file writes it (a table or view id, a table key or an entity id).
+          description: The source as the file writes it (a table or view id, a table key, an entity id, or a named query's name).
         alias:
           type: string
         kind:
           type: string
           enum: [from, inner, left, right, full, cross]
+        namedQuery:
+          type: string
+          description: The name of the named query (of the query's `with`) the source reads; left out otherwise.
         tableKey:
           type: [string, 'null']
         viewId:
@@ -13694,9 +13752,11 @@ components:
             - type: 'null'
     QueryFieldView:
       x-engine-record: Maquettiste.Engine.QueryFieldView
-      description: A field of a select list, with its inferred type.
+      description: |
+        A field of a select list, with its inferred type; or a declared column of a query written as SQL text, which has no
+        `expression` and may have a `description`.
       type: object
-      required: [name, attributeId, expression, type, nativeType, codeType, nullable]
+      required: [name, attributeId, type, nativeType, codeType, nullable]
       properties:
         name:
           type: string
@@ -13706,6 +13766,7 @@ components:
             relation end a to-one navigation leads to (its foreign key); null for an ad hoc field.
           type: [string, 'null']
         expression:
+          description: The field's value as the file writes it; left out for a declared column.
           $ref: '../../schemas/v1/query.json#/$defs/expression'
         type:
           type: [string, 'null']
@@ -13715,6 +13776,9 @@ components:
           type: [string, 'null']
         nullable:
           type: boolean
+        description:
+          type: string
+          description: A declared column's description; left out when none.
     QueryCollectionView:
       x-engine-record: Maquettiste.Engine.QueryCollectionView
       description: A collection of a query, its nested query and the statement that fills it for every parent row at once.

@@ -105,6 +105,22 @@ export interface Collection {
   query: Subquery;
 }
 
+/** The part of a recursive named query that repeats: it reads the named query's own name once. */
+export interface RecursivePart {
+  union?: "all" | "distinct";
+  from: QuerySource;
+  joins?: Join[];
+  select: Field[];
+  where?: Predicate;
+}
+
+/** A select with a name, listed in a query's `with`; its columns are its fields' names. */
+export interface NamedQuery extends Subquery {
+  name: string;
+  select: Field[];
+  recursive?: RecursivePart;
+}
+
 export interface QueryDoc extends Subquery {
   kind: "query";
   id: string;
@@ -115,6 +131,7 @@ export interface QueryDoc extends Subquery {
   select: Field[];
   paging?: Paging;
   collections?: Collection[];
+  with?: NamedQuery[];
   [member: string]: unknown;
 }
 
@@ -473,6 +490,8 @@ export function nameProblem(name: string, taken: readonly string[], noun: string
   return null;
 }
 
+import { renameSqlPlaceholder, sqlDialectOf } from "./sqlText";
+
 // ------------------------------------------------------------------ edits across the document
 
 /** Visits every expression of a tree (predicates, nested queries, case branches), depth first. */
@@ -484,8 +503,11 @@ export function forEachExpression(node: unknown, visit: (e: Expression) => void)
   for (const value of Object.values(rec)) if (value && typeof value === "object") forEachExpression(value, visit);
 }
 
-/** Renames a parameter and every use of it (expressions, paging); false when the new name is taken. */
-export function renameParameter(doc: QueryDoc, from: string, to: string): boolean {
+/**
+ * Renames a parameter and every use of it (expressions, paging); false when the new name is taken. A query written as SQL text has
+ * its `:from` placeholders rewritten in each text (`dialect` is the database's, for the `*` text).
+ */
+export function renameParameter(doc: QueryDoc, from: string, to: string, dialect = "postgresql"): boolean {
   const parameters = doc.parameters ?? [];
   if (from === to) return true;
   if (parameters.some((p) => p.name === to)) return false;
@@ -497,6 +519,10 @@ export function renameParameter(doc: QueryDoc, from: string, to: string): boolea
       if (e.param === from) e.param = to;
     });
   if (doc.paging) for (const bound of ["offset", "limit"] as const) if (doc.paging[bound] === from) doc.paging[bound] = to;
+  if (doc.sql && typeof doc.sql === "object") {
+    const texts = doc.sql as Record<string, string>;
+    for (const key of Object.keys(texts)) texts[key] = renameSqlPlaceholder(texts[key], sqlDialectOf(key, dialect), from, to);
+  }
   return true;
 }
 
@@ -585,9 +611,28 @@ export interface SourceOption {
   value: string;
   name: string;
   schema: string | null;
-  kind: "table" | "view";
+  kind: "table" | "view" | "named";
   table?: TableView;
   view?: ViewView;
+  /** A named query's columns: its select fields' names, with the types the resolver inferred. */
+  namedColumns?: { name: string; type: string | null }[];
+}
+
+/**
+ * The named queries a source may read as options: the first `count` entries of `with` (all, for the query and its nested queries;
+ * those before one, for a named query), with the columns the resolver found (`resolved`) or else the fields' names.
+ */
+export function namedOptions(
+  entries: readonly NamedQuery[] | undefined,
+  count: number,
+  resolved?: readonly { name: string; columns: { name: string; type: string | null }[] }[],
+): SourceOption[] {
+  return (entries ?? []).slice(0, count).flatMap((e) => {
+    if (!e.name) return [];
+    const types = new Map((resolved?.find((r) => r.name === e.name)?.columns ?? []).map((c) => [c.name, c.type]));
+    const names = (e.select ?? []).flatMap((f) => (f.name ? [f.name] : []));
+    return [{ value: e.name, name: e.name, schema: null, kind: "named" as const, namedColumns: names.map((n) => ({ name: n, type: types.get(n) ?? null })) }];
+  });
 }
 
 /** The tables and views of a database a query may read, by name. */
@@ -609,11 +654,18 @@ export interface TableFileRow {
  * The table or view a `source` names, as the resolver finds it: a table key, a table file's id (a designed table's id is its key,
  * an overlay's is its entity's or relation's table), a view id, or an entity id (its table in this database).
  */
-export function findSource(view: DatabaseView | null | undefined, source: string, files: readonly TableFileRow[] = []): SourceOption | null {
-  if (!view) return null;
+export function findSource(
+  view: DatabaseView | null | undefined,
+  source: string,
+  files: readonly TableFileRow[] = [],
+  named: readonly SourceOption[] = [],
+): SourceOption | null {
+  if (!view) return named.find((o) => o.value === source) ?? null;
   const options = sourceOptions(view);
   const direct = options.find((o) => o.value === source);
   if (direct) return direct;
+  const own = named.find((o) => o.value === source);
+  if (own) return own;
   const file = files.find((f) => f.id === source);
   const owner = file?.entity ?? file?.relation;
   if (owner) return options.find((o) => o.value === `${owner}@${view.id}`) ?? null;
@@ -631,6 +683,7 @@ export interface ColumnOption {
 
 export function columnOptions(source: SourceOption | null): ColumnOption[] {
   if (!source) return [];
+  if (source.namedColumns) return source.namedColumns.map((c) => ({ ref: c.name, name: c.name, type: c.type }));
   if (source.table) return source.table.columns.map((c) => ({ ref: c.key, name: c.name, type: c.type, column: c }));
   return (source.view?.columns ?? []).map((c) => ({ ref: c.name, name: c.name, type: c.type ?? null }));
 }
@@ -664,9 +717,11 @@ export function scopeOf(
   view: DatabaseView | null | undefined,
   files: readonly TableFileRow[] = [],
   outer: readonly ScopeAlias[] = [],
+  named: readonly SourceOption[] = [],
 ): ScopeAlias[] {
-  const own = [body.from, ...(body.joins ?? [])].map((s) => {
-    const source = findSource(view, s.source, files);
+  // A query written as SQL text has no `from`: it has no sources to scope.
+  const own = [body.from, ...(body.joins ?? [])].filter(Boolean).map((s) => {
+    const source = findSource(view, s.source, files, named);
     return { alias: s.alias ?? source?.name ?? s.source, source, columns: columnOptions(source), outer: false };
   });
   return [...own, ...outer.filter((o) => !own.some((x) => x.alias === o.alias)).map((o) => ({ ...o, outer: true }))];
@@ -800,4 +855,90 @@ export function fieldName(columnName: string, taken: readonly string[] = []): st
   const used = new Set(taken.map((t) => t.toLowerCase()));
   if (!used.has(base.toLowerCase())) return base;
   for (let n = 2; ; n++) if (!used.has(`${base}${n}`.toLowerCase())) return `${base}${n}`;
+}
+
+// ------------------------------------------------------------------ named queries
+
+/** Every query body inside `node` (an object with a `from`), nested ones (exists conditions, collections) included. */
+function bodiesIn(node: unknown, out: Subquery[] = []): Subquery[] {
+  if (Array.isArray(node)) node.forEach((x) => bodiesIn(x, out));
+  else if (node && typeof node === "object") {
+    const rec = node as Record<string, unknown>;
+    if (rec.from && typeof rec.from === "object" && typeof (rec.from as QuerySource).source === "string") out.push(rec as unknown as Subquery);
+    for (const value of Object.values(rec)) bodiesIn(value, out);
+  }
+  return out;
+}
+
+/**
+ * Renames a named query and every source that reads it, in the query, its collections, its exists conditions and the other named
+ * queries: a source without an alias read it under its name, so its alias and the column references through it follow. False
+ * (nothing changed) when the new name is taken (ignoring case) or not an identifier.
+ */
+export function renameNamedQuery(doc: QueryDoc, from: string, to: string): boolean {
+  const entries = doc.with ?? [];
+  if (!entries.some((e) => e.name === from) || from === to) return from === to;
+  if (
+    nameProblem(
+      to,
+      entries.map((e) => e.name).filter((n) => n !== from),
+      "named query",
+    )
+  )
+    return false;
+  for (const body of bodiesIn(doc)) {
+    const readers = [body.from, ...(body.joins ?? [])].filter((s) => s.source === from);
+    if (!readers.length) continue;
+    for (const s of readers) {
+      s.alias ??= from;
+      s.source = to;
+    }
+    if (readers.some((s) => s.alias === from)) renameAlias(body as Subquery & { collections?: Collection[] }, from, to);
+  }
+  for (const e of entries) if (e.name === from) e.name = to;
+  return true;
+}
+
+/**
+ * Renames field `index` of named query `named` (and the same-numbered field of its repeating part, which must keep the anchor's
+ * names) and the column references through every source that reads the named query. False when the name is taken in that select list.
+ */
+export function renameNamedField(doc: QueryDoc, named: string, index: number, to: string): boolean {
+  const entry = (doc.with ?? []).find((e) => e.name === named);
+  const from = entry?.select[index]?.name;
+  if (!entry || !from || from === to) return !!from;
+  if (
+    nameProblem(
+      to,
+      entry.select.filter((_, i) => i !== index).map((f) => f.name ?? ""),
+      "field",
+    )
+  )
+    return false;
+  entry.select[index].name = to;
+  if (entry.recursive?.select[index]) entry.recursive.select[index].name = to;
+  // A body's own sources decide what an alias means inside it: one that reads the named query adds its alias, any other source
+  // that reuses the alias shadows it (a nested query's alias hides the outer one). Collections and exists conditions are nested bodies.
+  const visit = (node: unknown, active: ReadonlySet<string>): void => {
+    if (Array.isArray(node)) return node.forEach((x) => visit(x, active));
+    if (!node || typeof node !== "object") return;
+    const rec = node as Record<string, unknown>;
+    if (rec.from && typeof rec.from === "object" && typeof (rec.from as QuerySource).source === "string") return body(rec as unknown as Subquery, active);
+    if (typeof rec.column === "string" && expressionKind(rec as Expression)) {
+      const { alias, name } = splitColumn(rec.column);
+      if (alias && active.has(alias) && name === from) rec.column = `${alias}.${to}`;
+    }
+    for (const value of Object.values(rec)) visit(value, active);
+  };
+  const body = (b: Subquery, outer: ReadonlySet<string>): void => {
+    const active = new Set(outer);
+    for (const s of [b.from, ...(b.joins ?? [])]) {
+      const alias = s.alias ?? s.source;
+      if (s.source === named) active.add(alias);
+      else active.delete(alias);
+    }
+    for (const [key, value] of Object.entries(b)) if (key !== "from") visit(value, active);
+  };
+  body(doc, new Set());
+  return true;
 }

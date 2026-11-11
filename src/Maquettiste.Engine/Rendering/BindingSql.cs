@@ -132,11 +132,16 @@ public static class BindingSql
             var alias = _b.SourceQuery is null ? "t" : "q";
             string Column(string name) => Q(alias) + "." + Q(name);
             var fields = _b.Fields.Where(f => f.ColumnName.Length > 0 && (f.SourceColumn ?? (object?)f.ViewColumn ?? f.QueryField) is not null).ToList();
+            // A query with named queries puts its WITH first, before the select over it (sql-queries-design.md decision 16).
+            var (with, inner) = _b.SourceQuery is { } query
+                ? QuerySql.RenderParts(query.ForDerivedTable(), DialectTypeMaps.Name(_dialect), _options with { Lists = "expand" })
+                : ("", null);
+            if (with.Length > 0)
+                _sb.Append(with).Append('\n');
             _sb.Append("SELECT ").Append(string.Join(", ", fields.Select(f => Column(f.ColumnName) + " AS " + Q(f.Name))));
             _sb.Append('\n').Append("FROM ");
-            if (_b.SourceQuery is { } query)
+            if (inner is not null)
             {
-                var inner = QuerySql.Render(query.ForDerivedTable(), DialectTypeMaps.Name(_dialect), _options with { Lists = "expand" });
                 _diagnostics.AddRange(inner.Diagnostics);
                 _parameters.AddRange(inner.Parameters);
                 _sb.Append("(\n").Append(inner.Sql).Append("\n) ").Append(Q(alias));

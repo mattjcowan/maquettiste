@@ -134,6 +134,16 @@ public sealed class StereotypeFoldTests
              "from": {"source": "{{Notes}}", "alias": "n"},
              "select": [{"name": "body", "expression": {"column": "n.{{NotesBody}}"} }, {"name": "createdAt", "expression": {"column": "n.{{NotesCreatedAt}}"} }]}
             """);
+        // A named query (WITH) that names it too, in its anchor and in its repeating part.
+        await CreateAsync(r, $$"""
+            {"kind": "query", "id": "01K6QRY00000000000000000N2", "name": "NoteChain", "database": "{{EditorRepo.MainDatabaseId}}",
+             "with": [{"name": "chain", "from": {"source": "{{Notes}}", "alias": "n"},
+                       "select": [{"name": "createdAt", "expression": {"column": "n.{{NotesCreatedAt}}"} }],
+                       "recursive": {"from": {"source": "chain", "alias": "c"}, "joins": [{"source": "{{Notes}}", "alias": "m", "kind": "cross"} ],
+                                     "select": [{"name": "createdAt", "expression": {"column": "m.{{NotesCreatedAt}}"} }] } }],
+             "from": {"source": "chain", "alias": "a"},
+             "select": [{"name": "createdAt", "expression": {"column": "a.createdAt"} }]}
+            """);
         await CreateAsync(r, $$"""
             {"kind": "seed", "id": "01K6SED0000000000000000001", "name": "welcomeNotes", "target": "{{Notes}}",
              "columns": ["01K6BND0000000000000000002", "01K6BND0000000000000000003", "01K6BND0000000000000000004", "{{NotesBody}}", "{{NotesCreatedAt}}"],
@@ -155,6 +165,8 @@ public sealed class StereotypeFoldTests
         Assert.Equal(Keyed(CreatedAt), snapshot.Get<Seed>("01K6SED0000000000000000001")!.Columns[4]);
         var query = snapshot.Get<Query>("01K6QRY00000000000000000N1")!;
         Assert.Equal(["n." + NotesBody, "n." + Keyed(CreatedAt)], query.Select.Select(f => f.Expression.Column));
+        var chain = snapshot.Get<Query>("01K6QRY00000000000000000N2")!.With.Single();
+        Assert.Equal(("n." + Keyed(CreatedAt), "m." + Keyed(CreatedAt)), (chain.Select.Single().Expression.Column, chain.Recursive!.Select.Single().Expression.Column));
         Assert.Empty(snapshot.ReferencesTo(NotesCreatedAt));
         await AssertNoErrorsAsync(r);
 

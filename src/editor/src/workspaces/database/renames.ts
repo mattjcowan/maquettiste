@@ -262,7 +262,8 @@ function queryNamesTable(query: Json, sources: ReadonlySet<string>, name: string
 export function renamedOutputColumns(before: Json | null, after: Json): Map<string, string> {
   const out = new Map<string, string>();
   if (!before || before.kind !== after.kind) return out;
-  const member = after.kind === "view" ? "columns" : after.kind === "query" ? "select" : null;
+  // A query written as SQL text declares `columns` (no expressions); a built one renames its select fields.
+  const member = after.kind === "view" || (after.kind === "query" && after.sql) ? "columns" : after.kind === "query" ? "select" : null;
   if (!member) return out;
   const a = list(before, member);
   const b = list(after, member);

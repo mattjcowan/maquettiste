@@ -1,0 +1,1333 @@
+{
+  "format": [
+    "Shared test vectors of the SQL text scanner (sql-queries-design.md decisions 4 and 6). The engine's SqlTextTests and the editor's",
+    "scanner tests both read this file; a change to either scanner changes this file first.",
+    "Each case: name; dialect (postgresql, sqlserver, mysql, sqlite, oracle); text; and what the scanner must answer:",
+    "placeholders: every :name placeholder in text order, each {name, offset, line, column}: offset of the colon in UTF-16 code units",
+    "  from 0, line and column from 1 (lines end at \\n, columns count UTF-16 code units).",
+    "firstWord: the first word outside comments, upper-cased, leading ( skipped; null when the first token is anything else.",
+    "verb: firstWord, or when it is WITH the first of SELECT INSERT UPDATE DELETE MERGE REPLACE VALUES TABLE at the WITH's parenthesis",
+    "  depth after it (null when none).",
+    "names (optional; checked only when present): the words and quoted identifiers (without quotes, a doubled closing quote read as one)",
+    "  outside comments and strings, distinct, as written, in order of first appearance. Keywords count. Left out: placeholders,",
+    "  numbers, a word written directly against a quote (a string prefix: N'', E'', X'', _utf8'', q''), and @ words.",
+    "orderBy: whether ORDER then BY (comments between allowed) appear outside parentheses.",
+    "offsetFetchOrTop: whether OFFSET, FETCH or TOP appears outside parentheses.",
+    "Rules: a placeholder is : then [A-Za-z_][A-Za-z0-9_]*, where the colon is not part of :: and the character before it is not a",
+    "  letter, digit, _, ], ) or a quote (' \" `). Words start with a letter or _ (SQL Server also #) and go on with letters, digits, _",
+    "  and $ (SQL Server and Oracle also #). Per UTF-16 code unit: a letter is Unicode category L (\\p{L}; not Nl, so Ⅷ is none),",
+    "  a digit is category Nd, and white space is .NET's char.IsWhiteSpace (Unicode White_Space, U+0085 included) plus U+FEFF.",
+    "Skipped per dialect: -- comments and /* */ comments everywhere (nested in postgresql and sqlserver); '...' with '' everywhere;",
+    "  postgresql: E'...' with backslash escapes, $$...$$ and $tag$...$tag$, \"...\" identifiers; sqlserver: [...] with ]],",
+    "  \"...\" identifiers; mysql: # comments, '...' and \"...\" strings with backslash escapes, `...` identifiers; sqlite: [...]",
+    "  (no escape), `...` and \"...\" identifiers; oracle: q'x...x' with [] {} () <> pairs, \"...\" identifiers. An unclosed comment,",
+    "  string or identifier runs to the end.",
+    "finalSemicolon (optional; checked only when present): the offset of the text's final ; (the last token outside comments,",
+    "  strings and quoted identifiers, when it is a ; outside parentheses; only white space and comments follow it), or null."
+  ],
+  "cases": [
+    {
+      "name": "parameters in a plain select",
+      "dialect": "postgresql",
+      "text": "SELECT id FROM billing.invoices WHERE customer_id = :customerId AND issued_on >= :from",
+      "placeholders": [
+        {
+          "name": "customerId",
+          "offset": 52,
+          "line": 1,
+          "column": 53
+        },
+        {
+          "name": "from",
+          "offset": 81,
+          "line": 1,
+          "column": 82
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "id",
+        "FROM",
+        "billing",
+        "invoices",
+        "WHERE",
+        "customer_id",
+        "AND",
+        "issued_on"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a :: cast is no placeholder, a placeholder before one is",
+      "dialect": "postgresql",
+      "text": "SELECT a::text, :id::int FROM t",
+      "placeholders": [
+        {
+          "name": "id",
+          "offset": 16,
+          "line": 1,
+          "column": 17
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "text",
+        "int",
+        "FROM",
+        "t"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "slices: a letter or digit before the colon, or a space after it, makes no placeholder",
+      "dialect": "postgresql",
+      "text": "SELECT arr[1:n], arr[a:b], arr[a : c], arr[a :d] FROM t",
+      "placeholders": [
+        {
+          "name": "d",
+          "offset": 45,
+          "line": 1,
+          "column": 46
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "arr",
+        "n",
+        "a",
+        "b",
+        "c",
+        "FROM",
+        "t"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "assignment := and @ variables",
+      "dialect": "mysql",
+      "text": "SET @rank := @rank + 1; SELECT x FROM t",
+      "placeholders": [],
+      "firstWord": "SET",
+      "verb": "SET",
+      "names": [
+        "SET",
+        "SELECT",
+        "x",
+        "FROM",
+        "t"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a label is no placeholder",
+      "dialect": "sqlserver",
+      "text": "retry:\nSELECT 1",
+      "placeholders": [],
+      "firstWord": "RETRY",
+      "verb": "RETRY",
+      "names": [
+        "retry",
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a character before the colon that ends a value: ) ] or a quote",
+      "dialect": "postgresql",
+      "text": "SELECT f(x):y, 'a':z, \"q\":w, arr[1]:v, (:ok)",
+      "placeholders": [
+        {
+          "name": "ok",
+          "offset": 40,
+          "line": 1,
+          "column": 41
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "f",
+        "x",
+        "y",
+        "z",
+        "q",
+        "w",
+        "arr",
+        "v"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "IN :list and repeats, with lines",
+      "dialect": "postgresql",
+      "text": "SELECT *\nFROM t\nWHERE a IN :ids OR b = :p OR c = :p",
+      "placeholders": [
+        {
+          "name": "ids",
+          "offset": 27,
+          "line": 3,
+          "column": 12
+        },
+        {
+          "name": "p",
+          "offset": 39,
+          "line": 3,
+          "column": 24
+        },
+        {
+          "name": "p",
+          "offset": 49,
+          "line": 3,
+          "column": 34
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "FROM",
+        "t",
+        "WHERE",
+        "a",
+        "IN",
+        "OR",
+        "b",
+        "c"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a placeholder first",
+      "dialect": "sqlite",
+      "text": ":id",
+      "placeholders": [
+        {
+          "name": "id",
+          "offset": 0,
+          "line": 1,
+          "column": 1
+        }
+      ],
+      "firstWord": null,
+      "verb": null,
+      "names": [],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a positional :1 is no placeholder",
+      "dialect": "oracle",
+      "text": "SELECT a FROM t WHERE b = :1",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "FROM",
+        "t",
+        "WHERE",
+        "b"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "line and block comments, nested in PostgreSQL",
+      "dialect": "postgresql",
+      "text": "-- :skip\nSELECT /* :no /* nested :no2 */ still :no3 */ :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 55,
+          "line": 2,
+          "column": 47
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "nested block comments in SQL Server",
+      "dialect": "sqlserver",
+      "text": "SELECT /* a /* b */ :no */ :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 27,
+          "line": 1,
+          "column": 28
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "block comments do not nest in MySQL",
+      "dialect": "mysql",
+      "text": "SELECT /* a /* b */ :yes */ x",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 20,
+          "line": 1,
+          "column": 21
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "x"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "block comments do not nest in SQLite",
+      "dialect": "sqlite",
+      "text": "SELECT /* a /* b */ :yes */ x",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 20,
+          "line": 1,
+          "column": 21
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "x"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "block comments do not nest in Oracle",
+      "dialect": "oracle",
+      "text": "SELECT /* a /* b */ :yes */ x FROM dual",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 20,
+          "line": 1,
+          "column": 21
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "x",
+        "FROM",
+        "dual"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "first word after comments, upper-cased",
+      "dialect": "postgresql",
+      "text": "/* header */\n-- note\nselect 1",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "select"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a string with a doubled quote (postgresql)",
+      "dialect": "postgresql",
+      "text": "SELECT 'it''s :not' AS c, :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 26,
+          "line": 1,
+          "column": 27
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "AS",
+        "c"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a double-dash comment (postgresql)",
+      "dialect": "postgresql",
+      "text": "SELECT a -- :not\nFROM t WHERE b = :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 34,
+          "line": 2,
+          "column": 18
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "FROM",
+        "t",
+        "WHERE",
+        "b"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a string with a doubled quote (sqlserver)",
+      "dialect": "sqlserver",
+      "text": "SELECT 'it''s :not' AS c, :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 26,
+          "line": 1,
+          "column": 27
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "AS",
+        "c"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a double-dash comment (sqlserver)",
+      "dialect": "sqlserver",
+      "text": "SELECT a -- :not\nFROM t WHERE b = :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 34,
+          "line": 2,
+          "column": 18
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "FROM",
+        "t",
+        "WHERE",
+        "b"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a string with a doubled quote (mysql)",
+      "dialect": "mysql",
+      "text": "SELECT 'it''s :not' AS c, :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 26,
+          "line": 1,
+          "column": 27
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "AS",
+        "c"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a double-dash comment (mysql)",
+      "dialect": "mysql",
+      "text": "SELECT a -- :not\nFROM t WHERE b = :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 34,
+          "line": 2,
+          "column": 18
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "FROM",
+        "t",
+        "WHERE",
+        "b"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a string with a doubled quote (sqlite)",
+      "dialect": "sqlite",
+      "text": "SELECT 'it''s :not' AS c, :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 26,
+          "line": 1,
+          "column": 27
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "AS",
+        "c"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a double-dash comment (sqlite)",
+      "dialect": "sqlite",
+      "text": "SELECT a -- :not\nFROM t WHERE b = :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 34,
+          "line": 2,
+          "column": 18
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "FROM",
+        "t",
+        "WHERE",
+        "b"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a string with a doubled quote (oracle)",
+      "dialect": "oracle",
+      "text": "SELECT 'it''s :not' AS c, :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 26,
+          "line": 1,
+          "column": 27
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "AS",
+        "c"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a double-dash comment (oracle)",
+      "dialect": "oracle",
+      "text": "SELECT a -- :not\nFROM t WHERE b = :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 34,
+          "line": 2,
+          "column": 18
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "FROM",
+        "t",
+        "WHERE",
+        "b"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a backslash does not escape in a PostgreSQL string",
+      "dialect": "postgresql",
+      "text": "SELECT 'a\\', :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 13,
+          "line": 1,
+          "column": 14
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a backslash escapes in a PostgreSQL E string",
+      "dialect": "postgresql",
+      "text": "SELECT E'it\\'s :not', :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 22,
+          "line": 1,
+          "column": 23
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a backslash escapes in a MySQL string",
+      "dialect": "mysql",
+      "text": "SELECT 'a\\'b :no', :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 19,
+          "line": 1,
+          "column": 20
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "an unterminated MySQL string runs to the end",
+      "dialect": "mysql",
+      "text": "SELECT 'a\\', :no",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "PostgreSQL dollar quotes; $1 is no quote",
+      "dialect": "postgresql",
+      "text": "SELECT $$ :not $$, $fn$ it's :not $fn$, :yes, $1",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 40,
+          "line": 1,
+          "column": 41
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "PostgreSQL quoted identifiers are names without their quotes",
+      "dialect": "postgresql",
+      "text": "SELECT \"Weird:Name\", \"a\"\"b\" FROM \"Invoices\" WHERE x = :p",
+      "placeholders": [
+        {
+          "name": "p",
+          "offset": 54,
+          "line": 1,
+          "column": 55
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "Weird:Name",
+        "a\"b",
+        "FROM",
+        "Invoices",
+        "WHERE",
+        "x"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "SQL Server brackets, N strings and placeholders",
+      "dialect": "sqlserver",
+      "text": "SELECT [col:x], [a]]b], N'it''s :n' FROM [dbo].[Invoices] WHERE id = :id",
+      "placeholders": [
+        {
+          "name": "id",
+          "offset": 69,
+          "line": 1,
+          "column": 70
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "col:x",
+        "a]b",
+        "FROM",
+        "dbo",
+        "Invoices",
+        "WHERE",
+        "id"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "SQL Server variables are neither names nor placeholders",
+      "dialect": "sqlserver",
+      "text": "DECLARE @total int; SELECT @@ROWCOUNT, :p",
+      "placeholders": [
+        {
+          "name": "p",
+          "offset": 39,
+          "line": 1,
+          "column": 40
+        }
+      ],
+      "firstWord": "DECLARE",
+      "verb": "DECLARE",
+      "names": [
+        "DECLARE",
+        "int",
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "SQL Server temporary tables",
+      "dialect": "sqlserver",
+      "text": "SELECT * INTO #work FROM t",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "INTO",
+        "#work",
+        "FROM",
+        "t"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "PostgreSQL operators with @ and #",
+      "dialect": "postgresql",
+      "text": "SELECT a FROM t WHERE tags @> :wanted AND b # 1 = 0",
+      "placeholders": [
+        {
+          "name": "wanted",
+          "offset": 30,
+          "line": 1,
+          "column": 31
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "FROM",
+        "t",
+        "WHERE",
+        "tags",
+        "AND",
+        "b"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "MySQL backticks, # comments and double-quoted strings",
+      "dialect": "mysql",
+      "text": "SELECT `order`, \"str :no\" FROM t # :no\nWHERE a = :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 49,
+          "line": 2,
+          "column": 11
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "order",
+        "FROM",
+        "t",
+        "WHERE",
+        "a"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "MySQL charset introducers are no names",
+      "dialect": "mysql",
+      "text": "SELECT _utf8mb4'x :no', X'0F', :yes",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 31,
+          "line": 1,
+          "column": 32
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "SQLite brackets do not escape; backticks double",
+      "dialect": "sqlite",
+      "text": "SELECT [a]], `b``c`, \"d\" FROM t",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "b`c",
+        "d",
+        "FROM",
+        "t"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "Oracle alternative quoting and N strings",
+      "dialect": "oracle",
+      "text": "SELECT q'[it's :no]', Q'{x}', nq'<y>', q'!a'b!', N'z', :yes FROM dual",
+      "placeholders": [
+        {
+          "name": "yes",
+          "offset": 55,
+          "line": 1,
+          "column": 56
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "FROM",
+        "dual"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "Oracle # and $ inside names",
+      "dialect": "oracle",
+      "text": "SELECT a#b, v$session FROM t",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a#b",
+        "v$session",
+        "FROM",
+        "t"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "letters beyond ASCII in names",
+      "dialect": "postgresql",
+      "text": "SELECT café FROM t WHERE x = :p",
+      "placeholders": [
+        {
+          "name": "p",
+          "offset": 29,
+          "line": 1,
+          "column": 30
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "café",
+        "FROM",
+        "t",
+        "WHERE",
+        "x"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "WITH ... UPDATE is a command",
+      "dialect": "postgresql",
+      "text": "WITH moved AS (SELECT id FROM t WHERE x < :d) UPDATE t SET y = 1 FROM moved WHERE t.id = moved.id",
+      "placeholders": [
+        {
+          "name": "d",
+          "offset": 42,
+          "line": 1,
+          "column": 43
+        }
+      ],
+      "firstWord": "WITH",
+      "verb": "UPDATE",
+      "names": [
+        "WITH",
+        "moved",
+        "AS",
+        "SELECT",
+        "id",
+        "FROM",
+        "t",
+        "WHERE",
+        "x",
+        "UPDATE",
+        "SET",
+        "y"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "WITH RECURSIVE with a column list reads rows",
+      "dialect": "postgresql",
+      "text": "WITH RECURSIVE x (a) AS (SELECT 1 UNION ALL SELECT a + 1 FROM x WHERE a < 5) SELECT a FROM x",
+      "placeholders": [],
+      "firstWord": "WITH",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "an INSERT ... RETURNING inside a WITH entry is not the verb",
+      "dialect": "postgresql",
+      "text": "WITH ins AS (INSERT INTO log (msg) VALUES (:m) RETURNING id) SELECT id FROM ins",
+      "placeholders": [
+        {
+          "name": "m",
+          "offset": 43,
+          "line": 1,
+          "column": 44
+        }
+      ],
+      "firstWord": "WITH",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "several WITH entries then DELETE",
+      "dialect": "postgresql",
+      "text": "with a as (select 1), b as (select 2)\ndelete from t where id in (select * from a)",
+      "placeholders": [],
+      "firstWord": "WITH",
+      "verb": "DELETE",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "WITH then MERGE",
+      "dialect": "sqlserver",
+      "text": "WITH c AS (SELECT a FROM t) MERGE INTO u USING c ON u.a = c.a WHEN MATCHED THEN DELETE;",
+      "placeholders": [],
+      "firstWord": "WITH",
+      "verb": "MERGE",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "WITH then INSERT ... SELECT",
+      "dialect": "mysql",
+      "text": "WITH x AS (SELECT 1 AS a) INSERT INTO t (a) SELECT a FROM x",
+      "placeholders": [],
+      "firstWord": "WITH",
+      "verb": "INSERT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "WITH with no statement after it",
+      "dialect": "sqlite",
+      "text": "WITH x AS (SELECT 1)",
+      "placeholders": [],
+      "firstWord": "WITH",
+      "verb": null,
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a parenthesized statement",
+      "dialect": "postgresql",
+      "text": "(SELECT a FROM t) UNION (SELECT b FROM u)",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a quoted entry name is no verb",
+      "dialect": "postgresql",
+      "text": "WITH \"select\" AS (SELECT 1) VALUES (1)",
+      "placeholders": [],
+      "firstWord": "WITH",
+      "verb": "VALUES",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "ORDER BY at the top",
+      "dialect": "sqlserver",
+      "text": "SELECT a FROM t ORDER BY a",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": true,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "TOP with ORDER BY",
+      "dialect": "sqlserver",
+      "text": "SELECT TOP 10 * FROM t ORDER BY x",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": true,
+      "offsetFetchOrTop": true
+    },
+    {
+      "name": "OFFSET and FETCH",
+      "dialect": "sqlserver",
+      "text": "SELECT a FROM t ORDER BY a OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": true,
+      "offsetFetchOrTop": true
+    },
+    {
+      "name": "ORDER BY in a window is inside parentheses",
+      "dialect": "sqlserver",
+      "text": "SELECT ROW_NUMBER() OVER (ORDER BY a) AS r FROM t",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "ORDER BY and TOP in a derived table",
+      "dialect": "sqlserver",
+      "text": "SELECT a FROM (SELECT TOP 5 a FROM t ORDER BY a) x",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a comment between ORDER and BY",
+      "dialect": "sqlserver",
+      "text": "SELECT a FROM t ORDER /* c */ BY a",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": true,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "ORDER and BY apart are no ORDER BY",
+      "dialect": "sqlserver",
+      "text": "SELECT [order], by FROM t",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a string between ORDER and BY",
+      "dialect": "sqlserver",
+      "text": "SELECT a FROM t ORDER 'x' BY a",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "ORDER BY in a comment",
+      "dialect": "sqlserver",
+      "text": "SELECT a FROM t -- ORDER BY a",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a byte order mark before WITH ... UPDATE is white space",
+      "dialect": "postgresql",
+      "text": "﻿WITH moved AS (SELECT id FROM t WHERE x = :a) UPDATE t SET y = 1 WHERE id IN (SELECT id FROM moved)",
+      "placeholders": [
+        {
+          "name": "a",
+          "offset": 43,
+          "line": 1,
+          "column": 44
+        }
+      ],
+      "firstWord": "WITH",
+      "verb": "UPDATE",
+      "orderBy": false,
+      "offsetFetchOrTop": false,
+      "finalSemicolon": null
+    },
+    {
+      "name": "U+0085 is white space",
+      "dialect": "sqlserver",
+      "text": "SELECT id FROM t WHERE id = :id",
+      "placeholders": [
+        {
+          "name": "id",
+          "offset": 29,
+          "line": 1,
+          "column": 30
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "id",
+        "FROM",
+        "t",
+        "WHERE"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a letter number such as Ⅷ is not a letter",
+      "dialect": "postgresql",
+      "text": "SELECT aⅧ, Ⅷb FROM t WHERE c = Ⅷ:p",
+      "placeholders": [
+        {
+          "name": "p",
+          "offset": 32,
+          "line": 1,
+          "column": 33
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "b",
+        "FROM",
+        "t",
+        "WHERE",
+        "c"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a final semicolon followed by comments",
+      "dialect": "postgresql",
+      "text": "SELECT id FROM t WHERE id = :id; -- the one row\n/* and a note */\n",
+      "placeholders": [
+        {
+          "name": "id",
+          "offset": 28,
+          "line": 1,
+          "column": 29
+        }
+      ],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false,
+      "finalSemicolon": 31
+    },
+    {
+      "name": "a final semicolon before a MySQL # comment",
+      "dialect": "mysql",
+      "text": "SELECT 1; # done",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false,
+      "finalSemicolon": 8
+    },
+    {
+      "name": "a semicolon in a string, a quoted name or a comment is not final",
+      "dialect": "postgresql",
+      "text": "SELECT ';' AS a, \"b;\" FROM t -- ;",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false,
+      "finalSemicolon": null
+    },
+    {
+      "name": "a semicolon followed by a word is not final",
+      "dialect": "oracle",
+      "text": "BEGIN\n  UPDATE t SET a = 1;\nEND",
+      "placeholders": [],
+      "firstWord": "BEGIN",
+      "verb": "BEGIN",
+      "orderBy": false,
+      "offsetFetchOrTop": false,
+      "finalSemicolon": null
+    },
+    {
+      "name": "a MERGE that ends with its semicolon",
+      "dialect": "sqlserver",
+      "text": "MERGE INTO t USING s ON (t.id = s.id) WHEN MATCHED THEN UPDATE SET a = s.a;",
+      "placeholders": [],
+      "firstWord": "MERGE",
+      "verb": "MERGE",
+      "orderBy": false,
+      "offsetFetchOrTop": false,
+      "finalSemicolon": 74
+    },
+    {
+      "name": "a semicolon inside parentheses is not final",
+      "dialect": "sqlite",
+      "text": "SELECT (1;)",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "orderBy": false,
+      "offsetFetchOrTop": false,
+      "finalSemicolon": null
+    },
+    {
+      "name": "a leading byte order mark is white space before WITH",
+      "dialect": "postgresql",
+      "text": "﻿WITH a AS (SELECT 1) UPDATE t SET x = 1",
+      "placeholders": [],
+      "firstWord": "WITH",
+      "verb": "UPDATE",
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "U+0085 between words is white space",
+      "dialect": "postgresql",
+      "text": "SELECTa FROM t",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "a",
+        "FROM",
+        "t"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    },
+    {
+      "name": "a letter number is not a letter",
+      "dialect": "postgresql",
+      "text": "SELECT Ⅷ FROM t",
+      "placeholders": [],
+      "firstWord": "SELECT",
+      "verb": "SELECT",
+      "names": [
+        "SELECT",
+        "FROM",
+        "t"
+      ],
+      "orderBy": false,
+      "offsetFetchOrTop": false
+    }
+  ]
+}

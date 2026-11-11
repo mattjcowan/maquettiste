@@ -15,9 +15,13 @@ import { EmptyState, Spinner } from "@/components/ui/misc";
 import { CommonFields, DIALECTS, useVocabularies } from "@/inspector/fields";
 import { JsonTab, References } from "@/inspector/Inspector";
 import { EDITOR_TAB_LABELS } from "@/model/labels";
-import { hasResultEntity, removeResultEntities, scopeOf, tidy, type QueryDoc } from "@/model/queryTree";
+import { isSqlTextQuery } from "@/model/sqlQuery";
+import { useProblems } from "@/editors/process/shared";
+import { hasResultEntity, namedOptions, removeResultEntities, scopeOf, tidy, type QueryDoc } from "@/model/queryTree";
 import { domIdOf, EditorLayout, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
 import { DatabaseLine } from "./fields";
+import { SqlColumnsTab, SqlTablesTab, SqlTextTab } from "./SqlQueryParts";
+import { NamedQueriesSection } from "./NamedQueries";
 import { FunctionList, type QueryEnv } from "./queryExpression";
 import {
   CollectionsSection,
@@ -35,10 +39,14 @@ import {
 export const QUERY_EDITOR_TABS = {
   general: "General",
   sources: "Sources",
+  named: "Named queries (WITH)",
   select: "Select",
   filter: "Filter",
   group: "Group and order",
   parameters: "Parameters",
+  sqltext: "SQL text",
+  columns: "Columns",
+  tables: "Tables",
   collections: "Collections",
   sql: "SQL",
   json: "JSON",
@@ -65,9 +73,10 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
     [index.data, database],
   );
   const dialect = view?.dialect ?? dbDoc?.dialect ?? "postgresql";
-  const env: QueryEnv = { scope: scopeOf(doc, view, files), parameters: doc.parameters ?? [], routines, dialect };
-  const q: QueryContext = { view, files, env, outer: [] };
   const resolved = view?.queries?.find((x) => x.id === ctx.id);
+  const named = useMemo(() => namedOptions(doc.with, doc.with?.length ?? 0, resolved?.with), [doc.with, resolved?.with]);
+  const env: QueryEnv = { scope: scopeOf(doc, view, files, [], named), parameters: doc.parameters ?? [], routines, dialect };
+  const q: QueryContext = { view, files, env, outer: [], named };
   // One gesture, one save: the edit and its flush together (RoutineEditor's pattern).
   const update = (mutate: (d: QueryDoc) => void) => {
     ctx.edit((j) => {
@@ -78,6 +87,9 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
     ctx.flush();
   };
   const bodyUpdate: BodyUpdate = (mutate) => update((d) => mutate(d));
+  // A query written as SQL text has its own tabs; the findings it gets show on the rows they are about.
+  const sqlForm = isSqlTextQuery(ctx.json as unknown as Record<string, unknown>);
+  const findings = useProblems(ctx.id, ctx.diagnostics);
   // The function cell's suggestions, once per tab (one tab is mounted at a time).
   const withFunctions = (content: ReactNode) => (
     <>
@@ -101,24 +113,57 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
             </div>
           ),
         },
-        { value: "sources", label: QUERY_EDITOR_TABS.sources, content: withFunctions(<SourcesSection body={doc} update={bodyUpdate} q={q} label="Query" />) },
-        {
-          value: "select",
-          label: QUERY_EDITOR_TABS.select,
-          content: withFunctions(<SelectSection body={doc} update={bodyUpdate} q={q} entity={doc.entity ?? null} label="Query" resolved={resolved?.select} />),
-        },
-        { value: "filter", label: QUERY_EDITOR_TABS.filter, content: withFunctions(<FilterSection body={doc} update={bodyUpdate} q={q} label="Where" />) },
-        {
-          value: "group",
-          label: QUERY_EDITOR_TABS.group,
-          content: withFunctions(<GroupOrderSection body={doc} update={bodyUpdate} q={q} label="Query" paging={{ value: doc.paging, update }} />),
-        },
-        { value: "parameters", label: QUERY_EDITOR_TABS.parameters, content: <ParametersSection doc={doc} update={update} /> },
-        {
-          value: "collections",
-          label: QUERY_EDITOR_TABS.collections,
-          content: withFunctions(<CollectionsSection doc={doc} update={update} q={q} resolved={resolved?.collections} />),
-        },
+        sqlForm ? { value: "sqltext", label: QUERY_EDITOR_TABS.sqltext, content: <SqlTextTab ctx={ctx} dialect={dialect} findings={findings} /> } : null,
+        sqlForm
+          ? {
+              value: "parameters",
+              label: QUERY_EDITOR_TABS.parameters,
+              content: <ParametersSection doc={doc} update={update} findings={findings} dialect={dialect} />,
+            }
+          : null,
+        sqlForm ? { value: "columns", label: QUERY_EDITOR_TABS.columns, content: <SqlColumnsTab ctx={ctx} findings={findings} /> } : null,
+        sqlForm ? { value: "tables", label: QUERY_EDITOR_TABS.tables, content: <SqlTablesTab ctx={ctx} dialect={dialect} findings={findings} /> } : null,
+        sqlForm
+          ? null
+          : {
+              value: "sources",
+              label: QUERY_EDITOR_TABS.sources,
+              content: withFunctions(<SourcesSection body={doc} update={bodyUpdate} q={q} label="Query" />),
+            },
+        sqlForm
+          ? null
+          : {
+              value: "named",
+              label: QUERY_EDITOR_TABS.named,
+              content: withFunctions(<NamedQueriesSection doc={doc} update={update} q={q} findings={findings} resolved={resolved?.with} />),
+            },
+        sqlForm
+          ? null
+          : {
+              value: "select",
+              label: QUERY_EDITOR_TABS.select,
+              content: withFunctions(
+                <SelectSection body={doc} update={bodyUpdate} q={q} entity={doc.entity ?? null} label="Query" resolved={resolved?.select} />,
+              ),
+            },
+        sqlForm
+          ? null
+          : { value: "filter", label: QUERY_EDITOR_TABS.filter, content: withFunctions(<FilterSection body={doc} update={bodyUpdate} q={q} label="Where" />) },
+        sqlForm
+          ? null
+          : {
+              value: "group",
+              label: QUERY_EDITOR_TABS.group,
+              content: withFunctions(<GroupOrderSection body={doc} update={bodyUpdate} q={q} label="Query" paging={{ value: doc.paging, update }} />),
+            },
+        sqlForm ? null : { value: "parameters", label: QUERY_EDITOR_TABS.parameters, content: <ParametersSection doc={doc} update={update} /> },
+        sqlForm
+          ? null
+          : {
+              value: "collections",
+              label: QUERY_EDITOR_TABS.collections,
+              content: withFunctions(<CollectionsSection doc={doc} update={update} q={q} resolved={resolved?.collections} />),
+            },
         { value: "sql", label: QUERY_EDITOR_TABS.sql, content: <SqlTab id={ctx.id} name={ctx.name} databaseDialect={dialect} />, fill: true },
         {
           value: "json",

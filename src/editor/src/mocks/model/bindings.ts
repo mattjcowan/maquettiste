@@ -6,6 +6,8 @@
 import type { DatabaseView, Diagnostic, MaterializeChange, MaterializePlan, MaterializeStatus, BindingSqlResult, TableView } from "@/api/types";
 import { bindingProblems, columnRows, findColumn, sourceOf, storageAttributes, writes, type Binding } from "@/editors/storage/fieldMap";
 import { applyCase, resolveDatabase, type PhysicalInput } from "./physical";
+import { sqlDialectOf, unwrapSqlText } from "@/model/sqlText";
+import { splitWith } from "./querySql";
 import { docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
 
 type Json = Record<string, unknown>;
@@ -841,10 +843,16 @@ export function bindingSql(input: PhysicalInput, entityId: string, bindingId: st
     return c ? [{ column: c.name, value: k.value ?? null }] : [];
   });
   const listed = new Set((binding.columns ?? []).filter((c) => c.status !== "ignored").map((c) => findColumn(source.columns, c.column)?.name));
-  const from =
-    source.kind === "query"
-      ? `(${(view.queries ?? []).find((q) => q.id === source.id)?.sql ?? ""}) q`
-      : `${source.schema ? `${quote(source.schema)}.` : ""}${quote(source.name)} t`;
+  // A query with named queries puts its WITH first, before the select over it (decision 16).
+  // A hand-written text is nested whole (one final `;` and the comments after it dropped); only a built query's `with` is hoisted.
+  const innerQuery = source.kind === "query" ? (view.queries ?? []).find((q) => q.id === source.id) : undefined;
+  const inner =
+    source.kind !== "query"
+      ? null
+      : innerQuery?.form === "sql"
+        ? { with: "", statement: unwrapSqlText(innerQuery.sql ?? "", sqlDialectOf("*", view.dialect)) }
+        : splitWith(innerQuery?.sql ?? "");
+  const from = inner !== null ? `(\n${inner.statement}\n) q` : `${source.schema ? `${quote(source.schema)}.` : ""}${quote(source.name)} t`;
   const alias = source.kind === "query" ? "q" : "t";
   const filters = constants.map((c) => `${alias}.${quote(c.column)} ${c.value === null ? "IS NULL" : `= ${literal(c.value)}`}`);
   const soft = typeof binding.delete === "object" ? binding.delete.soft : null;
@@ -853,7 +861,7 @@ export function bindingSql(input: PhysicalInput, entityId: string, bindingId: st
     filters.push(`(${alias}.${quote(col)} IS NULL OR ${alias}.${quote(col)} <> ${literal(soft.value ?? null)})`);
   }
   const keys = fields.filter((f) => f.key);
-  const select = `SELECT ${fields.map((f) => `${alias}.${quote(f.column)} AS ${quote(f.name)}`).join(", ") || "*"}\nFROM ${from}${filters.length ? `\nWHERE ${filters.join(" AND ")}` : ""}`;
+  const select = `${inner?.with ? `${inner.with}\n` : ""}SELECT ${fields.map((f) => `${alias}.${quote(f.column)} AS ${quote(f.name)}`).join(", ") || "*"}\nFROM ${from}${filters.length ? `\nWHERE ${filters.join(" AND ")}` : ""}`;
   const byKey = keys.map((k, i) => `${alias}.${quote(k.column)} = ${p(k.name, i)}`);
   const statement = (sql: string, parameters: string[]) => ({ sql, parameters });
   const writeTable = typeof binding.write === "object" ? sourceOf(view, binding.write.table) : source.kind === "table" ? source : undefined;
@@ -929,7 +937,8 @@ export function bindingFindings(view: DatabaseView, docs: ReadonlyMap<string, Js
       const push = (rule: string, severity: Diagnostic["severity"], message: string, pointer: string) =>
         out.push({ rule, severity, message, elementId: String(e.id), filePath: pathOf(String(e.id)), jsonPointer: at(pointer), line: null, column: null });
       if (all.findIndex((x) => x.database === b.database) !== i) push("MQ4050", "error", `${String(e.name)} has a second binding to ${view.name}.`, "");
-      for (const p of bindingProblems(b, attributes, sourceOf(view, b.source))) push(p.rule, p.severity, p.message, p.pointer);
+      for (const p of bindingProblems(b, attributes, sourceOf(view, b.source), { entity: String(e.name), database: view.name }))
+        push(p.rule, p.severity, p.message, p.pointer);
     });
   }
   // MQ4011: a relation of the foreign-key shape whose ends are both bound to tables of the database names no foreign key there

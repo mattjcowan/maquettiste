@@ -55,6 +55,8 @@ public sealed class ResolvedCoverageTests
         new("query paging", "query.json", "$defs/paging", typeof(RQueryPaging)),
         new("query collection", "query.json", "$defs/collection", typeof(RQueryCollection)),
         new("nested query", "query.json", "$defs/subquery", typeof(RQuery)),
+        new("named query", "query.json", "$defs/namedQuery", typeof(RNamedQuery)),
+        new("repeating part", "query.json", "$defs/recursivePart", typeof(RQuery)),
         new("case branch", "query.json", "$defs/when", typeof(RQueryWhen)),
         new("expression", "query.json", "$defs/expression", typeof(RQueryExpression)),
         new("predicate", "query.json", "$defs/predicate", typeof(RQueryPredicate)),
@@ -215,6 +217,8 @@ public sealed class ResolvedCoverageTests
         [("process right", "whileFrozen")] = "on use.right (the inline right target)",
         [("inline right", "right")] = "a use's named right: RRightUse.Right (the process right target)",
         [("inline right", "states")] = "where the right holds: RRightUse.States (the process right target)",
+        // How a repeating part's rows are added is the named query's: RNamedQuery.Union (sql-queries-design.md section 10).
+        [("repeating part", "union")] = "on the named query: RNamedQuery.Union",
     });
 
     /// <summary>
@@ -248,6 +252,17 @@ public sealed class ResolvedCoverageTests
         [("subject", "owner")] = "OwnerAttribute",
         // The overlay entry's synthesized column key is the column's key.
         [("column", "attribute")] = "Key",
+        // A query written as SQL text (sql-queries-design.md section 10): its declared columns are its select, its reads its uses.
+        [("query", "columns")] = "Select",
+        [("query", "reads")] = "Uses",
+        // A named query's select and its clauses resolve as its Query (the anchor, sql-queries-design.md section 10).
+        [("named query", "from")] = "Query",
+        [("named query", "joins")] = "Query",
+        [("named query", "select")] = "Query",
+        [("named query", "where")] = "Query",
+        [("named query", "groupBy")] = "Query",
+        [("named query", "having")] = "Query",
+        [("named query", "distinct")] = "Query",
         // A join's kind is the source's join kind (from for the first source).
         [("query join", "kind")] = "JoinKind",
         // identity or sequence: Identity says the first, Sequence names the second.

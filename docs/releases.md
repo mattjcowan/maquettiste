@@ -7,6 +7,38 @@ one.
 
 ## Unreleased
 
+- **Hand-written SQL queries and named queries (WITH).** A query can now be written as SQL text, and a built query can start
+  with named parts. Maquettiste still never runs SQL and never connects to your database: it states what the query reads and
+  returns, and your system runs it.
+  - A query written as SQL text holds your own text per dialect, with parameters written `:name`. You declare its `columns`
+    (each may be null unless you say `nullable: false`) and the tables it `reads` and `writes`. A query that writes and has no
+    columns returns the number of rows changed. Maquettiste reads only the placeholders, the statement's verb, which names
+    appear and whether an `ORDER BY` stands outside parentheses. It never reads which tables or columns the SQL uses.
+  - A built query's `with` lists named queries that the query, its nested queries and later named queries read as sources.
+    An entry may repeat over itself with `recursive` (an anchor, then a repeating part joined by `union`), for trees and chains.
+    Maquettiste adds no recursion limit and does not look for cycles; the user guide says how to stop one.
+  - Your text is used as written: only the white space at both ends is removed, and a final `;` stays (some statements need
+    one, others refuse one). Where a binding wraps the text in its own select, one final `;` and any comments after it are left out.
+  - An entity's binding may read a query written as SQL text, as it reads any query that returns rows.
+  - A table a query lists in `reads` or `writes` is a reference: changing it lists the query, and deleting it keeps the query
+    and warns that the text may still name the table.
+  - The [user guide](user-guide.md#the-explorers-and-screens) says, under "Queries written as SQL text" and "Named queries (WITH)", what the model states and what it leaves to your system.
+- **In the editor.** **New query** asks whether the query is **Built from parts** or **SQL text**. A query written as SQL
+  text has **SQL text**, **Parameters**, **Columns** and **Tables** tabs (with **Find in SQL**); a built query has a **Named
+  queries (WITH)** tab with **Repeats** and **Repeating part**.
+- **New checks.**
+  - MQ4096 (warning): a parameter that no text of a query written as SQL text uses as `:name`.
+  - MQ4097 (warning): a binding on SQL Server reads a text that cannot be a derived table there.
+  - MQ4098 (warning): a query's text and its declarations disagree, by name and verb only.
+  - MQ4099 (error): a named query that does not fit, or a repeating part that does not fit its anchor.
+  - MQ3001, MQ4018, MQ4021 to MQ4024, MQ4029, MQ4040 and MQ4044 cover the new cases.
+- **A team upgrades together.** An older engine refuses a file that holds `sql` or `with`. The file format version stays 1.
+- **Templates: check your own pack copies.** For a query written as SQL text, `query.from` is null and each declared column's
+  `expression` is null. A template branches on `query.form` (`"structured"` or `"sql"`), or tests the expression for null, before
+  it reads into them. The shipped `csharp-dapper` does. If your team keeps its own copy of an older `csharp-dapper`, update it:
+  the older copy stops with MQ6006 on the first query written as SQL text.
+- **A project that uses none of this changes nothing.** Its files, findings and generated output stay as they were.
+
 - **Processes linked to operations.** A process now says which operations make its moves, and an operation knows which process
   moves it makes. Maquettiste is still a modeling tool: it states the links and checks them, and your system carries them out.
   - An operation's `fires` now has a written meaning: when its work is done, your system sends those events. A resolved event

@@ -96,6 +96,7 @@ public sealed partial class ModelStore
             .Distinct(StringComparer.Ordinal)
             .ToList();
         var warnings = PackFiltersNaming(deletedDatabases);
+        warnings.AddRange(report?.Warnings ?? []);
         warnings.AddRange(XRefScopesNaming(snapshot, distinct.Concat(deletes.Select(d => d.Id)).ToHashSet(StringComparer.Ordinal)));
         var first = plan.Outcomes.Select(o => o.Outcome).FirstOrDefault(o => o != SaveOutcome.Saved, SaveOutcome.Saved);
         return new DeletePlan(distinct, resolution, first, deletes, report?.Clears ?? [], report?.Removes ?? [], refused,

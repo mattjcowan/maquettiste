@@ -1,0 +1,65 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K9Q550000000000000000030",
+  "name": "invoices",
+  "database": "01K9Q550000000000000000002",
+  "columns": [
+    {
+      "id": "01K9Q550000000000000000031",
+      "name": "id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01K9Q550000000000000000032",
+      "name": "customer_id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01K9Q550000000000000000033",
+      "name": "total",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01K9Q550000000000000000034",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false
+    },
+    {
+      "id": "01K9Q550000000000000000035",
+      "name": "issued_on",
+      "type": "date",
+      "nullable": false
+    },
+    {
+      "id": "01K9Q550000000000000000036",
+      "name": "due_on",
+      "type": "date",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K9Q550000000000000000031"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K9Q550000000000000000037",
+      "columns": [
+        "01K9Q550000000000000000032"
+      ],
+      "referencesTable": "01K9Q550000000000000000020",
+      "referencesColumns": [
+        "01K9Q550000000000000000021"
+      ]
+    }
+  ]
+}

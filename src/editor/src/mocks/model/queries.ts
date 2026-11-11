@@ -8,10 +8,13 @@
 import type { components } from "@/api/schema";
 import type { DatabaseView, Diagnostic } from "@/api/types";
 import { BUILTIN_TYPES } from "@/model/model";
+import { scanSqlText, sqlTextMentions, sqlTextNamesNoParameter, sqlTextPosition, type SqlDialect } from "@/model/sqlText";
 import { annotationsOf, nativeType } from "./physical";
 import {
   expressionText,
+  isGrouped,
   mysqlCastType,
+  sqlTextMissing,
   parseDialect,
   renderCollection,
   renderQuery,
@@ -22,6 +25,7 @@ import {
   type RExpression,
   type RField,
   type RKey,
+  type RNamedQuery,
   type RParameter,
   type RPredicate,
   type RQuery,
@@ -50,7 +54,10 @@ const isId = (value: string) => ID.test(value);
 const INTEGER_TYPES = ["int16", "int32", "int64"];
 const SEVERITY = new Map((validationRules as { id: string; defaultSeverity: string }[]).map((r) => [r.id, r.defaultSeverity as Diagnostic["severity"]]));
 /** The findings that leave a query renderable; every other one leaves a node unresolved or the SQL wrong, so the query has no SQL. */
-const RENDERABLE = new Set(["MQ3001", "MQ4025", "MQ4026", "MQ4027", "MQ4030", "MQ4033", "MQ4037", "MQ4040", "MQ4041"]);
+const RENDERABLE = new Set(["MQ3001", "MQ4025", "MQ4026", "MQ4027", "MQ4030", "MQ4033", "MQ4037", "MQ4040", "MQ4041", "MQ4096", "MQ4097", "MQ4098"]);
+/** The verbs that change data, and the ones that return rows (MQ4098; sql-queries-design.md decision 6). */
+const WRITE_VERBS = new Set(["INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE", "TRUNCATE"]);
+const ROW_VERBS = new Set(["SELECT", "VALUES", "TABLE"]);
 /** A function name a call may write (MQ4034). */
 const FUNCTION_NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
 /** The text of a typed decimal literal (MQ4043). */
@@ -113,6 +120,20 @@ function decimalText(text: string): string {
   return negative && /[1-9]/.test(result) ? "-" + result : result;
 }
 
+// The messages of the SQL text rules, in one place (sql-queries-design.md section 9; the engine's catalog is the model).
+const words = (keys: string[]) => (keys.length === 1 ? keys[0] : `${keys.slice(0, -1).join(", ")} and ${keys[keys.length - 1]}`);
+const sqlTextParameterUnused = (query: string, name: string, dialects: string[] | null) =>
+  dialects === null
+    ? `Parameter '${name}' of query '${query}' appears as :${name} in none of its texts.`
+    : `Parameter '${name}' of query '${query}' does not appear as :${name} in its ${words(dialects)} ${dialects.length === 1 ? "text" : "texts"}.`;
+const sqlTextNamesNothing = (query: string, field: "reads" | "writes", kind: string, name: string) =>
+  `Query '${query}' ${field} ${kind} '${name}', whose name appears in none of its texts: was it renamed, or declared by mistake?`;
+const article = (verb: string) => (verb === "INSERT" || verb === "UPDATE" ? "an" : "a");
+const sqlTextWritesNothing = (key: string, query: string, verb: string, afterWith: boolean) =>
+  `The ${key} text of query '${query}' is ${article(verb)} ${verb} statement${afterWith ? " (after its WITH)" : ""}, but the query declares no table it writes: list them in writes.`;
+const sqlTextHasNoColumns = (key: string, query: string, verb: string, afterWith: boolean) =>
+  `The ${key} text of query '${query}' is ${article(verb)} ${verb} statement${afterWith ? " (after its WITH)" : ""}, but the query declares no columns, so it would be generated as a command that returns the number of rows changed: declare its columns.`;
+
 const isReservedName = (name: string) => name.toLowerCase().startsWith("mq_");
 
 interface Attribute {
@@ -151,6 +172,7 @@ interface Scope {
 interface Found {
   table?: TableView;
   view?: ViewView;
+  named?: RNamedQuery;
 }
 
 /** Per source: what it resolved to (the renderer only needs names; the binder needs the columns). */
@@ -294,14 +316,31 @@ function fields(select: readonly RField[], file: Json[]): QueryFieldView[] {
   })) as QueryFieldView[];
 }
 
-function sourceView(source: RSource, on: unknown): QueryView["from"] {
+/** The declared columns of a query written as SQL text: no expression, and the description when there is one. */
+function declaredColumns(select: readonly RField[], file: Json[]): QueryFieldView[] {
+  return select.map((f, i) => {
+    const description = i < file.length ? file[i].description : undefined;
+    return {
+      name: f.name,
+      attributeId: null,
+      type: f.type,
+      nativeType: f.nativeType,
+      codeType: f.codeType,
+      nullable: f.nullable,
+      ...(typeof description === "string" && description !== "" ? { description } : {}),
+    };
+  });
+}
+
+function sourceView(source: RSource, on: unknown): NonNullable<QueryView["from"]> {
   const found = sourceTargets.get(source);
   return {
     source: source.source,
     alias: source.alias,
-    kind: source.joinKind as QueryView["from"]["kind"],
+    kind: source.joinKind as NonNullable<QueryView["from"]>["kind"],
     tableKey: found?.table?.key ?? null,
     viewId: found?.view?.id ?? null,
+    ...(source.named ? { namedQuery: source.named.name } : {}),
     name: source.name,
     schema: source.schema,
     on: tree(on),
@@ -312,6 +351,7 @@ function project(query: RQuery, file: Json, stereotypes: ReadonlyMap<string, Jso
   const rendered = query.sql.length === 0 ? null : renderQuery(query);
   const joins = arr(file.joins);
   const annotations = annotationsOf(file, stereotypes);
+  const sqlText = query.form === "sql";
   return {
     id: query.id,
     name: query.name,
@@ -329,9 +369,26 @@ function project(query: RQuery, file: Json, stereotypes: ReadonlyMap<string, Jso
       default: p.default ?? null,
       description: p.description,
     })),
-    from: sourceView(query.from, null),
+    ...(sqlText ? { form: "sql" as const, texts: { ...query.texts }, ...(query.writes?.length ? { writes: [...query.writes] } : {}) } : {}),
+    ...(sqlText ? {} : { from: sourceView(query.from, null) }),
     joins: query.joins.map((j, i) => sourceView(j, i < joins.length ? joins[i].on : null)),
-    select: fields(query.select, arr(file.select)),
+    ...(query.with?.length
+      ? {
+          with: query.with.map((n): NonNullable<QueryView["with"]>[number] => {
+            const entry = arr(file.with)[n.index];
+            const { recursive, ...anchor } = entry;
+            return {
+              name: n.name,
+              query: (tree(anchor) ?? {}) as NonNullable<QueryView["with"]>[number]["query"],
+              columns: fields(n.columns, arr(entry.select)),
+              ...(n.recursive
+                ? { recursive: (tree(recursive) ?? {}) as NonNullable<NonNullable<QueryView["with"]>[number]["recursive"]>, union: n.union }
+                : {}),
+            };
+          }),
+        }
+      : {}),
+    select: sqlText ? declaredColumns(query.select, arr(file.columns)) : fields(query.select, arr(file.select)),
     where: tree(file.where),
     groupBy: arr(file.groupBy).map((g) => tree(g)!) as QueryView["groupBy"],
     having: tree(file.having),
@@ -476,14 +533,17 @@ class Binder {
         `Query '${this.fileName}' returns entity '${this.nameOfEntity(entityId)}', which is abstract: name a concrete entity, or none for an ad hoc row.`,
         "/entity",
       );
+    if (file.from === undefined && file.sql !== null && typeof file.sql === "object") return this.buildSqlText();
     query.parameters = this.resolveParameters();
     const scope: Scope = { query, outer: null, aliases: new Map(), sources: [] };
+    this.resolveWith();
     this.resolveBody(query, scope, file, "", entityId);
     query.distinct = file.distinct === true;
     query.paging = this.resolvePaging();
     query.collections = arr(file.collections).map((c, i) => this.resolveCollection(c, i, scope));
     this.checkCollectionNames();
     this.checkDistinctKeys();
+    this.checkWithNames();
     query.uses = [...this.uses];
     if (!this.failed) {
       this.checkDistinctOrder(query, "", []);
@@ -497,6 +557,177 @@ class Binder {
     // A query with errors has none: they are reported, and generation stops on them before any template reads it.
     query.sql = this.failed ? "" : renderQuery(query).sql;
     return query;
+  }
+
+  // ---------------------------------------------------------------- a query written as SQL text (sql-queries-design.md)
+
+  /** The query's texts, the declared columns, `reads` and `writes`, and the checks of section 9 that read them. */
+  private buildSqlText(): RQuery {
+    const query = this.query;
+    const file = this.file;
+    query.form = "sql";
+    query.parameters = this.resolveParameters();
+    const texts: Record<string, string> = {};
+    for (const [key, value] of Object.entries(file.sql as Json)) if (typeof value === "string") texts[key] = value;
+    query.texts = texts;
+    this.resolveColumns();
+    // What a hand-written query uses is what it reads; the database types of its parameters and columns are not reads.
+    this.uses.length = 0;
+    this.resolveReadsAndWrites();
+    const own = sqlFor(texts, this.view.dialect);
+    if (own === null) this.add("MQ4029", sqlTextMissing(this.fileName, this.view.dialect, this.view.name), "/sql");
+    this.checkTexts(texts);
+    query.uses = [...this.uses];
+    query.sql = this.failed ? "" : renderQuery(query).sql;
+    return query;
+  }
+
+  /** The dialect a text's key stands for: its own, or the database's for `*`. */
+  private dialectOfText(key: string): SqlDialect {
+    return (parseDialect(key) ?? parseDialect(this.view.dialect) ?? "postgresql") as SqlDialect;
+  }
+
+  private resolveColumns(): void {
+    const names = new Map<string, number>();
+    const properties = new Map<string, string>();
+    arr(this.file.columns).forEach((c, i) => {
+      const pointer = `/columns/${i}`;
+      const name = String(c.name ?? "");
+      const num = (v: unknown) => (typeof v === "number" ? v : null);
+      const { keyword, dbType, native } = this.slot(c.type, { length: num(c.length), precision: num(c.precision), scale: num(c.scale) });
+      if (!keyword && !dbType)
+        this.add(
+          "MQ4018",
+          `Column '${name}' of query '${this.fileName}' has type '${String(c.type ?? "")}', which is neither a built-in type nor a database type of database '${this.view.name}'.`,
+          pointer + "/type",
+        );
+      if (dbType) this.use(dbType.id);
+      this.query.select.push({
+        name,
+        attributeId: null,
+        memberId: null,
+        endId: null,
+        expression: nullExpression(),
+        type: keyword,
+        nativeType: native,
+        codeType: keyword ?? (dbType?.typeKind === "domain" && dbType.base ? dbType.base : "string"),
+        nullable: c.nullable !== false,
+      });
+      const key = name.toLowerCase();
+      if (names.has(key))
+        this.add(
+          "MQ3001",
+          `Column name '${name}' is already used at index ${names.get(key)} of the columns of query '${this.fileName}' (ignoring case).`,
+          pointer + "/name",
+        );
+      else {
+        names.set(key, i);
+        const property = enginePascal(name);
+        if (isReservedName(name))
+          this.add(
+            "MQ4040",
+            `Column '${name}' of query '${this.fileName}' starts with mq_, which generated code reserves for its own names.`,
+            pointer + "/name",
+          );
+        else if (properties.has(property))
+          this.add(
+            "MQ4040",
+            `Column '${name}' of query '${this.fileName}' becomes property '${property}', as column '${properties.get(property)}' does: give it another name.`,
+            pointer + "/name",
+          );
+        else properties.set(property, name);
+      }
+    });
+  }
+
+  private resolveReadsAndWrites(): void {
+    const sequences = new Map((this.view.sequences ?? []).map((q) => [q.id, q]));
+    const uses: string[] = [];
+    const writes: string[] = [];
+    const list = (value: unknown): string[] => (Array.isArray(value) ? value.filter((x): x is string => typeof x === "string") : []);
+    // An entity id stands for its table in this database (`<id>@<db>`), as it does for a `from.source`.
+    const sourceOf = (ref: string): Found | undefined => this.sources.get(ref) ?? this.sources.get(`${ref}@${this.view.id}`);
+    list(this.file.reads).forEach((ref, i) => {
+      const found = sourceOf(ref);
+      const id = found?.table?.key ?? found?.view?.id ?? this.routines.get(ref)?.id ?? sequences.get(ref)?.id ?? this.types.get(ref)?.id;
+      if (!id) this.add("MQ4021", `Query '${this.fileName}' reads '${ref}', which ${this.whatIsReadable(ref)}.`, `/reads/${i}`);
+      else if (!uses.includes(id)) uses.push(id);
+    });
+    list(this.file.writes).forEach((ref, i) => {
+      const found = sourceOf(ref);
+      if (!found?.table) this.add("MQ4021", `Query '${this.fileName}' writes '${ref}', which ${this.whatIsWritable(ref)}.`, `/writes/${i}`);
+      else if (!writes.includes(found.table.key)) writes.push(found.table.key);
+    });
+    for (const id of uses) this.use(id);
+    this.query.writes = writes;
+  }
+
+  private whatIsReadable(ref: string): string {
+    const element = this.docs.get(ref.split("@")[0]);
+    if (element && element.database !== undefined && element.database !== this.view.id)
+      return `is ${String(element.kind)} '${String(element.name ?? "")}' of database '${String(this.docs.get(String(element.database))?.name ?? element.database)}', not of '${this.view.name}'`;
+    if (element)
+      return `is ${String(element.kind)} '${String(element.name ?? "")}', not a table, view, routine, sequence or database type of database '${this.view.name}'`;
+    return `is no table, view, routine, sequence or database type of database '${this.view.name}'`;
+  }
+
+  private whatIsWritable(ref: string): string {
+    const element = this.docs.get(ref.split("@")[0]);
+    if (this.sources.get(ref)?.view) return `is view '${String(element?.name ?? ref)}', not a table`;
+    if (element && element.database !== undefined && element.database !== this.view.id)
+      return `is ${String(element.kind)} '${String(element.name ?? "")}' of database '${String(this.docs.get(String(element.database))?.name ?? element.database)}', not of '${this.view.name}'`;
+    if (element?.kind === "entity") return `is entity '${String(element.name ?? "")}', which has no table in database '${this.view.name}'`;
+    if (element) return `is ${String(element.kind)} '${String(element.name ?? "")}', not a table`;
+    return `is no table of database '${this.view.name}'`;
+  }
+
+  /** MQ4024, MQ4096 and MQ4098 over every text. */
+  private checkTexts(texts: Record<string, string>): void {
+    const query = this.query;
+    const declared = new Set(query.parameters.map((p) => p.name));
+    const scans = Object.entries(texts)
+      .sort((a, b) => cmp(a[0], b[0]))
+      .map(([key, text]) => ({
+        key,
+        text,
+        dialect: this.dialectOfText(key),
+        scan: scanSqlText(text, this.dialectOfText(key)),
+      }));
+    for (const { key, text, scan } of scans)
+      for (const p of scan.placeholders) {
+        if (declared.has(p.name)) continue;
+        const { line, column } = sqlTextPosition(text, p.offset);
+        this.add("MQ4024", sqlTextNamesNoParameter(this.fileName, p.name, line, column, key), `/sql/${key}`);
+      }
+    if (scans.length > 0)
+      query.parameters.forEach((p, i) => {
+        const without = scans.filter((x) => !x.scan.placeholders.some((ph) => ph.name === p.name));
+        if (without.length === 0) return;
+        this.add(
+          "MQ4096",
+          sqlTextParameterUnused(this.fileName, p.name, without.length === scans.length ? null : without.map((x) => x.key)),
+          `/parameters/${i}`,
+        );
+      });
+    if (scans.length === 0) return;
+    const named = (field: "reads" | "writes") =>
+      (Array.isArray(this.file[field]) ? (this.file[field] as unknown[]) : []).forEach((value, i) => {
+        const found = typeof value === "string" ? (this.sources.get(value) ?? this.sources.get(`${value}@${this.view.id}`)) : undefined;
+        const target = found?.table ?? found?.view;
+        if (target && !scans.some((x) => sqlTextMentions(x.scan, target.name)))
+          this.add("MQ4098", sqlTextNamesNothing(this.fileName, field, found?.table ? "table" : "view", target.name), `/${field}/${i}`);
+      });
+    named("reads");
+    named("writes");
+    const hasWrites = Array.isArray(this.file.writes) && this.file.writes.length > 0;
+    const hasColumns = arr(this.file.columns).length > 0;
+    for (const { key, scan } of [...scans].sort((a, b) => cmp(a.key, b.key))) {
+      const verb = scan.verb;
+      if (!verb) continue;
+      const afterWith = scan.firstWord === "WITH";
+      if (!hasWrites && WRITE_VERBS.has(verb)) this.add("MQ4098", sqlTextWritesNothing(key, this.fileName, verb, afterWith), `/sql/${key}`);
+      else if (!hasColumns && ROW_VERBS.has(verb)) this.add("MQ4098", sqlTextHasNoColumns(key, this.fileName, verb, afterWith), `/sql/${key}`);
+    }
   }
 
   /** MQ4040 for the collections: each becomes a property of the result record, beside its Item, named after it Pascal-cased. */
@@ -819,11 +1050,11 @@ class Binder {
       source.name = found.view.name;
       source.schema = found.view.schema;
       this.use(found.view.id);
-    } else {
+    } else if (!this.namedSource(scope, source, reference, pointer)) {
       this.add("MQ4021", `Query '${this.fileName}' reads '${reference}', which ${this.whatIs(reference)}.`, pointer + "/source");
       source.name = reference;
     }
-    sourceTargets.set(source, found ?? {});
+    sourceTargets.set(source, found ?? (source.named ? { named: source.named } : {}));
     source.alias = alias ?? source.name;
     if (scope.aliases.has(source.alias))
       this.add(
@@ -844,7 +1075,186 @@ class Binder {
       return `is ${String(element!.kind)} '${String(element!.name ?? "")}' of database '${String(this.docs.get(other)?.name ?? other)}', not of '${this.view.name}'`;
     if (element?.kind === "entity") return `is entity '${String(element.name ?? "")}', which has no table in database '${this.view.name}'`;
     if (element) return `is ${String(element.kind)} '${String(element.name ?? "")}', not a table or view`;
-    return `is no table or view of database '${this.view.name}'`;
+    return `is no table or view of database '${this.view.name}'${arr(this.file.with).length > 0 ? " and no named query of the query" : ""}`;
+  }
+
+  // ---------------------------------------------------------------- named queries (DatabaseRun.NamedQueries.cs)
+
+  private readonly withList: RNamedQuery[] = [];
+  /** How many named queries the sources being resolved may read. */
+  private withVisible = 0;
+  private withCurrent = -1;
+  private inWith = false;
+  private self: RNamedQuery | null = null;
+  private selfPart: RQuery | null = null;
+  private selfReads: { source: RSource; nested: boolean; pointer: string }[] = [];
+
+  /** A part of a named query: a nested query of the top query, with its parameters. */
+  private part(name: string): RQuery {
+    return {
+      ...this.query,
+      name,
+      entityId: null,
+      parent: this.query,
+      from: null as unknown as RSource,
+      joins: [],
+      select: [],
+      where: null,
+      groupBy: [],
+      having: null,
+      orderBy: [],
+      distinct: false,
+      paging: null,
+      collections: [],
+      sql: "",
+      uses: [],
+      with: undefined,
+    };
+  }
+
+  /** Resolves the file's `with` into `query.with`, before the query's own sources, which may read them. */
+  private resolveWith(): void {
+    const entries = arr(this.file.with);
+    if (entries.length === 0) return;
+    const names = new Map<string, string>();
+    entries.forEach((entry, i) => {
+      const at = `/with/${i}`;
+      const name = String(entry.name ?? "");
+      const first = names.get(name.toLowerCase());
+      if (first === undefined) names.set(name.toLowerCase(), name);
+      else
+        this.add("MQ3001", `Named query name '${name}' is already used in query '${this.fileName}'${first === name ? "" : " (ignoring case)"}.`, at + "/name");
+      [this.withCurrent, this.withVisible, this.inWith] = [i, i, true];
+      const anchor = this.part(name);
+      this.resolveBody(anchor, { query: anchor, outer: null, aliases: new Map(), sources: [] }, entry, at, null);
+      anchor.distinct = entry.distinct === true;
+      const named: RNamedQuery = {
+        name,
+        index: i,
+        query: anchor,
+        columns: anchor.select.map((f) => ({ ...f })),
+        recursive: null,
+        union: "all",
+      };
+      this.withList.push(named);
+      if (entry.recursive && typeof entry.recursive === "object") this.resolveRecursive(named, entry.recursive as Json, `${at}/recursive`);
+    });
+    [this.withCurrent, this.withVisible, this.inWith] = [-1, this.withList.length, false];
+    this.query.with = [...this.withList];
+  }
+
+  /** The repeating part of a recursive named query, its rules (MQ4099), and the columns' types and nullability merged. */
+  private resolveRecursive(named: RNamedQuery, recursive: Json, at: string): void {
+    const part = this.part(named.name);
+    [this.self, this.selfPart] = [named, part];
+    this.selfReads = [];
+    this.resolveBody(part, { query: part, outer: null, aliases: new Map(), sources: [] }, { ...recursive, groupBy: [], having: null }, at, null);
+    [this.self, this.selfPart] = [null, null];
+    named.recursive = part;
+    named.union = recursive.union === "distinct" ? "distinct" : "all";
+    const what = `The repeating part of named query '${named.name}' of query '${this.fileName}'`;
+    const dialect = { sqlserver: "SQL Server", oracle: "Oracle" }[this.view.dialect as "oracle"];
+    if (named.union === "distinct" && dialect)
+      this.add(
+        "MQ4099",
+        `${what} adds its rows with union distinct, which ${dialect} (database '${this.view.name}') does not take in a recursive query: use union all.`,
+        at + "/union",
+      );
+    const anchor = named.query.select;
+    if (part.select.length !== anchor.length || part.select.some((f, i) => f.name !== anchor[i].name))
+      this.add(
+        "MQ4099",
+        `${what} selects (${part.select.map((f) => f.name).join(", ")}) where its anchor selects (${anchor.map((f) => f.name).join(", ")}): give it the same fields, with the same names in the same order.`,
+        at + "/select",
+      );
+    else
+      anchor.forEach((f, i) => {
+        const [expected, actual] = [f.type, part.select[i].type];
+        if (expected && actual && expected !== actual)
+          this.add(
+            "MQ4099",
+            `Field '${f.name}' of the ${what.slice(4)} is of type '${actual}', and the anchor's of type '${expected}': give both the same type (a cast).`,
+            `${at}/select/${i}`,
+          );
+      });
+    const reads = this.selfReads;
+    const own = `reads '${named.name}'`;
+    if (reads.length === 0)
+      this.add("MQ4099", `${what} does not read '${named.name}': a repeating part reads its own name exactly once, in its from or a join.`, at + "/from");
+    else if (reads.length > 1) this.add("MQ4099", `${what} ${own} ${reads.length} times: a repeating part reads its own name exactly once.`, reads[1].pointer);
+    else if (reads[0].nested)
+      this.add("MQ4099", `${what} ${own} in a nested query: a repeating part reads its own name in its own from or a join.`, reads[0].pointer);
+    else if (reads[0].source.optional)
+      this.add(
+        "MQ4099",
+        `${what} ${own} on the null-padded side of an outer join (the right side of a left join, the left side of a right join, either side of a full join), which the databases refuse: read it on the side that keeps its rows, or use an inner join.`,
+        reads[0].pointer,
+      );
+    if (isGrouped(part)) this.add("MQ4099", `${what} calls an aggregate function, which a repeating part may not.`, at + "/select");
+    if (this.view.dialect === "sqlserver") {
+      part.joins.forEach((j, i) => {
+        if (["left", "right", "full"].includes(j.joinKind))
+          this.add(
+            "MQ4099",
+            `${what} has an outer join, which SQL Server (database '${this.view.name}') does not take in a repeating part: use an inner join.`,
+            `${at}/joins/${i}/kind`,
+          );
+      });
+      if (hasNested(part))
+        this.add("MQ4099", `${what} has a nested query (exists), which SQL Server (database '${this.view.name}') does not take in a repeating part.`, at);
+    }
+    // A column's type is the anchor's (the repeating part's when the anchor's is unknown); it may be null when either part's may.
+    for (let i = 0; i < Math.min(anchor.length, part.select.length); i++) {
+      const [column, field] = [named.columns[i], part.select[i]];
+      column.nullable = column.nullable || field.nullable;
+      if (column.type === null && field.type !== null) [column.type, column.nativeType, column.codeType] = [field.type, field.nativeType, field.codeType];
+    }
+  }
+
+  /** A source that names a named query of the file's `with`, or the reason it may not read it (MQ4099); false when it names none. */
+  private namedSource(scope: Scope, source: RSource, reference: string, pointer: string): boolean {
+    const index = arr(this.file.with).findIndex((e) => e.name === reference);
+    if (index < 0) return false;
+    source.name = reference;
+    if (index < this.withVisible) {
+      source.named = this.withList[index];
+      return true;
+    }
+    if (index === this.withCurrent && this.self) {
+      source.named = this.self;
+      this.selfReads.push({ source, nested: scope.query !== this.selfPart, pointer: pointer + "/source" });
+      return true;
+    }
+    const reader = String(arr(this.file.with)[this.withCurrent]?.name ?? "");
+    this.add(
+      "MQ4099",
+      index === this.withCurrent
+        ? `Named query '${reader}' of query '${this.fileName}' reads itself outside recursive: only its repeating part may read its own name.`
+        : `Named query '${reader}' of query '${this.fileName}' reads named query '${reference}', which is listed after it: move '${reference}' before it.`,
+      pointer + "/source",
+    );
+    return true;
+  }
+
+  /** MQ4099: a named query with the name of a table or view the query reads, which the SQL would then not read. */
+  private checkWithNames(): void {
+    for (const named of this.withList) {
+      let clash: [string, string] | null = null;
+      for (const id of this.uses) {
+        const found = this.sources.get(id);
+        const hit: [string, string] | null = found?.table ? ["table", found.table.name] : found?.view ? ["view", found.view.name] : null;
+        if (hit && hit[1].toLowerCase() === named.name.toLowerCase()) {
+          clash = hit;
+          break;
+        }
+      }
+      if (clash)
+        this.add(
+          "MQ4099",
+          `Named query '${named.name}' of query '${this.fileName}' has the name of ${clash[0]} '${clash[1]}', which the query reads, so the SQL would read one for the other: rename the named query.`,
+          `/with/${named.index}/name`,
+        );
+    }
   }
 
   private resolveFields(select: Json[], scope: Scope, at: string, entityId: string | null): RField[] {
@@ -897,14 +1307,14 @@ class Binder {
         const property = enginePascal(field.name);
         if (isReservedName(field.name))
           this.add("MQ4040", `Field '${field.name}' of query '${this.fileName}' starts with mq_, which generated code reserves for its own names.`, at2);
-        else if (!entityId && properties.has(property))
+        else if (!entityId && !this.inWith && properties.has(property))
           // An ad hoc row is a record whose properties are the fields' names Pascal-cased.
           this.add(
             "MQ4040",
             `Field '${field.name}' of query '${this.fileName}' becomes property '${property}', as field '${properties.get(property)}' does: give it another name.`,
             pointer + "/name",
           );
-        else if (!entityId) properties.set(property, field.name);
+        else if (!entityId && !this.inWith) properties.set(property, field.name);
       }
       fields.push(field);
     });
@@ -1423,20 +1833,20 @@ class Binder {
       return expr("column", { column: text, alias, columnName: text.slice(dot + 1) });
     }
 
-    let found: { table?: ColumnView; view?: ViewColumn } = {};
+    let found: { table?: ColumnView; view?: ViewColumn; named?: RField } = {};
     if (source) {
       found = findColumn(source, name);
       const target = sourceTargets.get(source);
-      if (!found.table && !found.view && source.name.length > 0 && (target?.table || target?.view))
+      if (!found.table && !found.view && !found.named && source.name.length > 0 && (target?.table || target?.view || target?.named))
         this.add(
           "MQ4023",
-          `Query '${this.fileName}' names column '${name}' of '${source.alias}' (${target.view ? "view" : "table"} '${source.name}'), which has no such column.`,
+          `Query '${this.fileName}' names column '${name}' of '${source.alias}' (${target.named ? "named query" : target.view ? "view" : "table"} '${source.name}'), which has no such column.`,
           pointer,
         );
     } else {
       // No alias: the one source of this query (or of the nearest enclosing one) that has the column.
       for (let s: Scope | null = scope; s && !source; s = s.outer) {
-        const matches = s.sources.map((x) => ({ source: x, found: findColumn(x, text) })).filter((m) => m.found.table || m.found.view);
+        const matches = s.sources.map((x) => ({ source: x, found: findColumn(x, text) })).filter((m) => m.found.table || m.found.view || m.found.named);
         if (matches.length > 1) {
           this.add(
             "MQ4023",
@@ -1459,7 +1869,7 @@ class Binder {
     const result = expr("column", {
       column: text,
       alias: source.alias,
-      columnName: found.table?.name ?? found.view?.name ?? name,
+      columnName: found.table?.name ?? found.view?.name ?? found.named?.name ?? name,
       source,
       isOuter: owner !== scope,
     });
@@ -1475,10 +1885,33 @@ class Binder {
       result.nativeType = found.view.nativeType;
       result.codeType = found.view.type;
       result.nullable = found.view.nullable || source.optional;
+    } else if (found.named) {
+      result.type = found.named.type;
+      result.nativeType = found.named.nativeType;
+      result.codeType = found.named.codeType;
+      result.nullable = found.named.nullable || source.optional;
     }
     if (this.barrier && owner && !isWithin(owner, this.barrier)) this.parentReferences?.push({ expression: result, pointer });
     return result;
   }
+}
+
+/** Whether a repeating part has a nested query (an exists) in its joins' conditions, select list or where. */
+function hasNested(part: RQuery): boolean {
+  const inPredicate = (p: RPredicate): boolean =>
+    !!p.exists ||
+    p.and.some(inPredicate) ||
+    p.or.some(inPredicate) ||
+    (!!p.not && inPredicate(p.not)) ||
+    [...p.values, p.left, p.right].some((e) => !!e && inExpression(e));
+  const inExpression = (e: RExpression): boolean =>
+    e.args.some(inExpression) ||
+    (!!e.cast && inExpression(e.cast)) ||
+    e.case.some((w) => inPredicate(w.when) || inExpression(w.then)) ||
+    (!!e.else && inExpression(e.else));
+  return (
+    part.joins.some((j) => !!j.on && inPredicate(j.on)) || part.select.some((f) => inExpression(f.expression)) || (!!part.where && inPredicate(part.where))
+  );
 }
 
 function find(scope: Scope, alias: string): [RSource, Scope] | null {
@@ -1499,8 +1932,12 @@ function isWithin(scope: Scope, barrier: Scope): boolean {
  * A column of a source by physical name, column key or attribute id; else by name ignoring case, then ignoring case and
  * underscores, when only one column matches (so a change of the conventions' column case keeps a query valid).
  */
-function findColumn(source: RSource, name: string): { table?: ColumnView; view?: ViewColumn } {
+function findColumn(source: RSource, name: string): { table?: ColumnView; view?: ViewColumn; named?: RField } {
   const target = sourceTargets.get(source);
+  if (target?.named) {
+    const column = target.named.columns.find((c) => c.name === name) ?? loose(target.named.columns, (c) => c.name, name);
+    return column ? { named: column } : {};
+  }
   if (target?.table) {
     const columns = target.table.columns;
     const column =

@@ -1,0 +1,66 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K9Q550000000000000000050",
+  "name": "RegionLeader",
+  "package": "01K9Q550000000000000000001",
+  "description": "A region's best customer as the TopCustomersByRegion query reads it; read-only.",
+  "key": {
+    "attributes": [
+      "01K9Q550000000000000000051"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01K9Q550000000000000000051",
+      "name": "customerId",
+      "type": "int64",
+      "required": true
+    },
+    {
+      "id": "01K9Q550000000000000000052",
+      "name": "region",
+      "type": "string",
+      "length": 40,
+      "required": true
+    },
+    {
+      "id": "01K9Q550000000000000000053",
+      "name": "revenue",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 2
+    },
+    {
+      "id": "01K9Q550000000000000000054",
+      "name": "place",
+      "type": "int64",
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K9Q550000000000000000055",
+      "database": "01K9Q550000000000000000002",
+      "source": "01K9Q550000000000000000041",
+      "fields": [
+        {
+          "attribute": "01K9Q550000000000000000051",
+          "column": "customer_id"
+        },
+        {
+          "attribute": "01K9Q550000000000000000052",
+          "column": "region"
+        },
+        {
+          "attribute": "01K9Q550000000000000000053",
+          "column": "revenue"
+        },
+        {
+          "attribute": "01K9Q550000000000000000054",
+          "column": "place"
+        }
+      ]
+    }
+  ]
+}

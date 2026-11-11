@@ -63,6 +63,14 @@ export function viewBodyTemplate(dialect: string): string {
   return dialect === "oracle" ? "select 1 as id from dual" : "select 1 as id";
 }
 
+/** A starting text for a new query written as SQL text: a SELECT valid for the dialect, which the starter column `value` matches. */
+export function queryTextTemplate(dialect: string): string {
+  return dialect === "oracle" ? "SELECT 1 AS value FROM dual" : "SELECT 1 AS value";
+}
+
+/** How a new query is written: built from parts (a tree the engine renders) or as SQL text (the team's own, per dialect). */
+export type QueryForm = "parts" | "sql";
+
 export const ROUTINE_KINDS = ["function", "procedure"] as const;
 export type RoutineKind = (typeof ROUTINE_KINDS)[number];
 
@@ -136,6 +144,8 @@ export interface DatabaseObjectInput {
   /** Query: the result entity (none: an ad hoc row), the from source (a table key or a view id), its alias and the first fields
    * (querySelect). A query has no schema. */
   entity?: string | null;
+  /** Written as: built from parts (the default) or SQL text. SQL text needs no source and starts with a SELECT in `body` for `dialect`. */
+  form?: QueryForm;
   source?: string;
   alias?: string;
   select?: Field[];
@@ -196,7 +206,9 @@ export function databaseObjectProblems(
           ? `${clash.name} is already a query of this database.`
           : `${clash.name} is already ${CLASH_WORDS[clash.kind === "database-type" ? "database-type" : group]} in ${schemaName ?? defaultSchema ?? "this database"}.`;
   }
-  if (input.kind === "query") {
+  if (input.kind === "query" && input.form === "sql") {
+    if (!(input.body ?? "").trim()) out.body = "Enter the query's SQL.";
+  } else if (input.kind === "query") {
     if (!(input.source ?? "").trim()) out.source = "Pick the table or view the query reads.";
     const alias = (input.alias ?? "").trim();
     if (alias && !IDENTIFIER.test(alias)) out.alias = "Use letters, digits and underscores, not starting with a digit.";
@@ -228,6 +240,17 @@ type Json = Record<string, unknown>;
 /** The new element's document: what its schema requires, plus the dialog's choices (defaults are left out). */
 export function buildDatabaseObject(input: DatabaseObjectInput, newId: () => string): Json {
   const id = newId();
+  if (input.kind === "query" && input.form === "sql") {
+    // One text, for the database's dialect, and the one column the starter selects.
+    return {
+      kind: "query",
+      id,
+      name: input.name.trim(),
+      database: input.database,
+      sql: { [input.dialect || ANY_DIALECT]: input.body ?? "" },
+      columns: [{ name: "value", type: "int32" }],
+    };
+  }
   if (input.kind === "query") {
     const alias = (input.alias ?? "").trim();
     return {

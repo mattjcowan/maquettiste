@@ -4636,6 +4636,49 @@
       ],
       "additionalProperties": false
     },
+    "namedQueryView": {
+      "description": "A named query of a built query's `with`.",
+      "type": "object",
+      "x-order": [
+        "name",
+        "query",
+        "columns",
+        "recursive",
+        "union"
+      ],
+      "properties": {
+        "name": {
+          "description": "The name sources read it by.",
+          "type": "string"
+        },
+        "query": {
+          "description": "The entry as the file writes it, without its repeating part.",
+          "not": {
+            "type": "null"
+          }
+        },
+        "columns": {
+          "description": "Its columns: the anchor's field names in order, with their types, and nullable when either part's field is.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/queryFieldView"
+          }
+        },
+        "recursive": {
+          "description": "The repeating part as the file writes it; left out when the named query is not recursive."
+        },
+        "union": {
+          "description": "How the repeating part's rows are added (`all` or `distinct`); left out when the named query is not recursive.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "query",
+        "columns"
+      ],
+      "additionalProperties": false
+    },
     "namedSignatureRecord": {
       "description": "A named signature of an approval.",
       "type": "object",
@@ -6357,7 +6400,8 @@
         "type",
         "nativeType",
         "codeType",
-        "nullable"
+        "nullable",
+        "description"
       ],
       "properties": {
         "name": {
@@ -6372,10 +6416,7 @@
           ]
         },
         "expression": {
-          "description": "The value as the file writes it (an expression tree).",
-          "not": {
-            "type": "null"
-          }
+          "description": "The value as the file writes it (an expression tree); null (left out) for a declared column of a query written as SQL text."
         },
         "type": {
           "description": "The built-in type keyword, or null when unknown.",
@@ -6401,12 +6442,15 @@
         "nullable": {
           "description": "Whether the value may be null.",
           "type": "boolean"
+        },
+        "description": {
+          "description": "A declared column's description; null (left out) for a select field or without one.",
+          "type": "string"
         }
       },
       "required": [
         "name",
         "attributeId",
-        "expression",
         "type",
         "nativeType",
         "codeType",
@@ -6620,7 +6664,8 @@
         "viewId",
         "name",
         "schema",
-        "on"
+        "on",
+        "namedQuery"
       ],
       "properties": {
         "source": {
@@ -6662,6 +6707,10 @@
         },
         "on": {
           "description": "The join condition as the file writes it, or null."
+        },
+        "namedQuery": {
+          "description": "The name of the named query (of the query's `with`) the source reads; left out otherwise.",
+          "type": "string"
         }
       },
       "required": [
@@ -6705,7 +6754,11 @@
         "category",
         "properties",
         "generation",
-        "boundBy"
+        "boundBy",
+        "form",
+        "texts",
+        "writes",
+        "with"
       ],
       "properties": {
         "id": {
@@ -6731,7 +6784,7 @@
           }
         },
         "from": {
-          "description": "The first source.",
+          "description": "The first source of a built query; null (left out) for a query written as SQL text.",
           "$ref": "#/$defs/querySourceView"
         },
         "joins": {
@@ -6742,7 +6795,7 @@
           }
         },
         "select": {
-          "description": "The select list.",
+          "description": "The select list; for a query written as SQL text, its declared columns (each without an expression).",
           "type": "array",
           "items": {
             "$ref": "#/$defs/queryFieldView"
@@ -6787,7 +6840,7 @@
           }
         },
         "sql": {
-          "description": "The SQL for the database's dialect (`@name` placeholders), with the hidden key columns its collections need, or null when it cannot be rendered there.",
+          "description": "The SQL for the database's dialect (`@name` placeholders), with the hidden key columns its collections need (for a query written as SQL text, its text as written with the white space at both ends removed, a final `;` kept), or null when it cannot be rendered there.",
           "type": [
             "string",
             "null"
@@ -6801,7 +6854,7 @@
           }
         },
         "uses": {
-          "description": "The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads.",
+          "description": "The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order.",
           "type": "array",
           "items": {
             "type": "string"
@@ -6867,6 +6920,31 @@
           "items": {
             "$ref": "#/$defs/boundByView"
           }
+        },
+        "form": {
+          "description": "`sql` for a query written as SQL text; null (left out) for a built query.",
+          "type": "string"
+        },
+        "texts": {
+          "description": "The file's `sql` of a query written as SQL text, as written (dialect name or `*` to text, `:name` placeholders); null (left out) for a built query.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "writes": {
+          "description": "The ids (keys, for a synthesized table) of the tables a query written as SQL text writes, in file order; null (left out) when none.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "with": {
+          "description": "The named queries (a `WITH` clause) of a built query, in order; left out when it has none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/namedQueryView"
+          }
         }
       },
       "required": [
@@ -6874,7 +6952,6 @@
         "name",
         "entityId",
         "parameters",
-        "from",
         "joins",
         "select",
         "where",

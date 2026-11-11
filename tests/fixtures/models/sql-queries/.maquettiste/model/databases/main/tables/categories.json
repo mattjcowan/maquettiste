@@ -1,0 +1,45 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K9Q550000000000000000010",
+  "name": "categories",
+  "database": "01K9Q550000000000000000002",
+  "description": "A category tree: each category names its parent, the top ones none.",
+  "columns": [
+    {
+      "id": "01K9Q550000000000000000011",
+      "name": "id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01K9Q550000000000000000012",
+      "name": "parent_id",
+      "type": "int64"
+    },
+    {
+      "id": "01K9Q550000000000000000013",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K9Q550000000000000000011"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K9Q550000000000000000014",
+      "columns": [
+        "01K9Q550000000000000000012"
+      ],
+      "referencesTable": "01K9Q550000000000000000010",
+      "referencesColumns": [
+        "01K9Q550000000000000000011"
+      ]
+    }
+  ]
+}

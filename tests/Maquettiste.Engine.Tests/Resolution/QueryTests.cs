@@ -157,7 +157,7 @@ public sealed class QueryTests
         Assert.Same(query, model.Find(id));
         Assert.Equal("query", query.Kind);
         Assert.Same(model.Entity("Customer"), query.Entity);
-        Assert.Same(db.Table("customers"), query.From.Table);
+        Assert.Same(db.Table("customers"), query.From!.Table);
         Assert.Equal(("c", "from"), (query.From.Alias, query.From.JoinKind));
         var join = Assert.Single(query.Joins);
         Assert.Equal(("order", "left", "invoices", "public"), (join.Alias, join.JoinKind, join.Name, join.Schema));
@@ -175,13 +175,13 @@ public sealed class QueryTests
         // The column part may be the column key (the attribute id here) or the physical name.
         var fields = query.Select;
         Assert.Equal(["id", "name", "lastNumber", "label", "nameLength"], fields.Select(f => f.Name));
-        Assert.Same(db.Table("customers").Column("id"), fields[0].Expression.TableColumn);
+        Assert.Same(db.Table("customers").Column("id"), fields[0].Expression!.TableColumn);
         Assert.Same(model.Entity("Customer").Attributes.Single(a => a.Name == "name"), fields[1].Attribute);
         Assert.Equal(("uuid", "uuid", false), (fields[0].Type, fields[0].NativeType, fields[0].Nullable));
         Assert.Equal(("string", true), (fields[2].Type, fields[2].Nullable)); // max over the outer side of a left join
         Assert.Equal(("string", true), (fields[3].Type, fields[3].Nullable)); // concat of a nullable email
         Assert.Equal(("int32", false), (fields[4].Type, fields[4].Nullable));
-        Assert.Equal("call", fields[1].Expression.Node);
+        Assert.Equal("call", fields[1].Expression!.Node);
         Assert.Equal("ilike", query.Where!.And[0].Op);
         Assert.Same(query.Parameters[1], query.Where.And[1].Right!.Param);
         Assert.Equal("not", query.Where.And[2].Node);
@@ -394,9 +394,9 @@ public sealed class QueryTests
         Assert.DoesNotContain(model.Diagnostics, d => d.ElementId == id);
         var query = model.Db("main").Queries.Single();
 
-        Assert.Same(model.Db("main").Views.Single(), query.From.View);
+        Assert.Same(model.Db("main").Views.Single(), query.From!.View);
         Assert.Equal(("string", true), (query.Select[0].Type, query.Select[0].Nullable));
-        Assert.Equal("customer_id", query.Select[1].Expression.ColumnName);
+        Assert.Equal("customer_id", query.Select[1].Expression!.ColumnName);
         Assert.Equal("""
             SELECT v.number AS number, i.customer_id AS customer, CASE WHEN i.total IS NULL THEN 'none' ELSE 'some' END AS flag, CAST(i.total AS double precision) AS total, NULL AS nothing
             FROM public.open_invoices v
@@ -447,7 +447,7 @@ public sealed class QueryTests
         Assert.Equal("01J92P0V0FJ23CGSNKM7P1W5V7", query.EntityId);
         Assert.Equal(["customerId", "statuses", "offset", "limit"], query.SqlParameters);
         Assert.StartsWith("SELECT i.id AS id, i.number AS number", query.Sql, StringComparison.Ordinal);
-        Assert.Equal(("01J92P0V1T0J6RH4MY9H81NYB4", "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4", "from"), (query.From.Source, query.From.TableKey, query.From.Kind));
+        Assert.Equal(("01J92P0V1T0J6RH4MY9H81NYB4", "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4", "from"), (query.From!.Source, query.From.TableKey, query.From.Kind));
         Assert.Equal("and", query.Where!.Value.EnumerateObject().Single().Name);
         Assert.Equal("desc", query.OrderBy[0].GetProperty("direction").GetString());
         var lines = Assert.Single(query.Collections);
@@ -455,7 +455,7 @@ public sealed class QueryTests
         Assert.Equal(["mq_keys0"], lines.SqlParameters);
         Assert.Equal("i.01J92P0V0Q9EK961M5HAQ3C5MY", Assert.Single(lines.Keys).Outer);
         Assert.Contains("01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4", query.Uses);
-        Assert.Equal(JsonValueKind.Object, query.Select[0].Expression.ValueKind);
+        Assert.Equal(JsonValueKind.Object, query.Select[0].Expression!.Value.ValueKind);
 
         var records = ResolvedRecords.Entries(model, "queries", null).Select(e => (QueryRecord)e.Project()).OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
         Assert.Equal(["FindCustomersWithIssuedInvoices", "InvoicesByCustomer", "RevenueByMonth"], records.Select(r => r.Name));

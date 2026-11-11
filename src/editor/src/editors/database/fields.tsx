@@ -443,6 +443,8 @@ export function QueryFields(props: FormProps) {
   const index = useIndex();
   const rows = index.data ?? [];
   const count = (member: string) => (Array.isArray(rec[member]) ? (rec[member] as unknown[]).length : 0);
+  // A query written as SQL text has declared columns and the tables it reads and writes, not a select list and sources.
+  const sqlText = rec.sql !== undefined && rec.sql !== null;
   const fields = count("select");
   const sources = 1 + count("joins");
   const words = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -450,10 +452,18 @@ export function QueryFields(props: FormProps) {
   return (
     <div className="flex flex-col gap-2" data-testid="query-fields">
       <DatabaseLine json={props.json} />
-      <p className="text-12 text-secondary">
-        {`Each row has ${words(fields, "field", "fields")}`}; {words(sources, "source", "sources")}; {words(count("parameters"), "parameter", "parameters")};{" "}
-        {words(count("collections"), "collection", "collections")}. The query&apos;s editor edits them.
-      </p>
+      {sqlText ? (
+        <p className="text-12 text-secondary">
+          {`Written as SQL text. Each row has ${words(count("columns"), "column", "columns")}`}; reads {words(count("reads"), "table", "tables")}
+          {count("writes") ? `, writes ${words(count("writes"), "table", "tables")}` : ""}; {words(count("parameters"), "parameter", "parameters")}. The
+          query&apos;s editor edits them.
+        </p>
+      ) : (
+        <p className="text-12 text-secondary">
+          {`Each row has ${words(fields, "field", "fields")}`}; {words(sources, "source", "sources")}; {words(count("parameters"), "parameter", "parameters")};{" "}
+          {words(count("collections"), "collection", "collections")}. The query&apos;s editor edits them.
+        </p>
+      )}
       <Button
         size="sm"
         variant="link"

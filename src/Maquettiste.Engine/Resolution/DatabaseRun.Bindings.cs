@@ -298,8 +298,17 @@ internal sealed partial class DatabaseRun
                 _b.SourceName = view.Name;
                 _deps.AddRange(view.Dependencies);
             }
-            else if (queries.TryGetValue(key, out var query))
+            else if (queries.TryGetValue(key, out var query) && query.Form == "sql" && (query.Writes.Count > 0 || query.Select.Count == 0))
             {
+                // A query written as SQL text that changes data or returns no rows is no source (sql-queries-design.md decision 15).
+                Report("MQ4044", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' reads query '{query.Name}', which is written as SQL text and {(query.Writes.Count > 0 ? "writes tables" : "declares no columns")}: an entity reads only through a query that returns rows and changes none.", "/source");
+                _b.SourceName = query.Name;
+                _deps.AddRange(query.Dependencies);
+            }
+            else if (query is not null)
+            {
+                if (query.Form == "sql" && run._dialect == "sqlserver")
+                    CheckNestable(query);
                 _b.SourceKind = "query";
                 _b.SourceQuery = query;
                 _b.SourceName = query.Name;
@@ -310,6 +319,22 @@ internal sealed partial class DatabaseRun
                 Report("MQ4044", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' reads '{key}', which {WhatIs(key, tablesOnly: false)}.", "/source");
                 _b.SourceName = key;
             }
+        }
+
+        /// <summary>
+        /// MQ4097: SQL Server takes a derived table that neither starts with WITH nor ends with an ORDER BY outside parentheses without
+        /// OFFSET, FETCH or TOP; the binding's select wraps the query's text in one (sql-queries-design.md decision 15).
+        /// </summary>
+        private void CheckNestable(RQuery query)
+        {
+            if (query.SqlText is not { } text)
+                return;
+            var scan = Rendering.SqlText.Scan(QuerySql.Statement(text), Dialect.SqlServer);
+            var problem = scan.FirstWord == "WITH" ? "starts with WITH"
+                : scan.OrderBy && !scan.OffsetFetchOrTop ? "has an ORDER BY outside parentheses with no OFFSET, FETCH or TOP"
+                : null;
+            if (problem is not null)
+                Report("MQ4097", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' reads query '{query.Name}', whose SQL text {problem}, which SQL Server cannot nest as a derived table: rewrite the text, or read the query some other way.", "/source");
         }
 
         private TableBuild? FindTable(string key) =>

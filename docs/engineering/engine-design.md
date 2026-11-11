@@ -928,9 +928,11 @@ the editor's recorded mocks stay valid; the server always sends them. The MCP to
 database types and SQL objects: the `query`, a query over the database's tables and views written as data. Tables, views and
 routines are the physical model and generate the repository layer; entities are the service layer's shapes. An entity is
 filled by its simple one-table mapping or by a query whose result shape it is, and which generates the repository method that
-materialises it. A query is a JSON tree an agent edits and a pack walks per dialect, never SQL text; the only opaque SQL is the
-`sql` expression, one expression per dialect. Entities and tables stay separable: tables without entities, entities without
+materialises it. A built query is a JSON tree an agent edits and a pack walks per dialect; inside it the only opaque SQL is the
+`sql` expression, one expression per dialect (since 2026-11-11 a query may instead be written whole as SQL text, below). Entities and tables stay separable: tables without entities, entities without
 tables, and many-to-many between them through queries.
+
+*2026-11-11:* a query may also be written as SQL text, and a built query may start with named queries (WITH), recursive ones included; see [sql-queries-design.md](sql-queries-design.md).
 
 - `query` (`queries/`, `Query`, `query.json`, scope `each query`, template variable `query`): the annotations, `name`,
   `database` and `source` a view has, but no `schema` (a query creates nothing in the database); `entity` (optional: the

@@ -1,12 +1,13 @@
 // SQL text per dialect, one code editor per dialect the document holds, with Add dialect for the others: a view's, a routine's
 // and a SQL object's `body`, a database type's `definition`. A text is saved when its editor loses focus, on Ctrl+S or with
 // Save, one undo step each; adding or removing a dialect is one step too.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { Badge, EmptyState } from "@/components/ui/misc";
 import { CodeView } from "@/code";
+import type { CodeHighlight, CodeMarker } from "@/code/CodeEditor";
 import { DIALECTS } from "@/inspector/fields";
 import { useElements } from "@/api/queries";
 import { ANY_DIALECT } from "@/explorer/databaseCreate";
@@ -34,9 +35,11 @@ export interface DialectBodiesProps {
   required: boolean;
   /** Shown when an optional member holds no dialect. */
   empty?: { title: string; text: string };
+  /** Marks for one dialect's text as it is typed (a query's `:name` placeholders), and a line shown under its editor. */
+  analyze?: (dialect: string, text: string) => { markers: CodeMarker[]; highlights: CodeHighlight[]; summary?: ReactNode };
 }
 
-export function DialectBodies({ ctx, member, prefix, noun, intro, template, required, empty }: DialectBodiesProps) {
+export function DialectBodies({ ctx, member, prefix, noun, intro, template, required, empty, analyze }: DialectBodiesProps) {
   const doc = ctx.json as unknown as Rec;
   const texts = (doc[member] as Record<string, string> | undefined) ?? {};
   const dialects = dialectKeys(doc, member);
@@ -84,6 +87,7 @@ export function DialectBodies({ ctx, member, prefix, noun, intro, template, requ
           dialect={d}
           saved={texts[d] ?? ""}
           removable={!required || dialects.length > 1}
+          analyze={analyze}
           onCommit={(text) => update((j) => setDialectText(j, member, d, text))}
           onRemove={() => update((j) => void removeDialectText(j, member, d, required))}
         />
@@ -101,6 +105,7 @@ function BodySection({
   dialect,
   saved,
   removable,
+  analyze,
   onCommit,
   onRemove,
 }: {
@@ -112,6 +117,7 @@ function BodySection({
   dialect: string;
   saved: string;
   removable: boolean;
+  analyze?: DialectBodiesProps["analyze"];
   onCommit: (text: string) => void;
   onRemove: () => void;
 }) {
@@ -128,6 +134,7 @@ function BodySection({
     setRevision((r) => r + 1);
   }, [saved]);
   const dirty = text !== saved;
+  const found = analyze?.(dialect, text);
   const empty = !text.trim();
   const commit = () => {
     const now = textRef.current;
@@ -166,11 +173,14 @@ function BodySection({
           path={path}
           value={text}
           revision={revision}
+          markers={found?.markers}
+          highlights={found?.highlights}
           onChange={setText}
           onBlur={commit}
           onSave={commit}
         />
       </div>
+      {found?.summary ?? null}
     </section>
   );
 }
