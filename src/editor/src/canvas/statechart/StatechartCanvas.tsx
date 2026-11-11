@@ -54,10 +54,11 @@ function cssColor(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-export function StatechartCanvas({ pc }: { pc: ProcessContext }) {
+/** `panelOpen`: whether the simulation panel below is open (null before it reports); a change fits the chart again. */
+export function StatechartCanvas({ pc, panelOpen = null }: { pc: ProcessContext; panelOpen?: boolean | null }) {
   return (
     <ReactFlowProvider>
-      <ChartCanvas pc={pc} />
+      <ChartCanvas pc={pc} panelOpen={panelOpen} />
     </ReactFlowProvider>
   );
 }
@@ -87,7 +88,7 @@ interface MenuAt {
   id: string;
 }
 
-function ChartCanvas({ pc }: { pc: ProcessContext }) {
+function ChartCanvas({ pc, panelOpen }: { pc: ProcessContext; panelOpen: boolean | null }) {
   const services = useServices();
   const { store, drafts, queryClient } = services;
   const { process, id: processId } = pc;
@@ -318,6 +319,40 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
     });
     return () => cancelAnimationFrame(frame);
   }, [fitPending, flow, programmatic, persistViewport]);
+
+  // The simulation panel takes about half the chart's height. Opening it fits the whole chart into what is left, so every
+  // state the simulation lights stays in sight; closing it goes back to the view from before, unless the chart was moved
+  // in between. Neither view is saved as the diagram's (only the person's own pan and zoom is).
+  const panelSeen = useRef(panelOpen);
+  const beforePanel = useRef<{ before: Viewport; fitted: Viewport } | null>(null);
+  const canFit = ready && !empty && chart.order.length > 0;
+  const canFitRef = useRef(canFit);
+  canFitRef.current = canFit;
+  useEffect(() => {
+    const was = panelSeen.current;
+    panelSeen.current = panelOpen;
+    if (was === null || panelOpen === null || was === panelOpen) return;
+    // Two frames: the first runs before the browser lays out the new size, the second after the canvas measured it.
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        if (!canFitRef.current) return;
+        if (panelOpen) {
+          const before = flow.getViewport();
+          programmatic();
+          void flow.fitView({ padding: 0.1, duration: 0, maxZoom: 1.25 }).then(() => {
+            beforePanel.current = { before, fitted: flow.getViewport() };
+          });
+          return;
+        }
+        const kept = beforePanel.current;
+        beforePanel.current = null;
+        if (!kept || !sameViewport(kept.fitted, flow.getViewport())) return;
+        programmatic();
+        void flow.setViewport(kept.before, { duration: 0 });
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [panelOpen, flow, programmatic]);
 
   // ------------------------------------------------------------------ selection
   const external = useProcessSelection(processId);

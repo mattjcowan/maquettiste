@@ -85,7 +85,7 @@ const isField = (el: EventTarget | null) => el instanceof HTMLElement && /^(INPU
 /** Whether the panel is expanded, kept per browser. */
 const PANEL_OPEN_KEY = "mq.simulation.open";
 
-export function SimulationPanel({ pc }: { pc: ProcessContext }) {
+export function SimulationPanel({ pc, onOpenChange }: { pc: ProcessContext; onOpenChange?: (open: boolean) => void }) {
   const { id, process, actors, actorNames } = pc;
   const { store, drafts } = useServices();
   const qc = useQueryClient();
@@ -102,6 +102,8 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
       return value;
     });
   }, []);
+  // The chart above fits the room the panel leaves (ChartTab).
+  useEffect(() => onOpenChange?.(!collapsed), [collapsed, onOpenChange]);
   const [closed, setClosed] = useState<ReadonlySet<SectionId>>(new Set());
   const [recording, setRecording] = useState<{ name: string } | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);

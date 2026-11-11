@@ -31,6 +31,9 @@ one.
 - **A team upgrades together.** An older engine refuses a file that holds a `call` or an invoke's `operation`. The file format
   version stays 1.
 - **`csharp-dapper` output is unchanged.** It treats a call-only action as a stub, as before. `process-docs` shows the new links.
+- **The chart fits the simulation panel.** Opening the simulation panel below a process chart now fits the whole chart into
+  the space left above it. Closing the panel brings back the view you had before, unless you moved the chart meanwhile. Neither
+  view is saved in the process diagram.
 
 ## 0.24.0 (2026-11-10)
 

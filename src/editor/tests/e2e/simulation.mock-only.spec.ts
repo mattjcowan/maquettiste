@@ -243,3 +243,43 @@ test("Record from simulation in New scenario… opens the panel recording under 
   await expect(panel.getByTestId("simulation-recording")).toHaveCount(0);
   await expect(side.getByTestId("explorer-row-Recorded")).toContainText("1 step");
 });
+
+test("opening the panel fits the whole chart above it; closing it goes back to the view from before", async ({ page }) => {
+  const side = await processes(page);
+  await side.getByTestId("explorer-row-Purchase approval").dblclick();
+  const editor = page.getByTestId("process-editor");
+  const panel = editor.getByTestId("simulation-panel");
+  await expect(panel).toBeVisible();
+  await page.keyboard.press("Alt+Shift+J");
+  await page.keyboard.press("Alt+Shift+P");
+  const toggle = panel.getByRole("button", { name: /simulation panel/ }).first();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(editor.locator(".react-flow__node").first()).toBeVisible();
+  const transform = () => editor.locator(".react-flow__viewport").getAttribute("style");
+  // The view once the chart has settled (the same over two reads).
+  let before: string | null = null;
+  await expect
+    .poll(async () => {
+      const a = await transform();
+      await page.waitForTimeout(150);
+      before = await transform();
+      return a === before;
+    })
+    .toBe(true);
+  // Every state lies inside the chart's area, which the open panel shrinks.
+  const allInside = () =>
+    editor.evaluate((root) => {
+      const pane = root.querySelector('[data-testid="statechart"] .react-flow')!.getBoundingClientRect();
+      const nodes = Array.from(root.querySelectorAll('[data-testid="statechart"] .react-flow__node'), (n) => n.getBoundingClientRect());
+      return (
+        nodes.length > 0 && nodes.every((r) => r.top >= pane.top - 1 && r.bottom <= pane.bottom + 1 && r.left >= pane.left - 1 && r.right <= pane.right + 1)
+      );
+    });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect.poll(allInside).toBe(true);
+  await expect.poll(transform).not.toBe(before);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(transform).toBe(before);
+});
