@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## Unreleased
+## 0.24.0 (2026-11-10)
 
 - **A reference for the resolved model.** The resolved model is what code generation sees, and what
   `model export --resolved`, `GET /api/model/resolved` and the MCP tool `get_resolved_model` return. It now has a contract: a
