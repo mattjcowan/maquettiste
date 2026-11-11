@@ -5,6 +5,8 @@ import { useIndex } from "@/api/queries";
 import type { ModelJson } from "@/api/types";
 import { Field, Input } from "@/components/ui/input";
 import { CommonFields } from "@/inspector/fields";
+import { useProblems } from "../process/shared";
+import { FiresSection } from "./FiresSection";
 import { VerbPicker } from "@/verbs/VerbsSettings";
 import { JsonTab, References } from "@/inspector/Inspector";
 import { indexLookup } from "@/model/index";
@@ -40,6 +42,7 @@ function OperationBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<t
   const subjectRow = typeof subjectId === "string" ? indexLookup(index.data).byId.get(subjectId) : undefined;
   const facts = operationFacts(ctx.json, subjectRow ? displayName(subjectRow) : undefined);
   const form = { ...ctx, id: domIdOf(ctx.id) };
+  const problems = useProblems(ctx.id, draft?.status === "invalid" ? ctx.diagnostics : []);
   return (
     <EditorLayout
       ctx={ctx}
@@ -80,6 +83,13 @@ function OperationBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<t
                   }
                 />
               </Field>
+              <FiresSection
+                operation={ctx.id}
+                json={ctx.json as Rec}
+                subject={typeof subjectId === "string" ? subjectId : undefined}
+                problems={problems}
+                edit={(update) => ctx.edit((j) => update(j as Rec))}
+              />
             </div>
           ),
         },

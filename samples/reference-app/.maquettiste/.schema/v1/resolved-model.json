@@ -126,7 +126,8 @@
         "description",
         "stereotypes",
         "properties",
-        "sets"
+        "sets",
+        "call"
       ],
       "properties": {
         "id": {
@@ -145,7 +146,7 @@
           ]
         },
         "isStub": {
-          "description": "Whether the action has neither an expression nor sets.",
+          "description": "Whether the action has neither an expression nor sets; the host implements it. A call is that work, recorded on `call`; a call-only action is still a stub.",
           "type": "boolean"
         },
         "raises": {
@@ -191,6 +192,10 @@
           "items": {
             "$ref": "#/$defs/setRecord"
           }
+        },
+        "call": {
+          "description": "The operation the action calls and the inputs it gives; null, and left out of the JSON, when it calls none.",
+          "$ref": "#/$defs/callRecord"
         }
       },
       "required": [
@@ -958,6 +963,61 @@
         "reads",
         "writes",
         "constants"
+      ],
+      "additionalProperties": false
+    },
+    "callInputRecord": {
+      "description": "One input member of a called operation and the value the call gives it.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "member",
+        "value"
+      ],
+      "properties": {
+        "id": {
+          "description": "The input's id.",
+          "type": "string"
+        },
+        "member": {
+          "description": "The id of the operation's input member.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value: its text printed from current names, its type and its tree, typed against the member as a set's value is typed against its attribute.",
+          "$ref": "#/$defs/expressionRecord"
+        }
+      },
+      "required": [
+        "id",
+        "member",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "callRecord": {
+      "description": "The operation an action calls, and a value for some of its inputs. When the action runs, the team's system asks for the operation to be run with these inputs; inputs not listed are the team's.",
+      "type": "object",
+      "x-order": [
+        "operation",
+        "inputs"
+      ],
+      "properties": {
+        "operation": {
+          "description": "The id of the operation called.",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "The inputs the call gives, in file order. An input is left out when its member doesn't resolve or is not an input of the operation, when it names a member an earlier input names, when the member can't be given (a file, a list, a record key of an entity with a composite key or no key, or a type expressions lack; MQ9025), or when its value doesn't type (MQ3103).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callInputRecord"
+          }
+        }
+      },
+      "required": [
+        "operation",
+        "inputs"
       ],
       "additionalProperties": false
     },
@@ -3140,7 +3200,8 @@
         "description",
         "stereotypes",
         "properties",
-        "verb"
+        "verb",
+        "firedBy"
       ],
       "properties": {
         "id": {
@@ -3198,6 +3259,13 @@
         "verb": {
           "description": "The key of the verb the event names; null, and left out of the JSON, when it names none.",
           "type": "string"
+        },
+        "firedBy": {
+          "description": "The ids of the operations whose `fires` names the event, in the resolved model's order of operations: when an operation's work is done, the team's system sends the event. null, and left out of the JSON, when no operation fires it.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -3962,7 +4030,8 @@
         "displayName",
         "description",
         "stereotypes",
-        "properties"
+        "properties",
+        "operation"
       ],
       "properties": {
         "id": {
@@ -3974,7 +4043,7 @@
           "type": "string"
         },
         "type": {
-          "description": "`service` or `process`.",
+          "description": "`service`, `process` or `human-task`.",
           "type": "string"
         },
         "process": {
@@ -4017,6 +4086,10 @@
           "description": "The custom properties.",
           "type": "object",
           "additionalProperties": {}
+        },
+        "operation": {
+          "description": "The id of the operation whose run does a service step's work; null, and left out of the JSON, when the step names none.",
+          "type": "string"
         }
       },
       "required": [
@@ -5355,7 +5428,9 @@
         "properties",
         "generation",
         "guards",
-        "verb"
+        "verb",
+        "calledBy",
+        "invokedBy"
       ],
       "properties": {
         "id": {
@@ -5496,6 +5571,20 @@
         "verb": {
           "description": "The key of the verb the operation names; null, and left out of the JSON, when it names none.",
           "type": "string"
+        },
+        "calledBy": {
+          "description": "The ids of the actions that call the operation, in the order of processes, then in file order; null, and left out of the JSON, when none does.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "invokedBy": {
+          "description": "The ids of the service steps (invokes) that name the operation, in the order of processes, then in file order; null, and left out of the JSON, when none does.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [

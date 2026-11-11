@@ -3968,16 +3968,18 @@ export interface components {
         };
         /** @description What `previewExpression` previews: a stored expression (`at`), or `text` at a `site`. */
         ExpressionPreviewRequest: {
-            /** @description The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or `trigger-set` and `attribute`. A named trigger point's sites, and text for it, read what every entity it covers holds under one id. */
+            /** @description The id of the element, or of the check, guard, derived attribute, action, set, call input or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for a call's input not yet saved names the action, with `site` `input` and `member`; text for an inline right not yet saved names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or `trigger-set` and `attribute`. A named trigger point's sites, and text for it, read what every entity it covers holds under one id. */
             element: string;
             /** @description The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text. */
             at?: string | null;
             /** @description Text to preview instead of a stored expression; needs `site`. */
             text?: string | null;
-            /** @description With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`), `trigger-set` (a value a trigger point sets, with `attribute`) or `approval` (a named signature's `when` not saved yet, with `element` its process: the object under `subject`, the context and `in_state`, but no payload and no `current_actor()`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form. */
+            /** @description With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `input` (a value an action's call gives an input of the operation, with `member`; it reads what a set's value reads), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`), `trigger-set` (a value a trigger point sets, with `attribute`) or `approval` (a named signature's `when` not saved yet, with `element` its process: the object under `subject`, the context and `in_state`, but no payload and no `current_actor()`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, input, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form. */
             site?: string | null;
             /** @description With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103). */
             attribute?: string | null;
+            /** @description With `site` `input`, the id of the operation's input member the value is for, whose type the value must fit (MQ3103); a record key member types as its entity's key attribute. A member the called operation doesn't have is a bad request. */
+            member?: string | null;
             /** @description A database id or name, choosing the binding an entity's expression lowers to SQL through. */
             database?: string | null;
             /** @description A lifecycle id or name: a named right's condition, or text for it, previews as if the right were used there (rights-design.md section 8). Absent, it previews in the scope of all the lifecycles that use the right; a named right with no use needs one. */
@@ -4707,6 +4709,8 @@ export interface components {
             transitions: string[];
             /** @description The key of the verb the event names (verbs-design.md decision 11). Left out when it names none. */
             verb?: string;
+            /** @description The ids of the operations whose `fires` names the event, in the resolved model's order of operations (processes-operations-design.md decision 1): when an operation's work is done, the team's system sends the event. Left out when no operation fires it. */
+            firedBy?: string[];
         };
         /** @description A guard. */
         GuardRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -4725,12 +4729,29 @@ export interface components {
             id: string;
             name: string;
             expression: string | null;
-            /** @description True only when the action has neither an expression nor sets. */
+            /** @description Whether the action has neither an expression nor sets; the host implements it. A call is that work, recorded on `call`; a call-only action is still a stub. */
             isStub: boolean;
             raises: string[];
             usedBy: string[];
             /** @description The values the action sets on the object, in file order (object-effects-design.md decision 1); left out when it sets none. */
             sets?: components["schemas"]["SetRecord"][];
+            /** @description The operation the action calls and the inputs it gives (processes-operations-design.md decision 5); left out when it calls none. */
+            call?: components["schemas"]["CallRecord"];
+        };
+        /** @description The operation an action calls, and a value for some of its inputs (processes-operations-design.md decisions 5 to 8). When the action runs, the team's system asks for the operation to be run with these inputs; inputs not listed are the team's. */
+        CallRecord: {
+            /** @description The id of the operation called. */
+            operation: string;
+            /** @description The inputs the call gives, in file order. An input is left out when its member doesn't resolve or is not an input of the operation, when it names a member an earlier input names, when the member can't be given (a file, a list, a record key of an entity with a composite key or no key, or a type expressions lack; MQ9025), or when its value doesn't type (MQ3103). */
+            inputs: components["schemas"]["CallInputRecord"][];
+        };
+        /** @description One input member of a called operation and the value the call gives it (processes-operations-design.md decision 6). */
+        CallInputRecord: {
+            id: string;
+            /** @description The id of the operation's input member. */
+            member: string;
+            /** @description The value, typed against the member, as `setRecord.value` is typed against its attribute. */
+            value: components["schemas"]["ExpressionRecord"];
         };
         /** @description One attribute of the object an action sets, and its value (object-effects-design.md decisions 1 to 3). */
         SetRecord: {
@@ -4747,6 +4768,8 @@ export interface components {
             process: string | null;
             actors: string[];
             state: string;
+            /** @description The id of the operation whose run does a service step's work (processes-operations-design.md decision 11). Left out when the step names none. */
+            operation?: string;
         };
         /**
          * @description A signature gate on a transition, or a library's gate policy. A gate with `stages` is an approval (signoff-design.md decision 1):
@@ -5085,6 +5108,10 @@ export interface components {
             guards?: components["schemas"]["OperationGuardRecord"][];
             /** @description The key of the verb the operation names (verbs-design.md decision 13). Left out when it names none. */
             verb?: string;
+            /** @description The ids of the actions that call the operation (processes-operations-design.md section 9), in the order of processes, then in file order. Left out when none. */
+            calledBy?: string[];
+            /** @description The ids of the service steps (invokes) that name the operation, in the order of processes, then in file order. Left out when none. */
+            invokedBy?: string[];
         };
         /**
          * @description A verb of `model.verbs` (verbs-design.md section 6). Verb records appear only when the project uses verbs: it has a verb
@@ -7315,7 +7342,7 @@ export interface components {
         ActionRun: {
             action: components["schemas"]["Ulid"];
             /**
-             * @description `expression` when its JavaScript ran (its sets too, when it has any), `sets` when it has only sets and they ran, `stub` when it has neither.
+             * @description `expression` when its JavaScript ran (its sets too, when it has any), `sets` when it has only sets and they ran, `stub` when it has neither (a call-only action too; its call is in `call`).
              * @enum {string}
              */
             source: "expression" | "sets" | "stub";
@@ -7327,6 +7354,16 @@ export interface components {
              *     the object and context as they were when the action started, then applied together. Left out when the action has no sets.
              */
             sets?: {
+                [key: string]: unknown;
+            };
+            /** @description The operation the action called, recorded, not run (processes-operations-design.md decision 12). Left out when the action has no call. A call-only action's source stays `stub`. */
+            call?: components["schemas"]["CallRun"];
+        };
+        /** @description A call the simulator recorded and did not run: the operation's guards don't run, its events are not sent, no outcome is chosen, and nothing else changes. */
+        CallRun: {
+            operation: components["schemas"]["Ulid"];
+            /** @description The input values the call gives, by member id, worked out from the object and context as they were when the action started (as a set's value is). A value that fails to work out is null, with a note in the trace's notes. */
+            inputs: {
                 [key: string]: unknown;
             };
         };
@@ -11268,6 +11305,8 @@ export interface components {
             type: "process" | "service" | "human-task";
             /** @description The sub-process, for type process. */
             process?: components["schemas"]["id"];
+            /** @description For type service: the operation whose run does the step's work. How the step starts it and with what inputs, how its outcomes and errors map to the step's done and error moves, and timeouts are the team's. Only on a service step (MQ9025). */
+            operation?: components["schemas"]["id"];
             /**
              * @description Who may complete a human task.
              * @default []
@@ -11477,6 +11516,30 @@ export interface components {
             properties?: components["schemas"]["properties"];
         };
         /**
+         * Call input
+         * @description One input member of the called operation and the value the call gives it.
+         */
+        callInput: {
+            id: components["schemas"]["id"];
+            /** @description An input member of the called operation, once per call; not one a call can't give: a file member, a collection member, a record key of an entity with a composite key or no key, or a member with no type the expression language has values of, such as binary, float or a value object (MQ9025). */
+            member: components["schemas"]["id"];
+            /** @description The value, worked out from the object and context as they were when the action started (as a set's value is); it reads what a set's value reads and fits the member's type (MQ3103). A record key member types as its entity's key attribute. Null fits any member, required or not, as for a set's value, and the input still counts as given (no MQ9026). */
+            value: components["schemas"]["expr"];
+        };
+        /**
+         * Call
+         * @description The operation the action calls, and a value for any of its inputs. When the action runs, the team's system asks for the operation to be run with the listed inputs set to the listed values; when, whether the move waits, retries, and what each outcome or error means are the team's. The simulator runs nothing: it records the call in the trace. A call-only action is still a stub. Not in a library (MQ9020).
+         */
+        call: {
+            /** @description The operation called. For a record-level operation whose subject the process governs, the record is the process's object; otherwise the model does not state the record (MQ3032). */
+            operation: components["schemas"]["id"];
+            /**
+             * @description Values for some input members of the operation. Inputs not listed are the team's: a required one without a default is MQ9026.
+             * @default []
+             */
+            inputs?: components["schemas"]["callInput"][];
+        };
+        /**
          * Subject
          * @description An entity the process governs, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.
          */
@@ -11537,7 +11600,7 @@ export interface components {
         };
         /**
          * Action
-         * @description A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.
+         * @description A named effect: context changes (expression), values set on the object (sets), an operation it calls (call), any mix of them, or none as a stub.
          */
         action: {
             id: components["schemas"]["id"];
@@ -11550,6 +11613,7 @@ export interface components {
              * @default []
              */
             sets?: components["schemas"]["set"][];
+            call?: components["schemas"]["call"];
             /**
              * @description Internal events queued after the action.
              * @default []
@@ -12027,7 +12091,7 @@ export interface components {
                 };
                 /**
                  * Action
-                 * @description A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.
+                 * @description A named effect: context changes (expression), values set on the object (sets), an operation it calls (call), any mix of them, or none as a stub.
                  */
                 action: {
                     id: components["schemas"]["id"];
@@ -12040,6 +12104,7 @@ export interface components {
                      * @default []
                      */
                     sets?: components["schemas"]["set"][];
+                    call?: components["schemas"]["call"];
                     /**
                      * @description Internal events queued after the action.
                      * @default []
@@ -12063,6 +12128,30 @@ export interface components {
                     value: components["schemas"]["expr"];
                 };
                 /**
+                 * Call
+                 * @description The operation the action calls, and a value for any of its inputs. When the action runs, the team's system asks for the operation to be run with the listed inputs set to the listed values; when, whether the move waits, retries, and what each outcome or error means are the team's. The simulator runs nothing: it records the call in the trace. A call-only action is still a stub. Not in a library (MQ9020).
+                 */
+                call: {
+                    /** @description The operation called. For a record-level operation whose subject the process governs, the record is the process's object; otherwise the model does not state the record (MQ3032). */
+                    operation: components["schemas"]["id"];
+                    /**
+                     * @description Values for some input members of the operation. Inputs not listed are the team's: a required one without a default is MQ9026.
+                     * @default []
+                     */
+                    inputs?: components["schemas"]["callInput"][];
+                };
+                /**
+                 * Call input
+                 * @description One input member of the called operation and the value the call gives it.
+                 */
+                callInput: {
+                    id: components["schemas"]["id"];
+                    /** @description An input member of the called operation, once per call; not one a call can't give: a file member, a collection member, a record key of an entity with a composite key or no key, or a member with no type the expression language has values of, such as binary, float or a value object (MQ9025). */
+                    member: components["schemas"]["id"];
+                    /** @description The value, worked out from the object and context as they were when the action started (as a set's value is); it reads what a set's value reads and fits the member's type (MQ3103). A record key member types as its entity's key attribute. Null fits any member, required or not, as for a set's value, and the input still counts as given (no MQ9026). */
+                    value: components["schemas"]["expr"];
+                };
+                /**
                  * Invoke
                  * @description Work a state starts on entry: a sub-process, a service task or a human task.
                  */
@@ -12074,6 +12163,8 @@ export interface components {
                     type: "process" | "service" | "human-task";
                     /** @description The sub-process, for type process. */
                     process?: components["schemas"]["id"];
+                    /** @description For type service: the operation whose run does the step's work. How the step starts it and with what inputs, how its outcomes and errors map to the step's done and error moves, and timeouts are the team's. Only on a service step (MQ9025). */
+                    operation?: components["schemas"]["id"];
                     /**
                      * @description Who may complete a human task.
                      * @default []
@@ -13319,7 +13410,7 @@ export interface components {
              */
             excludes?: components["schemas"]["idList"];
             /**
-             * @description Process event ids, of any process, that the operation fires.
+             * @description Process event ids, of any process, that the operation fires: when its work is done, the team's system sends each listed event to a process instance; when the operation has a record-level subject that the event's lifecycle governs, that instance is the record's own. On which outcome, in what order, before or after the data change, in which transaction and with what retries are the team's. A read operation fires none (MQ3030); the subjects should line up (MQ3032) and the input should supply the event's payload (MQ3044).
              * @default []
              */
             fires?: components["schemas"]["idList"];

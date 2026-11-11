@@ -20,6 +20,8 @@ export interface InvokeDoc {
   displayName?: string;
   type?: (typeof INVOKE_TYPES)[number];
   process?: string;
+  /** The operation a service step is done by (processes-operations-design.md decision 4). */
+  operation?: string;
   actors?: string[];
   description?: unknown;
 }
@@ -147,6 +149,19 @@ export interface SetDoc {
   value: Json;
 }
 
+/** One input a call gives: the operation's input member and a value in the expression language. */
+export interface CallInputDoc {
+  id: string;
+  member: string;
+  value: Json;
+}
+
+/** The operation an action calls and the inputs it gives (processes-operations-design.md decision 5). */
+export interface CallDoc {
+  operation: string;
+  inputs?: CallInputDoc[];
+}
+
 export interface ExpressionDoc {
   id: string;
   name: string;
@@ -154,6 +169,8 @@ export interface ExpressionDoc {
   expression?: string;
   /** What an action sets on the object; actions only. */
   sets?: SetDoc[];
+  /** The operation an action calls; actions only. */
+  call?: CallDoc;
   raises?: string[];
   description?: unknown;
 }

@@ -18,7 +18,8 @@ public sealed record ExpressionPreviewRequest
 {
     /// <summary>
     /// The element's id, or the id of the check, guard, derived attribute or set that holds the expression (a sub-element id names its own
-    /// site, so <see cref="At"/> may be left out); for text at a <c>set</c> site, the id of the action.
+    /// site, so <see cref="At"/> may be left out); for text at a <c>set</c> or <c>input</c> site, the id of the action. A call input's id names
+    /// its stored value.
     /// </summary>
     public required string Element { get; init; }
 
@@ -34,14 +35,21 @@ public sealed record ExpressionPreviewRequest
 
     /// <summary>
     /// With <see cref="Text"/>: <c>check</c> (a table, stereotype, entity or constraint), <c>value</c> (an entity's derived value, of any
-    /// type), <c>guard</c> (a process or an operation) or <c>set</c> (a value the action <see cref="Element"/> names sets on
-    /// <see cref="Attribute"/>, object-effects-design.md section 8), or the pointer of one of the element's sites, whose scope and mode the
+    /// type), <c>guard</c> (a process or an operation), <c>set</c> (a value the action <see cref="Element"/> names sets on
+    /// <see cref="Attribute"/>, object-effects-design.md section 8), <c>input</c> (a value the call of the action <see cref="Element"/> names
+    /// gives the operation's input <see cref="Member"/>, processes-operations-design.md section 11), or the pointer of one of the element's sites, whose scope and mode the
     /// text then takes (a JavaScript guard's <c>/guards/0/condition</c> reads the payloads of the events that use the guard).
     /// </summary>
     public string? Site { get; init; }
 
     /// <summary>With <see cref="Site"/> <c>set</c>: the id of the attribute the value is for, whose type it must fit (MQ3103).</summary>
     public string? Attribute { get; init; }
+
+    /// <summary>
+    /// With <see cref="Site"/> <c>input</c>: the id of the operation's input member the value is for, whose type it must fit (MQ3103); a record
+    /// key member types as its entity's key attribute.
+    /// </summary>
+    public string? Member { get; init; }
 
     /// <summary>
     /// The id or name of the database whose binding an entity's expression lowers to SQL through; <see langword="null"/> for the binding
@@ -229,8 +237,27 @@ public sealed partial class ModelStore
         var pointer = request.Text is null ? request.At : request.Site!.StartsWith('/') ? request.Site : null;
         if (request.Text is not null && pointer is null)
         {
+            if (string.Equals(request.Site, "input", StringComparison.Ordinal))
+            {
+                // A call input not saved yet (processes-operations-design.md section 11): typed as a set's value, against the member.
+                if (element is not Process caller || sub is null || string.IsNullOrEmpty(request.Member))
+                    throw new ArgumentException("site input takes element, the id of an action of a process that calls an operation, and member, the id of the operation's input member the value is for.", nameof(request));
+                var inputSite = ExprSites.FreeInput(snapshot, caller, sub, request.Member)
+                    ?? throw new ArgumentException($"'{sub}' is not an action of process '{caller.Name}' that calls an operation; site input takes the id of such an action.", nameof(request));
+                // A member the called operation doesn't have would type freely: refused, as MQ9025 refuses it once saved.
+                var called = snapshot.Get<Operation>(caller.Actions.First(a => string.Equals(a.Id, sub, StringComparison.Ordinal)).Call!.Operation);
+                if (called is null || !called.Input.Any(m => string.Equals(m.Id, request.Member, StringComparison.Ordinal)))
+                {
+                    throw new ArgumentException(called is null
+                        ? $"The operation action '{sub}' calls doesn't resolve; site input types a value against one of its input members."
+                        : $"'{request.Member}' is not an input member of operation '{called.Name}', which action '{sub}' calls; site input takes the id of one of its input members.", nameof(request));
+                }
+
+                return inputSite;
+            }
+
             if (!SiteKinds.TryGetValue(request.Site!, out var kind))
-                throw new ArgumentException($"site must be check, value, guard, set, right, trigger, trigger-set, approval or the pointer of a site, not '{request.Site}'.", nameof(request));
+                throw new ArgumentException($"site must be check, value, guard, set, input, right, trigger, trigger-set, approval or the pointer of a site, not '{request.Site}'.", nameof(request));
             if (kind is ExprSiteKind.Trigger or ExprSiteKind.TriggerSet)
             {
                 // Text for a trigger point names its lifecycle, or the trigger point itself (trigger-points-design.md section 9).

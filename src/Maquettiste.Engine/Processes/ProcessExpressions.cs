@@ -150,7 +150,7 @@ public sealed class ProcessExpressions
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process)
+        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !ExprSites.CallsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process)
             && !ExprSites.ApprovalData(process))
             return Get(process);
         return ByModel.GetOrCreateValue(model).GetValue(process, p =>
@@ -293,6 +293,23 @@ public sealed class ProcessExpressions
             lowered.Add(Of(set.Id, js, typed.Typed, true, new LoweredSet(set.Attribute, attribute.Name, typed.Typed.Type.Kind)));
         }
 
+        // Each action's call inputs (processes-operations-design.md section 10), lowered at a set site beside the sets: the value is worked out
+        // and recorded, never written into the object's row, so only one that reads the object counts as a read of it. Its target names the
+        // member, so the result is written by the member's type. An input whose member cannot be given is left out (MQ9025).
+        foreach (var call in process.Actions.Select(a => a.Call).OfType<ProcessCall>())
+        {
+            if (call.Inputs.Count == 0 || model.Get<Operation>(call.Operation) is not { } operation)
+                continue;
+            foreach (var input in call.Inputs)
+            {
+                if (operation.Input.FirstOrDefault(m => string.Equals(m.Id, input.Member, StringComparison.Ordinal)) is not { } member
+                    || ExprSites.MemberType(model, member) is null || ExprResolution.Type(model, process, input.Id) is not { } typed)
+                    continue;
+                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Set, ExprResolution.ApiColumns(model, input.Id, path));
+                lowered.Add(Of(input.Id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), new LoweredSet(member.Id, member.Name, typed.Typed.Type.Kind)));
+            }
+        }
+
         // A lifecycle's rights' conditions (rights-design.md decision 6), lowered at a right site under the entry's id: an inline right's, and a
         // named right's typed at this use against the lifecycle's subjects. Only true holds, as at a guard.
         if (process.Use == ProcessUse.Lifecycle)
@@ -404,7 +421,7 @@ public sealed class ProcessExpressions
     /// <param name="process">The process.</param>
     /// <returns><see langword="true"/> when they are cached.</returns>
     internal static bool IsCached(ModelSnapshot model, Process process) =>
-        process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process)
+        process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !ExprSites.CallsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process)
             && !ExprSites.ApprovalData(process)
             ? IsCached(process)
             : (ByModel.TryGetValue(model, out var processes) && processes.TryGetValue(process, out _)) || IsCachedByContent(model, process);
@@ -555,7 +572,8 @@ public sealed class ProcessExpressions
     /// <param name="JavaScript">The function over a row (<see cref="ExprLowering.ToJavaScript"/>).</param>
     /// <param name="ReadsNow">Whether it reads <c>now</c>, so it receives the simulation's clock.</param>
     /// <param name="ReadsSubject">Whether it reads the object under <c>subject</c> (<see cref="ExprSites.ReadsSubject"/>); every set does.</param>
-    /// <param name="Set">For an action's set, the attribute it writes; <see langword="null"/> for a guard's condition.</param>
+    /// <param name="Set">For an action's set, the attribute it writes; for a call input, the member it gives (by id, name and type);
+    /// <see langword="null"/> for a guard's condition.</param>
     internal sealed record LoweredCondition(string Id, string JavaScript, bool ReadsNow, bool ReadsSubject, LoweredSet? Set)
     {
         /// <summary>Whether it reads <c>current_actor()</c> or <c>in_state</c> (<see cref="ExprLowering.IsEngineOnly"/>), so it runs with <c>mqAt(now, actor)</c>.</summary>

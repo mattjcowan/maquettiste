@@ -115,7 +115,7 @@ it. 0.12.0 was released on 2026-11-04.
 
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 3.8 | One expression language for checks, validations, derived values and guards, lowered to SQL and JavaScript | yes | Built, 0.12.0 | [3.1](next-phase-3-design.md#31-one-expression-language-for-checks-validations-derived-values-and-guards). PostgreSQL only (MQ4056 elsewhere); actions stay JavaScript until operations replace them (4.6). The editor's text box for expressions is with the other screens below. |
+| 3.8 | One expression language for checks, validations, derived values and guards, lowered to SQL and JavaScript | yes | Built, 0.12.0 | [3.1](next-phase-3-design.md#31-one-expression-language-for-checks-validations-derived-values-and-guards). PostgreSQL only (MQ4056 elsewhere); actions keep their JavaScript form and sets, and may call an operation (4.6). The editor's text box for expressions is with the other screens below. |
 
 ## Left over from built items
 
@@ -150,7 +150,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 | 6.3 | Typed triggers and row-level security policies | yes | Later | SQL objects cover these today. Typed grants are in "Not doing". |
 | 7.6 | Conventions tied to the rules that check them; where each resolved value came from | yes | Later | Helps agents explain answers. |
 | 4.3 | Approval gates with stages | yes | Built, 0.20.0 (#67) | Built with richer sign-off part 2: [design](signoff-design.md) (rounds in series and side by side, and a stage skipped by a condition). |
-| 4.4 | Timers from elements, task contracts, editable fields per state | yes | Later | Close to a team's workflow engine; after the lifecycle (4.1) and shared guards (4.2). |
+| 4.4 | Timers from elements, task contracts, editable fields per state | yes | Later | Close to a team's workflow engine; after the lifecycle (4.1) and shared guards (4.2). Timers are an optional extra and reach beyond charts (the owner, 2026-11-10): before building, list every place a time limit fits (waits on moves, approval reminders, escalation and deadlines, how long a signature stays valid, service steps and people's tasks, time windows in rights, operations started on a schedule, effective dates, retention) and agree one shared way to say how long, counted from what, in which calendar, and what happens when time runs out. Service steps already name their operation (4.6); 4.4 can give them inputs in the shape of a call's. |
 | 7.4 | A merge driver for model files | yes | Later | An optional integration for teams that keep models in git; the product never needs it. The model diff (7.3) covers review. |
 
 ## Phase 4: not designed yet
@@ -159,7 +159,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 | --- | --- | --- | --- | --- |
 | 3.13 | Views of the model: saved criteria that select elements | no | Later | Added by the roadmap's review. It was to be part of the documentation pack (5.6), which is not being built for now. |
 | 5.10 | The trace map from generated lines to element ids | yes | Later | The second part of 5.10. |
-| 4.6 | Charts joined to operations | yes | Later | Needs operations (3.6) and the expression language (3.8). Trimmed by the owner on 2026-11-10: the generated process runtime is out. Maquettiste models processes and runs none; each team builds its own runtime from what the model holds, and Maquettiste describes all of it so a team can choose how. How that description is given is still to be decided. |
+| 4.6 | Processes linked to operations (was "Charts joined to operations"): checks on the operations that fire events, actions that call an operation with typed inputs, service steps that name their operation, both directions in the resolved model, the editor screens | yes | Built, unreleased | [Design](processes-operations-design.md). Trimmed by the owner on 2026-11-10: no generated process runtime; Maquettiste models processes and runs none, and says exactly what each link states and what is left to the team. |
 | 4.5 | A structure hash per process, and records in flight when a process changes | yes | Later | Needs the lifecycle (4.1); the state map is a step in the migration ledger (6.2). |
 | 8.1 | Scenarios run against the running system | yes | Later | Needs operations (3.6) and projections (3.12); the team writes the test template. |
 | 8.5 | Upgrade tests from history | yes | Covered | No separate feature: build the previous version from a folder or snapshot, migrate, run the suite. The guide page "Upgrade tests" walks through it. |

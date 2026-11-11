@@ -625,7 +625,7 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
         var intoNode = _into.Invokes.GetValueOrDefault(s.Path + "/" + name);
         var id = Assign(Carried(meta), "invoke", pointer + "/meta/maquettiste/id", intoNode, "invoke:" + s.Path + "/" + name);
         var node = new JsonObject { ["id"] = id, ["name"] = name };
-        var leftovers = meta is not null ? Without(meta, "id") : Pick(intoNode, ["displayName", "type", "process", "actors", "description", "stereotypes", "properties"]);
+        var leftovers = meta is not null ? Without(meta, "id") : Pick(intoNode, ["displayName", "type", "process", "operation", "actors", "description", "stereotypes", "properties"]);
         if (leftovers["type"] is null)
         {
             var process = src is null || inline ? null : options.Model?.All<Process>().FirstOrDefault(p => p.Name == src);
@@ -667,6 +667,8 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
                 copy["id"] = Assign(Carried(o), definitions.Kind, pointer + "/id", into, definitions.Kind + ":" + name);
                 if (key == "actions" && copy["sets"] is JsonArray sets)
                     AssignSets(sets, into, pointer + "/sets", name);
+                if (key == "actions" && copy["call"] is JsonObject { } call && call["inputs"] is JsonArray inputs)
+                    AssignCallInputs(inputs, into, pointer + "/call/inputs", name);
                 definitions.Put(name, copy);
             }
         }
@@ -687,6 +689,25 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
             var matched = intoSets.FirstOrDefault(i => i["attribute"]?.GetValue<string>() == attribute);
             s["id"] = Assign(Carried(s), "set", pointer + "/" + j.ToString(CultureInfo.InvariantCulture) + "/id", matched,
                 "set:" + actionName + ":" + j.ToString(CultureInfo.InvariantCulture));
+        }
+    }
+
+    /// <summary>
+    /// Gives each input of the call an action carries in <c>meta</c> its id (processes-operations-design.md section 11), as
+    /// <see cref="AssignSets"/> does: the carried one when it is free, else the id of the input of the same member in the action re-imported
+    /// over, else a new one.
+    /// </summary>
+    private void AssignCallInputs(JsonArray inputs, JsonObject? intoAction, string pointer, string actionName)
+    {
+        var intoInputs = (intoAction?["call"]?["inputs"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
+        foreach (var (input, j) in inputs.Select((n, j) => (n, j)))
+        {
+            if (input is not JsonObject i)
+                continue;
+            var member = i["member"] is JsonValue m && m.GetValueKind() == JsonValueKind.String ? m.GetValue<string>() : "";
+            var matched = intoInputs.FirstOrDefault(x => x["member"] is JsonValue v && v.GetValueKind() == JsonValueKind.String && v.GetValue<string>() == member);
+            i["id"] = Assign(Carried(i), "call-input", pointer + "/" + j.ToString(CultureInfo.InvariantCulture) + "/id", matched,
+                "call-input:" + actionName + ":" + j.ToString(CultureInfo.InvariantCulture));
         }
     }
 

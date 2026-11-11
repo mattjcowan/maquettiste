@@ -46,6 +46,8 @@ export interface GridColumn<R> {
   label: string;
   /** A tooltip on the column header. */
   tooltip?: string;
+  /** A small decorative mark after the header text (hidden from the accessible name). */
+  headerMark?: ReactNode;
   /** Fixed, or per row (a transition's detail is a select for an event, text for a duration). */
   kind: CellKind | ((row: R) => CellKind);
   width?: string;
@@ -322,7 +324,12 @@ export function Grid<R extends { id: string }>({
                   style={stickyStyle(c.sticky)}
                   className={cn("h-[var(--mq-row-h)] px-1.5 text-left text-11 font-semibold text-secondary", c.width, c.sticky && "sticky left-0 z-10 bg-app")}
                 >
-                  {c.label}
+                  {c.headerMark ? <span>{c.label}</span> : c.label}
+                  {c.headerMark ? (
+                    <span className="ml-1 inline-flex align-middle font-normal text-secondary" aria-hidden="true">
+                      {c.headerMark}
+                    </span>
+                  ) : null}
                 </th>
               ))}
               {onRemove || actions || onReorder ? (

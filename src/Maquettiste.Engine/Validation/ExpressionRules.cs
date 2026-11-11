@@ -55,6 +55,13 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
     public bool StageCondition { get; init; }
 
     /// <summary>
+    /// The id of the operation's input member a call input's value is for (processes-operations-design.md decision 6), at a
+    /// <see cref="ExprSiteKind.Set"/> site; <see langword="null"/> at a set's value and every other site. The site reads and types as a set's
+    /// value does, against the member's type (<see cref="ExprSites.MemberType"/>).
+    /// </summary>
+    public string? Member { get; init; }
+
+    /// <summary>
     /// The named right whose condition a lifecycle's use types here, against the lifecycle's subjects (rights-design.md decision 7): the tree
     /// lives in the named right's file, so nothing writes it here, and a finding is reported at the use. <see langword="null"/> otherwise.
     /// </summary>
@@ -235,20 +242,33 @@ internal static class ExprSites
 
         // An action's sets (object-effects-design.md decision 3): typed against the attribute's type, reading what a guard of the action's
         // transitions reads. An action that runs on entering or leaving a state reads no payload, since no one event enters or leaves it.
+        // Then its call's inputs (processes-operations-design.md decision 6): each value at a Set site too, typed against its member's type,
+        // reading what the action's sets read, and keyed by the input's id.
         static void AddSets(List<ExprSite> sites, ModelSnapshot model, Process process)
         {
             Dictionary<string, ModelAttribute>? held = null;
             for (var i = 0; i < process.Actions.Count; i++)
             {
                 var action = process.Actions[i];
-                if (action.Sets.Count == 0)
+                var call = action.Call is { Inputs.Count: > 0 } c ? c : null;
+                if (action.Sets.Count == 0 && call is null)
                     continue;
-                held ??= HeldAttributes(model, process);
                 var (events, payloads) = SetEvents(process, action);
+                if (action.Sets.Count > 0)
+                    held ??= HeldAttributes(model, process);
                 for (var j = 0; j < action.Sets.Count; j++)
                 {
                     var set = action.Sets[j];
-                    sites.Add(SetSite(model, process, Ptr.At(Ptr.At("/actions", i) + "/sets", j) + "/value", set.Value, set.Id, set.Attribute, held, events, payloads));
+                    sites.Add(SetSite(model, process, Ptr.At(Ptr.At("/actions", i) + "/sets", j) + "/value", set.Value, set.Id, set.Attribute, held!, events, payloads));
+                }
+
+                if (call is null)
+                    continue;
+                var operation = model.Get<Operation>(call.Operation);
+                for (var j = 0; j < call.Inputs.Count; j++)
+                {
+                    var input = call.Inputs[j];
+                    sites.Add(InputSite(model, process, Ptr.At(Ptr.At("/actions", i) + "/call/inputs", j) + "/value", input.Value, input.Id, operation, input.Member, events, payloads));
                 }
             }
         }
@@ -580,6 +600,83 @@ internal static class ExprSites
         return SetSite(model, process, "", null, action.Id, attributeId, HeldAttributes(model, process), events, payloads);
     }
 
+    /// <summary>
+    /// A site for a value text writes for a call input not stored yet (<c>preview_expression</c> with <c>site</c> <c>input</c>): the scope a
+    /// value the action's call gives the operation's input member reads, typed against the member (processes-operations-design.md decision 6
+    /// and section 11). The member is looked up in the operation the action calls; <see langword="null"/> when the process has no such action
+    /// or the action calls no operation.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="process">The process.</param>
+    /// <param name="actionId">The action's id.</param>
+    /// <param name="memberId">The operation input member's id.</param>
+    /// <returns>The site, with no tree.</returns>
+    public static ExprSite? FreeInput(ModelSnapshot model, Process process, string actionId, string memberId)
+    {
+        if (process.Actions.FirstOrDefault(a => string.Equals(a.Id, actionId, StringComparison.Ordinal)) is not { Call: { } call } action)
+            return null;
+        var (events, payloads) = SetEvents(process, action);
+        return InputSite(model, process, "", null, action.Id, model.Get<Operation>(call.Operation), memberId, events, payloads);
+    }
+
+    /// <summary>
+    /// The site of a call input's value (processes-operations-design.md decision 6): a <see cref="ExprSiteKind.Set"/> site whose value type is
+    /// the member's (<see cref="MemberType"/>), or none when the member isn't an input of the operation or can't be given (MQ9025); it reads
+    /// what a set's value of the action reads.
+    /// </summary>
+    private static ExprSite InputSite(ModelSnapshot model, Process process, string pointer, Expr? tree, string subId, Operation? operation, string memberId,
+        IReadOnlyList<ProcessEvent> events, IReadOnlyList<HashSet<string>> payloads)
+    {
+        var member = operation?.Input.FirstOrDefault(m => string.Equals(m.Id, memberId, StringComparison.Ordinal));
+        return new ExprSite(pointer, tree, false, subId, ExprSiteKind.Set, s => Process(s, model, process, events))
+        {
+            ValueType = member is null ? null : MemberType(model, member),
+            Payloads = payloads,
+            Lifecycles = new ModelLifecycles(model, process, null),
+            Member = memberId,
+        };
+    }
+
+    /// <summary>
+    /// The type a value given to an operation's input member must fit (processes-operations-design.md decision 6): a typed value's type, or
+    /// for a record key the type of its entity's one key attribute (its own key, else its nearest base's). <see langword="null"/> for a file
+    /// or collection member, a record key of an entity with no key or a composite one, and a type the expression language does not have:
+    /// none of them can be given a value (MQ9025), or the value is not typed against one.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="member">The input member.</param>
+    /// <returns>The type, or <see langword="null"/>.</returns>
+    internal static ExprType? MemberType(ModelSnapshot model, OperationMember member)
+    {
+        if (member.File || member.Collection)
+            return null;
+        if (member.KeyOf is { } entityId)
+            return model.Get<Entity>(entityId) is { } entity && KeyAttribute(model, entity) is { } key && TypeOf(model, key.Type) is { IsAvailable: true } keyType ? keyType : null;
+        return member.Type is not null && TypeOf(model, member.Type) is { IsAvailable: true } type ? type : null;
+    }
+
+    /// <summary>
+    /// An entity's one key attribute: of its own key, else of its nearest base's; <see langword="null"/> when it has no key or a composite one,
+    /// or the attribute isn't among those it holds.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="entity">The entity.</param>
+    /// <returns>The attribute, or <see langword="null"/>.</returns>
+    internal static ModelAttribute? KeyAttribute(ModelSnapshot model, Entity entity)
+    {
+        EntityKey? key = null;
+        foreach (var id in Processes.SubjectCoverage.Chain(model, entity))
+        {
+            if (model.Get<Entity>(id)?.Key is { } found)
+            {
+                key = found;
+                break;
+            }
+        }
+
+        return key is { Attributes: [var only] } ? AttributesOf(model, entity).FirstOrDefault(a => string.Equals(a.Id, only, StringComparison.Ordinal)) : null;
+    }
+
     private static ExprSite SetSite(ModelSnapshot model, Process process, string pointer, Expr? tree, string subId, string attributeId,
         Dictionary<string, ModelAttribute> held, IReadOnlyList<ProcessEvent> events, IReadOnlyList<HashSet<string>> payloads)
     {
@@ -739,6 +836,7 @@ internal static class ExprSites
             Names = text ? new ModelNames(model) : null,
             Lifecycles = site.Lifecycles,
             StageCondition = site.StageCondition,
+            CallInput = site.Member is not null,
         };
         site.Fill(scope);
         AddRefs(scope, model, refs);
@@ -1211,7 +1309,7 @@ internal static class ExprSites
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if ((process.Guards.All(g => g.Condition is null) && !SetsData(process) && !TriggerPointsRead(process))
+        if ((process.Guards.All(g => g.Condition is null) && !SetsData(process) && !CallsData(process) && !TriggerPointsRead(process))
             || process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
             return FrozenSet<string>.Empty;
         return StereotypeReads.GetValue(model, static _ => new()).GetValue(process, p =>
@@ -1526,7 +1624,7 @@ internal static class ExprSites
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null) && !SetsData(process) && !TriggerData(process) && !ApprovalData(process))
+        if (process.Guards.All(g => g.Condition is null) && !SetsData(process) && !CallsData(process) && !TriggerData(process) && !ApprovalData(process))
             return null;
         return SubjectDepths.GetValue(model, static _ => new()).GetValue(process, p =>
         {
@@ -1550,15 +1648,27 @@ internal static class ExprSites
     /// <returns>Whether one does.</returns>
     internal static bool SetsData(Process process) => process.Actions.Any(a => a.Sets.Count > 0);
 
+    /// <summary>
+    /// Whether an action of a process gives a value to an input of the operation it calls (processes-operations-design.md decision 6): such a
+    /// value reads what a set's value reads, so the simulator works it out and the subject row counts what it reads (section 10).
+    /// </summary>
+    /// <param name="process">The process.</param>
+    /// <returns>Whether one does.</returns>
+    internal static bool CallsData(Process process) => process.Actions.Any(a => a.Call is { Inputs.Count: > 0 });
+
     // Whether a lifecycle's trigger points hold what reads or writes the object: a when, a condition or a set.
     private static bool TriggerPointsRead(Process process) =>
         process.Use == ProcessUse.Lifecycle && process.TriggerPoints.Any(t => t.When is not null || t.Condition is not null || t.Sets.Count > 0);
 
-    /// <summary>The ids of a process's guards that hold a condition, then of its actions' sets, in document order: what reads the object.</summary>
+    /// <summary>
+    /// The ids of a process's guards that hold a condition, then of its actions' sets and call inputs (each action's sets, then its call's
+    /// inputs), in document order: what reads the object.
+    /// </summary>
     /// <param name="process">The process.</param>
-    /// <returns>The guard and set ids.</returns>
+    /// <returns>The guard, set and call input ids.</returns>
     internal static IEnumerable<string> ConditionIds(Process process) =>
-        process.Guards.Where(g => g.Condition is not null).Select(g => g.Id).Concat(process.Actions.SelectMany(a => a.Sets).Select(s => s.Id))
+        process.Guards.Where(g => g.Condition is not null).Select(g => g.Id)
+            .Concat(process.Actions.SelectMany(a => a.Sets.Select(s => s.Id).Concat(a.Call is { } call ? call.Inputs.Select(i => i.Id) : [])))
             .Concat(process.Use != ProcessUse.Lifecycle ? [] : process.TriggerPoints.SelectMany(t =>
                 (t.When is null ? Enumerable.Empty<string>() : [WhenKey(t.Id)]).Concat(t.Condition is null ? [] : [t.Id]).Concat(t.Sets.Select(s => s.Id))))
             .Concat(process.Use == ProcessUse.Library ? [] : process.Transitions.SelectMany(t => t.Gate is { UsesStages: true } gate
@@ -1671,8 +1781,8 @@ internal static class ExpressionRules
             if (element is Process process && ExprSites.EventContextRead(process, typed) is { } shadowed)
             {
                 report.Add("MQ3102", site.Kind == ExprSiteKind.Set
-                    ? $"The set's value reads the context attribute '{shadowed.Name}', but a value reads the event's payload under that name, so the set is left out; "
-                        + "rename the context attribute."
+                    ? $"The {(site.Member is null ? "set's" : "input's")} value reads the context attribute '{shadowed.Name}', but a value reads the event's payload under that name, so the "
+                        + $"{(site.Member is null ? "set" : "input")} is left out; rename the context attribute."
                     : site.Kind == ExprSiteKind.Approval
                     ? $"The {(site.StageCondition ? "approval stage's" : "named signature's")} when reads the context attribute '{shadowed.Name}', but a condition's row holds the event under that name, so the "
                         + "when is left out; rename the context attribute."
@@ -1697,6 +1807,8 @@ internal static class ExpressionRules
                     {
                         report.Add("MQ3102", site.Kind switch
                         {
+                            ExprSiteKind.Set when site.Member is not null => $"The input's value reads the payload attribute '{id}', which some event whose transitions run the action does not "
+                                + "carry, or the action also runs on entering or leaving a state, where no one event is fixed; read a context attribute, or run the action only on transitions of events that carry it.",
                             ExprSiteKind.Set => $"The set's value reads the payload attribute '{id}', which some event whose transitions run the action does not carry, or the action also "
                                 + "runs on entering or leaving a state, where no one event is fixed; read a context attribute, or run the action only on transitions of events that carry it.",
                             ExprSiteKind.Trigger => $"The trigger point reads the payload attribute '{id}', which some event or verb step it runs on does not carry; read a value of "

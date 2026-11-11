@@ -121,12 +121,10 @@ public sealed class ResolvedNullContractTests
         ["RDataRef"] = "foreign-key entries of table seeds: TableSeedTests",
         // Expressions (next-phase-3-design.md section 3.1): no fixture model holds one, so that their golden output stays as it was;
         // ExpressionResolutionTests resolves them.
-        ["RExpression"] = "expression trees: ExpressionResolutionTests",
         ["REntityCheck"] = "entity checks: ExpressionResolutionTests",
         ["RConstraint"] = "named constraints: ExpressionResolutionTests",
         ["RConstraintParameter"] = "named constraints: ExpressionResolutionTests",
         ["ROperationGuard"] = "operation guards: OperationGuardTests",
-        ["ExprType"] = "the type of an expression node: ExpressionResolutionTests",
         // Verbs (verbs-design.md section 6): no fixture model names one, so that their golden output stays as it was; ResolvedVerbTests
         // resolves them.
         ["RVerb"] = "verbs: ResolvedVerbTests",
@@ -280,9 +278,10 @@ public sealed class ResolvedNullContractTests
             Generation = new Dictionary<string, GenerationHints> { ["sql-ddl"] = new GenerationHints { Rename = "totals" } },
         });
         var recipient = b.NewId();
+        var sendId = b.NewId();
         b.Add(new Operation
         {
-            Id = b.NewId(), Name = "send", Subject = invoice.Id, Effect = OperationEffect.Change,
+            Id = sendId, Name = "send", Subject = invoice.Id, Effect = OperationEffect.Change,
             Input = [new OperationMember { Id = recipient, Name = "recipient", Type = new TypeRef { Builtin = "string" } }, new OperationMember { Id = b.NewId(), Name = "copy", KeyOf = invoice.Id }],
             Outcomes =
             [
@@ -290,6 +289,24 @@ public sealed class ResolvedNullContractTests
                 new OperationOutcome { Id = b.NewId(), Name = "waiting", Returns = new OperationReturns { Members = [new OperationMember { Id = b.NewId(), Name = "trackingId", Type = new TypeRef { Builtin = "ulid" } }] } },
             ],
             Errors = [new OperationError { Id = b.NewId(), Name = "missing_recipient", Input = recipient }],
+        });
+
+        // An action that calls send and a service step it does the work of (processes-operations-design.md section 9).
+        var start = b.NewId();
+        b.Add(new Process
+        {
+            Id = b.NewId(), Name = "Sending", Use = ProcessUse.Orchestration,
+            SubjectList = [new ProcessSubject { Id = b.NewId(), Entity = invoice.Id }],
+            States = [new ProcessState { Id = start, Name = "Start", Invoke = [new ProcessInvoke { Id = b.NewId(), Name = "Deliver", Type = InvokeType.Service, Operation = sendId }] }],
+            Initial = start,
+            Actions =
+            [
+                new ProcessAction
+                {
+                    Id = b.NewId(), Name = "Ask",
+                    Call = new ProcessCall { Operation = sendId, Inputs = [new ProcessCallInput { Id = b.NewId(), Member = recipient, Value = new Expr { Value = JsonSerializer.SerializeToElement("billing") } }] },
+                },
+            ],
         });
 
         // A custom element with a member (next-phase-2-design.md section 4.2).

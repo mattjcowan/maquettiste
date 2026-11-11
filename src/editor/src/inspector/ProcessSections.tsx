@@ -4,6 +4,7 @@
 // the event's actors read-only); with nothing inside selected, the Process section (use, subject, bound attribute,
 // Code generation hints, and Source: the import provenance and opaque statechart data, read-only JSON). An actor shows
 // its type and what uses it; a scenario its process, outcome and status.
+import { OperationLinks, useFiredBy } from "@/editors/process/FiredBy";
 import { useIndex, useElement, useProject } from "@/api/queries";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -106,6 +107,7 @@ function StateSection({ pc, state }: { pc: ProcessContext; state: StateDoc }) {
   const { members } = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute, soleSubject(process)?.stereotype);
   const row = stateRows(process, members).find((r) => r.id === state.id);
   const info = stateIndex(process).get(state.id);
+  const operationNames = indexLookup(useIndex().data);
   const actionOptions = (process.actions ?? []).map((a) => ({ value: a.id, label: a.name }));
   const edit = (update: (s: StateDoc, p: ProcessDoc) => void, save = true) =>
     (save ? change : draftEdit)((p) => {
@@ -175,6 +177,7 @@ function StateSection({ pc, state }: { pc: ProcessContext; state: StateDoc }) {
           {state.invoke.map((i) => (
             <li key={i.id}>
               <span className="font-medium">{i.name}</span> <span className="text-secondary">{i.type ?? "service"}</span>
+              {i.operation ? <span className="text-secondary"> · runs {operationNames.nameOf(i.operation) ?? "?"}</span> : null}
               {i.actors?.length ? <span className="text-secondary"> · {i.actors.map((a) => pc.actorNames.get(a) ?? "?").join(", ")}</span> : null}
             </li>
           ))}
@@ -234,6 +237,18 @@ function StateSection({ pc, state }: { pc: ProcessContext; state: StateDoc }) {
   );
 }
 
+/** The operations that fire the transition's event (nothing when none does). */
+function FiredByLine({ event }: { event: string }) {
+  const operations = useFiredBy([event]).get(event) ?? [];
+  if (!operations.length) return null;
+  return (
+    <div className="flex items-baseline gap-1 text-12" data-testid="transition-fired-by">
+      <span className="text-secondary">Fired by</span>
+      <OperationLinks operations={operations} testid="transition-fired-by-links" />
+    </div>
+  );
+}
+
 function TransitionSection({ pc, transition: t }: { pc: ProcessContext; transition: TransitionDoc }) {
   const { process, change } = pc;
   const dom = `${pc.id}-transition`;
@@ -262,15 +277,18 @@ function TransitionSection({ pc, transition: t }: { pc: ProcessContext; transiti
         </Select>
       </Field>
       {trigger === "event" ? (
-        <Field label="Event" htmlFor={`${dom}-event`}>
-          <Select id={`${dom}-event`} value={t.event ?? ""} onChange={(e) => edit((x) => void (x.event = e.target.value))}>
-            {(process.events ?? []).map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <>
+          <Field label="Event" htmlFor={`${dom}-event`}>
+            <Select id={`${dom}-event`} value={t.event ?? ""} onChange={(e) => edit((x) => void (x.event = e.target.value))}>
+              {(process.events ?? []).map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {t.event ? <FiredByLine event={t.event} /> : null}
+        </>
       ) : trigger === "after" ? (
         <Field label="After (ISO 8601 duration)" htmlFor={`${dom}-after`}>
           <Input id={`${dom}-after`} defaultValue={t.after ?? ""} onBlur={(e) => edit((x) => void (x.after = e.target.value.trim()))} />

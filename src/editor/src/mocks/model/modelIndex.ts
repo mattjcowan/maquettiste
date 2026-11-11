@@ -30,6 +30,7 @@ const LIFECYCLE_READS: ReadonlySet<string> = new Set([
   "relation",
   "right",
   "trigger-point",
+  "operation",
 ]);
 
 export class ModelIndex {
@@ -114,6 +115,10 @@ export class ModelIndex {
     // The lifecycle rules read a lifecycle's subject entity, its bound attribute's type (an enum, a reference type with its seeds,
     // a scalar type) and the other lifecycles, none of which reference the process: re-check processes.
     if (all.some((e) => LIFECYCLE_READS.has(String(e.json.kind)))) for (const [id, entry] of this.snapshot) if (entry.json.kind === "process") affected.add(id);
+    // An operation reads the processes whose events it fires (MQ3032, MQ3044), so a changed process checks the operations that fire anything.
+    if (all.some((e) => e.json.kind === "process" || e.json.kind === "entity"))
+      for (const [id, entry] of this.snapshot)
+        if (entry.json.kind === "operation" && Array.isArray(entry.json.fires) && entry.json.fires.length) affected.add(id);
     // A named trigger point reads the entities it covers (their bases, stereotypes and fields), the lifecycles' replaces and the other named points.
     if (all.some((e) => ["entity", "package", "stereotype", "process", "trigger-point", "relation"].includes(String(e.json.kind))))
       for (const [id, entry] of this.snapshot) if (entry.json.kind === "trigger-point") affected.add(id);

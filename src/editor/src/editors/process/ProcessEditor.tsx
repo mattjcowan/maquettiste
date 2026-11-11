@@ -38,7 +38,7 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
   const { id, process } = pc;
   const view = useEditor(store, (s) => s.editors.view.process) ?? "chart";
   const focus = useProcessFocus(id);
-  const [node, setNode] = useState<{ tab: ProcessTab; node: string | null } | null>(null);
+  const [node, setNode] = useState<{ tab: ProcessTab; node: string | null; seq: number } | null>(null);
   const { members, codeKind } = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute, soleSubject(process)?.stereotype);
   const subjectMembers = useSubjectMembers(process);
 
@@ -46,10 +46,14 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
   useEffect(() => {
     if (!focus) return;
     store.getState().updateEditors((e) => setView(e, "process", focus.tab));
-    setNode({ tab: focus.tab, node: focus.node });
+    setNode({ tab: focus.tab, node: focus.node, seq: focus.seq });
     if ((focus.tab === "states" || focus.tab === "chart") && focus.node) selectProcessNode({ process: id, kind: "state", id: focus.node });
-    if (focus.tab === "transitions" && focus.node) selectProcessNode({ process: id, kind: "transition", id: focus.node });
+    // On the Transitions tab the node is a transition, or an action whose Calls dialog opens (a quick fix of MQ9026).
+    if (focus.tab === "transitions" && focus.node && process.transitions?.some((t) => t.id === focus.node))
+      selectProcessNode({ process: id, kind: "transition", id: focus.node });
     clearProcessFocus();
+    // The request is the dependency: the process document changing must not replay it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, id, store]);
 
   // The inspector follows what is selected on the tab shown: leaving States or Transitions leaves their selection; the
@@ -80,7 +84,17 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
             label: PROCESS_TAB_LABELS.states,
             content: <StatesTab pc={pc} members={members} codeKind={codeKind} subjectMembers={subjectMembers} />,
           },
-          { value: "transitions", label: PROCESS_TAB_LABELS.transitions, content: <TransitionsTab pc={pc} /> },
+          {
+            value: "transitions",
+            label: PROCESS_TAB_LABELS.transitions,
+            content: (
+              <TransitionsTab
+                pc={pc}
+                focus={node?.tab === "transitions" ? node : null}
+                onFocusHandled={() => setNode((n) => (n?.tab === "transitions" ? null : n))}
+              />
+            ),
+          },
           { value: "events", label: PROCESS_TAB_LABELS.events, content: <EventsTab pc={pc} focus={nodeOn("events")} /> },
           { value: "gates", label: PROCESS_TAB_LABELS.gates, content: <GatesTab pc={pc} /> },
           // Rights belong to lifecycles only (MQ9901).

@@ -10,6 +10,8 @@ import { useIndex } from "@/api/queries";
 import { newId } from "@/lib/ids";
 import { indexLookup } from "@/model/index";
 import { CHART_LABELS, RIGHT_LABELS, TRIGGER_LABELS } from "@/model/labels";
+import { operationsForSubjects } from "@/model/operationLinks";
+import { OperationLinks } from "./FiredBy";
 import { rightsLostWithStates } from "@/model/rights";
 import { triggerPointsLostWithStates } from "@/model/triggerPoints";
 import {
@@ -26,6 +28,7 @@ import {
   stateIndex,
   stateRows,
   STATE_TYPES,
+  subjectsOf,
   subtreeIds,
   type CodeKind,
   type InvokeDoc,
@@ -69,6 +72,13 @@ export function StatesTab({
   const select = (state: string) => selectProcessNode({ process: id, kind: "state", id: state });
   const go = useGridTargets(id);
   const first = (r: StateRow, key: "entry" | "exit") => stateIndex(process).get(r.id)?.state[key]?.[0];
+
+  const names = indexLookup(index.data);
+  /** The state's invokes, a service step with its operation ("checkBudget → issue"). */
+  const invokesText = (r: StateRow) =>
+    (stateIndex(process).get(r.id)?.state.invoke ?? [])
+      .map((i) => (i.type === "service" && i.operation ? `${i.name} → ${names.nameOf(i.operation) ?? i.operation}` : i.name))
+      .join(", ");
 
   const columns: GridColumn<StateRow>[] = [
     { key: "name", label: "Name", kind: "text", width: "min-w-40", sticky: true, value: (r) => r.name },
@@ -129,7 +139,15 @@ export function StatesTab({
       definition: (r) => go.node("transitions", first(r, "exit")),
       options: () => actions.map((a) => ({ value: a.id, label: a.name })),
     },
-    { key: "invokes", label: "Invokes", kind: "readonly", width: "w-20 max-w-20", value: (r) => r.invokes },
+    {
+      key: "invokes",
+      label: "Invokes",
+      kind: "readonly",
+      width: "w-36 max-w-36",
+      value: (r) => r.invokes,
+      cellTitle: (r) => invokesText(r) || undefined,
+      render: (r) => <span className="truncate">{invokesText(r)}</span>,
+    },
   ];
   const rootOrder = boundStates(process).map((s) => s.id);
   if (lifecycle && subjectMembers.length)
@@ -265,6 +283,7 @@ interface InvokeRow {
   name: string;
   type: string;
   process: string;
+  operation: string;
   actors: string;
   pointer: string;
 }
@@ -286,12 +305,21 @@ function InvokesGrid({ pc, state }: { pc: ProcessContext; state: string }) {
   if (!entry) return null;
   const actorName = new Map(pc.actors.map((a) => [a.id, a.name]));
   const processName = new Map(processes.map((x) => [x.id, x.name]));
+  const lookup = indexLookup(index.data);
+  const operations = operationsForSubjects(
+    lookup.ofKind("operation"),
+    subjectsOf(process).flatMap((s) => s.entity ?? []),
+  );
+  const subjectLabel = subjectsOf(process)
+    .flatMap((s) => (s.entity ? [lookup.nameOf(s.entity) ?? s.entity] : []))
+    .join(", ");
   const pointer = (i: number) => `${entry.pointer}/invoke/${i}`;
   const rows: InvokeRow[] = (entry.state.invoke ?? []).map((i, n) => ({
     id: i.id,
     name: i.name,
     type: i.type ?? "",
     process: i.process ? (processName.get(i.process) ?? i.process) : "",
+    operation: i.operation ? (lookup.nameOf(i.operation) ?? i.operation) : "",
     actors: (i.actors ?? []).map((a) => actorName.get(a) ?? a).join(", "),
     pointer: pointer(n),
   }));
@@ -308,6 +336,28 @@ function InvokesGrid({ pc, state }: { pc: ProcessContext; state: string }) {
       locked: (r) => r.type !== "process",
       definition: (r) => go.element(invoke(r)?.process),
       options: () => [{ value: "", label: "(none)" }, ...processes.map((x) => ({ value: x.id, label: x.name }))],
+    },
+    {
+      key: "operation",
+      label: "Operation",
+      tooltip: "Done by running this operation",
+      kind: "select",
+      width: "min-w-32",
+      value: (r) => r.operation,
+      editValue: (r) => invoke(r)?.operation ?? "",
+      locked: (r) => r.type !== "service",
+      cellTitle: (r) => (r.type !== "service" ? "Only a service step runs an operation" : undefined),
+      definition: (r) => go.element(invoke(r)?.operation),
+      render: (r) => {
+        if (r.type !== "service") return <span className="text-secondary">—</span>;
+        const row = invoke(r)?.operation ? lookup.byId.get(invoke(r)!.operation!) : undefined;
+        return row ? <OperationLinks operations={[row]} testid={`invoke-operation-${r.id}`} /> : <span className="truncate">{r.operation}</span>;
+      },
+      options: () => [
+        { value: "", label: "(none)" },
+        ...operations.on.map((o) => ({ value: o.id, label: o.name, group: `On ${subjectLabel}` })),
+        ...operations.other.map((o) => ({ value: o.id, label: o.name, group: operations.on.length ? "Other operations" : undefined })),
+      ],
     },
     {
       key: "actors",
@@ -348,10 +398,14 @@ function InvokesGrid({ pc, state }: { pc: ProcessContext; state: string }) {
             else if (key === "type") {
               invoke.type = v as InvokeDoc["type"];
               if (v !== "process") delete invoke.process;
+              if (v !== "service") delete invoke.operation;
               if (v !== "human-task") delete invoke.actors;
             } else if (key === "process") {
               if (v) invoke.process = v;
               else delete invoke.process;
+            } else if (key === "operation") {
+              if (v) invoke.operation = v;
+              else delete invoke.operation;
             } else if (key === "actors") {
               const ids = idsOfNames(v, pc.actors);
               if (ids.length) invoke.actors = ids;

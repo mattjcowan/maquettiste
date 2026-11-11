@@ -309,6 +309,10 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
           out.push({ fromId: id, pointer: `/constants/${i}/column`, field: "column", toId: to, required: true, dependentItem: `/constants/${i}` });
       });
       break;
+    case "operation":
+      // The events an operation fires (processes-operations-design.md decision 1): a delete of an event clears its entry.
+      arr(doc.fires).forEach((_, i) => push(`/fires/${i}`, "fires", (doc.fires as unknown[])[i], false, `/fires/${i}`));
+      break;
     case "table":
       push("/database", "database", doc.database, true);
       // An overlay table names its entity or relation (exactly one of them): it cannot lose it.
@@ -355,6 +359,26 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
           treeIds(set.value, `${at}/value`, drop);
         }),
       );
+      // An action's call (processes-operations-design.md section 11): a call means nothing without its operation, nor an input without its
+      // member, so a delete drops the call or the input whole (the action keeps its other effects). The ids in an input's value drop the input.
+      arr(doc.actions).forEach((a, i) => {
+        const call = a.call as Json | undefined;
+        if (!call) return;
+        const at = `/actions/${i}/call`;
+        const operation = str(call.operation);
+        if (operation)
+          out.push({ fromId: str(a.id) ?? id, pointer: `${at}/operation`, field: "operation", toId: operation, required: false, removeItem: at, drops: true });
+        arr(call.inputs).forEach((input, j) => {
+          const part = `${at}/inputs/${j}`;
+          const holder = str(input.id) ?? str(a.id) ?? id;
+          const drop = (pointer: string, field: string, to: unknown) => {
+            const t = str(to);
+            if (t) out.push({ fromId: holder, pointer, field, toId: t, required: false, removeItem: part, drops: true });
+          };
+          drop(`${part}/member`, "member", input.member);
+          treeIds(input.value, `${part}/value`, drop);
+        });
+      });
       arr(doc.events).forEach((e, i) =>
         arr(e.actors).forEach((_, j) => push(`/events/${i}/actors/${j}`, "actors", (e.actors as unknown[])[j], false, `/events/${i}/actors/${j}`)),
       );
@@ -380,6 +404,8 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
           }
           arr(st.invoke).forEach((inv, k) => {
             push(`${base}/${i}/invoke/${k}/process`, "process", inv.process, false);
+            // A service step's operation is cleared when the operation goes (the step keeps its type and name).
+            push(`${base}/${i}/invoke/${k}/operation`, "operation", inv.operation, false);
             arr(inv.actors).forEach((a, j) => push(`${base}/${i}/invoke/${k}/actors/${j}`, "actors", a, false, `${base}/${i}/invoke/${k}/actors/${j}`));
           });
           states(st.states, `${base}/${i}/states`);
@@ -646,6 +672,12 @@ export function subElementIds(doc: Json): string[] {
   if (doc.kind === "entity" || doc.kind === "reference-type") collect(doc.bindings);
   if (doc.kind === "trigger-point") collect(doc.sets);
   if (doc.kind === "enum") collect(doc.members);
+  // An operation's members, outcomes and errors: a call's input names a member by id.
+  if (doc.kind === "operation") {
+    collect(doc.input);
+    collect(doc.outcomes);
+    collect(doc.errors);
+  }
   if (doc.kind === "verb-vocabulary") collect(doc.verbs);
   if (doc.kind === "process") {
     collect(doc.subjects);
@@ -657,6 +689,7 @@ export function subElementIds(doc: Json): string[] {
     collect(doc.triggerPoints);
     arr(doc.triggerPoints).forEach((t) => collect(t.sets));
     arr(doc.actions).forEach((a) => collect(a.sets));
+    arr(doc.actions).forEach((a) => collect((a.call as Json | undefined)?.inputs));
     // The stages and named signatures of every approval, inline or in a library.
     const stagesOf = (gate: Json | undefined) =>
       arr(gate?.stages).forEach((stage) => {

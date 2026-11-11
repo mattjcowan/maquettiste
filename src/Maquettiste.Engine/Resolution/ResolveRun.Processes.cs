@@ -447,6 +447,10 @@ internal sealed partial class ResolveRun
     /// <summary>The <c>in-state</c> nodes waiting for every process to be built, each with the work that fills it.</summary>
     private readonly List<Action> _inStateFills = [];
 
+    // What joins a process's parts to operations once they resolve (processes-operations-design.md section 9): an action's call and a service
+    // step's operation. Run by LinkOperations.
+    private readonly List<Action> _operationLinks = [];
+
     /// <summary>
     /// What fills an <c>in-state</c> node of a process's guard or set, or of an operation's guard (object-effects-design.md section 6):
     /// queued, since the node may name the states of a process not built yet. <paramref name="holderDeps"/> takes the binding's keys.
@@ -862,6 +866,50 @@ internal sealed partial class ResolveRun
             return new RList<RSet>(sets, listKeys.ToList());
         }
 
+        // An action's call (processes-operations-design.md section 9): each input's value typed at a set site against its member's type. The
+        // operation resolves after the processes, so the call joins its action then (LinkOperations); one whose operation does not resolve
+        // stays off. An input whose member is not an input of the operation, names a member again or cannot be given is left out, as one
+        // whose value does not type (MQ9025, MQ3103). The call and its inputs key on the process's file and on the operation's file.
+        void CallOf(RAction action, ProcessCall source)
+        {
+            var callKeys = new DependencySet(Keys).AddRange(nodeKeys).Element(source.Operation).ToList();
+            var call = new RCall { Id = action.Id + "/call", Action = action };
+            DepsOf(call).AddRange(callKeys);
+            var operation = Model.Get<Operation>(source.Operation);
+            var inputs = new List<(string Member, RCallInput Input)>(source.Inputs.Count);
+            var given = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in source.Inputs)
+            {
+                if (operation?.Input.FirstOrDefault(m => string.Equals(m.Id, entry.Member, StringComparison.Ordinal)) is not { } member
+                    || !given.Add(member.Id) || ExprSites.MemberType(Model, member) is null)
+                    continue;
+                var input = new RCallInput { Id = entry.Id, Call = call };
+                if (BuildCondition(entry.Id, ExprSiteKind.Set, DepsOf(input).AddRange(callKeys)) is not { } value)
+                    continue;
+                input.Value = value;
+                inputs.Add((member.Id, input));
+            }
+
+            _operationLinks.Add(() =>
+            {
+                if (_operations.GetValueOrDefault(source.Operation) is not { } resolved)
+                    return;
+                var kept = new List<RCallInput>(inputs.Count);
+                foreach (var (memberId, input) in inputs)
+                {
+                    if (resolved.Input.FirstOrDefault(m => string.Equals(m.Id, memberId, StringComparison.Ordinal)) is not { } member)
+                        continue;
+                    input.Member = member;
+                    kept.Add(input);
+                    Register(input);
+                }
+
+                call.Operation = resolved;
+                call.Inputs = new RList<RCallInput>(kept, callKeys);
+                action.Call = call;
+            });
+        }
+
         var actions = new List<RAction>();
         var actionsById = new Dictionary<string, RAction>(StringComparer.Ordinal);
         foreach (var source in process.Actions)
@@ -871,6 +919,8 @@ internal sealed partial class ResolveRun
             action.Raises = new RList<REvent>(source.Raises.Select(id => lookup.Events.GetValueOrDefault(id)).OfType<REvent>(), nodeKeys);
             if (source.Sets.Count > 0)
                 action.Sets = SetsOf(action, source);
+            if (source.Call is { } call)
+                CallOf(action, call);
             if (actionsById.TryAdd(source.Id, action))
                 actions.Add(action);
             if (process.Use == ProcessUse.Library)
@@ -925,6 +975,14 @@ internal sealed partial class ResolveRun
                 {
                     invokeDeps.Element(sub);
                     invoke.Process = _processes.GetValueOrDefault(sub);
+                }
+
+                // A service step's operation (processes-operations-design.md decision 11), linked once operations resolve; on another type of
+                // invoke it is MQ9025 and stays off.
+                if (source2.Operation is { } operationId && source2.Type == InvokeType.Service)
+                {
+                    invokeDeps.Element(operationId);
+                    _operationLinks.Add(() => invoke.Operation = _operations.GetValueOrDefault(operationId));
                 }
 
                 invoke.Actors = ActorsOf(source2.Actors, invokeDeps);

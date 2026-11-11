@@ -908,9 +908,13 @@ public sealed record TransitionRecord(string Id, string Source, IReadOnlyList<st
 /// <param name="Properties">The custom properties.</param>
 /// <param name="Verb">The key of the verb the event names (verbs-design.md decision 11); <see langword="null"/>, and left out of the JSON, when it
 /// names none.</param>
+/// <param name="FiredBy">The ids of the operations whose <c>fires</c> names the event, in the resolved model's order of operations
+/// (processes-operations-design.md decision 1): when an operation's work is done, the team's system sends the event. <see langword="null"/>,
+/// and left out of the JSON, when no operation fires it.</param>
 public sealed record EventRecord(string Id, string Name, IReadOnlyList<AttributeRecord> Payload, IReadOnlyList<string> Actors, IReadOnlyList<string> Transitions,
     string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? FiredBy = null);
 
 /// <summary>A guard of a process.</summary>
 /// <param name="Id">The guard id.</param>
@@ -932,7 +936,8 @@ public sealed record GuardRecord(string Id, string Name, string? Expression, boo
 /// <param name="Id">The action id.</param>
 /// <param name="Name">The name.</param>
 /// <param name="Expression">The JavaScript expression of its context changes, or <see langword="null"/> when it has none.</param>
-/// <param name="IsStub">Whether the action has neither an expression nor sets.</param>
+/// <param name="IsStub">Whether the action has neither an expression nor sets; the host implements it. A call is that work, recorded on
+/// <c>call</c>; a call-only action is still a stub.</param>
 /// <param name="Raises">The ids of the events it raises.</param>
 /// <param name="UsedBy">The ids of the states and transitions that run it.</param>
 /// <param name="DisplayName">The display name.</param>
@@ -941,9 +946,29 @@ public sealed record GuardRecord(string Id, string Name, string? Expression, boo
 /// <param name="Properties">The custom properties.</param>
 /// <param name="Sets">The values the action sets on the object, in file order (object-effects-design.md decision 1); <see langword="null"/>,
 /// and left out of the JSON, when it sets none.</param>
+/// <param name="Call">The operation the action calls and the inputs it gives (processes-operations-design.md decision 5); <see langword="null"/>,
+/// and left out of the JSON, when it calls none.</param>
 public sealed record ActionRecord(string Id, string Name, string? Expression, bool IsStub, IReadOnlyList<string> Raises, IReadOnlyList<string> UsedBy,
     string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SetRecord>? Sets = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SetRecord>? Sets = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CallRecord? Call = null);
+
+/// <summary>
+/// The operation an action calls, and a value for some of its inputs (processes-operations-design.md decisions 5 to 8). When the action runs,
+/// the team's system asks for the operation to be run with these inputs; inputs not listed are the team's.
+/// </summary>
+/// <param name="Operation">The id of the operation called.</param>
+/// <param name="Inputs">The inputs the call gives, in file order. An input is left out when its member doesn't resolve or is not an input of
+/// the operation, when it names a member an earlier input names, when the member can't be given (a file, a list, a record key of an entity
+/// with a composite key or no key, or a type expressions lack; MQ9025), or when its value doesn't type (MQ3103).</param>
+public sealed record CallRecord(string Operation, IReadOnlyList<CallInputRecord> Inputs);
+
+/// <summary>One input member of a called operation and the value the call gives it (processes-operations-design.md decision 6).</summary>
+/// <param name="Id">The input's id.</param>
+/// <param name="Member">The id of the operation's input member.</param>
+/// <param name="Value">The value: its text printed from current names, its type and its tree, typed against the member as a set's value is
+/// typed against its attribute.</param>
+public sealed record CallInputRecord(string Id, string Member, ExpressionRecord Value);
 
 /// <summary>One attribute of the object an action sets, and its value (object-effects-design.md decisions 1 to 3).</summary>
 /// <param name="Id">The set's id.</param>
@@ -954,7 +979,7 @@ public sealed record SetRecord(string Id, string Attribute, ExpressionRecord Val
 /// <summary>An invocation of a service or another process.</summary>
 /// <param name="Id">The invocation id.</param>
 /// <param name="Name">The name.</param>
-/// <param name="Type"><c>service</c> or <c>process</c>.</param>
+/// <param name="Type"><c>service</c>, <c>process</c> or <c>human-task</c>.</param>
 /// <param name="Process">The invoked process's id.</param>
 /// <param name="Actors">The ids of the actors that answer it.</param>
 /// <param name="State">The id of the state it runs in.</param>
@@ -962,8 +987,11 @@ public sealed record SetRecord(string Id, string Attribute, ExpressionRecord Val
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
+/// <param name="Operation">The id of the operation whose run does a service step's work (processes-operations-design.md decision 11);
+/// <see langword="null"/>, and left out of the JSON, when the step names none.</param>
 public sealed record InvokeRecord(string Id, string Name, string Type, string? Process, IReadOnlyList<string> Actors, string State, string DisplayName,
-    string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+    string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Operation = null);
 
 /// <summary>An approval gate on a transition.</summary>
 /// <param name="Id">The gate id.</param>
@@ -1272,12 +1300,18 @@ public sealed record ExpectedNoticeRecord(string Signature, string Kind);
 /// of the JSON, for an operation without any.</param>
 /// <param name="Verb">The key of the verb the operation names (verbs-design.md decision 13); <see langword="null"/>, and left out of the JSON,
 /// when it names none.</param>
+/// <param name="CalledBy">The ids of the actions that call the operation (processes-operations-design.md section 9), in the order of processes,
+/// then in file order; <see langword="null"/>, and left out of the JSON, when none does.</param>
+/// <param name="InvokedBy">The ids of the service steps (invokes) that name the operation, in the order of processes, then in file order;
+/// <see langword="null"/>, and left out of the JSON, when none does.</param>
 public sealed record OperationRecord(string Id, string Kind, string Name, string? Package, string? Subject, string? Level, string Effect,
     IReadOnlyList<OperationMemberRecord> Input, IReadOnlyList<OperationOutcomeRecord> Outcomes, string? DefaultOutcome, IReadOnlyList<OperationErrorRecord> Errors,
     IReadOnlyList<string> Fires, IReadOnlyList<string> Requires, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags,
     string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<OperationGuardRecord>? Guards = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? CalledBy = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? InvokedBy = null);
 
 /// <summary>A guard of an operation: a condition it requires before it runs, and the error it reports when the condition does not hold;
 /// only true passes (next-phase-3-design.md section 3.1).</summary>
@@ -1919,17 +1953,19 @@ public static class ResolvedRecords
                 t.Guard?.Id, t.GuardMissing, Ids(t.Actions), t.External, t.Gate?.Id, t.Label, t.IsTargetless, t.DisplayName, t.Description, Keys(t.Stereotypes), Plain(t.Properties),
                 t.Verb?.Key, t.NextRevision))],
             [.. p.Events.Select(e => new EventRecord(e.Id, e.Name, [.. e.Payload.Select(a => Attribute(a))], Ids(e.Actors), Ids(e.Transitions),
-                e.DisplayName, e.Description, Keys(e.Stereotypes), Plain(e.Properties), e.Verb?.Key))],
+                e.DisplayName, e.Description, Keys(e.Stereotypes), Plain(e.Properties), e.Verb?.Key, e.FiredBy.Count == 0 ? null : Ids(e.FiredBy)))],
             [.. p.Guards.Select(g => new GuardRecord(g.Id, g.Name, g.Expression, g.IsStub, Ids(g.UsedBy), g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties),
                 Expression(g.Condition)))],
             [.. p.Actions.Select(a => new ActionRecord(a.Id, a.Name, a.Expression, a.IsStub, Ids(a.Raises), Ids(a.UsedBy), a.DisplayName, a.Description, Keys(a.Stereotypes), Plain(a.Properties),
-                a.Sets.Count == 0 ? null : [.. a.Sets.Select(x => new SetRecord(x.Id, x.Attribute.Id, Expression(x.Value)!))]))],
+                a.Sets.Count == 0 ? null : [.. a.Sets.Select(x => new SetRecord(x.Id, x.Attribute.Id, Expression(x.Value)!))],
+                a.Call is { } call ? new CallRecord(call.Operation.Id, [.. call.Inputs.Select(x => new CallInputRecord(x.Id, x.Member.Id, Expression(x.Value)!))]) : null))],
             [.. p.Gates.Select(g => new GateRecord(g.Id, g.Name, g.Transition?.Id, Ids(g.UsedBy), g.Required, Ids(g.Signers), Ids(g.RequiredActors), g.AllowRepeatSigner, g.ReasonRequired,
                 [.. g.Meanings.Select(m => new MeaningRecord(m.Id, m.Name, m.DisplayName, m.Description))],
                 [.. g.Audit.Select(f => new AuditFieldRecord(f.Id, f.Name, f.Type, f.Required, f.Description, f.Values, f.Attribute?.Id))],
                 g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties),
                 g.UsesStages ? [.. g.Stages.Select(Stage)] : null, g.AllowSignerAcrossSignatures ? true : null))],
-            [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties)))],
+            [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties),
+                i.Operation?.Id))],
             Ids(p.Actors), Ids(p.Scenarios),
             p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation,
             p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id, s.BoundReferenceType?.Id,
@@ -2028,7 +2064,7 @@ public static class ResolvedRecords
             o.DisplayName!, o.PluralName!, o.Description, o.Tags, o.Category?.Id, Keys(o.Stereotypes), Plain(o.Properties), o.Generation,
             o.Guards.Count == 0 ? null : [.. o.Guards.Select(g => new OperationGuardRecord(g.Id, g.Name, Expression(g.Condition), g.Error?.Id,
                 g.DisplayName!, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))],
-            o.Verb?.Key);
+            o.Verb?.Key, o.CalledBy.Count == 0 ? null : Ids(o.CalledBy), o.InvokedBy.Count == 0 ? null : Ids(o.InvokedBy));
 
         public static VerbRecord Verb(RVerb v) => new(v.Id, "verb", v.Key, v.Key, v.DisplayName, v.Description, v.BuiltIn, v.Group, v.Hidden, v.Used,
             [.. v.Events.Select(e => e.Id)], [.. v.Transitions.Select(t => t.Id)], [.. v.Operations.Select(o => o.Id)]);

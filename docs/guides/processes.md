@@ -329,6 +329,29 @@ If a scenario sends an event that names `freeze` and later a step that modifies 
 An event that names `modify` cannot say which attributes it changes. A deny that names attributes still holds for it. See
 [Rights](../user-guide.md#rights).
 
+## 17. Link a move to the command that makes it
+
+Lakeside Hardware's `InvoiceFlow` has the states `Draft`, `Issued` and `Paid`, and the events `Issue` and `Pay`. The shop also has an
+operation "Issue invoice" on `Invoice`. Say which move it makes.
+
+1. Open the operation "Issue invoice" and its **General** tab. Under **Fires**, press **Add event**. Pick the process `InvoiceFlow` first
+   (processes that govern `Invoice` come first), then the event `Issue`. The row reads "InvoiceFlow › Issue", with the event's payload under it.
+2. Open `InvoiceFlow` and its **Events** tab. The **Fired by** column of `Issue` now names "Issue invoice". Click it to open the operation.
+   Select the `Draft` to `Issued` move: its side panel shows the same **Fired by** line.
+
+Maquettiste checks the link. Say `Issue` has a required payload attribute `issuedOn`, and the operation has no input of that name. The
+operation shows warning MQ3044 on its `Issue` row. Add an input `issuedOn` of the same type, or lower the rule in **Settings › Validation**
+if your handler fills it in. If the operation were about `Customer` and the process about `Invoice`, MQ3032 would warn instead.
+
+To say that an action calls an operation, open the **Transitions** tab and look at the **Actions** grid. Press the pencil in the **Calls**
+column of the action `RequestIssue`. Pick the operation `issue`, then give a **Value** for each input, such as the context value
+`termsDays` for `dueDays`. An input you leave empty is "not given". If it is required and has no default, MQ9026 warns that your system must supply it.
+On the **States** tab, a service step has an **Operation** column that works the same way.
+
+A call runs nothing in the simulator. The trace says "recorded, not run". Your system decides when the call happens and what an
+outcome means. See [Fires and requires](../user-guide.md#fires-and-requires) and
+[Actions that call an operation](../user-guide.md#actions-that-call-an-operation).
+
 ## See also
 
 - [Processes, actors and scenarios](../user-guide.md#processes-actors-and-scenarios), including

@@ -466,6 +466,7 @@ public sealed partial class AgentTools
             Text = args.String("text"),
             Site = args.String("site") is { Length: > 0 } site ? site : null,
             Attribute = args.String("attribute") is { Length: > 0 } attribute ? attribute : null,
+            Member = args.String("member") is { Length: > 0 } member ? member : null,
             Database = args.String("database") is { Length: > 0 } database ? database : null,
             Lifecycle = args.String("lifecycle") is { Length: > 0 } lifecycle ? lifecycle : null,
             Values = args.Json("values"),

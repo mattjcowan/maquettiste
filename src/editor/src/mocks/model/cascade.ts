@@ -52,6 +52,7 @@ const NOUNS: Record<string, string> = {
   triggerPoints: "trigger point",
   stages: "stage",
   signatures: "signature",
+  inputs: "call input",
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -405,7 +406,7 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
       if (op.remove) {
         const sub = at(doc.json, op.pointer) as Json | undefined;
         const parts = op.pointer.split("/");
-        const noun = NOUNS[parts[parts.length - 2] ?? ""] ?? "part";
+        const noun = parts[parts.length - 1] === "call" ? "call" : (NOUNS[parts[parts.length - 2] ?? ""] ?? "part");
         const subId = str(sub?.id);
         plan.removes.push({
           ...base,

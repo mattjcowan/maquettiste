@@ -108,7 +108,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Which state comes next depends on which signature was met (`branch`) | E | Part: as separate transitions, but a source and event can carry only one gate |
 | A move back that is always there (`demote`) | E W | Part: each is declared |
 | The same person can't make two moves in a row | S | Part: a gate's `allowRepeatSigner` |
-| Actions, in order | S V | Yes |
+| Actions, in order, and the operation an action calls | S V | Yes: an action's `call` names an operation and its input values; the simulator records it and runs nothing |
 | Changing the revision on a move | S V | Yes: `nextRevision` on a transition (0.23.0) |
 | Comment allowed, required or prohibited on a move | O | Part: a gate's `reasonRequired` |
 | Moving many objects together | W | No: the system's job |
@@ -180,7 +180,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | A workflow on leaving a phase | W | Part: a sub-process before the move |
 | A simple lifecycle with no workflows, and a full one | W | Yes: both can be modeled |
 | Tasks with assignees | E T A | Yes: a `human-task` invoke |
-| Automated steps that run a program, and sub-processes | E | Yes: `service` and `process` invokes |
+| Automated steps that run a program, and name the operation they run, and sub-processes | E | Yes: `service` and `process` invokes; a service step names its `operation` |
 | And and or nodes joining paths | E | Part: parallel states and choice states |
 | A task's duration, priority, instructions, share of the day | E | No: custom property |
 | Accepting, suspending, resuming and reassigning running work | E | No: the system's job |

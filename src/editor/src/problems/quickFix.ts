@@ -31,7 +31,7 @@ export type QuickFix =
   /** A plain update of one document. */
   | { kind: "update"; id: string; json: ModelJson; label: string }
   /** Opens a part of a lifecycle on its tab (no change to the model). */
-  | { kind: "open"; process: string; tab: "events"; node: string; label: string };
+  | { kind: "open"; process: string; tab: "events" | "transitions"; node: string; label: string };
 
 /** The rules whose fix is built in the editor as a plain update (the derivation table's last row) or needs two findings of MQ9201. */
 const EDITOR_FIXES = new Set([
@@ -54,6 +54,9 @@ const EDITOR_FIXES = new Set([
   "MQ9801",
   "MQ9802",
   "MQ9803",
+  "MQ9025",
+  "MQ3032",
+  "MQ9026",
   "MQ9901",
   "MQ9902",
   "MQ9903",
@@ -622,6 +625,36 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
       if (!at || element.kind !== "process") return null;
       const json = removeSetAt(element, at);
       return json ? { kind: "update", id, json, label: "Remove the set" } : null;
+    }
+    case "MQ9025": {
+      // A call's input the operation can't take: remove the input. A step's operation that can't be read: clear it (the step keeps its type).
+      if (element.kind !== "process") return null;
+      const input = /^(\/actions\/\d+\/call\/inputs\/\d+)(\/|$)/.exec(pointer);
+      if (input) {
+        const json = removeAt(element, input[1]);
+        const call = json ? (atPointer(json, parent(parent(input[1]))) as Json | undefined) : undefined;
+        if (call && Array.isArray(call.inputs) && !call.inputs.length) delete call.inputs;
+        return json ? { kind: "update", id, json, label: "Remove the input" } : null;
+      }
+      if (/\/invoke\/\d+\/operation$/.test(pointer)) {
+        const json = removeAt(element, pointer);
+        return json ? { kind: "update", id, json, label: "Clear the step's operation" } : null;
+      }
+      return null;
+    }
+    case "MQ3032": {
+      // Only a finding on an operation's `fires` has a fix: stop firing that one event (a call or a service step is changed in its process).
+      if (element.kind !== "operation" || !/^\/fires\/\d+$/.test(pointer)) return null;
+      const json = removeAt(element, pointer);
+      if (json && Array.isArray(json.fires) && !json.fires.length) delete json.fires;
+      const event = /^Event '([^']+)'/.exec(d.message)?.[1];
+      return json ? { kind: "update", id, json, label: event ? `Stop firing ${event}` : "Stop firing the event" } : null;
+    }
+    case "MQ9026": {
+      // The input row is added in the Calls dialog of the action, which opens on the Transitions tab (the model keeps no half-filled input).
+      const at = /^\/actions\/(\d+)\/call$/.exec(pointer);
+      const action = at ? str((element.actions as Json[] | undefined)?.[Number(at[1])]?.id) : undefined;
+      return action ? { kind: "open", process: id, tab: "transitions", node: action, label: "Add the input" } : null;
     }
     case "MQ3042":
     case "MQ3043": {

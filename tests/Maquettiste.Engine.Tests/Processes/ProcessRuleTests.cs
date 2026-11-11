@@ -971,9 +971,11 @@ public sealed class ProcessRuleTests
     [Fact]
     public void Every_process_rule_has_a_catalog_entry_a_failing_case_and_a_passing_case()
     {
-        // MQ9019 is a batch operation's refusal, not a validation finding: ProcessOperationTests covers it.
+        // MQ9019 is a batch operation's refusal, not a validation finding: ProcessOperationTests covers it. MQ9024 to MQ9026 link processes
+        // to operations (processes-operations-design.md section 8): OperationLinkRuleTests covers them with the operation-side rules.
+        string[] elsewhere = ["MQ9019", "MQ9024", "MQ9025", "MQ9026"];
         var rules = RuleCatalog.All.Select(r => r.Id).Where(id => (id.StartsWith("MQ90", StringComparison.Ordinal)
-            || id.StartsWith("MQ91", StringComparison.Ordinal) || id.StartsWith("MQ92", StringComparison.Ordinal)) && id != "MQ9019").ToList();
+            || id.StartsWith("MQ91", StringComparison.Ordinal) || id.StartsWith("MQ92", StringComparison.Ordinal)) && !elsewhere.Contains(id)).ToList();
 
         Assert.Equal(38, rules.Count);
         Assert.Equal(rules, Failing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
