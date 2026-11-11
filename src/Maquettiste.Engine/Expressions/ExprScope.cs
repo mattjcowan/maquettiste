@@ -294,6 +294,12 @@ public sealed class ExprScope
     /// <summary>Whether an approval site is a stage's <c>when</c> rather than a named signature's (signoff-design.md decision 6), for messages.</summary>
     internal bool StageCondition { get; init; }
 
+    /// <summary>
+    /// Whether a <see cref="ExprSiteKind.Set"/> site is a call input's value rather than a set's (processes-operations-design.md decision 6),
+    /// for messages: it reads and types the same.
+    /// </summary>
+    internal bool CallInput { get; init; }
+
     /// <summary>The type a value or set site's result must have (a derived or set attribute's type), or <see langword="null"/> at other sites.</summary>
     public ExprType? ValueType { get; init; }
 

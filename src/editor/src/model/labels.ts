@@ -574,6 +574,8 @@ export const SIMULATION_LABELS = {
   doneOf: (invoke: string) => `Complete ${invoke} (done)`,
   errorOf: (invoke: string) => `Fail ${invoke} (error)`,
   pendingIn: (invoke: string, state: string) => `${invoke} in ${state}`,
+  /** A service step that names its operation (processes-operations-design.md decision 13). */
+  pendingRuns: (invoke: string, operation: string) => `Waiting for ${invoke}: runs ${operation}`,
   // Configuration
   noConfiguration: "No active state yet.",
   // Last step
@@ -607,6 +609,8 @@ export const SIMULATION_LABELS = {
   actionLine: (action: string, source: string, changes: string) => `${action} (${source})${changes ? `: ${changes}` : ""}`,
   actionSources: { expression: "expression", sets: "sets", stub: "stub, changes nothing" } as Record<string, string>,
   setsLine: (sets: string) => `Sets: ${sets}`,
+  /** A call the simulator recorded and did not run (decision 12). */
+  callLine: (operation: string, inputs: string) => `called ${operation}${inputs ? ` (${inputs})` : ""}, recorded, not run`,
   valuesLine: (values: string) => `Values: ${values}`,
   revisionLine: (from: string, to: string, level: number | null) =>
     `Revision ${from || "none"} to ${to || "none"}${level === null ? " (a chosen name)" : ` (level ${level})`}`,

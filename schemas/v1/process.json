@@ -815,7 +815,7 @@
     },
     "action": {
       "title": "Action",
-      "description": "A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.",
+      "description": "A named effect: context changes (expression), values set on the object (sets), an operation it calls (call), any mix of them, or none as a stub.",
       "type": "object",
       "x-order": [
         "id",
@@ -823,6 +823,7 @@
         "displayName",
         "expression",
         "sets",
+        "call",
         "raises",
         "description",
         "stereotypes",
@@ -849,6 +850,9 @@
             "$ref": "#/$defs/set"
           },
           "default": []
+        },
+        "call": {
+          "$ref": "#/$defs/call"
         },
         "raises": {
           "description": "Internal events queued after the action.",
@@ -903,6 +907,62 @@
       ],
       "additionalProperties": false
     },
+    "call": {
+      "title": "Call",
+      "description": "The operation the action calls, and a value for any of its inputs. When the action runs, the team's system asks for the operation to be run with the listed inputs set to the listed values; when, whether the move waits, retries, and what each outcome or error means are the team's. The simulator runs nothing: it records the call in the trace. A call-only action is still a stub. Not in a library (MQ9020).",
+      "type": "object",
+      "x-order": [
+        "operation",
+        "inputs"
+      ],
+      "properties": {
+        "operation": {
+          "description": "The operation called. For a record-level operation whose subject the process governs, the record is the process's object; otherwise the model does not state the record (MQ3032).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "inputs": {
+          "description": "Values for some input members of the operation. Inputs not listed are the team's: a required one without a default is MQ9026.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callInput"
+          },
+          "default": []
+        }
+      },
+      "required": [
+        "operation"
+      ],
+      "additionalProperties": false
+    },
+    "callInput": {
+      "title": "Call input",
+      "description": "One input member of the called operation and the value the call gives it.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "member",
+        "value"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "member": {
+          "description": "An input member of the called operation, once per call; not one a call can't give: a file member, a collection member, a record key of an entity with a composite key or no key, or a member with no type the expression language has values of, such as binary, float or a value object (MQ9025).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "value": {
+          "description": "The value, worked out from the object and context as they were when the action started (as a set's value is); it reads what a set's value reads and fits the member's type (MQ3103). A record key member types as its entity's key attribute. Null fits any member, required or not, as for a set's value, and the input still counts as given (no MQ9026).",
+          "$ref": "common.json#/$defs/expr"
+        }
+      },
+      "required": [
+        "id",
+        "member",
+        "value"
+      ],
+      "additionalProperties": false
+    },
     "invoke": {
       "title": "Invoke",
       "description": "Work a state starts on entry: a sub-process, a service task or a human task.",
@@ -913,6 +973,7 @@
         "displayName",
         "type",
         "process",
+        "operation",
         "actors",
         "description",
         "stereotypes",
@@ -937,6 +998,10 @@
         },
         "process": {
           "description": "The sub-process, for type process.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "operation": {
+          "description": "For type service: the operation whose run does the step's work. How the step starts it and with what inputs, how its outcomes and errors map to the step's done and error moves, and timeouts are the team's. Only on a service step (MQ9025).",
           "$ref": "common.json#/$defs/id"
         },
         "actors": {

@@ -440,8 +440,18 @@ public sealed class RAction : RProcessNode
     /// <summary>The JavaScript expression of its context changes, or <see langword="null"/> when it has none.</summary>
     public string? Expression { get; internal set; }
 
-    /// <summary>Whether the action has neither an expression nor sets (the host implements it).</summary>
+    /// <summary>
+    /// Whether the action has neither an expression nor sets; the host implements it. A call is that work, recorded on <c>call</c>; a
+    /// call-only action is still a stub.
+    /// </summary>
     public bool IsStub { get; internal set; }
+
+    /// <summary>
+    /// The operation the action calls and the inputs it gives (processes-operations-design.md decision 5), or <see langword="null"/> when it
+    /// calls none or the operation does not resolve. The simulator runs nothing for it; the team's system carries it out. It keys on the
+    /// process's file and on the operation's file.
+    /// </summary>
+    public RCall? Call { get; internal set; }
 
     /// <summary>
     /// The values the action sets on the object, in file order (object-effects-design.md decision 1); empty when it sets none. A set whose
@@ -483,6 +493,52 @@ public sealed class RSet : RObject
     public RAction? Action { get; internal set; }
 }
 
+/// <summary>
+/// The operation an action calls, and a value for some of its inputs (processes-operations-design.md decisions 5 to 8): when the action
+/// runs, the team's system asks for the operation to be run with these inputs set to these values. When the call happens, whether the move
+/// waits for it, retries and what each outcome or error means are the team's; inputs not listed are the team's too.
+/// </summary>
+public sealed class RCall : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "call";
+
+    /// <summary>The operation called.</summary>
+    public ROperation Operation { get; internal set; } = null!;
+
+    /// <summary>
+    /// The inputs the call gives, in file order; one whose member doesn't resolve or is not an input of the operation, repeats an earlier
+    /// input's member, cannot be given, or whose value does not type is left out (validation says why: MQ9025, MQ3103).
+    /// </summary>
+    public RList<RCallInput> Inputs { get; internal set; } = RList<RCallInput>.Empty;
+
+    /// <summary>The action that holds it.</summary>
+    public RAction? Action { get; internal set; }
+}
+
+/// <summary>
+/// One input member of a called operation and the value the call gives it (processes-operations-design.md decision 6): typed like a set's
+/// value, against the member's type, and worked out from the object and context as they were when the action started.
+/// </summary>
+public sealed class RCallInput : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "call-input";
+
+    /// <summary>The operation's input member.</summary>
+    public ROperationMember Member { get; internal set; } = null!;
+
+    /// <summary>
+    /// The value, typed against the member's type (a record key member's as its entity's key attribute); its paths end at the context's and
+    /// payloads' attributes, and at the declaring entity's attribute for one of the object's. Its root carries the JavaScript, as a set's
+    /// value does.
+    /// </summary>
+    public RExpression Value { get; internal set; } = null!;
+
+    /// <summary>The call that holds it.</summary>
+    public RCall? Call { get; internal set; }
+}
+
 /// <summary>Work a state starts on entry.</summary>
 public sealed class RInvoke : RProcessNode
 {
@@ -497,6 +553,13 @@ public sealed class RInvoke : RProcessNode
 
     /// <summary>The sub-process, for a <c>process</c> invoke.</summary>
     public RProcess? Process { get; internal set; }
+
+    /// <summary>
+    /// The operation whose run does a service step's work (processes-operations-design.md decision 11), or <see langword="null"/> when it
+    /// names none or the operation does not resolve. How the step starts it, with what inputs, and how its outcomes map to the step's done
+    /// and error moves are the team's.
+    /// </summary>
+    public ROperation? Operation { get; internal set; }
 
     /// <summary>The actors who may complete a human task.</summary>
     public RList<RActor> Actors { get; internal set; } = RList<RActor>.Empty;

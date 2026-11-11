@@ -1208,7 +1208,8 @@ public sealed partial class ModelStore : IAsyncDisposable
         var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
         var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
         var followers = FormerFactFollowers(changed, before, candidate).Concat(FormerActorPeers(changed, before, candidate))
-            .Concat(FormerTypeCodePeers(changed, before, candidate)).Concat(FormerRevisionPeers(changed, before, candidate)).ToList();
+            .Concat(FormerTypeCodePeers(changed, before, candidate)).Concat(FormerRevisionPeers(changed, before, candidate))
+            .Concat(FormerOperationPeers(changed, before, candidate)).ToList();
         // A dry run counts the deletes too: what a deleted element had shows as removed.
         if ((preview is null ? plan.ChangedIds.Count : changed.Count) == 0 && placements.Count == 0 && followers.Count == 0)
             return [];
@@ -1373,6 +1374,28 @@ public sealed partial class ModelStore : IAsyncDisposable
             yield break;
         foreach (var actor in candidate.All<Actor>())
             yield return actor.Id;
+    }
+
+    /// <summary>
+    /// The processes whose events a changed or deleted operation fired before the change, while MQ9024 is on (processes-operations-design.md
+    /// section 8): an operation that stops firing an event, or goes, may leave it unfired, and the process is no referrer of the operation. The
+    /// validator reaches the processes it fires after the change (<see cref="Validation.ModelValidator.OperationLinkPeers"/>). Nothing while
+    /// the rule is off.
+    /// </summary>
+    private static IEnumerable<string> FormerOperationPeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        if (!Validation.OperationLinks.UnfiredEventsOn(candidate))
+            yield break;
+        foreach (var id in changedIds)
+        {
+            if (before.GetDocument(id)?.Element is not Operation { Fires.Count: > 0 } operation)
+                continue;
+            foreach (var fired in operation.Fires)
+            {
+                if (before.TryGetEntry(fired, out var entry) && entry.Kind == "event" && candidate.GetDocument(entry.OwnerId) is { Element: Process })
+                    yield return entry.OwnerId;
+            }
+        }
     }
 
     /// <summary>

@@ -48,6 +48,18 @@ public sealed class ROperation : RElement
     /// other pass, so an id of any resolved kind (a stereotype definition included) resolves.
     /// </summary>
     public RList<IResolvedObject> Requires { get; internal set; } = RList<IResolvedObject>.Empty;
+
+    /// <summary>
+    /// The actions that call the operation (processes-operations-design.md section 9), in <see cref="ResolvedModel.Processes"/> order, then
+    /// in file order; empty when none does. Keys on the operation's referrers.
+    /// </summary>
+    public RList<RAction> CalledBy { get; internal set; } = RList<RAction>.Empty;
+
+    /// <summary>
+    /// The service steps (invokes) that name the operation as the one that does their work (processes-operations-design.md decision 11), in
+    /// <see cref="ResolvedModel.Processes"/> order, then in file order; empty when none does. Keys on the operation's referrers.
+    /// </summary>
+    public RList<RInvoke> InvokedBy { get; internal set; } = RList<RInvoke>.Empty;
 }
 
 /// <summary>A resolved member of an operation's input or of an outcome's inline returns.</summary>

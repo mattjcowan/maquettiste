@@ -3,6 +3,7 @@
 // rule ids, severities and messages follow RuleCatalog; line and column are left null.
 import { actorDiagnostics } from "./actorRules";
 import { setDiagnostics } from "./effectRules";
+import { operationLinkDiagnostics, processLinkDiagnostics, type LinkLookup } from "./operationRules";
 import type { Diagnostic } from "@/api/types";
 import Ajv2020 from "ajv/dist/2020";
 import { schemaValidator } from "../contract";
@@ -426,6 +427,18 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
     ))
       out.push(diag(f.rule, "error", f.message, entry, f.pointer));
   }
+  // MQ3032, MQ3044 (an operation's fires), MQ3032, MQ9020, MQ9024, MQ9025 and MQ9026 (a process's calls and service steps): operationRules.ts
+  if ((kind === "process" || kind === "operation") && ctx.lookup && ctx.all) {
+    const lookup = ctx.lookup;
+    const all = ctx.all;
+    const links: LinkLookup = {
+      get: (id) => lookup(id)?.json,
+      all: () => [...all()].map((e) => e.json),
+      stereotype: (key) => stereotypes.get(key),
+    };
+    for (const f of kind === "process" ? processLinkDiagnostics(json, links) : operationLinkDiagnostics(json, links))
+      out.push(diag(f.rule, f.severity, f.message, entry, f.pointer, f.elementId));
+  }
   // MQ9501 guard and action expressions: one JavaScript expression each (parsed, never run)
   if (kind === "process")
     for (const field of ["guards", "actions"] as const)
@@ -527,6 +540,8 @@ function collapseUndeclaredTags(diagnostics: Diagnostic[], byId: ReadonlyMap<str
 
 /** validation.rules: a rule set to error, warning or info changes its severity; off drops it (MQ1 rules always stay). */
 export function applyRules(out: Diagnostic[], rules: Record<string, string> = {}): Diagnostic[] {
+  // MQ9024 is off unless validation.rules gives it a severity (as MQ7205 is).
+  if (!["error", "warning", "info"].includes(rules.MQ9024 ?? "")) out = out.filter((d) => d.rule !== "MQ9024");
   return out
     .map((d) => (rules[d.rule] && rules[d.rule] !== "off" && !d.rule.startsWith("MQ1") ? { ...d, severity: rules[d.rule] as Diagnostic["severity"] } : d))
     .filter((d) => rules[d.rule] !== "off" || d.rule.startsWith("MQ1"));

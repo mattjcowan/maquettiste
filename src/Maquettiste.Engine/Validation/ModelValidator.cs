@@ -649,6 +649,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         foreach (var peer in ProcessPeers(model, element))
             yield return peer;
 
+        foreach (var id in OperationLinkPeers(model, element))
+        {
+            if (model.GetDocument(id) is { } peer)
+                yield return peer;
+        }
+
         foreach (var peer in SeveralTypesPeers(context, element))
             yield return peer;
 
@@ -1321,6 +1327,88 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             foreach (var a in gate.AuditAttributes) yield return a.Id;
         }
     }
+
+    /// <summary>
+    /// The files whose links between processes and operations (processes-operations-design.md section 8) a change may alter beyond its
+    /// referrers. A process change reaches the operations that fire its events (they reference them), and an operation change the processes
+    /// whose calls or service steps name it, as referrers. Beyond them: while MQ9024 is on, an operation brings the processes whose events it
+    /// fires (the store adds those it fired before, <see cref="ModelStore"/>'s former operation peers); nothing while it is off. An entity, or a
+    /// package or stereotype that moves the carriers of a stereotype entry, changes which entities a process governs and which entities derive
+    /// from an operation's subject (MQ3032): it brings the processes about it or an entity derived from it and the operations that fire their
+    /// events, and, for each operation on it or an entity derived from it or with a record key member of one, the processes that call or run
+    /// the operation and the operation itself when it fires; nothing while no operation fires an event and no call or service step names one.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="element">The element changed.</param>
+    /// <returns>The ids of the peers, possibly repeated.</returns>
+    internal static IEnumerable<string> OperationLinkPeers(ModelSnapshot model, Element element)
+    {
+        if (element is Operation fired && fired.Fires.Count > 0 && OperationLinks.UnfiredEventsOn(model))
+        {
+            foreach (var id in fired.Fires)
+            {
+                if (model.TryGetEntry(id, out var entry) && entry.Kind == "event")
+                    yield return entry.OwnerId;
+            }
+        }
+
+        if (element is not (Entity or Package or Stereotype) || !HasOperationLinks(model))
+            yield break;
+        HashSet<string> lineage;
+        if (element is Entity changed)
+        {
+            lineage = model.All<Entity>().Where(e => Processes.SubjectCoverage.Chain(model, e).Contains(changed.Id, StringComparer.Ordinal)).Select(e => e.Id)
+                .ToHashSet(StringComparer.Ordinal);
+        }
+        else if (Processes.SubjectCoverage.Of(model).Any)
+        {
+            lineage = [];
+        }
+        else
+        {
+            yield break;
+        }
+
+        foreach (var process in model.All<Process>())
+        {
+            if (process.Use == ProcessUse.Library || !process.Subjects.Any(s => (s.Entity is { } id && lineage.Contains(id)) || s.Stereotype is not null))
+                continue;
+            if (CallsOperations(process))
+                yield return process.Id;
+            foreach (var e in process.Events)
+            {
+                foreach (var reference in model.ReferencesTo(e.Id))
+                {
+                    if (model.Get<Operation>(reference.FromElementId) is not null)
+                        yield return reference.FromElementId;
+                }
+            }
+        }
+
+        // An operation on an entity of the lineage, or with a record key member of one (a key attribute's type, a key that turns composite
+        // or goes, or a base the key comes from: MQ3044, MQ3103, MQ9025): the processes that call it or run it, and itself when it fires,
+        // since MQ3032 and MQ3044 on its fires read the lineage and it references only the entity it names.
+        foreach (var operation in model.All<Operation>())
+        {
+            if (!(operation.Subject is { } subject && lineage.Contains(subject)) && !operation.Input.Any(m => m.KeyOf is { } keyOf && lineage.Contains(keyOf)))
+                continue;
+            if (operation.Fires.Count > 0)
+                yield return operation.Id;
+            foreach (var reference in model.ReferencesTo(operation.Id))
+            {
+                if (model.Get<Process>(reference.FromElementId) is not null)
+                    yield return reference.FromElementId;
+            }
+        }
+    }
+
+    /// <summary>Whether some operation fires an event, or some call or service step names an operation (processes-operations-design.md section 8).</summary>
+    private static bool HasOperationLinks(ModelSnapshot model) => model.All<Operation>().Any(o => o.Fires.Count > 0) || model.All<Process>().Any(CallsOperations);
+
+    /// <summary>Whether an action of a process calls an operation, or one of its service steps names one.</summary>
+    private static bool CallsOperations(Process process) => process.Actions.Any(a => a.Call is not null) || process.States.Any(HasStepOperation);
+
+    private static bool HasStepOperation(ProcessState state) => state.Invoke.Any(i => i.Operation is not null) || state.States.Any(HasStepOperation);
 
     // The process rules that read other files: MQ9106 on actors depends on every process, MQ9015 on the sub-processes a process
     // reaches, MQ9202 to MQ9208 and MQ9210 on the subject's attributes, the bound enum and every other use of it, the other lifecycles that

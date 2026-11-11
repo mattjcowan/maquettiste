@@ -97,7 +97,62 @@ internal static class OperationRules
             }
         }
 
+        CheckFires(context.Model, operation, report);
         CheckRequires(context, operation, report);
+    }
+
+    // MQ3032 and MQ3044 on each fired event (processes-operations-design.md decisions 2 and 3), at /fires/<i>; a repeated id is judged once, at
+    // its first entry. An id that names no event is MQ2001 or MQ2002.
+    private static void CheckFires(ModelSnapshot model, Operation operation, Report report)
+    {
+        if (operation.Fires.Count == 0)
+            return;
+        var subject = operation.Subject is { } subjectId ? model.Get<Entity>(subjectId) : null;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < operation.Fires.Count; i++)
+        {
+            var id = operation.Fires[i];
+            if (!seen.Add(id) || !model.TryGetEntry(id, out var entry) || entry.Kind != "event" || model.Get<Process>(entry.OwnerId) is not { } process
+                || process.Events.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal)) is not { } fired)
+                continue;
+            var at = Ptr.At("/fires", i);
+            // The level doesn't matter here: a collection operation may fire a lifecycle event of the record it makes.
+            if (subject is not null && process.Subjects.Count > 0 && !OperationLinks.LinesUp(model, process, subject))
+            {
+                report.Add("MQ3032", $"Operation '{operation.Name}' acts on '{subject.Name}' and fires event '{fired.Name}', but process '{process.Name}' is about "
+                    + $"{OperationLinks.Subjects(model, process)}, and governs neither '{subject.Name}' nor an entity derived from it; the model can't say which instance gets "
+                    + "the event. Fire an event of a process about the operation's subject, or route it in your system and turn the rule off.", at);
+            }
+
+            foreach (var attribute in fired.Payload)
+            {
+                if (Unsupplied(model, operation, fired, attribute) is { } message)
+                    report.Add("MQ3044", message, at);
+            }
+        }
+    }
+
+    // Why an operation's input can't supply a payload attribute of an event it fires (decision 3), or null: the member of the same name must
+    // be a typed value of the same type, or a record key of an entity whose one key attribute has that type, and a list exactly when the
+    // attribute is one. An optional attribute, or one with a default, needs no member. The implicit record key is not payload.
+    private static string? Unsupplied(ModelSnapshot model, Operation operation, ProcessEvent fired, ModelAttribute attribute)
+    {
+        var type = OperationLinks.TypeText(model, attribute.Type) + (attribute.Collection ? " list" : "");
+        var member = operation.Input.FirstOrDefault(m => string.Equals(m.Name, attribute.Name, StringComparison.Ordinal));
+        if (member is null)
+        {
+            return attribute.Required && attribute.Default is null && attribute.DefaultExpression is null
+                ? $"Event '{fired.Name}' needs '{attribute.Name}' ({type}, required); operation '{operation.Name}' has no input of that name. Add the input, or lower the rule "
+                    + "if your system fills it."
+                : null;
+        }
+
+        var fits = !member.File && member.Collection == attribute.Collection && (member.KeyOf is { } entityId
+            ? model.Get<Entity>(entityId) is { } entity && ExprSites.KeyAttribute(model, entity) is { } key && OperationLinks.SameType(key.Type, attribute.Type)
+            : OperationLinks.SameType(member.Type, attribute.Type));
+        return fits ? null
+            : $"Event '{fired.Name}' carries '{attribute.Name}' as {type}, but input '{member.Name}' of operation '{operation.Name}' is {OperationLinks.MemberText(model, member)}; "
+                + "give the input the attribute's type and form, or lower the rule if your system converts it.";
     }
 
     // MQ3025: one form of members, entity and file; mediaTypes only beside file, list never beside it; paging only on a list, and with

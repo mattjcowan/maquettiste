@@ -926,6 +926,7 @@ An event of a process.
 | `stereotypes` | list of string | never | The stereotype keys. |
 | `properties` | map of any | never | The custom properties. |
 | `verb` | string | left out when not set | The key of the verb the event names; null, and left out of the JSON, when it names none. |
+| `firedBy` | list of string | left out when not set | The ids of the operations whose `fires` names the event, in the resolved model's order of operations: when an operation's work is done, the team's system sends the event. null, and left out of the JSON, when no operation fires it. |
 
 ### guardRecord
 
@@ -953,7 +954,7 @@ An action of a process.
 | `id` | string | never | The action id. |
 | `name` | string | never | The name. |
 | `expression` | string | can be null | The JavaScript expression of its context changes, or null when it has none. |
-| `isStub` | boolean | never | Whether the action has neither an expression nor sets. |
+| `isStub` | boolean | never | Whether the action has neither an expression nor sets; the host implements it. A call is that work, recorded on `call`; a call-only action is still a stub. |
 | `raises` | list of string | never | The ids of the events it raises. |
 | `usedBy` | list of string | never | The ids of the states and transitions that run it. |
 | `displayName` | string | never | The display name. |
@@ -961,6 +962,7 @@ An action of a process.
 | `stereotypes` | list of string | never | The stereotype keys. |
 | `properties` | map of any | never | The custom properties. |
 | `sets` | list of [setRecord](#setrecord) | left out when not set | The values the action sets on the object, in file order; null, and left out of the JSON, when it sets none. |
+| `call` | [callRecord](#callrecord) | left out when not set | The operation the action calls and the inputs it gives; null, and left out of the JSON, when it calls none. |
 
 ### setRecord
 
@@ -971,6 +973,25 @@ One attribute of the object an action sets, and its value.
 | `id` | string | never | The set's id. |
 | `attribute` | string | never | The id of the attribute set (an attribute every subject of the process holds). |
 | `value` | [expressionRecord](#expressionrecord) | never | The value: its text printed from current names, its type and its tree. |
+
+### callRecord
+
+The operation an action calls, and a value for some of its inputs. When the action runs, the team's system asks for the operation to be run with these inputs; inputs not listed are the team's.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `operation` | string | never | The id of the operation called. |
+| `inputs` | list of [callInputRecord](#callinputrecord) | never | The inputs the call gives, in file order. An input is left out when its member doesn't resolve or is not an input of the operation, when it names a member an earlier input names, when the member can't be given (a file, a list, a record key of an entity with a composite key or no key, or a type expressions lack; MQ9025), or when its value doesn't type (MQ3103). |
+
+### callInputRecord
+
+One input member of a called operation and the value the call gives it.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | never | The input's id. |
+| `member` | string | never | The id of the operation's input member. |
+| `value` | [expressionRecord](#expressionrecord) | never | The value: its text printed from current names, its type and its tree, typed against the member as a set's value is typed against its attribute. |
 
 ### gateRecord
 
@@ -1075,7 +1096,7 @@ An invocation of a service or another process.
 | --- | --- | --- | --- |
 | `id` | string | never | The invocation id. |
 | `name` | string | never | The name. |
-| `type` | string | never | `service` or `process`. |
+| `type` | string | never | `service`, `process` or `human-task`. |
 | `process` | string | can be null | The invoked process's id. Null when not set. |
 | `actors` | list of string | never | The ids of the actors that answer it. |
 | `state` | string | never | The id of the state it runs in. |
@@ -1083,6 +1104,7 @@ An invocation of a service or another process.
 | `description` | string | can be null | The description. Null when not set. |
 | `stereotypes` | list of string | never | The stereotype keys. |
 | `properties` | map of any | never | The custom properties. |
+| `operation` | string | left out when not set | The id of the operation whose run does a service step's work; null, and left out of the JSON, when the step names none. |
 
 ### subjectRecord
 
@@ -1376,6 +1398,8 @@ A resolved operation: its input, outcomes and own errors, with the events it fir
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 | `guards` | list of [operationGuardRecord](#operationguardrecord) | left out when not set | The guards, in the order they are checked; null, and left out of the JSON, for an operation without any. |
 | `verb` | string | left out when not set | The key of the verb the operation names; null, and left out of the JSON, when it names none. |
+| `calledBy` | list of string | left out when not set | The ids of the actions that call the operation, in the order of processes, then in file order; null, and left out of the JSON, when none does. |
+| `invokedBy` | list of string | left out when not set | The ids of the service steps (invokes) that name the operation, in the order of processes, then in file order; null, and left out of the JSON, when none does. |
 
 ### operationMemberRecord
 

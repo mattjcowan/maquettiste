@@ -314,7 +314,7 @@ export interface StepTraceJson {
     transitions: string[];
     exited: string[];
     entered: string[];
-    actions: { action: string; source: "expression" | "sets" | "stub"; changed: Json; sets?: Json }[];
+    actions: { action: string; source: "expression" | "sets" | "stub"; changed: Json; sets?: Json; call?: { operation: string; inputs: Json } }[];
   }[];
   guards: { guard: string; transition: string; result: boolean | null; source: "expression" | "assumed" | "missing" }[];
   audit: Json[];
@@ -2165,6 +2165,7 @@ class Interpreter {
     // Every set is worked out from the context and the row as they were when the action started; all are applied together.
     const sets = arr(action.sets);
     const worked = sets.map((x) => ({ attribute: String(x.attribute), value: this.setValue(action, x) }));
+    const callValues = new Map(arr((action.call as Json | undefined)?.inputs).map((x) => [String(x.id), evalTree(x.value, this.env())]));
     if (this.chart.compiled.has(id)) {
       source = "expression";
       try {
@@ -2205,8 +2206,34 @@ class Interpreter {
       setOut[w.attribute] = w.value;
     }
     if (source === "stub" && sets.length) source = "sets";
+    // A call runs nothing (processes-operations-design.md decision 12): its input values are worked out like a set's, from the object and context
+    // as they were when the action started, and recorded. A value that cannot be worked out is null, with a note.
+    const call = action.call as Json | undefined;
+    let callRun: { operation: string; inputs: Json } | undefined;
+    if (call && typeof call.operation === "string") {
+      const inputs: Json = {};
+      this.scope.notes.push(`Action '${String(action.name)}' called an operation: recorded, not run.`);
+      for (const input of arr(call.inputs)) {
+        // The first input of a member counts; a repeat is left out (validation reports it).
+        if (String(input.member) in inputs) continue;
+        const value = callValues.get(String(input.id));
+        if (value === undefined || value === UNKNOWN) {
+          inputs[String(input.member)] = null;
+          this.scope.notes.push(
+            `The mock backend could not work out the value of an input of the call in action '${String(action.name)}', so it is recorded as null; the engine reads every expression.`,
+          );
+        } else inputs[String(input.member)] = value as never;
+      }
+      callRun = { operation: call.operation, inputs: sorted(inputs) };
+    }
     for (const raised of ids(action.raises)) if (this.chart.events.has(raised)) this.queue.push({ kind: "event", id: raised });
-    return { action: id, source, changed: sorted(changed), ...(Object.keys(setOut).length ? { sets: sorted(setOut) } : {}) };
+    return {
+      action: id,
+      source,
+      changed: sorted(changed),
+      ...(Object.keys(setOut).length ? { sets: sorted(setOut) } : {}),
+      ...(callRun ? { call: callRun } : {}),
+    };
   }
 
   // ---- the object: sets, identity and states ----

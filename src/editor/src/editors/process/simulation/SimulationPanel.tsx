@@ -25,7 +25,7 @@ import { indexLookup } from "@/model/index";
 import { RIGHT_LABELS as RL, SIMULATION_LABELS as L, TRIGGER_LABELS as TL } from "@/model/labels";
 import { CHECK_WORD_LABELS, CHECK_WORDS, isTeamCheck, reachableChecks, triggerPointsOf } from "@/model/triggerPoints";
 import { summaryFromDocument } from "@/model/model";
-import type { CheckWord, ParticipantDoc, ProcessDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
+import { stateIndex, type CheckWord, type ParticipantDoc, type ProcessDoc, type ScenarioDoc, type ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
 import { attributeLabels, castValues, entityChain } from "./castNames";
 import { objectStatesText, type StateChoiceGroup } from "@/model/effects";
@@ -63,6 +63,8 @@ import { useSimulation } from "./useSimulation";
 import { setSimulationView } from "./view";
 import { useSetContext } from "../SetsEditor";
 
+/** A row whose text may wrap onto a second line (a pending step that runs an operation), the buttons staying at the right. */
+const ROW_WRAP = "flex min-h-[var(--mq-row-h)] min-w-0 items-center gap-1.5 border-b border-default px-1.5 text-12";
 const ROW = "flex h-[var(--mq-row-h)] min-w-0 items-center gap-1.5 border-b border-default px-1.5 text-12";
 const FIELD = "h-5 min-w-0 rounded-[4px] border border-input bg-surface px-1 text-12 text-primary";
 const SMALL = "h-5 px-1.5 text-12";
@@ -83,7 +85,7 @@ const isField = (el: EventTarget | null) => el instanceof HTMLElement && /^(INPU
 /** Whether the panel is expanded, kept per browser. */
 const PANEL_OPEN_KEY = "mq.simulation.open";
 
-export function SimulationPanel({ pc }: { pc: ProcessContext }) {
+export function SimulationPanel({ pc, onOpenChange }: { pc: ProcessContext; onOpenChange?: (open: boolean) => void }) {
   const { id, process, actors, actorNames } = pc;
   const { store, drafts } = useServices();
   const qc = useQueryClient();
@@ -100,6 +102,8 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
       return value;
     });
   }, []);
+  // The chart above fits the room the panel leaves (ChartTab).
+  useEffect(() => onOpenChange?.(!collapsed), [collapsed, onOpenChange]);
   const [closed, setClosed] = useState<ReadonlySet<SectionId>>(new Set());
   const [recording, setRecording] = useState<{ name: string } | null>(null);
   const [recordOpen, setRecordOpen] = useState(false);
@@ -146,9 +150,26 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     for (const [pid, d] of namedDocs) take(pid, [d.json]);
     return { named, why, owner };
   }, [id, process.triggerPoints, otherDocs, namedDocs]);
+  // The operations the process calls or runs in a service step: their names, and the names of the inputs a call gives (one document each).
+  const calledIds = useMemo(
+    () => [
+      ...new Set([
+        ...(process.actions ?? []).flatMap((a) => (a.call ? [a.call.operation] : [])),
+        ...[...stateIndex(process).values()].flatMap((i) => (i.state.invoke ?? []).flatMap((v) => (v.operation ? [v.operation] : []))),
+      ]),
+    ],
+    [process],
+  );
+  const calledDocs = useElements(calledIds).byId;
+  const operations = useMemo(() => {
+    const operation = new Map((index.data ?? []).filter((r) => r.kind === "operation").map((r) => [r.id, r.displayName || r.name] as [string, string]));
+    const member = new Map<string, string>();
+    for (const d of calledDocs.values()) for (const m of (d.json as { input?: { id: string; name: string }[] }).input ?? []) member.set(m.id, m.name);
+    return { operation, member };
+  }, [index.data, calledDocs]);
   const names = useMemo(
-    () => namesOf(process, actorNames, participants, new Map([...elementNames, ...pointInfo.named]), new Map([...whys, ...pointInfo.why])),
-    [process, actorNames, participants, elementNames, whys, pointInfo],
+    () => namesOf(process, actorNames, participants, new Map([...elementNames, ...pointInfo.named]), new Map([...whys, ...pointInfo.why]), operations),
+    [process, actorNames, participants, elementNames, whys, pointInfo, operations],
   );
   const nav = useEditorNavigation();
   // A refusal names what refused it: that part of this lifecycle on its tab, or the element in its own editor tab.
@@ -1385,8 +1406,10 @@ function PendingSection({
   return (
     <ul aria-label={L.pending}>
       {rows.map((p) => (
-        <li key={`${p.invoke}:${p.state}`} className={ROW} data-testid="pending-row" data-invoke={names.invoke(p.invoke)}>
-          <span className="min-w-0 flex-1 truncate">{p.label}</span>
+        <li key={`${p.invoke}:${p.state}`} className={ROW_WRAP} data-testid="pending-row" data-invoke={names.invoke(p.invoke)}>
+          <span className="min-w-0 flex-1 break-words leading-tight" title={p.label}>
+            {p.label}
+          </span>
           <Button
             variant="secondary"
             size="sm"
@@ -1463,7 +1486,12 @@ function LastStepSection({
           key={i}
           className={cn(
             ROW,
-            (line.kind === "sets" || line.kind === "values" || line.kind === "refusal" || line.kind === "audit" || line.kind === "diagnostic") &&
+            (line.kind === "sets" ||
+              line.kind === "call" ||
+              line.kind === "values" ||
+              line.kind === "refusal" ||
+              line.kind === "audit" ||
+              line.kind === "diagnostic") &&
               "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
             line.kind === "trigger" && "gap-1",
             line.kind === "trigger" && line.named && "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5",
@@ -1475,7 +1503,7 @@ function LastStepSection({
           data-kind={line.kind}
           title={line.text}
         >
-          {line.kind === "sets" || line.kind === "values" || line.kind === "audit" || line.kind === "diagnostic" ? (
+          {line.kind === "sets" || line.kind === "call" || line.kind === "values" || line.kind === "audit" || line.kind === "diagnostic" ? (
             <span className="min-w-0 whitespace-normal break-words" data-testid="last-step-wrapped">
               {line.text}
             </span>

@@ -1,8 +1,11 @@
 // The Transitions tab (phase-3-design.md 6.2): the transitions in priority order (source path, trigger, event or
 // duration, guard, targets, actions, external, gate badge), then the Guards and Actions grids (name, the expression
 // as a one-line code field with its MQ9501 marker, description, used by).
-import { useState } from "react";
-import { Pencil, ShieldCheck, ShieldOff } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useElements, useIndex } from "@/api/queries";
+import { indexLookup } from "@/model/index";
+import { callText, CALL_LABELS as CL } from "@/model/callInputs";
+import { Info, Pencil, ShieldCheck, ShieldOff } from "lucide-react";
 import { useServices } from "@/app/context";
 import { Button } from "@/components/ui/button";
 import { Badge, SectionTitle } from "@/components/ui/misc";
@@ -32,6 +35,7 @@ import { levelChoices, transitionRevisionText } from "@/model/revisionLabels";
 import { useRevisionLevelLabels } from "./revisionLevels";
 import { Grid, type GridColumn } from "./Grid";
 import { SetsDialog, useSetContext } from "./SetsEditor";
+import { CallsDialog } from "./CallsEditor";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
 import { selectProcessNode, useProcessSelection } from "./selection";
 import { describeVerb, verbGroups } from "@/model/verbList";
@@ -42,7 +46,9 @@ const ADD_VERB = "__add-verb__";
 
 const find = (p: ProcessDoc, id: string): TransitionDoc | undefined => p.transitions?.find((t) => t.id === id);
 
-export function TransitionsTab({ pc }: { pc: ProcessContext }) {
+type TabFocus = { node: string | null; seq: number };
+
+export function TransitionsTab({ pc, focus, onFocusHandled }: { pc: ProcessContext; focus?: TabFocus | null; onFocusHandled?: () => void }) {
   const { process, change, id } = pc;
   const selection = useProcessSelection(id);
   const index = stateIndex(process);
@@ -243,7 +249,7 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 pb-28">
       {addingFor ? (
         <AddVerbDialog
           onClose={() => setAddingFor(null)}
@@ -302,19 +308,91 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
         }
       />
       <ExpressionGrid pc={pc} field="guards" />
-      <ExpressionGrid pc={pc} field="actions" />
+      <ExpressionGrid pc={pc} field="actions" focus={focus} onFocusHandled={onFocusHandled} />
     </div>
   );
 }
 
 /** The Guards or the Actions grid. */
-function ExpressionGrid({ pc, field }: { pc: ProcessContext; field: "guards" | "actions" }) {
+function ExpressionGrid({
+  pc,
+  field,
+  focus,
+  onFocusHandled,
+}: {
+  pc: ProcessContext;
+  field: "guards" | "actions";
+  focus?: TabFocus | null;
+  onFocusHandled?: () => void;
+}) {
   const { process, change } = pc;
   const rows = namedRows(process, field);
   const noun = field === "guards" ? "guard" : "action";
   const setContext = useSetContext(process);
   const { drafts, store } = useServices();
   const [setsFor, setSetsFor] = useState<string | null>(null);
+  const [callFor, setCallFor] = useState<string | null>(null);
+  // A quick fix of MQ9026 names an action: its Calls dialog opens once, then the request is spent (revisiting the tab opens nothing).
+  useEffect(() => {
+    if (field !== "actions" || !focus) return;
+    if (focus.node && process.actions?.some((a) => a.id === focus.node)) setCallFor(focus.node);
+    onFocusHandled?.();
+    // The request is the dependency: the process document changing must not replay it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
+  // The Calls column reads each called operation's one document, for its input names; never the whole model.
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
+  // A library's actions take no call (MQ9020); the editor shows a library no chart, but the column stays hidden for one all the same.
+  const callable = field === "actions" && (process as { use?: string }).use !== "library";
+  const callOps = callable ? [...new Set((process.actions ?? []).flatMap((a) => (a.call ? [a.call.operation] : [])))] : [];
+  const operations = useElements(callOps).byId;
+  const callOf = (id: string) => {
+    const call = process.actions?.find((a) => a.id === id)?.call;
+    const members = ((operations.get(call?.operation ?? "")?.json as { input?: { id: string; name: string }[] } | undefined)?.input ?? []) as {
+      id: string;
+      name: string;
+    }[];
+    return callText(call, call ? (lookup.nameOf(call.operation) ?? "?") : undefined, (m) => members.find((x) => x.id === m)?.name ?? "?", setContext.names);
+  };
+  const callColumn: GridColumn<NamedRow>[] = callable
+    ? [
+        {
+          key: "calls",
+          label: CL.column,
+          tooltip: CL.hint,
+          headerMark: (
+            <span className="inline-flex items-center gap-0.5 text-11">
+              <Info className="size-3" /> {CL.notRun}
+            </span>
+          ),
+          kind: "readonly",
+          width: "min-w-64",
+          clip: "max-w-[30rem]",
+          value: (r) => callOf(r.id),
+          render: (r) => {
+            const text = callOf(r.id);
+            return (
+              <span className="flex min-w-0 items-center gap-1">
+                <span className="min-w-0 max-w-[26rem] flex-1 truncate font-mono" title={text ? `${text}\n${CL.hint}` : CL.hint}>
+                  {text || CL.none}
+                </span>
+                <Button
+                  className="shrink-0"
+                  variant="ghost"
+                  size="icon-row"
+                  label={CL.edit(r.name)}
+                  onClick={() => setCallFor(r.id)}
+                  data-testid={`edit-call-${r.name}`}
+                >
+                  <Pencil />
+                </Button>
+              </span>
+            );
+          },
+        },
+      ]
+    : [];
   const setsColumn: GridColumn<NamedRow>[] =
     field === "actions"
       ? [
@@ -358,6 +436,7 @@ function ExpressionGrid({ pc, field }: { pc: ProcessContext; field: "guards" | "
       },
     },
     ...setsColumn,
+    ...callColumn,
     { key: "description", label: "Description", kind: "text", width: "min-w-32", value: (r) => r.description },
     { key: "usedBy", label: "Used by", kind: "readonly", width: "min-w-32", value: (r) => r.usedBy },
   ];
@@ -390,6 +469,27 @@ function ExpressionGrid({ pc, field }: { pc: ProcessContext; field: "guards" | "
         onAdd={(after) => change((p) => void addNamed(p, field, after?.id))}
         onRemove={(row) => change((p) => removeNamed(p, field, row.id))}
       />
+      {callFor ? (
+        <CallsDialog
+          process={process}
+          action={callFor}
+          context={setContext}
+          onClose={() => setCallFor(null)}
+          onApply={(call) => {
+            const target = callFor;
+            change((p) => {
+              const a = p.actions?.find((x) => x.id === target);
+              if (!a) return;
+              if (call) a.call = call;
+              else delete a.call;
+            });
+            void drafts.flushSaved(pc.id).then((saved) => {
+              if (saved) setCallFor(null);
+              else store.getState().notify(CL.refused, "error");
+            });
+          }}
+        />
+      ) : null}
       {setsFor ? (
         <SetsDialog
           process={process}

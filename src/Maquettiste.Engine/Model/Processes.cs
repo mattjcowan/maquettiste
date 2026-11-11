@@ -422,7 +422,10 @@ public sealed record ProcessGuard : IProcessNode
     public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 }
 
-/// <summary>A named effect; without an expression it is a stub. Its name is the name phase 4 gives the operation it becomes.</summary>
+/// <summary>
+/// A named effect; with neither an expression nor sets it is a stub, which the team's system implements. Actions stay: an action may call an
+/// operation (<see cref="Call"/>, processes-operations-design.md decision 5), which is that work recorded; a call-only action is still a stub.
+/// </summary>
 public sealed record ProcessAction : IProcessNode
 {
     /// <inheritdoc/>
@@ -442,6 +445,12 @@ public sealed record ProcessAction : IProcessNode
     /// context as they were when the action started, then all are applied together.
     /// </summary>
     public IReadOnlyList<ProcessSet> Sets { get; init; } = [];
+
+    /// <summary>
+    /// The operation the action calls, and a value for any of its inputs (processes-operations-design.md decision 5), or <see langword="null"/>
+    /// when it calls none. The simulator runs nothing for it; the trace records it. Not in a library (MQ9020).
+    /// </summary>
+    public ProcessCall? Call { get; init; }
 
     /// <summary>The internal events queued after the action.</summary>
     [ElementRef(IndexKinds = ["event"])]
@@ -476,6 +485,38 @@ public sealed record ProcessSet : IProcessNode
     public required Expr Value { get; init; }
 }
 
+/// <summary>
+/// The operation an action calls (processes-operations-design.md decisions 5 to 8): when the action runs, the team's system asks for the
+/// operation to be run with the listed inputs set to the listed values. When, whether the move waits, retries and what each outcome or error
+/// means are the team's.
+/// </summary>
+public sealed record ProcessCall
+{
+    /// <summary>The operation called.</summary>
+    [ElementRef(ElementKind.Operation)]
+    public required string Operation { get; init; }
+
+    /// <summary>Values for some of the operation's input members, in order; inputs not listed are the team's (MQ9026).</summary>
+    public IReadOnlyList<ProcessCallInput> Inputs { get; init; } = [];
+}
+
+/// <summary>
+/// One input member of a called operation and its value (processes-operations-design.md decision 6): typed like a set's value, against the
+/// member's type, and worked out from the object and context as they were when the action started.
+/// </summary>
+public sealed record ProcessCallInput : IProcessNode
+{
+    /// <inheritdoc/>
+    public required string Id { get; init; }
+
+    /// <summary>The input member of the called operation.</summary>
+    [ElementRef(IndexKinds = ["operation-member"])]
+    public required string Member { get; init; }
+
+    /// <summary>The value; text is accepted on writes and stored as a tree (MQ3108).</summary>
+    public required Expr Value { get; init; }
+}
+
 /// <summary>Work a state starts on entry: a sub-process, a service task or a human task.</summary>
 public sealed record ProcessInvoke : IProcessNode
 {
@@ -494,6 +535,13 @@ public sealed record ProcessInvoke : IProcessNode
     /// <summary>The sub-process, for <see cref="InvokeType.Process"/>.</summary>
     [ElementRef(ElementKind.Process)]
     public string? Process { get; init; }
+
+    /// <summary>
+    /// The operation whose run does the work of a <see cref="InvokeType.Service"/> step (processes-operations-design.md decision 11), or
+    /// <see langword="null"/>; on another type it is MQ9025.
+    /// </summary>
+    [ElementRef(ElementKind.Operation)]
+    public string? Operation { get; init; }
 
     /// <summary>Who may complete a human task.</summary>
     [ElementRef(ElementKind.Actor)]

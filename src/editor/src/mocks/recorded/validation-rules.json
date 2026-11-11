@@ -632,6 +632,14 @@
     "canBeOff": true
   },
   {
+    "id": "MQ3032",
+    "defaultSeverity": "warning",
+    "description": "An operation and a process it is linked to are about different objects: the operation's subject is neither governed by the process nor a base of an entity it governs. Reported on fires, and on a call or a service step when the operation is record-level; not when either side has no subject.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
     "id": "MQ3033",
     "defaultSeverity": "error",
     "description": "A custom element's content fails its custom kind's schema: a required key missing, an undeclared key, a value of the wrong shape, or a member without an id.",
@@ -659,6 +667,14 @@
     "id": "MQ3043",
     "defaultSeverity": "warning",
     "description": "A relation end's types holds an entry another entry already covers: an entity derived from a listed entity, or an entity that carries a listed stereotype; remove the entry. A warning, since carriers change with no edit to the relation.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3044",
+    "defaultSeverity": "warning",
+    "description": "An operation fires an event whose payload its input can't supply: a required payload attribute without a default has no input member of its name, or a member of its name has another type or form.",
     "family": "MQ30xx",
     "familyLabel": "Model structure",
     "canBeOff": true
@@ -2844,7 +2860,7 @@
   {
     "id": "MQ9020",
     "defaultSeverity": "error",
-    "description": "A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events or sets the object's data, or a guard with a condition), or a process that is not a library has no states or lists gates of its own; move the item, or change use.",
+    "description": "A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events, sets the object's data or calls an operation, or a guard with a condition), or a process that is not a library has no states or lists gates of its own; move the item, or change use.",
     "family": "MQ90xx",
     "familyLabel": "Processes",
     "canBeOff": true
@@ -2861,6 +2877,30 @@
     "id": "MQ9022",
     "defaultSeverity": "error",
     "description": "A process invoke or a scenario names a library, which has no states to run; name a running process.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9024",
+    "defaultSeverity": "info",
+    "description": "An event that some event transition uses, that no action of its process raises and that no operation fires; fire it from an operation (off unless validation.rules gives it a severity).",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9025",
+    "defaultSeverity": "error",
+    "description": "A call or service step that can't be read: an input names a member that isn't an input of the called operation, names one member twice, or names a member a call can't give (a file member, a collection member, a record key of an entity with a composite key or no key, or a member with no type the expression language has values of, such as binary, float or a value object); or operation on an invoke that isn't a service step; remove the input, or the invoke's operation.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9026",
+    "defaultSeverity": "warning",
+    "description": "A call leaves a required input member without a default ungiven (members a call can't give aside: file and collection members, record keys of entities with a composite key or no key, and members with no type the expression language has values of); give it a value, or leave it to your system to supply.",
     "family": "MQ90xx",
     "familyLabel": "Processes",
     "canBeOff": true

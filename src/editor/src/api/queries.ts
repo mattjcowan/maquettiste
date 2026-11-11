@@ -10,6 +10,7 @@ import type {
   ElementDocument,
   ElementKind,
   ElementSummary,
+  ReferenceInfo,
   SaveResult,
   BatchResult,
   ChangeSet,
@@ -165,6 +166,20 @@ export function useElements(ids: string[]) {
 
 export const useReferences = (id: string | null) =>
   useQuery({ queryKey: keys.references(id ?? ""), queryFn: () => endpoints.getReferences(id!), enabled: !!id });
+
+/** The references of several elements at once (one small call each, cached under the same key as `useReferences`). */
+export function useReferencesOf(ids: string[]) {
+  return useQueries({
+    queries: ids.map((id) => ({ queryKey: keys.references(id), queryFn: () => endpoints.getReferences(id), enabled: !!id })),
+    combine: (results) => {
+      const byId = new Map<string, ReferenceInfo[]>();
+      results.forEach((r, i) => {
+        if (r.data) byId.set(ids[i], r.data);
+      });
+      return byId;
+    },
+  });
+}
 
 /** A database view as the Database screen shows it: `stale` when the model has errors and `view` is the last one resolved. */
 export type DatabaseViewState = DatabaseViewResult & { stale: boolean };

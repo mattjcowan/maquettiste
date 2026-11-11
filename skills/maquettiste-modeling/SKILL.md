@@ -287,9 +287,18 @@ entity; model only the commands asked for.
   Every carrier inherits them as `<operation id>.<error id>`; the operation's `excludes` drops one by the stereotype
   error's id, and a `redefines` entry (`member`, then only `input`, `displayName` or `description`) adjusts one
   (MQ2027, MQ2028). Never copy a shared error as an own one; change its code on the stereotype.
-- `fires` lists process event ids, of any process; a `read` operation that fires one is MQ3030. `requires` lists ids of
+- `fires` lists process event ids, of any process: when the operation's work is done, the team's system sends them (on which
+  outcome, in what order and transaction is the team's). A `read` operation that fires one is MQ3030; an operation on another
+  subject than the process governs is MQ3032; a required payload attribute with no input member of its name and type is MQ3044.
+  `requires` lists ids of
   any element or sub-element that stand for what the operation requires (an actor, a permission code's row); the engine
   gives it no meaning, and it may not name the operation, its own parts, a diagram or a migration fact (MQ3031).
+- A process action may call one operation: `"call": { "operation": <id>, "inputs": [{ id, member: <input member id>, value }] }`,
+  beside `expression` and `sets`; each value is typed like a set's value against the member (MQ3103), and a required member
+  left out is MQ9026; file and collection members, record keys of an entity with a composite key or none, and members of a
+  type expressions lack (binary, float, a value object) can't be given (MQ9025); none in a library (MQ9020). A
+  service step (an invoke of type `service`) may name its `operation` (MQ9025 on other types). Both say what the team's
+  system runs; the simulator runs nothing for a call and records it in the trace's `call`. Never add calls unasked.
 - In `apply_batch`, `@operation:Invoice.send` finds `send` on Invoice, and `@operation-member:Invoice.send.recipient`,
   `@outcome:Invoice.send.waiting` and `@error:Invoice.send.missing_recipient` its parts.
 - Templates read operations through `each operation` (the variable `operation`; `type_of` maps a member), and

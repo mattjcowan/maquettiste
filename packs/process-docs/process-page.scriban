@@ -109,16 +109,18 @@ The attribute {{ md_code (p.subject.name + "." + p.bound_attribute.name) }} hold
 {{- if s.description }}{{ details[details.size] = md_inline(s.description) }}{{ end }}
 | {{ md_code s.path }} | {{ s.type }} | {{ details | array.join "; " }} |
 {{- end }}
+{{- # The Fired by columns (processes-operations-design.md section 13) show when some event of the process is fired by an operation: event.fired_by. }}
+{{- fired = false }}{{ for e in p.events }}{{ if e.fired_by.size > 0 }}{{ fired = true }}{{ end }}{{ end }}
 {{- if p.transitions.size > 0 }}{{ move_verbs = false }}{{ for t in p.transitions }}{{ if t.verb }}{{ move_verbs = true }}{{ end }}{{ end }}
 
 ## Transitions
 
 In priority order: among the transitions of one source and one trigger, the first whose guard holds is taken.
 
-| # | Source | Trigger | Guard | Targets | Actions | Gate |{{ if move_verbs }} Verb |{{ end }}
-| --- | --- | --- | --- | --- | --- | --- |{{ if move_verbs }} --- |{{ end }}
+| # | Source | Trigger |{{ if fired }} Fired by |{{ end }} Guard | Targets | Actions | Gate |{{ if move_verbs }} Verb |{{ end }}
+| --- | --- | --- |{{ if fired }} --- |{{ end }} --- | --- | --- | --- |{{ if move_verbs }} --- |{{ end }}
 {{- for t in p.transitions }}
-| {{ for.index + 1 }} | {{ md_code t.source.path }} | {{ trigger_text(t) }} | {{ t.guard ? (md_code t.guard.name) : "" }} | {{ t.is_targetless ? "none (stays in the source)" : code_paths(t.targets) }}{{ t.external ? " (external)" : "" }} | {{ code_names(t.actions) }} | {{ t.gate ? (md_code t.gate.name) + " (" + gate_count(t.gate) + ")" : "" }} |{{ if move_verbs }} {{ t.verb ? (md_code t.verb.key) : "" }} |{{ end }}
+| {{ for.index + 1 }} | {{ md_code t.source.path }} | {{ trigger_text(t) }} |{{ if fired }} {{ t.trigger == "event" && t.event ? code_names(t.event.fired_by) : "" }} |{{ end }} {{ t.guard ? (md_code t.guard.name) : "" }} | {{ t.is_targetless ? "none (stays in the source)" : code_paths(t.targets) }}{{ t.external ? " (external)" : "" }} | {{ code_names(t.actions) }} | {{ t.gate ? (md_code t.gate.name) + " (" + gate_count(t.gate) + ")" : "" }} |{{ if move_verbs }} {{ t.verb ? (md_code t.verb.key) : "" }} |{{ end }}
 {{- end }}
 {{- end }}
 {{- if p.gates.size > 0 }}
@@ -218,10 +220,10 @@ The audit record, one per {{ g.uses_stages ? "response" : "signature attempt" }}
 
 ## Events
 
-| Event |{{ if event_verbs }} Verb |{{ end }} Raised by | Payload | Transitions | Description |
-| --- |{{ if event_verbs }} --- |{{ end }} --- | --- | --- | --- |
+| Event |{{ if event_verbs }} Verb |{{ end }} Raised by |{{ if fired }} Fired by |{{ end }} Payload | Transitions | Description |
+| --- |{{ if event_verbs }} --- |{{ end }} --- |{{ if fired }} --- |{{ end }} --- | --- | --- |
 {{- for e in p.events }}
-| {{ md_code e.name }} |{{ if event_verbs }} {{ e.verb ? (md_code e.verb.key) : "" }} |{{ end }} {{ e.actors.size > 0 ? actor_links(e.actors, "../") : "any actor" }} | {{ attr_list(e.payload) }} | {{ for t in e.transitions }}{{ for.first ? "" : ", " }}{{ numbers[t.id] }}{{ end }} | {{ md_inline(e.description) }} |
+| {{ md_code e.name }} |{{ if event_verbs }} {{ e.verb ? (md_code e.verb.key) : "" }} |{{ end }} {{ e.actors.size > 0 ? actor_links(e.actors, "../") : "any actor" }} |{{ if fired }} {{ code_names(e.fired_by) }} |{{ end }} {{ attr_list(e.payload) }} | {{ for t in e.transitions }}{{ for.first ? "" : ", " }}{{ numbers[t.id] }}{{ end }} | {{ md_inline(e.description) }} |
 {{- end }}
 {{- end }}
 {{- if p.rights.size > 0 || p.rights_default == "deny" }}
@@ -344,29 +346,33 @@ The data a running instance carries.
 {{- end }}
 {{- if p.actions.size > 0 }}
 {{- with_sets = false }}{{ for a in p.actions }}{{ if a.sets.size > 0 }}{{ with_sets = true }}{{ end }}{{ end }}
+{{- # The Calls column (processes-operations-design.md section 13) shows when some action calls an operation: action.call. }}
+{{- with_calls = false }}{{ for a in p.actions }}{{ if a.call }}{{ with_calls = true }}{{ end }}{{ end }}
 
 ## Actions
 
-| Action | Expression |{{ if with_sets }} Sets |{{ end }} Raises | Used by | Description |
-| --- | --- |{{ if with_sets }} --- |{{ end }} --- | --- | --- |
+| Action | Expression |{{ if with_sets }} Sets |{{ end }}{{ if with_calls }} Calls |{{ end }} Raises | Used by | Description |
+| --- | --- |{{ if with_sets }} --- |{{ end }}{{ if with_calls }} --- |{{ end }} --- | --- | --- |
 {{- for a in p.actions }}
 {{- uses = [] }}
 {{- for u in a.used_by }}
 {{- if u.kind == "transition" }}{{ if numbers[u.id] }}{{ uses[uses.size] = "transition " + numbers[u.id] }}{{ end }}{{ else if own_states[u.id] }}{{ uses[uses.size] = "state " + (md_code u.path) }}{{ end }}
 {{- end }}
-| {{ md_code a.name }} | {{ a.is_stub ? "none: a named stub the host implements" : (a.expression || a.sets.size == 0 ? (md_code a.expression) : sets_cell(a)) }} |{{ if with_sets }} {{ sets_cell(a) }} |{{ end }} {{ code_names(a.raises) }} | {{ uses | array.join ", " }} | {{ md_inline(a.description) }} |
+| {{ md_code a.name }} | {{ a.is_stub ? "none: a named stub the host implements" : (a.expression || a.sets.size == 0 ? (md_code a.expression) : sets_cell(a)) }} |{{ if with_sets }} {{ sets_cell(a) }} |{{ end }}{{ if with_calls }} {{ call_cell(a) }} |{{ end }} {{ code_names(a.raises) }} | {{ uses | array.join ", " }} | {{ md_inline(a.description) }} |
 {{- end }}
 {{- end }}
 {{- if p.invokes.size > 0 }}
+{{- # The Operation column (processes-operations-design.md section 13) shows when some service step names one: invoke.operation. }}
+{{- with_operations = false }}{{ for i in p.invokes }}{{ if i.operation }}{{ with_operations = true }}{{ end }}{{ end }}
 
 ## Invokes
 
 Started when their state is entered and cancelled when it is left.
 
-| Invoke | Type | State | Performed by | Description |
-| --- | --- | --- | --- | --- |
+| Invoke | Type | State | Performed by |{{ if with_operations }} Operation |{{ end }} Description |
+| --- | --- | --- | --- |{{ if with_operations }} --- |{{ end }} --- |
 {{- for i in p.invokes }}
-| {{ md_code i.name }} | {{ i.type }} | {{ md_code i.state.path }} | {{ if i.process }}{{ process_link(i.process, "../") }}{{ else }}{{ actor_links(i.actors, "../") }}{{ end }} | {{ md_inline(i.description) }} |
+| {{ md_code i.name }} | {{ i.type }} | {{ md_code i.state.path }} | {{ if i.process }}{{ process_link(i.process, "../") }}{{ else }}{{ actor_links(i.actors, "../") }}{{ end }} |{{ if with_operations }} {{ i.operation ? (md_code i.operation.name) : "" }} |{{ end }} {{ md_inline(i.description) }} |
 {{- end }}
 {{- end }}
 {{- if p.actors.size > 0 }}

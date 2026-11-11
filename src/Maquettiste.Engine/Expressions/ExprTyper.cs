@@ -91,7 +91,7 @@ public static class ExprTyper
             {
                 if (!Run.ActorFits(wanted))
                 {
-                    run.Report("MQ3103", typed.Pointer, "current_actor() is the identity of whoever acts, a string, an integer or a uuid; the set's value must be "
+                    run.Report("MQ3103", typed.Pointer, "current_actor() is the identity of whoever acts, a string, an integer or a uuid; the " + (scope.CallInput ? "input's" : "set's") + " value must be "
                         + wanted + ", which an identity can't be.");
                     return null;
                 }
@@ -101,7 +101,7 @@ public static class ExprTyper
 
             if (!Fits(wanted, typed.Type))
             {
-                run.Report("MQ3103", typed.Pointer, "The expression is " + typed.Type + "; the " + (scope.Site is ExprSiteKind.Set or ExprSiteKind.TriggerSet ? "set's value" : "derived value")
+                run.Report("MQ3103", typed.Pointer, "The expression is " + typed.Type + "; the " + (scope.CallInput ? "input's value" : scope.Site is ExprSiteKind.Set or ExprSiteKind.TriggerSet ? "set's value" : "derived value")
                     + " must be " + wanted + ".");
                 return null;
             }

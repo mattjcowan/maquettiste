@@ -18,3 +18,8 @@ export async function previewExpression(body: ExpressionPreviewRequest, signal?:
 export function setPreviewRequest(set: { action: string; set: string; attribute: string; text?: string }): ExpressionPreviewRequest {
   return set.text === undefined ? { element: set.set } : { element: set.action, site: "set", attribute: set.attribute, text: set.text };
 }
+
+/** The request for the value of a call's input: stored (the input's id), or text with the action, `site` "input" and the member. */
+export function inputPreviewRequest(input: { action: string; input: string; member: string; text?: string }): ExpressionPreviewRequest {
+  return input.text === undefined ? { element: input.input } : { element: input.action, site: "input", member: input.member, text: input.text };
+}

@@ -29,6 +29,23 @@ func sets_cell(a)
   ret $text
 end
 
+# An action's call as one code span, "operation (input = value, ...)" (processes-operations-design.md section 13): it reads action.call, its
+# operation's name, and each input's member name and value text.
+func call_cell(a)
+  if !a.call
+    ret ""
+  end
+  $text = a.call.operation.name
+  if a.call.inputs.size > 0
+    $parts = ""
+    for $i in a.call.inputs
+      $parts = $parts + (for.first ? "" : ", ") + $i.member.name + " = " + $i.value.text
+    end
+    $text = $text + " (" + $parts + ")"
+  end
+  ret md_code $text
+end
+
 # Whether an expression reads current_actor() or in_state (object-effects-design.md section 9): such a guard shows its condition's text.
 func reads_effects(e)
   if !e

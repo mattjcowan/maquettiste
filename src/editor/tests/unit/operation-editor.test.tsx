@@ -120,4 +120,42 @@ describe("operation editor", () => {
     expect(REQUIRE_KINDS).toEqual(expect.arrayContaining(["operation", "operation-member", "outcome", "error"]));
     expect(operationFacts({ kind: "operation", id: SEND, name: "closeMonth" } as never, undefined)).toEqual({ subject: "None", level: "", effect: "read" });
   });
+  it("adds a fired event through the two-step picker, lists it with its payload, and stops firing it", async () => {
+    const PROCESS = "01JR5NE0000000000000000040";
+    const EVENT = "01JR5NE0000000000000000041";
+    const STATE = "01JR5NE0000000000000000042";
+    expect(api.backend.model.create({ ...send, outcomes: [{ id: "01JR5NE0000000000000000012", name: "applied" }] }).outcome).toBe("saved");
+    expect(
+      api.backend.model.create({
+        kind: "process",
+        id: PROCESS,
+        name: "InvoiceFlow",
+        use: "lifecycle",
+        subjects: [{ entity: IDS.invoice }],
+        events: [{ id: EVENT, name: "Issue", payload: [{ id: "01JR5NE0000000000000000043", name: "dueDays", type: "int32", required: true }] }],
+        states: [{ id: STATE, name: "Draft" }],
+        initial: STATE,
+      }).outcome,
+    ).toBe("saved");
+    window.history.replaceState(null, "", "/generate");
+    render(<App services={api.services} />);
+    await waitFor(() => expect(api.services.queryClient.getQueryData(["index"])).toBeTruthy(), { timeout: 5000 });
+    act(() => api.services.store.getState().updateEditors((s) => openTab(s, { id: SEND, kind: "operation" }, { pin: true })));
+    const editor = await screen.findByRole("region", { name: "Editor: send" }, { timeout: 5000 });
+    const fires = within(editor).getByRole("region", { name: "Fires" });
+    expect(within(fires).getByText("This operation fires no events.")).toBeTruthy();
+
+    await userEvent.click(within(fires).getByRole("button", { name: /Add event/ }));
+    const dialog = await screen.findByTestId("add-event-dialog");
+    // The process governing Invoice comes first, under "On Invoice".
+    expect(within(within(dialog).getByRole("region", { name: "On Invoice" })).getByRole("button", { name: "InvoiceFlow" })).toBeTruthy();
+    await userEvent.click(within(dialog).getByRole("button", { name: "InvoiceFlow" }));
+    await userEvent.click(await within(dialog).findByRole("button", { name: /Issue/ }));
+    await waitFor(() => expect((api.backend.model.get(SEND)!.json as Record<string, unknown>).fires).toEqual([EVENT]), { timeout: 5000 });
+    await waitFor(() => expect(within(fires).getByText("InvoiceFlow › Issue")).toBeTruthy(), { timeout: 5000 });
+    expect(within(fires).getByText("dueDays (int32, required)")).toBeTruthy();
+
+    await userEvent.click(within(fires).getByRole("button", { name: "Stop firing Issue" }));
+    await waitFor(() => expect((api.backend.model.get(SEND)!.json as Record<string, unknown>).fires ?? []).toEqual([]), { timeout: 5000 });
+  });
 });

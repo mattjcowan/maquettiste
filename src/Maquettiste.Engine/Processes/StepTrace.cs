@@ -270,7 +270,21 @@ public sealed record ActionRun(string Action, ActionSource Source, IReadOnlyDict
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyDictionary<string, JsonElement>? Sets { get; init; }
+
+    /// <summary>
+    /// The operation the action called, recorded, not run (processes-operations-design.md decision 12): the operation's guards don't run, its
+    /// events are not sent, no outcome is chosen, and nothing else changes. <see langword="null"/>, and left out of the JSON, when the action has
+    /// no call. A call-only action's <see cref="Source"/> stays <see cref="ActionSource.Stub"/>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CallRun? Call { get; init; }
 }
+
+/// <summary>A call the simulator recorded and did not run (processes-operations-design.md decision 12).</summary>
+/// <param name="Operation">The id of the operation called.</param>
+/// <param name="Inputs">The input values the call gives, by member id, worked out from the object and context as they were when the action
+/// started (as a set's value is). A value that fails to work out is null, with a note in the trace's notes.</param>
+public sealed record CallRun(string Operation, IReadOnlyDictionary<string, JsonElement> Inputs);
 
 /// <summary>One microstep: the transitions taken together, the states exited and entered, and the actions run.</summary>
 /// <param name="Transitions">The transition ids.</param>

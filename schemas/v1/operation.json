@@ -136,7 +136,7 @@
       "default": []
     },
     "fires": {
-      "description": "Process event ids, of any process, that the operation fires.",
+      "description": "Process event ids, of any process, that the operation fires: when its work is done, the team's system sends each listed event to a process instance; when the operation has a record-level subject that the event's lifecycle governs, that instance is the record's own. On which outcome, in what order, before or after the data change, in which transaction and with what retries are the team's. A read operation fires none (MQ3030); the subjects should line up (MQ3032) and the input should supply the event's payload (MQ3044).",
       "$ref": "common.json#/$defs/idList",
       "default": []
     },

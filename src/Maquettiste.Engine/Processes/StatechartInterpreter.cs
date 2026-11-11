@@ -1116,6 +1116,9 @@ public sealed partial class StatechartInterpreter
         // Every set's value is worked out from the object and the context as they were when the action started, then all are applied after
         // its expression ran (object-effects-design.md decision 4).
         var sets = action.Sets.Count > 0 ? WorkOutSets(inst, action) : null;
+        // A call's input values are worked out from the same snapshot, before the expression and the sets change anything; the call itself runs
+        // nothing (processes-operations-design.md decision 12).
+        var call = action.Call is { } called ? WorkOutCall(inst, action, called) : null;
         if (action.Expression is not null && Session(inst.Chart) is { } session && session.Compiled.Contains(action.Id))
         {
             source = ActionSource.Expression;
@@ -1166,7 +1169,49 @@ public sealed partial class StatechartInterpreter
                 inst.Queue.Enqueue(new Internal(TransitionTrigger.Event, raised));
         }
 
-        return new ActionRun(action.Id, source, changed) { Sets = sets?.ToImmutableSortedDictionary(p => p.Key, p => p.Value.Value, StringComparer.Ordinal) };
+        return new ActionRun(action.Id, source, changed) { Sets = sets?.ToImmutableSortedDictionary(p => p.Key, p => p.Value.Value, StringComparer.Ordinal), Call = call };
+    }
+
+    // The call an action records (processes-operations-design.md decision 12 and section 10): each listed input's value by member id, worked out
+    // like a set's value from the object and context as they were when the action started. A value that does not work out, or that validation
+    // leaves out (its member is not an input, cannot be given, or the value does not type), is null with a note; a call never stops a run. An
+    // invoked sub-process sees no object, so a value there that reads subject reads none, with a note.
+    private CallRun WorkOutCall(Instance inst, ProcessAction action, ProcessCall call)
+    {
+        Note($"Action '{action.Name}' called an operation: recorded, not run.");
+        var inputs = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
+        if (call.Inputs.Count == 0)
+            return new CallRun(call.Operation, inputs.ToImmutableSortedDictionary(StringComparer.Ordinal));
+        var session = Session(inst.Chart);
+        var context = ContextObject(inst);
+        var subject = SubjectOf(inst);
+        foreach (var input in call.Inputs)
+        {
+            if (inputs.ContainsKey(input.Member))
+                continue;
+            if (session is null || !session.Lowered.TryGetValue(input.Id, out var lowered) || lowered.Set is null)
+            {
+                inputs[input.Member] = Null;
+                Note($"Action '{action.Name}' gives its operation an input whose value could not be worked out, so it is recorded as null; validation says why.");
+                continue;
+            }
+
+            if (inst.Parent is not null && lowered.ReadsSubject)
+                Note($"Action '{action.Name}' of invoked process '{inst.Chart.Process.Name}' gives its operation an input that reads the object, but an invoked process sees no object, so it reads none.");
+            var result = session.EvaluateSet(input.Id, $"Action '{action.Name}'", context, _scope.Event, subject, lowered.ReadsRunning ? Running(inst) : null, ClockText(),
+                lowered.EngineOnly ? Reads(inst, lowered) : null, Seed(inst), _options.CancellationToken);
+            if (result.Value is JsonElement value)
+            {
+                inputs[input.Member] = value;
+                continue;
+            }
+
+            inputs[input.Member] = Null;
+            Note(result.Diagnostic is { } d ? $"{d.Message} The input is recorded as null."
+                : $"Action '{action.Name}' gives its operation an input whose value could not be worked out, so it is recorded as null.");
+        }
+
+        return new CallRun(call.Operation, inputs.ToImmutableSortedDictionary(StringComparer.Ordinal));
     }
 
     // The values an action's sets give the object, by attribute id with the attribute's name (decisions 3 and 4); a set that did not compile is

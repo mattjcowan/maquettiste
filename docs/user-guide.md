@@ -2372,7 +2372,7 @@ right of the title row shows them. It opens on **Chart**. The tabs:
 - **Chart**: the statechart canvas with the simulation panel docked below it (both described next).
 - **States**: the state tree as a grid: name, type, initial, history, entry and exit actions, invokes, and the bound
   enum member (read-only). Below it, the selected state's **Invokes** grid: name, type (process, service, human task),
-  the invoked process and the human task's actors. An invoke a transition still waits on is not removed.
+  the invoked process, the **Operation** of a service step (locked for the other types) and the human task's actors. An invoke a transition still waits on is not removed.
 - **Transitions**: source, trigger, event or duration, **Verb** (only for a move with no event; a move with an event shows its
   event's verb, greyed), guard, targets, actions, external and the gate badge; below it
   the **Guards** and **Actions** grids. An expression that does not parse is marked MQ9501 at once. Ctrl+G on an event
@@ -2621,6 +2621,61 @@ partial method that the team's half fills in, with each set printed in the comme
 it returns the context. A new hook fails the build until the team writes it. An action that also has an expression keeps its
 generated code. A guard that uses `current_actor()` or `in_state` is left to a person. `process-docs` adds a **Sets** column. Templates
 read `action.sets`, `set.attribute` and `set.value`, so a pack with an object to write to can write the assignments itself.
+
+### Actions that call an operation
+
+An action may have one **call**. It says which [operation](#operations) the action calls, and gives a value for any of the
+operation's inputs, written in the [expression language](#expressions). Use it to say which command makes a move. An action
+may have any mix of an expression, sets and a call. With none it is a stub, as before.
+
+```json
+"actions": [
+  { "id": "…", "name": "RequestIssue",
+    "call": { "operation": "…issue",
+      "inputs": [ { "id": "…", "member": "…issue.dueDays", "value": { "path": ["…termsDays"] } } ] } }
+]
+```
+
+- **Typed inputs.** A value is typed like a set's value, against the input member's type: it reads the context, the object
+  as `subject.<attribute>`, the payload of the events whose moves list the action, `now()`, `current_actor()` and
+  `in_state`. An entry or exit action reads no payload. The value must fit the member (MQ3103). Null fits any member, as for
+  a set's value, even a required one, and the input still counts as given, so MQ9026 does not report it.
+  In printed text a context value shows bare (`termsDays`) and a payload value as `event.issuedOn`.
+- **What can be given.** Not a file member, not a collection member, not the record key of an entity with a composite key or
+  no key, and not a member whose type the expression language has no values of (binary, float or a value object, for
+  example). Giving one a value is MQ9025, and your system supplies those. Naming a member the operation does not have, or one
+  member twice, is MQ9025 too.
+- **Unlisted inputs are yours.** A required input with no default that the call leaves out is warning MQ9026, once per
+  member, unless a call can't give it (the members above). An optional input, or one with a default, may be left out with
+  no finding. The model says nothing about its value.
+- **Which record.** For a record-level operation whose subject the process governs, the record is the process's object. If
+  the subject is another entity, MQ3032 warns, and the record is yours. A collection-level operation, or one with no subject,
+  acts on no one record, and its inputs say everything. A process with no subject (an orchestration) gives no finding.
+- **When the call runs.** The model says when the action runs, and that your system then asks for the operation, with the
+  listed values worked out from the object and the context as they were when the action started. It does not say whether the
+  call comes before, during or after the commit, whether the move waits, or what an outcome or error means for the process.
+- **A library's action** cannot have a call (MQ9020).
+- **What the simulator does.** Nothing. A call runs nothing: the operation's guards don't run, its events are not sent and
+  the context and the object don't change. The trace lists the call, the operation and the input values by member, and
+  notes "recorded, not run". A value that fails to work out is recorded as null with a note, and never stops the run. A
+  call-only action is still a stub (`is_stub`, an action with neither an expression nor sets). Scenarios expect nothing of a
+  call, so replays and their expectations are unchanged.
+
+**A service step's operation.** A service step (an invoke of type `service`) may name the `operation` that does its work.
+On any other invoke type it is MQ9025. MQ3032 applies when the operation is record-level. It has no inputs yet: how the
+step starts the operation, what its outcomes and errors mean for the step's moves, and timeouts are your system's. The
+simulator still completes a service step from outside, by an `invoke` step, and its panel shows the operation beside the
+pending step.
+
+**In the editor.** The Actions grid has a **Calls** column after Sets. Its button opens a dialog: pick an **Operation**
+(those on the process's subjects come first, or **None**), then fill the **Inputs** grid, one row per input with **Input**,
+**Type**, **Required** and **Value**. An empty value means not given. File and collection inputs read "Supplied by your
+system". The dialog says it runs nothing in the simulator. The Invokes grid has an **Operation** column for service steps.
+
+**Generated code.** `csharp-dapper` reads none of these links, so its output does not change: it treats a call-only action
+exactly as it treats any stub. Templates read `action.call`, `invoke.operation`, `operation.called_by` and
+`operation.invoked_by`, so a pack can write a handler that sends the event, a page that says which move a command makes, or a
+step that calls the service.
 
 ### Approvals: named signatures, rejection and "not by"
 
@@ -3355,7 +3410,7 @@ changing a file.
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707, MQ9801 to MQ9803, MQ9901 to MQ9906 and MQ8101 to MQ8107, MQ8201 to MQ8202 and the revision rules MQ8301, MQ8303, MQ8305, MQ8306, MQ8308 and MQ8312) run on every save and every `validate`; MQ9019 is the answer
+to MQ9018, MQ9020 to MQ9022, MQ9025 and MQ9026, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707, MQ9801 to MQ9803, MQ9901 to MQ9906 and MQ8101 to MQ8107, MQ8201 to MQ8202 and the revision rules MQ8301, MQ8303, MQ8305, MQ8306, MQ8308 and MQ8312) run on every save and every `validate` (MQ9024 is off until `validation.rules` gives it a severity); MQ9019 is the answer
 to a refused batch operation. The scenario rules (MQ93xx, MQ9307 and MQ9308 among them) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
@@ -3384,9 +3439,12 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9017 | warning | A parallel state with one region | |
 | MQ9018 | warning | A `done` transition whose source can never reach a final state, so it never fires | |
 | MQ9019 | error | A process operation (Sync enum, set lifecycle, set initial, refresh a scenario) was refused: it names the wrong element, would remove an enum member still in use, cannot replay the scenario to its end, or shares a batch with a change to the same process, enum or scenario | |
-| MQ9020 | error | A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events or sets data, or a guard with a condition), or a process that is not a library has no states or lists gates of its own | Move the item, or change `use` |
+| MQ9020 | error | A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events, sets data or calls an operation, or a guard with a condition), or a process that is not a library has no states or lists gates of its own | Move the item, or change `use` |
 | MQ9021 | error | A transition sets both `gate` and `gatePolicy`, or its `gatePolicy` names a gate that no library holds | Keep one, or point at a library's gate |
 | MQ9022 | error | A process invoke or a scenario names a library, which has no states to run | Name a running process |
+| MQ9024 | information, off | An event that some move uses, that no action of the process raises and that no operation fires. Off until `validation.rules` gives it a severity, since many events come from people, not commands | Fire it from an operation |
+| MQ9025 | error | A call or service step that can't be read: an input names a member that isn't an input of the called operation, names one member twice, or names a member a call can't give: a file member, a collection member, a record key of an entity with a composite key or no key, or a member with no type the expression language has values of (binary, float or a value object, for example); or `operation` sits on an invoke that isn't a service step | Remove the input, or the invoke's `operation` |
+| MQ9026 | warning | A call leaves a required input without a default ungiven. Inputs a call can't give are left out of this: file and collection inputs, record keys of entities with a composite key or no key, and inputs with no type the expression language has values of | Add the input in the Calls dialog |
 | MQ9101 | error | A gate, or a named signature, needs more signatures than its signers can give; or an approval needs more different people than its signatures' signers can give, without **One person may give several signatures** | |
 | MQ9102 | error | A gate's required actors are not all among its signers, counting the members of a signer | **Add to signers** |
 | MQ9103 | error | A gate on a transition whose trigger is not an event, or two gates on one source and event | |
@@ -3698,6 +3756,43 @@ set of constants per stereotype.
 A `read` operation that fires an event is warning MQ3030, since an event changes state. The resolved event lists the
 operations that fire it (`fired_by`).
 
+**What `fires` means.** When the operation's work is done, your system sends each listed event to a process instance.
+When the operation acts on one record and the event belongs to that record's lifecycle, the instance is the record's own.
+The model leaves these to your system:
+
+- on which outcome the event is sent, or whether a failure sends none;
+- the order, when several events are listed;
+- whether the event goes before or after the data change, and in which transaction;
+- retries;
+- which instance gets the event when the subjects don't line up, or for an orchestration.
+
+An operation with no subject may fire any event (a nightly job). Several operations may fire one event, and one operation
+may fire events of several processes. Two checks help. MQ3032 warns when the operation and the process are about different
+objects. MQ3044 warns when an event's payload is not covered by the operation's input: by name, a required payload
+attribute needs an input member of the same name and type. Turn either off in `validation.rules` if your handler works it
+out another way.
+
+### Operations and processes: what the model says, and what it leaves to you
+
+Operations and processes join in three places: an operation's `fires`, an action's `call` and a service step's
+`operation`. The model states what is below. It gives nothing else a runtime meaning.
+
+| Capability | Where it is written | What it means | What reads it | Left to your system |
+| --- | --- | --- | --- | --- |
+| An operation fires events | The operation's `fires` | Its work, when done, sends these events | Checks MQ3030, MQ3032 and MQ3044; the Fires list in the editor; `operation.fires` and the resolved model | Which outcome, the order, the timing, the transaction, retries, and the instance when the subjects don't line up |
+| An event knows what fires it | Worked out from `fires` | The operations that list the event | The Fired by column and line in the editor; `event.fired_by` and the resolved model; check MQ9024 | Nothing more |
+| Subjects line up | Worked out | The operation's subject is one the process governs, or a base of one | Check MQ3032 | How to route the event when they don't |
+| Payload is supplied | Worked out, by name and type | Each required payload attribute has an input of the same name and type | Check MQ3044 | Filling attributes the handler works out itself, such as today's date |
+| Every used event has a command | Worked out | A check you may turn on: every event that a move uses is fired by some operation or raised by an action | Check MQ9024, off until `validation.rules` gives it a severity | Turning it on |
+| An action calls an operation | The action's `call.operation` | When the action runs, your system asks for the operation to run | Checks MQ3032, MQ9020 and MQ9025; the simulator's trace; the Calls column in the editor; `action.call` and the resolved model | When the call happens, whether the move waits, retries, and what each outcome or error means for the process |
+| Input values for a call | The action's `call.inputs` | Each listed input is set to its value, worked out when the action starts | Checks MQ3102, MQ3103, MQ9025 and MQ9026; the trace; the Calls dialog in the editor | Inputs not listed, and inputs a call can't give (file and collection inputs, for example) |
+| A service step names its operation | The invoke's `operation` | The step's work is done by running that operation | Checks MQ3032 and MQ9025; the Operation column and the simulation panel in the editor; `invoke.operation` and the resolved model | The inputs, how the outcomes and errors map to the step's moves, and timeouts |
+| An operation knows its callers | Worked out | The actions that call it and the service steps that name it | The References tab in the editor; `operation.called_by` and `operation.invoked_by` and the resolved model | Nothing more |
+| Process docs show the links | The `process-docs` pack | Fired by on events and moves; Calls on actions; Operation on steps | The pack | Your own pack decides its own output |
+
+A loop is not a model error. An action on the `Issue` move may call an operation that fires `Issue`. The model allows it,
+and the simulator does not follow it, since a call runs nothing.
+
 `requires` lists ids of any element or sub-element that stands for what the operation requires: an actor, a row of a
 reference type that holds permission codes, or whatever the project uses. The engine gives the list no meaning; packs
 and scripts read it. It may not name the operation itself, one of its own members, outcomes or errors, a diagram or a
@@ -3719,6 +3814,8 @@ every `validate`. Names are identifiers (MQ3018) and unique where the file shape
 | MQ3029 | error | A stereotype declares `errors` but does not apply to operations |
 | MQ3030 | warning | A `read` operation fires a process event; an event changes state |
 | MQ3031 | error | `requires` names the operation itself, one of its own sub-elements, a diagram or a migration fact |
+| MQ3032 | warning | An operation and a process it is linked to are about different objects: the operation's subject is neither governed by the process nor a base of an entity it governs. Reported on `fires`, and on a call or a service step when the operation is record-level. Not reported when either side has no subject |
+| MQ3044 | warning | An operation fires an event whose payload its input can't supply: a required payload attribute without a default has no input member of the same name, or a member of that name has another type or form |
 
 ### Generating code from operations
 
@@ -3727,7 +3824,9 @@ operation` renders one unit per operation, the template variable being `operatio
 null), `level` (null without a subject), `effect`, `input`, `outcomes` (each with `is_default`, `completes` and
 `returns`, whose `members`, `entity`, `is_file`, `media_types`, `is_list`, `paging` and `max_page_size` say what comes
 back), `default_outcome`, `errors` (own then inherited, each with `code`, the `input` member it points at and
-`member_origin`), `fires` (the events) and `requires` (the elements). A member has `type`, `key_of` or `is_file` with
+`member_origin`), `fires` (the events), `requires` (the elements), `called_by` (the actions that call it, each with its process) and
+`invoked_by` (the service steps that name it). The process side reads the same links: `action.call` (the operation and
+its input values), `invoke.operation` and `event.fired_by` (the operations that fire the event). A member has `type`, `key_of` or `is_file` with
 `media_types`, and `required`, `collection`, `default`, `length`, `precision`, `scale`, `sensitive` and `validation`.
 `type_of` maps a member: a typed member as an attribute (the `collection` pattern for a collection, `nullable` when not
 required), a record key through the type of its entity's key attribute (an entity with a composite key is MQ6006), a

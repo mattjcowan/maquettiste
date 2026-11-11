@@ -15155,7 +15155,7 @@
         "properties": {
           "element": {
             "type": "string",
-            "description": "The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or `trigger-set` and `attribute`. A named trigger point's sites, and text for it, read what every entity it covers holds under one id."
+            "description": "The id of the element, or of the check, guard, derived attribute, action, set, call input or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for a call's input not yet saved names the action, with `site` `input` and `member`; text for an inline right not yet saved names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or `trigger-set` and `attribute`. A named trigger point's sites, and text for it, read what every entity it covers holds under one id."
           },
           "at": {
             "type": [
@@ -15176,7 +15176,7 @@
               "string",
               "null"
             ],
-            "description": "With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`), `trigger-set` (a value a trigger point sets, with `attribute`) or `approval` (a named signature's `when` not saved yet, with `element` its process: the object under `subject`, the context and `in_state`, but no payload and no `current_actor()`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form."
+            "description": "With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `input` (a value an action's call gives an input of the operation, with `member`; it reads what a set's value reads), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`), `trigger-set` (a value a trigger point sets, with `attribute`) or `approval` (a named signature's `when` not saved yet, with `element` its process: the object under `subject`, the context and `in_state`, but no payload and no `current_actor()`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, input, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form."
           },
           "attribute": {
             "type": [
@@ -15184,6 +15184,13 @@
               "null"
             ],
             "description": "With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103)."
+          },
+          "member": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "With `site` `input`, the id of the operation's input member the value is for, whose type the value must fit (MQ3103); a record key member types as its entity's key attribute. A member the called operation doesn't have is a bad request."
           },
           "database": {
             "type": [
@@ -17672,6 +17679,13 @@
               "verb": {
                 "description": "The key of the verb the event names (verbs-design.md decision 11). Left out when it names none.",
                 "type": "string"
+              },
+              "firedBy": {
+                "description": "The ids of the operations whose `fires` names the event, in the resolved model's order of operations (processes-operations-design.md decision 1): when an operation's work is done, the team's system sends the event. Left out when no operation fires it.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -17756,7 +17770,7 @@
                 ]
               },
               "isStub": {
-                "description": "True only when the action has neither an expression nor sets.",
+                "description": "Whether the action has neither an expression nor sets; the host implements it. A call is that work, recorded on `call`; a call-only action is still a stub.",
                 "type": "boolean"
               },
               "raises": {
@@ -17777,10 +17791,59 @@
                 "items": {
                   "$ref": "#/components/schemas/SetRecord"
                 }
+              },
+              "call": {
+                "$ref": "#/components/schemas/CallRecord",
+                "description": "The operation the action calls and the inputs it gives (processes-operations-design.md decision 5); left out when it calls none."
               }
             }
           }
         ]
+      },
+      "CallRecord": {
+        "x-engine-record": "Maquettiste.Engine.CallRecord",
+        "description": "The operation an action calls, and a value for some of its inputs (processes-operations-design.md decisions 5 to 8). When the action runs, the team's system asks for the operation to be run with these inputs; inputs not listed are the team's.",
+        "type": "object",
+        "required": [
+          "operation",
+          "inputs"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "description": "The id of the operation called."
+          },
+          "inputs": {
+            "description": "The inputs the call gives, in file order. An input is left out when its member doesn't resolve or is not an input of the operation, when it names a member an earlier input names, when the member can't be given (a file, a list, a record key of an entity with a composite key or no key, or a type expressions lack; MQ9025), or when its value doesn't type (MQ3103).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CallInputRecord"
+            }
+          }
+        }
+      },
+      "CallInputRecord": {
+        "x-engine-record": "Maquettiste.Engine.CallInputRecord",
+        "description": "One input member of a called operation and the value the call gives it (processes-operations-design.md decision 6).",
+        "type": "object",
+        "required": [
+          "id",
+          "member",
+          "value"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "member": {
+            "type": "string",
+            "description": "The id of the operation's input member."
+          },
+          "value": {
+            "$ref": "#/components/schemas/ExpressionRecord",
+            "description": "The value, typed against the member, as `setRecord.value` is typed against its attribute."
+          }
+        }
       },
       "SetRecord": {
         "x-engine-record": "Maquettiste.Engine.SetRecord",
@@ -17844,6 +17907,10 @@
                 }
               },
               "state": {
+                "type": "string"
+              },
+              "operation": {
+                "description": "The id of the operation whose run does a service step's work (processes-operations-design.md decision 11). Left out when the step names none.",
                 "type": "string"
               }
             }
@@ -18896,6 +18963,20 @@
               "verb": {
                 "description": "The key of the verb the operation names (verbs-design.md decision 13). Left out when it names none.",
                 "type": "string"
+              },
+              "calledBy": {
+                "description": "The ids of the actions that call the operation (processes-operations-design.md section 9), in the order of processes, then in file order. Left out when none.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "invokedBy": {
+                "description": "The ids of the service steps (invokes) that name the operation, in the order of processes, then in file order. Left out when none.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -26912,7 +26993,7 @@
             "$ref": "#/components/schemas/Ulid"
           },
           "source": {
-            "description": "`expression` when its JavaScript ran (its sets too, when it has any), `sets` when it has only sets and they ran, `stub` when it has neither.",
+            "description": "`expression` when its JavaScript ran (its sets too, when it has any), `sets` when it has only sets and they ran, `stub` when it has neither (a call-only action too; its call is in `call`).",
             "type": "string",
             "enum": [
               "expression",
@@ -26926,6 +27007,29 @@
           },
           "sets": {
             "description": "The values the action's sets gave the object, by attribute id (object-effects-design.md decision 4): every value worked out from\nthe object and context as they were when the action started, then applied together. Left out when the action has no sets.\n",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "call": {
+            "$ref": "#/components/schemas/CallRun",
+            "description": "The operation the action called, recorded, not run (processes-operations-design.md decision 12). Left out when the action has no call. A call-only action's source stays `stub`."
+          }
+        }
+      },
+      "CallRun": {
+        "x-engine-record": "Maquettiste.Engine.Processes.CallRun",
+        "description": "A call the simulator recorded and did not run: the operation's guards don't run, its events are not sent, no outcome is chosen, and nothing else changes.",
+        "type": "object",
+        "required": [
+          "operation",
+          "inputs"
+        ],
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "inputs": {
+            "description": "The input values the call gives, by member id, worked out from the object and context as they were when the action started (as a set's value is). A value that fails to work out is null, with a note in the trace's notes.",
             "type": "object",
             "additionalProperties": true
           }
@@ -39816,6 +39920,7 @@
           "displayName",
           "type",
           "process",
+          "operation",
           "actors",
           "description",
           "stereotypes",
@@ -39840,6 +39945,10 @@
           },
           "process": {
             "description": "The sub-process, for type process.",
+            "$ref": "#/components/schemas/id"
+          },
+          "operation": {
+            "description": "For type service: the operation whose run does the step's work. How the step starts it and with what inputs, how its outcomes and errors map to the step's done and error moves, and timeouts are the team's. Only on a service step (MQ9025).",
             "$ref": "#/components/schemas/id"
           },
           "actors": {
@@ -40315,6 +40424,62 @@
         },
         "additionalProperties": false
       },
+      "callInput": {
+        "title": "Call input",
+        "description": "One input member of the called operation and the value the call gives it.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "member",
+          "value"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "member": {
+            "description": "An input member of the called operation, once per call; not one a call can't give: a file member, a collection member, a record key of an entity with a composite key or no key, or a member with no type the expression language has values of, such as binary, float or a value object (MQ9025).",
+            "$ref": "#/components/schemas/id"
+          },
+          "value": {
+            "description": "The value, worked out from the object and context as they were when the action started (as a set's value is); it reads what a set's value reads and fits the member's type (MQ3103). A record key member types as its entity's key attribute. Null fits any member, required or not, as for a set's value, and the input still counts as given (no MQ9026).",
+            "$ref": "#/components/schemas/expr"
+          }
+        },
+        "required": [
+          "id",
+          "member",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "call": {
+        "title": "Call",
+        "description": "The operation the action calls, and a value for any of its inputs. When the action runs, the team's system asks for the operation to be run with the listed inputs set to the listed values; when, whether the move waits, retries, and what each outcome or error means are the team's. The simulator runs nothing: it records the call in the trace. A call-only action is still a stub. Not in a library (MQ9020).",
+        "type": "object",
+        "x-order": [
+          "operation",
+          "inputs"
+        ],
+        "properties": {
+          "operation": {
+            "description": "The operation called. For a record-level operation whose subject the process governs, the record is the process's object; otherwise the model does not state the record (MQ3032).",
+            "$ref": "#/components/schemas/id"
+          },
+          "inputs": {
+            "description": "Values for some input members of the operation. Inputs not listed are the team's: a required one without a default is MQ9026.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/callInput"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false
+      },
       "subject": {
         "title": "Subject",
         "description": "An entity the process governs, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.",
@@ -40478,7 +40643,7 @@
       },
       "action": {
         "title": "Action",
-        "description": "A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.",
+        "description": "A named effect: context changes (expression), values set on the object (sets), an operation it calls (call), any mix of them, or none as a stub.",
         "type": "object",
         "x-order": [
           "id",
@@ -40486,6 +40651,7 @@
           "displayName",
           "expression",
           "sets",
+          "call",
           "raises",
           "description",
           "stereotypes",
@@ -40512,6 +40678,9 @@
               "$ref": "#/components/schemas/set"
             },
             "default": []
+          },
+          "call": {
+            "$ref": "#/components/schemas/call"
           },
           "raises": {
             "description": "Internal events queued after the action.",
@@ -41656,7 +41825,7 @@
           },
           "action": {
             "title": "Action",
-            "description": "A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.",
+            "description": "A named effect: context changes (expression), values set on the object (sets), an operation it calls (call), any mix of them, or none as a stub.",
             "type": "object",
             "x-order": [
               "id",
@@ -41664,6 +41833,7 @@
               "displayName",
               "expression",
               "sets",
+              "call",
               "raises",
               "description",
               "stereotypes",
@@ -41690,6 +41860,9 @@
                   "$ref": "#/components/schemas/set"
                 },
                 "default": []
+              },
+              "call": {
+                "$ref": "#/components/schemas/call"
               },
               "raises": {
                 "description": "Internal events queued after the action.",
@@ -41744,6 +41917,62 @@
             ],
             "additionalProperties": false
           },
+          "call": {
+            "title": "Call",
+            "description": "The operation the action calls, and a value for any of its inputs. When the action runs, the team's system asks for the operation to be run with the listed inputs set to the listed values; when, whether the move waits, retries, and what each outcome or error means are the team's. The simulator runs nothing: it records the call in the trace. A call-only action is still a stub. Not in a library (MQ9020).",
+            "type": "object",
+            "x-order": [
+              "operation",
+              "inputs"
+            ],
+            "properties": {
+              "operation": {
+                "description": "The operation called. For a record-level operation whose subject the process governs, the record is the process's object; otherwise the model does not state the record (MQ3032).",
+                "$ref": "#/components/schemas/id"
+              },
+              "inputs": {
+                "description": "Values for some input members of the operation. Inputs not listed are the team's: a required one without a default is MQ9026.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/callInput"
+                },
+                "default": []
+              }
+            },
+            "required": [
+              "operation"
+            ],
+            "additionalProperties": false
+          },
+          "callInput": {
+            "title": "Call input",
+            "description": "One input member of the called operation and the value the call gives it.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "member",
+              "value"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "member": {
+                "description": "An input member of the called operation, once per call; not one a call can't give: a file member, a collection member, a record key of an entity with a composite key or no key, or a member with no type the expression language has values of, such as binary, float or a value object (MQ9025).",
+                "$ref": "#/components/schemas/id"
+              },
+              "value": {
+                "description": "The value, worked out from the object and context as they were when the action started (as a set's value is); it reads what a set's value reads and fits the member's type (MQ3103). A record key member types as its entity's key attribute. Null fits any member, required or not, as for a set's value, and the input still counts as given (no MQ9026).",
+                "$ref": "#/components/schemas/expr"
+              }
+            },
+            "required": [
+              "id",
+              "member",
+              "value"
+            ],
+            "additionalProperties": false
+          },
           "invoke": {
             "title": "Invoke",
             "description": "Work a state starts on entry: a sub-process, a service task or a human task.",
@@ -41754,6 +41983,7 @@
               "displayName",
               "type",
               "process",
+              "operation",
               "actors",
               "description",
               "stereotypes",
@@ -41778,6 +42008,10 @@
               },
               "process": {
                 "description": "The sub-process, for type process.",
+                "$ref": "#/components/schemas/id"
+              },
+              "operation": {
+                "description": "For type service: the operation whose run does the step's work. How the step starts it and with what inputs, how its outcomes and errors map to the step's done and error moves, and timeouts are the team's. Only on a service step (MQ9025).",
                 "$ref": "#/components/schemas/id"
               },
               "actors": {
@@ -45038,7 +45272,7 @@
             "default": []
           },
           "fires": {
-            "description": "Process event ids, of any process, that the operation fires.",
+            "description": "Process event ids, of any process, that the operation fires: when its work is done, the team's system sends each listed event to a process instance; when the operation has a record-level subject that the event's lifecycle governs, that instance is the record's own. On which outcome, in what order, before or after the data change, in which transaction and with what retries are the team's. A read operation fires none (MQ3030); the subjects should line up (MQ3032) and the input should supply the event's payload (MQ3044).",
             "$ref": "#/components/schemas/idList",
             "default": []
           },

@@ -77,6 +77,7 @@ internal static partial class ProcessRules
         CheckReachability(analysis, report);
         CheckUnused(process, locals, report);
         CheckInvokes(context, process, analysis, report);
+        CheckOperationLinks(context, process, analysis, report);
         CheckLifecycle(context, process, analysis, codes, report);
         CheckSubjectOwners(context, process, report);
         CheckRelativeUses(context, process, analysis, report);
@@ -114,6 +115,13 @@ internal static partial class ProcessRules
             {
                 report.Add("MQ9020", $"Action '{process.Actions[i].Name}' of library '{process.Name}' sets the object's data, which names the attributes of one process's subjects; "
                     + "move the action to the process that runs it.", "/actions/" + N(i) + "/sets", process.Actions[i].Id);
+            }
+
+            // A call's values name context and attributes by id, as a set does (processes-operations-design.md decision 9).
+            if (process.Actions[i].Call is not null)
+            {
+                report.Add("MQ9020", $"Action '{process.Actions[i].Name}' of library '{process.Name}' calls an operation, whose input values name one process's context and "
+                    + "attributes; move the action to the process that runs it.", "/actions/" + N(i) + "/call", process.Actions[i].Id);
             }
         }
 

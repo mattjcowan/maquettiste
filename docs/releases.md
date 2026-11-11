@@ -5,6 +5,36 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## Unreleased
+
+- **Processes linked to operations.** A process now says which operations make its moves, and an operation knows which process
+  moves it makes. Maquettiste is still a modeling tool: it states the links and checks them, and your system carries them out.
+  - An operation's `fires` now has a written meaning: when its work is done, your system sends those events. A resolved event
+    lists the operations that fire it (`fired_by`).
+  - An action may have one `call`: the operation it calls, and a value for any of its inputs. A service step may name its
+    `operation`. An operation lists its callers (`called_by`, `invoked_by`). The simulator runs no call: its trace says
+    "recorded, not run".
+  - The [user guide](user-guide.md#operations-and-processes-what-the-model-says-and-what-it-leaves-to-you) lists what the model
+    states and what it leaves to your system.
+- **In the editor.** The operation screen has a **Fires** list with an **Add event** picker (a process, then its event), where
+  you typed ids in JSON before. The Events tab has a **Fired by** column, and a move's side panel has a **Fired by** line. The
+  Actions grid has a **Calls** column and dialog. The Invokes grid has an **Operation** column for service steps.
+- **New checks.**
+  - MQ3032 (warning): an operation and a process it is linked to are about different objects.
+  - MQ3044 (warning): an operation fires an event whose payload its input can't supply.
+  - MQ9024 (information, off until `validation.rules` gives it a severity): an event that no operation fires.
+  - MQ9025 (error): a call or service step that can't be read.
+  - MQ9026 (warning): a call leaves a required input ungiven.
+  - MQ9020 now also refuses a library action that has a call.
+- **A project that already uses `fires` may see new warnings.** MQ3032 and MQ3044 read links that were never checked before.
+  Fix them, or set a different severity (or `off`) for either rule in `validation.rules`.
+- **A team upgrades together.** An older engine refuses a file that holds a `call` or an invoke's `operation`. The file format
+  version stays 1.
+- **`csharp-dapper` output is unchanged.** It treats a call-only action as a stub, as before. `process-docs` shows the new links.
+- **The chart fits the simulation panel.** Opening the simulation panel below a process chart now fits the whole chart into
+  the space left above it. Closing the panel brings back the view you had before, unless you moved the chart meanwhile. Neither
+  view is saved in the process diagram.
+
 ## 0.24.0 (2026-11-10)
 
 - **A reference for the resolved model.** The resolved model is what code generation sees, and what

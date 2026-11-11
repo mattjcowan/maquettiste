@@ -36,6 +36,9 @@ export interface Names {
   signature?(id: string | null | undefined): string;
   /** What a named signature's Not by names, as the verbs and moves in words ("Submit, Issue · void"); "" when it names none. */
   notBy?(id: string | null | undefined): string;
+  /** An operation a call or a service step names, and one of its input members, by id (processes-operations-design.md decisions 12 and 13). */
+  operation?(id: string): string;
+  member?(id: string): string;
 }
 
 /** Display names for the ids an answer carries: state paths, event, invoke, actor, guard, action and gate names. */
@@ -46,6 +49,8 @@ export function namesOf(
   elements: ReadonlyMap<string, string> = new Map(),
   /** The Why text of named rights, by id (the process's own rights say theirs). */
   whys: ReadonlyMap<string, string> = new Map(),
+  /** The names of the operations the process calls and the names of their input members, by id. */
+  operations: { operation: ReadonlyMap<string, string>; member: ReadonlyMap<string, string> } = { operation: new Map(), member: new Map() },
 ): Names {
   const states = new Map([...stateIndex(process)].map(([id, info]) => [id, info.path]));
   const map = (list: { id: string; name: string }[] | undefined) => new Map((list ?? []).map((x) => [x.id, x.name]));
@@ -88,6 +93,8 @@ export function namesOf(
     attribute: (id) => attributes.get(id) ?? id,
     eventVerb: (id) => (process.events ?? []).find((e) => e.id === id)?.verb ?? undefined,
     meaning: of(meanings),
+    operation: (id) => operations.operation.get(id) ?? "?",
+    member: (id) => operations.member.get(id) ?? "?",
     gate: (id) => gates.get(id) ?? id,
     signature: of(signatures),
     notBy: (id) =>
@@ -498,14 +505,17 @@ export interface PendingRow {
 }
 
 export function pendingRows(result: SimulationResult, process: ProcessDoc, names: Names): PendingRow[] {
-  const invokes = new Map<string, { actors?: string[]; type?: string }>();
+  const invokes = new Map<string, { actors?: string[]; type?: string; operation?: string }>();
   for (const info of stateIndex(process).values()) for (const i of info.state.invoke ?? []) invokes.set(i.id, i);
   return result.pending.map((p) => {
     const doc = invokes.get(p.invoke);
     return {
       invoke: p.invoke,
       state: p.state,
-      label: L.pendingIn(names.invoke(p.invoke), names.state(p.state)),
+      label:
+        doc?.type === "service" && doc.operation
+          ? L.pendingRuns(names.invoke(p.invoke), names.operation?.(doc.operation) ?? "?")
+          : L.pendingIn(names.invoke(p.invoke), names.state(p.state)),
       actor: doc?.type === "human-task" && doc.actors?.length ? doc.actors[0] : null,
     };
   });
@@ -524,6 +534,7 @@ export interface LastStepLine {
     | "trigger"
     | "action"
     | "sets"
+    | "call"
     | "values"
     | "note"
     | "revision"
@@ -654,6 +665,17 @@ export function lastStepLines(
         tone: "neutral",
       });
       if (a.sets && Object.keys(a.sets).length) lines.push({ kind: "sets", text: L.setsLine(subjectText(a.sets)), tone: "neutral" });
+      if (a.call)
+        lines.push({
+          kind: "call",
+          text: L.callLine(
+            names.operation?.(a.call.operation) ?? "?",
+            Object.entries(a.call.inputs ?? {})
+              .map(([member, v]) => `${names.member?.(member) ?? "?"} = ${valueText(v)}`)
+              .join(", "),
+          ),
+          tone: "neutral",
+        });
     }
   if (Object.keys(entry.changed).length) lines.push({ kind: "context", text: L.changedLine(changesText(entry.changed, names)), tone: "neutral" });
   if (entry.valuesChanged && Object.keys(entry.valuesChanged).length)

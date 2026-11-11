@@ -9,6 +9,7 @@ import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
 import { describeVerb, verbGroups } from "@/model/verbList";
 import { AddVerbDialog } from "@/verbs/VerbsSettings";
 import { useVerbs } from "@/verbs/useVerbs";
+import { OperationLinks, useFiredBy } from "./FiredBy";
 
 export const ADD_VERB = "__add-verb__";
 
@@ -16,6 +17,7 @@ export function EventsTab({ pc, focus }: { pc: ProcessContext; focus: string | n
   const { process, change, actorNames } = pc;
   const rows = namedRows(process, "events", actorNames);
   const go = useGridTargets(pc.id);
+  const firedBy = useFiredBy((process.events ?? []).map((e) => e.id));
   const [picked, setPicked] = useState<string | null>(null);
   const verbs = useVerbs();
   const [addingFor, setAddingFor] = useState<string | null>(null);
@@ -62,6 +64,16 @@ export function EventsTab({ pc, focus }: { pc: ProcessContext; focus: string | n
       },
     },
     { key: "usedBy", label: "Used by", kind: "readonly", width: "min-w-40", value: (r) => r.usedBy },
+    {
+      key: "firedBy",
+      label: "Fired by",
+      tooltip: "The operations that fire this event",
+      kind: "readonly",
+      width: "min-w-40",
+      value: (r) => (firedBy.get(r.id) ?? []).map((o) => o.name).join(", "),
+      definition: (r) => go.open(firedBy.get(r.id)?.[0]?.id),
+      render: (r) => <OperationLinks operations={firedBy.get(r.id) ?? []} testid={`fired-by-${r.id}`} />,
+    },
   ];
   return (
     <div className="flex flex-col gap-3">

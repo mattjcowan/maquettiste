@@ -38,6 +38,7 @@ internal sealed partial class ResolveRun
         }
 
         DrainInStateFills(); // a guard's in_state (object-effects-design.md section 6)
+        LinkOperations();
 
         _operationOrder = [.. _operations.Values.OrderBy(o => o.Package?.QualifiedName ?? "", StringComparer.Ordinal)
             .ThenBy(o => o.Subject is null ? 0 : 1).ThenBy(o => o.Subject?.Name ?? "", StringComparer.Ordinal)
@@ -48,19 +49,65 @@ internal sealed partial class ResolveRun
 
         // The derived lists come from the index's references, never from a scan of every operation: a reference to the entity or the
         // event changes its r: key, and an operation appearing or disappearing changes k:operation.
-        RList<ROperation> Referrers(string id, string field) => new(
-            Model.ReferencesTo(id)
-                .Where(reference => string.Equals(reference.Field, field, StringComparison.Ordinal) && reference.FromId == reference.FromElementId)
-                .Select(reference => _operations.GetValueOrDefault(reference.FromElementId))
-                .OfType<ROperation>()
-                .Distinct()
-                .OrderBy(o => order[o]),
-            [Keys.Referrers(id), OperationKind]);
+        List<ROperation> Referrers(string id, string field) => [.. Model.ReferencesTo(id)
+            .Where(reference => string.Equals(reference.Field, field, StringComparison.Ordinal) && reference.FromId == reference.FromElementId)
+            .Select(reference => _operations.GetValueOrDefault(reference.FromElementId))
+            .OfType<ROperation>()
+            .Distinct()
+            .OrderBy(o => order[o])];
 
         foreach (var entity in _entities.Values.Concat(_promoted.Values).Where(e => e.Id.Length > 0))
-            entity.Operations = Referrers(entity.Id, "subject");
+            entity.Operations = new RList<ROperation>(Referrers(entity.Id, "subject"), [Keys.Referrers(entity.Id), OperationKind]);
+
+        // An empty fired_by keys on the event's referrers only (processes-operations-design.md section 9): an operation that starts firing the
+        // event references it, which changes r:, so k:operation would only render again when an unrelated operation is added. A list that
+        // is not empty keeps k:operation, since its order reads the operations' names and subjects.
         foreach (var ev in events.Values)
-            ev.FiredBy = Referrers(ev.Id, "fires");
+        {
+            var firing = Referrers(ev.Id, "fires");
+            ev.FiredBy = new RList<ROperation>(firing, firing.Count == 0 ? [Keys.Referrers(ev.Id)] : [Keys.Referrers(ev.Id), OperationKind]);
+        }
+
+        CallersOfOperations();
+    }
+
+    // Runs what joins actions' calls and service steps to the operations they name (ResolveRun.Processes.cs, _operationLinks).
+    private void LinkOperations()
+    {
+        foreach (var link in _operationLinks)
+            link();
+        _operationLinks.Clear();
+    }
+
+    // Each operation's called_by and invoked_by (processes-operations-design.md section 9): the actions that call it and the service steps that
+    // name it, in the processes' order, then file order. Every action or step that names the operation is in a file that references it, so the
+    // lists key on its referrers.
+    private void CallersOfOperations()
+    {
+        var calledBy = new Dictionary<ROperation, List<RAction>>(ReferenceEqualityComparer.Instance);
+        var invokedBy = new Dictionary<ROperation, List<RInvoke>>(ReferenceEqualityComparer.Instance);
+        var seen = new HashSet<RAction>(ReferenceEqualityComparer.Instance);
+        foreach (var process in _processOrder)
+        {
+            foreach (var action in process.Actions)
+            {
+                if (action.Call is { } call && seen.Add(action))
+                    (calledBy.TryGetValue(call.Operation, out var list) ? list : calledBy[call.Operation] = []).Add(action);
+            }
+
+            foreach (var invoke in process.Invokes)
+            {
+                if (invoke.Operation is { } operation)
+                    (invokedBy.TryGetValue(operation, out var list) ? list : invokedBy[operation] = []).Add(invoke);
+            }
+        }
+
+        foreach (var (id, operation) in _operations)
+        {
+            IReadOnlyList<string> keys = [Keys.Referrers(id)];
+            operation.CalledBy = new RList<RAction>(calledBy.GetValueOrDefault(operation) ?? [], keys);
+            operation.InvokedBy = new RList<RInvoke>(invokedBy.GetValueOrDefault(operation) ?? [], keys);
+        }
     }
 
     private void BuildOperation(Operation operation, ROperation r, Dictionary<string, REvent> events)

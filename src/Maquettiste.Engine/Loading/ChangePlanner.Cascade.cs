@@ -135,7 +135,7 @@ internal sealed partial class ChangePlanner
 
         // An id inside an expression tree (next-phase-3-design.md section 3.1): a tree never loses a node, since it would mean something
         // else. remove-references refuses; delete-dependents removes what holds the tree: the check or guard, the derived value, an action's
-        // set (object-effects-design.md section 8), or a constraint whole.
+        // set (object-effects-design.md section 8), a call's input (processes-operations-design.md section 11), or a constraint whole.
         // A named trigger point's when and condition need the point, and a set's value its set (trigger-points-design.md section 9, part 2).
         if ((referrer.Element is TriggerPoint ? NamedTriggerHolder(reference.JsonPointer, "value") : ExpressionHolder(reference.JsonPointer)) is { } holder)
         {
@@ -144,6 +144,7 @@ internal sealed partial class ChangePlanner
                 var what = referrer.Element is TriggerPoint ? (holder.Length > 0 ? "the set" : "the trigger point")
                     : referrer.Element is Right || holder.StartsWith("/rights/", StringComparison.Ordinal) ? "the right"
                     : referrer.Element is Process && SetHolder(holder) ? "the set"
+                    : referrer.Element is Process && CallInputHolder(holder) ? "the call's input"
                     : referrer.Element is Process && holder.StartsWith("/triggerPoints/", StringComparison.Ordinal) ? "the trigger point"
                     : referrer.Element is Process && SignatureCondition(holder) ? "the signature's condition (when)"
                     : referrer.Element is Process && StageCondition(holder) ? "the stage's condition (when)"
@@ -449,6 +450,26 @@ internal sealed partial class ChangePlanner
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
                 {
                     if (pointer.Length > 0 && (pointer == setEntry || IsUnder(pointer, setEntry)))
+                        _cascadeQueue.Enqueue((index, subId, mode));
+                }
+
+                return;
+            }
+        }
+
+        // The operation an action calls, and the input member a call's input names (processes-operations-design.md section 11): a call means
+        // nothing without its operation, nor an input without its member, so in either resolution the call or the input goes, and the action
+        // keeps its other effects.
+        if (referrer.Element is Process && CallPart(reference.JsonPointer) is { } callPart)
+        {
+            var drop = new CascadeOp(callPart, true, reference, index);
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != callPart && !IsUnder(o.Pointer, callPart)), drop];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
+                {
+                    if (pointer.Length > 0 && (pointer == callPart || IsUnder(pointer, callPart)))
                         _cascadeQueue.Enqueue((index, subId, mode));
                 }
 
@@ -1416,9 +1437,44 @@ internal sealed partial class ChangePlanner
                 return JsonPointer.Build(segments[..k]);
             if (SetEntry(segments, k) is { } set)
                 return set;
+            if (CallInputEntry(segments, k) is { } input)
+                return input;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The call's input (<c>/actions/0/call/inputs/1</c>) when the segment at <paramref name="k"/> is its <c>value</c>
+    /// (processes-operations-design.md decision 6); <see langword="null"/> otherwise.
+    /// </summary>
+    private static string? CallInputEntry(string[] segments, int k) =>
+        k == 5 && segments[k] == "value" && segments[0] == "actions" && JsonPointer.TryIndex(segments[1], out _) && segments[2] == "call"
+            && segments[3] == "inputs" && JsonPointer.TryIndex(segments[4], out _)
+            ? JsonPointer.Build(segments[..5])
+            : null;
+
+    /// <summary>Whether a part is a call's input (<c>/actions/0/call/inputs/1</c>).</summary>
+    private static bool CallInputHolder(string part) =>
+        JsonPointer.TryParse(part, out var segments) && segments.Length == 5 && CallInputEntry([.. segments, "value"], 5) is not null;
+
+    /// <summary>
+    /// What goes when a call's reference does (processes-operations-design.md section 11): the call (<c>/actions/0/call</c>) for its
+    /// <c>operation</c>, the input (<c>/actions/0/call/inputs/1</c>) for an input's <c>member</c>; <see langword="null"/> for any other pointer.
+    /// </summary>
+    private static string? CallPart(string pointer)
+    {
+        if (!pointer.StartsWith("/actions/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var segments)
+            || segments.Length < 4 || !JsonPointer.TryIndex(segments[1], out _) || segments[2] != "call")
+        {
+            return null;
+        }
+
+        if (segments.Length == 4 && segments[3] == "operation")
+            return JsonPointer.Build(segments[..3]);
+        return segments.Length == 6 && segments[3] == "inputs" && JsonPointer.TryIndex(segments[4], out _) && segments[5] == "member"
+            ? JsonPointer.Build(segments[..5])
+            : null;
     }
 
     /// <summary>
@@ -1752,6 +1808,7 @@ internal sealed partial class ChangePlanner
         "process-trigger-point" => "trigger point",
         "gate-stage" => "stage",
         "named-signature" => "signature",
+        "call-input" => "call input",
         _ => kind,
     };
 
