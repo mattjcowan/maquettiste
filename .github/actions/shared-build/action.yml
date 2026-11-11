@@ -1,0 +1,26 @@
+name: shared build
+description: >-
+  The solution as ci.yml's build job built it on this OS (every bin/Release folder, unpacked in place), so a job tests or runs it
+  without building it again. With restore (the default), the locked restore first: dotnet test --no-build reads the restore's
+  files in obj/ and the packages' test targets.
+inputs:
+  os:
+    description: The runner OS the build was made on (ubuntu-latest or macos-latest); the job must run on the same.
+    required: true
+  restore:
+    description: Restore the solution first ("true" or "false").
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Restore (locked)
+      if: inputs.restore == 'true'
+      shell: bash
+      run: dotnet restore maquettiste.slnx --locked-mode
+    - uses: actions/download-artifact@v4
+      with:
+        name: build-${{ inputs.os }}
+        path: ${{ runner.temp }}/shared-build
+    - name: Unpack the build
+      shell: bash
+      run: zstd -dc "$RUNNER_TEMP/shared-build/build.tar.zst" | tar -xf - && rm -rf "$RUNNER_TEMP/shared-build"

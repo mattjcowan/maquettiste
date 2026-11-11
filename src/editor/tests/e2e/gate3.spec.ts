@@ -1,5 +1,5 @@
 // The gate 3 walk (SPEC Section 21, phase-3-design.md section 8.3), project live only, against the image started over the
-// processes fixture (tests/fixtures/models/processes/tools/gate3.sh walk, .github/workflows/gate3.yml). Open PurchaseApproval,
+// processes fixture (tests/fixtures/models/processes/tools/gate3.sh walk, the gate3 job of .github/workflows/ci.yml). Open PurchaseApproval,
 // simulate a path in the simulation panel (submit as BudgetHolder, checkBudget done, complianceReview done, approve twice,
 // createPurchaseOrder done) and record it as the scenario RecordedInTheEditor; record a SalesOrderLifecycle path the same way (so
 // each process has a scenario recorded through the panel, criterion 3); then plan every pack and apply. The script's verify

@@ -1,5 +1,5 @@
 // The gate 2 walk (SPEC Section 21, phase2-design.md section 7.2 step 2), project live only, against the image started over
-// the seeded 200-entity reference application (samples/reference-app/tools/gate2.sh walk, .github/workflows/gate2.yml).
+// the seeded 200-entity reference application (samples/reference-app/tools/gate2.sh walk, the gate2 job of .github/workflows/ci.yml).
 // Open the editor, find Warehouse in the Domain model tree and open its editor, add an attribute through the grid, rename a
 // relation in its relationship editor, then plan all packs from the Generate explorer, open a diff and apply; the apply
 // job's applyResult.outcome must be "succeeded" (its state is "succeeded" for any apply that ran to completion, stale or

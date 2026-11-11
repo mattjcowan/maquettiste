@@ -55,4 +55,4 @@ identical), `build` (4), `test` (5: 16 generated tests pass), `roundtrip` (7: XS
 byte), `bench` (8: `Maquettiste.Bench time-processes`, no budget missed; binding locally, advisory on a GitHub-hosted runner),
 `down`. Environment: `MAQUETTISTE_IMAGE`, `MAQUETTISTE_PORT`, `GATE3_DIR`, `MAQUETTISTE_EDITOR_TOKEN`, `GATE3_BENCH_ARGS`,
 `GATE3_BENCH_ADVISORY` (see the script's header).
-`.github/workflows/gate3.yml` runs the same steps.
+The gate3 job of `.github/workflows/ci.yml` runs the same steps.
