@@ -5,13 +5,16 @@ namespace Maquettiste.Engine.Loading;
 
 /// <summary>
 /// What a query names by key when tables or columns move: its sources' table keys and its column texts (<c>alias.&lt;key&gt;</c>, or a
-/// bare key). <c>materialize-tables</c> points a projected table's sources and columns at the designed table, and
+/// bare key), its named queries' included, and a SQL text query's <c>reads</c> and <c>writes</c> entries. <c>materialize-tables</c> points a projected table's sources and columns at the designed table, and
 /// <c>fold-into-stereotype</c> points an own column at the inherited column's keyed id (next-phase-2-design.md section 3.1). The
 /// replacements come from the resolved query, which knows which table and column each text names, and apply to the query's document.
 /// </summary>
 internal static class QueryColumnRewrite
 {
     private static readonly string[] QueryProperties = ["source", "column"];
+
+    /// <summary>The lists of a query written as SQL text whose entries name tables.</summary>
+    private static readonly string[] QueryLists = ["reads", "writes"];
 
     /// <summary>
     /// The replacements of one query's texts: each source whose table <paramref name="source"/> gives a new id, and each column text whose
@@ -33,6 +36,12 @@ internal static class QueryColumnRewrite
                 replace[s.Source] = id;
         }
 
+        foreach (var (reference, target) in query.Declared)
+        {
+            if (target is RTable t && source(t) is { } id && reference != id)
+                replace[reference] = id;
+        }
+
         foreach (var e in Expressions(query))
         {
             if (e is not { Node: "column", Column: { } text, TableColumn: { } tableColumn, Source.Table: { } t } || column(t, tableColumn) is not { } newId)
@@ -50,12 +59,32 @@ internal static class QueryColumnRewrite
         return replace;
     }
 
-    /// <summary>Applies replacements to the source and column texts of a query's document; true when one changed.</summary>
+    /// <summary>Applies replacements to the source and column texts and the <c>reads</c> and <c>writes</c> entries of a query's document;
+    /// true when one changed.</summary>
     /// <param name="query">The query's document.</param>
     /// <param name="replace">The replacements (<see cref="Replacements"/>).</param>
     /// <returns>Whether a text changed.</returns>
-    public static bool Apply(JsonNode query, IReadOnlyDictionary<string, string> replace) =>
-        replace.Count > 0 && ReplaceStrings(query, replace, QueryProperties);
+    public static bool Apply(JsonNode query, IReadOnlyDictionary<string, string> replace)
+    {
+        if (replace.Count == 0)
+            return false;
+        var changed = ReplaceStrings(query, replace, QueryProperties);
+        foreach (var list in QueryLists)
+        {
+            if (query[list] is not JsonArray entries)
+                continue;
+            for (var i = 0; i < entries.Count; i++)
+            {
+                if (entries[i] is JsonValue v && v.TryGetValue<string>(out var text) && replace.TryGetValue(text, out var replacement))
+                {
+                    entries[i] = replacement;
+                    changed = true;
+                }
+            }
+        }
+
+        return changed;
+    }
 
     /// <summary>Replaces string values of the named properties anywhere under a node; true when one changed.</summary>
     /// <param name="node">The node.</param>
@@ -98,7 +127,14 @@ internal static class QueryColumnRewrite
 
     private static IEnumerable<RQuerySource> Sources(RQuery query)
     {
-        yield return query.From;
+        foreach (var part in NamedParts(query))
+        {
+            foreach (var source in Sources(part))
+                yield return source;
+        }
+
+        if (query.From is { } from)
+            yield return from;
         foreach (var join in query.Joins)
             yield return join;
         foreach (var collection in query.Collections)
@@ -135,10 +171,20 @@ internal static class QueryColumnRewrite
         }
     }
 
+    /// <summary>The anchor and the repeating part of each named query of a query's <c>with</c>.</summary>
+    private static IEnumerable<RQuery> NamedParts(RQuery query) =>
+        query.With.SelectMany(n => n.Recursive is { } recursive ? new[] { n.Query, recursive } : [n.Query]);
+
     private static IEnumerable<RQueryExpression> Expressions(RQuery query)
     {
+        foreach (var part in NamedParts(query))
+        {
+            foreach (var e in Expressions(part))
+                yield return e;
+        }
+
         var roots = new List<RQueryExpression>();
-        roots.AddRange(query.Select.Select(f => f.Expression));
+        roots.AddRange(query.Select.Select(f => f.Expression).OfType<RQueryExpression>());
         roots.AddRange(query.GroupBy);
         roots.AddRange(query.OrderBy.Select(o => o.Expression));
         foreach (var p in Predicates(query))

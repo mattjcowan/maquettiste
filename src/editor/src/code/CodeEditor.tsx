@@ -30,8 +30,17 @@ const options: monaco.editor.IStandaloneEditorConstructionOptions = {
 export interface CodeMarker {
   line: number;
   column?: number | null;
+  /** The characters the mark covers from `column` (default: one, or the rest of the line without a column). */
+  length?: number;
   message: string;
   severity: "error" | "warning" | "info";
+}
+
+/** A span of text shown in a style of its own (a SQL text's `:name` placeholders). 1-based line and column. */
+export interface CodeHighlight {
+  line: number;
+  column: number;
+  length: number;
 }
 
 export interface CodeEditorProps {
@@ -47,6 +56,8 @@ export interface CodeEditorProps {
   /** The text lost focus (an editor that saves on leaving it). */
   onBlur?: () => void;
   markers?: CodeMarker[];
+  /** Spans drawn in the placeholder style, on every change of the text. */
+  highlights?: CodeHighlight[];
   /**
    * With a revision the editor owns its text while typing (a controlled value lags fast typing and would overwrite
    * keystrokes); `value` replaces the text only when the revision changes (reverting to the disk text, say).
@@ -79,6 +90,7 @@ export default function CodeEditor({
   onSave,
   onBlur,
   markers,
+  highlights,
   revision,
   completion,
   onCursorLine,
@@ -168,6 +180,17 @@ export default function CodeEditor({
     );
     if (lines.length) editor.revealLineInCenterIfOutsideViewport(lines[0]);
   }, [editor, highlightLines, path]);
+  const spans = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  useEffect(() => {
+    if (!editor) return;
+    spans.current ??= editor.createDecorationsCollection();
+    spans.current.set(
+      (highlights ?? []).map((h) => ({
+        range: new monaco.Range(h.line, h.column, h.line, h.column + h.length),
+        options: { inlineClassName: "mq-sql-param" },
+      })),
+    );
+  }, [editor, highlights, path, value]);
   const latest = useRef(value);
   useEffect(() => {
     latest.current = value;
@@ -187,7 +210,7 @@ export default function CodeEditor({
         startLineNumber: m.line,
         startColumn: m.column ?? 1,
         endLineNumber: m.line,
-        endColumn: m.column ? m.column + 1 : model.getLineMaxColumn(Math.min(m.line, model.getLineCount())),
+        endColumn: m.column ? m.column + (m.length ?? 1) : model.getLineMaxColumn(Math.min(m.line, model.getLineCount())),
         message: m.message,
         severity: SEVERITY[m.severity],
       })),

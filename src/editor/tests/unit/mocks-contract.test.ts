@@ -65,7 +65,56 @@ describe("mock contract", () => {
     await call("get", `/api/model/elements/${IDS.invoice}`, "/api/model/elements/{id}");
     await call("get", `/api/model/references/${IDS.invoice}`, "/api/model/references/{id}");
     await call("get", `/api/diagrams/${IDS.overview}`, "/api/diagrams/{id}");
-    await call("get", `/api/databases/${database.id}/view`, "/api/databases/{id}/view");
+    // A SQL text query and a built query with a recursive named query, so the view's query schema covers form, texts, writes, with,
+    // namedQuery and the optional from and expression.
+    const invoices = `${IDS.invoice}@${database.id}`;
+    const text = await call("post", "/api/model/elements", "/api/model/elements", {
+      kind: "query",
+      database: database.id,
+      name: "ContractSqlText",
+      description: "A query written as SQL text.",
+      parameters: [{ name: "invoiceId", type: "uuid" }],
+      sql: { "*": "UPDATE billing.invoices SET id = id WHERE id = :invoiceId" },
+      columns: [{ name: "id", type: "uuid", nullable: false }],
+      reads: [invoices],
+      writes: [invoices],
+    });
+    expect(text.status).toBe(201);
+    const built = await call("post", "/api/model/elements", "/api/model/elements", {
+      kind: "query",
+      database: database.id,
+      name: "ContractNamed",
+      parameters: [{ name: "invoiceId", type: "uuid" }],
+      with: [
+        {
+          name: "chain",
+          from: { source: invoices, alias: "c" },
+          select: [
+            { name: "id", expression: { column: "c.id" } },
+            { name: "depth", expression: { value: 0 } },
+          ],
+          where: { op: "eq", left: { column: "c.id" }, right: { param: "invoiceId" } },
+          recursive: {
+            from: { source: "chain", alias: "ch" },
+            joins: [{ source: invoices, alias: "p", on: { op: "eq", left: { column: "p.id" }, right: { column: "ch.id" } } }],
+            select: [
+              { name: "id", expression: { column: "p.id" } },
+              { name: "depth", expression: { op: "+", args: [{ column: "ch.depth" }, { value: 1 }] } },
+            ],
+          },
+        },
+      ],
+      from: { source: "chain", alias: "x" },
+      select: [
+        { name: "id", expression: { column: "x.id" } },
+        { name: "depth", expression: { column: "x.depth" } },
+      ],
+    });
+    expect(built.status).toBe(201);
+    const { payload: viewed } = await call("get", `/api/databases/${database.id}/view`, "/api/databases/{id}/view");
+    const queries = (viewed as { view: { queries: { name: string; form?: string; with?: unknown[]; writes?: string[] }[] } }).view.queries;
+    expect(queries.find((q) => q.name === "ContractSqlText")).toMatchObject({ form: "sql", writes: [invoices] });
+    expect(queries.find((q) => q.name === "ContractNamed")?.with).toHaveLength(1);
     await call("post", "/api/validate", "/api/validate", {});
     await call("get", "/api/jobs", "/api/jobs");
   });

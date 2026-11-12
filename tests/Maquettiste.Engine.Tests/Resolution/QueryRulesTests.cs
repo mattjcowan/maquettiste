@@ -542,7 +542,7 @@ public sealed class QueryRulesTests
         Assert.Empty(Store.Findings(model, id));
         var query = model.Db("main").Queries.Single(q => q.Id == id);
         Assert.Equal("SELECT (i.total * 2.0) AS a, -7.50 AS b, 0.00 AS c, 1 AS d\nFROM public.invoices i", query.Sql);
-        Assert.Equal(("decimal", 2.0m), (query.Select[0].Expression.Args[1].Type, (decimal)query.Select[0].Expression.Args[1].Value!));
+        Assert.Equal(("decimal", 2.0m), (query.Select[0].Expression!.Args[1].Type, (decimal)query.Select[0].Expression!.Args[1].Value!));
         Assert.Equal([("MQ4029", "/select/0/expression/sql")], Store.Findings(model, blank));
     }
 

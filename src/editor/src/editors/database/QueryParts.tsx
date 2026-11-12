@@ -2,11 +2,11 @@
 // join's condition from a foreign key), Select (one row per attribute of the result entity, or the fields of an ad hoc row; the
 // list filled from same-named columns), Filter (the where tree), Group and order (grouping, having, ordering, distinct and, at
 // the top, paging), Parameters and Collections. Each gesture is one `update` (one save, one undo step).
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, KeyRound, Plus, Trash2, Wand2 } from "lucide-react";
 import { elementQuery, useElements, useIndex } from "@/api/queries";
-import type { DatabaseView, ElementSummary, EntityDoc, QueryView, RelationDoc, StereotypeDoc } from "@/api/types";
+import type { DatabaseView, Diagnostic, ElementSummary, EntityDoc, QueryView, RelationDoc, StereotypeDoc } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { EmptyState, SectionTitle } from "@/components/ui/misc";
@@ -15,12 +15,14 @@ import { indexLookup } from "@/model/index";
 import { docEndSingleEntity, endSingleEntity } from "@/model/endTypes";
 import { BUILTIN_TYPES } from "@/model/model";
 import {
+  columnOptions,
   defaultAlias,
   fieldName,
   fillFromColumns,
   findSource,
   foreignKeyJoins,
   JOIN_KINDS,
+  matchColumn,
   nameProblem,
   renameAlias,
   renameParameter,
@@ -30,6 +32,7 @@ import {
   withAttributeField,
   type AttributeOption,
   type Collection,
+  type ColumnOption,
   type Expression,
   type Field,
   type JoinKind,
@@ -58,6 +61,8 @@ export interface QueryContext {
   env: QueryEnv;
   /** The aliases of the queries around this body (a collection's correlation). */
   outer: readonly ScopeAlias[];
+  /** The named queries (of the query's `with`) a source here may read, with their columns. */
+  named?: readonly SourceOption[];
 }
 
 const head = "h-6 px-1 text-left text-11 font-semibold text-secondary";
@@ -252,27 +257,56 @@ export async function loadEntityShape(
 
 /** A source as the pickers name it: `schema.name`, a view marked. */
 const sourceLabel = (o: SourceOption | null): string | null =>
-  o ? `${o.schema ? `${o.schema}.${o.name}` : o.name}${o.kind === "view" ? " (view)" : ""}` : null;
+  o ? `${o.schema ? `${o.schema}.${o.name}` : o.name}${o.kind === "view" ? " (view)" : ""}${o.kind === "named" ? " (named query)" : ""}` : null;
+
+/** Rewrites the `alias.column` references in a body (not its named queries or repeating part) from one source's column refs to another's, by name. */
+function retargetColumns(body: unknown, alias: string, from: readonly ColumnOption[], to: readonly ColumnOption[]) {
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node || typeof node !== "object") return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "with" || key === "recursive") continue;
+      if (key === "column" && typeof value === "string" && value.startsWith(`${alias}.`)) {
+        const old = value.slice(alias.length + 1);
+        const named = from.find((c) => c.ref === old);
+        const match = named ? matchColumn(to, named.name) : null;
+        if (match) (node as Record<string, unknown>)[key] = `${alias}.${match.ref}`;
+      } else walk(value);
+    }
+  };
+  walk(body);
+}
 
 /** The from source and the joins: what each reads, its alias, the join's kind and condition. */
 export function SourcesSection({ body, update, q, label }: { body: Subquery; update: BodyUpdate; q: QueryContext; label: string }) {
   const options = sourceOptions(q.view);
+  const named = q.named ?? [];
   const joins = body.joins ?? [];
   const [problem, setProblem] = useState<string | null>(null);
-  const scopeUpTo = (n: number) => scopeOf({ from: body.from, joins: joins.slice(0, n) }, q.view, q.files, q.outer);
+  const scopeUpTo = (n: number) => scopeOf({ from: body.from, joins: joins.slice(0, n) }, q.view, q.files, q.outer, q.named);
   const aliases = [body.from, ...joins].map((s, i) => s.alias ?? scopeUpTo(i + 1)[i]?.alias ?? s.source);
-  const sourceSelect = (value: string, aria: string, onPick: (v: string) => void) => (
-    <select aria-label={aria} className={`${cellSelect} w-56 font-sans`} value={value} onChange={(e) => onPick(e.target.value)}>
-      {options.some((o) => o.value === value) ? null : (
-        <option value={value}>{sourceLabel(findSource(q.view, value, q.files)) ?? `${value || "(pick a source)"}`}</option>
-      )}
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {sourceLabel(o)}
-        </option>
-      ))}
-    </select>
-  );
+  const sourceSelect = (value: string, aria: string, onPick: (v: string) => void) => {
+    const listed = (o: SourceOption) => (
+      <option key={o.value} value={o.value}>
+        {sourceLabel(o)}
+      </option>
+    );
+    return (
+      <select aria-label={aria} className={`${cellSelect} w-56 font-sans`} value={value} onChange={(e) => onPick(e.target.value)}>
+        {options.some((o) => o.value === value) || named.some((o) => o.value === value) ? null : (
+          <option value={value}>{sourceLabel(findSource(q.view, value, q.files, named)) ?? `${value || "(pick a source)"}`}</option>
+        )}
+        {named.length ? (
+          <>
+            <optgroup label="Named queries">{named.map(listed)}</optgroup>
+            <optgroup label="Tables and views">{options.map(listed)}</optgroup>
+          </>
+        ) : (
+          options.map(listed)
+        )}
+      </select>
+    );
+  };
   const aliasInput = (i: number, aria: string) => (
     <CommitInput
       label={aria}
@@ -319,7 +353,16 @@ export function SourcesSection({ body, update, q, label }: { body: Subquery; upd
     <div className="flex flex-col gap-2" data-testid="query-sources">
       <div className="flex flex-wrap items-center gap-2" data-testid="query-from">
         <span className="w-12 text-12 font-medium text-secondary">From</span>
-        {sourceSelect(body.from.source, `${label} from source`, (v) => update((b) => void (b.from = { ...b.from, source: v })))}
+        {sourceSelect(body.from.source, `${label} from source`, (v) =>
+          update((b) => {
+            const before = findSource(q.view, b.from.source, q.files, named);
+            const after = findSource(q.view, v, q.files, named);
+            b.from = { ...b.from, source: v };
+            // The columns read through the from alias follow to the same-named column of the new source, when it has one: pointing a
+            // query at another table (or a named query) does not leave its fields reading the old table's column keys.
+            if (before && after) retargetColumns(b, aliases[0], columnOptions(before), columnOptions(after));
+          }),
+        )}
         <span className="text-12 text-secondary">as</span>
         {aliasInput(0, `${label} from alias`)}
       </div>
@@ -357,7 +400,15 @@ export function SourcesSection({ body, update, q, label }: { body: Subquery; upd
                   </option>
                 ))}
               </select>
-              {sourceSelect(j.source, `${label} join ${i + 1} source`, (v) => update((b) => void (b.joins![i] = { ...b.joins![i], source: v })))}
+              {sourceSelect(j.source, `${label} join ${i + 1} source`, (v) =>
+                update((b) => {
+                  const before = findSource(q.view, b.joins![i].source, q.files, named);
+                  const after = findSource(q.view, v, q.files, named);
+                  b.joins![i] = { ...b.joins![i], source: v };
+                  // As for the from source: the columns read through this join's alias follow to the same-named column of the new source.
+                  if (before && after) retargetColumns(b, aliases[i + 1], columnOptions(before), columnOptions(after));
+                }),
+              )}
               <span className="text-12 text-secondary">as</span>
               {aliasInput(i + 1, `${label} join ${i + 1} alias`)}
               {kind !== "cross" ? (
@@ -438,6 +489,7 @@ export function SelectSection({
   entity,
   label,
   resolved,
+  renameField,
 }: {
   body: Subquery;
   update: BodyUpdate;
@@ -446,11 +498,13 @@ export function SelectSection({
   label: string;
   /** The resolved fields (the database view's), for their inferred types. */
   resolved?: QueryView["select"];
+  /** Renames a named field and the references to it (a named query's fields are columns other sources read). */
+  renameField?: (index: number, to: string) => void;
 }) {
   const shape = useEntityShape(entity);
   const select = body.select ?? [];
   const [problem, setProblem] = useState<string | null>(null);
-  const scope = scopeOf(body, q.view, q.files, q.outer);
+  const scope = scopeOf(body, q.view, q.files, q.outer, q.named);
   const env: QueryEnv = { ...q.env, scope };
   const own = scope.filter((s) => !s.outer);
   // One row per attribute one field fills, then per value object member and foreign key (the order fields take).
@@ -640,7 +694,10 @@ export function SelectSection({
                             "field",
                           );
                           setProblem(why);
-                          if (!why) setField(i, { ...f, name: next });
+                          if (!why) {
+                            if (renameField && f.name) renameField(i, next);
+                            else setField(i, { ...f, name: next });
+                          }
                         }}
                       />
                     )}
@@ -738,7 +795,7 @@ function MoveButtons({ noun, first, last, move }: { noun: string; first: boolean
 // ------------------------------------------------------------------ filter
 
 export function FilterSection({ body, update, q, label }: { body: Subquery; update: BodyUpdate; q: QueryContext; label: string }) {
-  const env: QueryEnv = { ...q.env, scope: scopeOf(body, q.view, q.files, q.outer) };
+  const env: QueryEnv = { ...q.env, scope: scopeOf(body, q.view, q.files, q.outer, q.named) };
   return (
     <div className="flex flex-col gap-1" data-testid="query-filter">
       <p className="text-12 text-secondary">
@@ -779,7 +836,7 @@ export function GroupOrderSection({
   /** The query's paging (the top level only), with its own update. */
   paging?: { value: QueryDoc["paging"]; update: (mutate: (doc: QueryDoc) => void) => void };
 }) {
-  const env: QueryEnv = { ...q.env, scope: scopeOf(body, q.view, q.files, q.outer) };
+  const env: QueryEnv = { ...q.env, scope: scopeOf(body, q.view, q.files, q.outer, q.named) };
   const groupBy = body.groupBy ?? [];
   const orderBy = body.orderBy ?? [];
   const blank = (): Expression => (firstColumn(env) ? { column: firstColumn(env)! } : { value: 1 });
@@ -1004,7 +1061,19 @@ export function parameterDefault(type: string, text: string): string | number | 
 }
 
 /** The parameters grid: name (a rename follows every use), type and facets, list, default and description. */
-export function ParametersSection({ doc, update }: { doc: QueryDoc; update: (mutate: (d: QueryDoc) => void) => void }) {
+export function ParametersSection({
+  doc,
+  update,
+  findings = [],
+  dialect,
+}: {
+  doc: QueryDoc;
+  update: (mutate: (d: QueryDoc) => void) => void;
+  /** The query's findings: those at `/parameters/<i>` show in that parameter's row (a hand-written query's MQ4096). */
+  findings?: readonly Diagnostic[];
+  /** The database's dialect, for a query written as SQL text: renaming a parameter rewrites its `:name` in the texts. */
+  dialect?: string;
+}) {
   const parameters = doc.parameters ?? [];
   const [problem, setProblem] = useState<string | null>(null);
   const types = useDatabaseTypes(doc.database);
@@ -1034,7 +1103,7 @@ export function ParametersSection({ doc, update }: { doc: QueryDoc; update: (mut
       <Problem text={problem} />
       {parameters.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[52rem] table-fixed border-collapse text-12">
+          <table className="w-full min-w-[44rem] table-fixed border-collapse text-12">
             <thead>
               <tr>
                 <th scope="col" className={`${head} w-32`}>
@@ -1064,119 +1133,130 @@ export function ParametersSection({ doc, update }: { doc: QueryDoc; update: (mut
             </thead>
             <tbody>
               {parameters.map((p, i) => (
-                <tr key={i} className="border-t border-default" data-testid={`query-parameter-${p.name}`}>
-                  <td className={cell}>
-                    <CommitInput
-                      label={`Name of parameter ${i + 1}`}
-                      mono
-                      className="h-6 text-12"
-                      value={p.name}
-                      onCommit={(v) => {
-                        const next = v.trim();
-                        const why = nameProblem(
-                          next,
-                          parameters.filter((_, j) => j !== i).map((x) => x.name),
-                          "parameter",
-                        );
-                        setProblem(why);
-                        if (!why) update((d) => void renameParameter(d, p.name, next));
-                      }}
-                    />
-                  </td>
-                  <td className={cell}>
-                    <TypeSelect
-                      label={`Type of parameter ${p.name}`}
-                      value={p.type}
-                      types={types}
-                      allowNative={false}
-                      onChange={(v) => v && setParameter(i, (x) => void (x.type = v))}
-                    />
-                  </td>
-                  {FACETS.map((f) => (
-                    <td key={f} className={cell}>
+                <Fragment key={i}>
+                  <tr className="border-t border-default" data-testid={`query-parameter-${p.name}`}>
+                    <td className={cell}>
                       <CommitInput
-                        label={`${f[0].toUpperCase()}${f.slice(1)} of parameter ${p.name}`}
+                        label={`Name of parameter ${i + 1}`}
                         mono
                         className="h-6 text-12"
-                        value={typeof p[f] === "number" ? String(p[f]) : ""}
+                        value={p.name}
                         onCommit={(v) => {
-                          const why = facetProblem(f, v);
-                          setProblem(why ? `${f[0].toUpperCase()}${f.slice(1)}: ${why}` : null);
-                          if (!why) setParameter(i, (x) => void setFacet(x as unknown as Record<string, unknown>, f, v));
+                          const next = v.trim();
+                          const why = nameProblem(
+                            next,
+                            parameters.filter((_, j) => j !== i).map((x) => x.name),
+                            "parameter",
+                          );
+                          setProblem(why);
+                          if (!why) update((d) => void renameParameter(d, p.name, next, dialect));
                         }}
                       />
                     </td>
-                  ))}
-                  <td className={cell}>
-                    <input
-                      type="checkbox"
-                      aria-label={`Parameter ${p.name} is a list`}
-                      checked={p.collection === true}
-                      onChange={(e) =>
-                        setParameter(i, (x) => {
-                          if (e.target.checked) x.collection = true;
-                          else delete x.collection;
-                        })
-                      }
-                    />
-                  </td>
-                  <td className={cell}>
-                    <CommitInput
-                      label={`Default of parameter ${p.name}`}
-                      mono
-                      className="h-6 text-12"
-                      value={p.default === undefined ? "" : String(p.default)}
-                      placeholder="none"
-                      onCommit={(v) =>
-                        setParameter(i, (x) => {
-                          const value = parameterDefault(x.type, v);
-                          if (value === undefined) delete x.default;
-                          else x.default = value;
-                        })
-                      }
-                    />
-                  </td>
-                  <td className={cell}>
-                    <CommitInput
-                      label={`Description of parameter ${p.name}`}
-                      className="h-6 text-12"
-                      value={p.description ?? ""}
-                      onCommit={(v) =>
-                        setParameter(i, (x) => {
-                          if (v.trim()) x.description = v.trim();
-                          else delete x.description;
-                        })
-                      }
-                    />
-                  </td>
-                  <td className={`${cell} whitespace-nowrap`}>
-                    <MoveButtons
-                      noun={`parameter ${p.name}`}
-                      first={i === 0}
-                      last={i === parameters.length - 1}
-                      move={(by) =>
-                        update((d) => {
-                          const list = [...(d.parameters ?? [])];
-                          [list[i], list[i + by]] = [list[i + by], list[i]];
-                          d.parameters = list;
-                        })
-                      }
-                    />
-                    <Button
-                      size="icon-row"
-                      variant="ghost"
-                      label={`Delete parameter ${p.name}`}
-                      onClick={() =>
-                        update((d) => {
-                          d.parameters = (d.parameters ?? []).filter((_, j) => j !== i);
-                          if (!d.parameters.length) delete d.parameters;
-                        })
-                      }
-                    >
-                      <Trash2 />
-                    </Button>
-                  </td>
-                </tr>
+                    <td className={cell}>
+                      <TypeSelect
+                        label={`Type of parameter ${p.name}`}
+                        value={p.type}
+                        types={types}
+                        allowNative={false}
+                        onChange={(v) => v && setParameter(i, (x) => void (x.type = v))}
+                      />
+                    </td>
+                    {FACETS.map((f) => (
+                      <td key={f} className={cell}>
+                        <CommitInput
+                          label={`${f[0].toUpperCase()}${f.slice(1)} of parameter ${p.name}`}
+                          mono
+                          className="h-6 text-12"
+                          value={typeof p[f] === "number" ? String(p[f]) : ""}
+                          onCommit={(v) => {
+                            const why = facetProblem(f, v);
+                            setProblem(why ? `${f[0].toUpperCase()}${f.slice(1)}: ${why}` : null);
+                            if (!why) setParameter(i, (x) => void setFacet(x as unknown as Record<string, unknown>, f, v));
+                          }}
+                        />
+                      </td>
+                    ))}
+                    <td className={cell}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Parameter ${p.name} is a list`}
+                        checked={p.collection === true}
+                        onChange={(e) =>
+                          setParameter(i, (x) => {
+                            if (e.target.checked) x.collection = true;
+                            else delete x.collection;
+                          })
+                        }
+                      />
+                    </td>
+                    <td className={cell}>
+                      <CommitInput
+                        label={`Default of parameter ${p.name}`}
+                        mono
+                        className="h-6 text-12"
+                        value={p.default === undefined ? "" : String(p.default)}
+                        placeholder="none"
+                        onCommit={(v) =>
+                          setParameter(i, (x) => {
+                            const value = parameterDefault(x.type, v);
+                            if (value === undefined) delete x.default;
+                            else x.default = value;
+                          })
+                        }
+                      />
+                    </td>
+                    <td className={cell}>
+                      <CommitInput
+                        label={`Description of parameter ${p.name}`}
+                        className="h-6 text-12"
+                        value={p.description ?? ""}
+                        onCommit={(v) =>
+                          setParameter(i, (x) => {
+                            if (v.trim()) x.description = v.trim();
+                            else delete x.description;
+                          })
+                        }
+                      />
+                    </td>
+                    <td className={`${cell} whitespace-nowrap`}>
+                      <MoveButtons
+                        noun={`parameter ${p.name}`}
+                        first={i === 0}
+                        last={i === parameters.length - 1}
+                        move={(by) =>
+                          update((d) => {
+                            const list = [...(d.parameters ?? [])];
+                            [list[i], list[i + by]] = [list[i + by], list[i]];
+                            d.parameters = list;
+                          })
+                        }
+                      />
+                      <Button
+                        size="icon-row"
+                        variant="ghost"
+                        label={`Delete parameter ${p.name}`}
+                        onClick={() =>
+                          update((d) => {
+                            d.parameters = (d.parameters ?? []).filter((_, j) => j !== i);
+                            if (!d.parameters.length) delete d.parameters;
+                          })
+                        }
+                      >
+                        <Trash2 />
+                      </Button>
+                    </td>
+                  </tr>
+                  {findings
+                    .filter((d) => d.jsonPointer === `/parameters/${i}` || (d.jsonPointer ?? "").startsWith(`/parameters/${i}/`))
+                    .map((d, j) => (
+                      <tr key={j} data-testid={`query-parameter-finding-${p.name}`}>
+                        <td colSpan={FACETS.length + 5} className={`px-1 pb-0.5 text-12 ${d.severity === "error" ? "text-danger" : "text-secondary"}`}>
+                          <span className="font-mono">{d.rule}</span> {d.message}
+                        </td>
+                      </tr>
+                    ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -1207,7 +1287,7 @@ export function CollectionsSection({
 }) {
   const shape = useEntityShape(doc.entity);
   const collections = doc.collections ?? [];
-  const outer = scopeOf(doc, q.view, q.files);
+  const outer = scopeOf(doc, q.view, q.files, [], q.named);
   const add = () =>
     update((d) => {
       const used = new Set((d.collections ?? []).map((c) => c.attribute));
@@ -1219,7 +1299,7 @@ export function CollectionsSection({
       );
       const nested: Subquery = { from: { source: source?.value ?? sourceOptions(q.view)[0]?.value ?? "", alias }, select: [] };
       // The correlation: the foreign key between the new source and the parent's, as the nested where.
-      const joined = scopeOf(nested, q.view, q.files)[0];
+      const joined = scopeOf(nested, q.view, q.files, [], q.named)[0];
       const fk = joined ? foreignKeyJoins(joined, outer)[0] : undefined;
       if (fk) nested.where = fk.on;
       d.collections = [...(d.collections ?? []), { attribute: target?.value ?? `items${used.size + 1}`, query: nested }];

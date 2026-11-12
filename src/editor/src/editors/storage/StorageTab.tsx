@@ -219,6 +219,7 @@ function AddBinding({
                 placeholder="Pick a table, view or query"
               />
             </Field>
+            {source ? <ChangesDataNote source={source} /> : null}
             <div className="flex justify-end gap-2">
               <Button onClick={() => setOpen(false)}>Cancel</Button>
               <Button
@@ -239,6 +240,18 @@ function AddBinding({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** The line under a source picker when the picked query changes data or returns no rows: an entity cannot read through it. */
+function ChangesDataNote({ source }: { source: BindingSource }) {
+  if (!source.changesData) return null;
+  return (
+    <p className="text-12 text-secondary" data-testid="binding-changes-data">
+      {source.changesWhy === "declares no columns"
+        ? "This query returns no columns; an entity can only read through a query that returns rows."
+        : "This query changes data; an entity can only read through a query that returns rows."}
+    </p>
   );
 }
 
@@ -353,7 +366,7 @@ function BindingCard({
   const fieldRows = attributeRows(binding, attributes, columns);
   const colRows = columnRows(binding, attributes, columns);
   const validation = useValidation();
-  const local = source || !pending ? bindingProblems(binding, attributes, source) : [];
+  const local = source || !pending ? bindingProblems(binding, attributes, source, { entity: entityName, database: databaseName }) : [];
   const localRules = new Set(local.map((p) => p.rule));
   const server: MapProblem[] = (validation.data?.diagnostics ?? [])
     .filter((d) => d.elementId === entityId && (d.jsonPointer ?? "").startsWith(`/bindings/${index}`) && !localRules.has(d.rule) && d.severity !== "info")
@@ -448,6 +461,8 @@ function BindingCard({
           <Trash2 />
         </Button>
       </div>
+
+      {source?.changesData ? <ChangesDataNote source={source} /> : null}
 
       {problems.length ? (
         <ul className="flex flex-col gap-0.5 text-12" data-testid="binding-problems">

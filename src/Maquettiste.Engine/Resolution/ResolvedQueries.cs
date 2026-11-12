@@ -22,16 +22,41 @@ public sealed class RQuery : RAnnotated
     /// <summary>The entity each result row has, or <see langword="null"/> for an ad hoc row (the select list).</summary>
     public REntity? Entity { get; internal set; }
 
+    /// <summary>
+    /// How the query is written (sql-queries-design.md decision 1): <c>structured</c> (built from parts, the default) or <c>sql</c>
+    /// (written as SQL text: <see cref="Texts"/>, declared columns as <see cref="Select"/>, <see cref="Uses"/> and <see cref="Writes"/>).
+    /// </summary>
+    public string Form { get; internal set; } = "structured";
+
+    /// <summary>
+    /// The file's <c>sql</c> of a query written as SQL text: its text per dialect name or <c>"*"</c>, as written (<c>:name</c>
+    /// placeholders); empty for a built query.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Texts { get; internal set; } = System.Collections.Frozen.FrozenDictionary<string, string>.Empty;
+
+    /// <summary>
+    /// The text of a query written as SQL text for the database's dialect (its own, else <c>"*"</c>'s) as written, with <c>:name</c>
+    /// placeholders, for documentation and display; <see langword="null"/> for a built query or without one. A pack that runs the
+    /// statement uses <see cref="Sql"/> (<c>query_sql</c>), which has its placeholders in the pack's style.
+    /// </summary>
+    public string? SqlText { get; internal set; }
+
+    /// <summary>The tables a query written as SQL text inserts into, updates or deletes from (its <c>writes</c>), in file order.</summary>
+    public IReadOnlyList<RTable> Writes { get; internal set; } = [];
+
     /// <summary>The parameters, in order (a nested query uses its top query's).</summary>
     public IReadOnlyList<RQueryParameter> Parameters { get; internal set; } = [];
 
-    /// <summary>The first source.</summary>
-    public RQuerySource From { get; internal set; } = null!;
+    /// <summary>The first source; <see langword="null"/> for a query written as SQL text (sql-queries-design.md section 10).</summary>
+    public RQuerySource? From { get; internal set; }
 
     /// <summary>The joined sources, in order.</summary>
     public IReadOnlyList<RQuerySource> Joins { get; internal set; } = [];
 
-    /// <summary>The select list.</summary>
+    /// <summary>
+    /// The select list; for a query written as SQL text, its declared columns (each without an expression), none for a statement whose
+    /// rows the code does not read (it returns the number of rows changed).
+    /// </summary>
     public IReadOnlyList<RQueryField> Select { get; internal set; } = [];
 
     /// <summary>The row filter.</summary>
@@ -59,15 +84,23 @@ public sealed class RQuery : RAnnotated
     public RQuery? Parent { get; internal set; }
 
     /// <summary>
+    /// The named queries (a <c>WITH</c> clause) of a built top query, in file order (sql-queries-design.md section 10); empty for a
+    /// nested query, a named query's own parts and a query written as SQL text.
+    /// </summary>
+    public IReadOnlyList<RNamedQuery> With { get; internal set; } = [];
+
+    /// <summary>
     /// The SQL for the database's dialect with <c>@name</c> placeholders (<c>QuerySql.Render</c> with the default options), with the
-    /// hidden key columns the collections need; <see langword="null"/> when it cannot be rendered there (MQ4029) and for a nested
+    /// hidden key columns the collections need (for a query written as SQL text, its text as written with the white space at both ends
+    /// removed, a final <c>;</c> kept, its <c>:name</c> placeholders written <c>@name</c>); <see langword="null"/> when it cannot be rendered there (MQ4029) and for a nested
     /// query (a collection's or a subquery's), whose SQL is part of its root's.
     /// </summary>
     public string? Sql { get; internal set; }
 
     /// <summary>
     /// The tables, views, routines and database types the query (and its nested queries) reads, in first-use order; a query is a
-    /// dependent of each.
+    /// dependent of each. For a query written as SQL text, its <c>reads</c> resolved (tables, views, routines, sequences and database
+    /// types), in file order.
     /// </summary>
     public IReadOnlyList<IResolvedObject> Uses { get; internal set; } = [];
 
@@ -92,6 +125,40 @@ public sealed class RQuery : RAnnotated
 
     /// <summary>The file's record this query resolves: the <see cref="Model.Query"/>, or a nested query's <see cref="Model.QuerySubquery"/>.</summary>
     internal object? Definition { get; set; }
+
+    /// <summary>
+    /// A query written as SQL text: each <c>reads</c> and <c>writes</c> entry as written with what it names, so a change that moves a
+    /// table (materialize tables) can point the entry at the table's new id.
+    /// </summary>
+    internal IReadOnlyList<(string Reference, IResolvedObject Target)> Declared { get; set; } = [];
+}
+
+/// <summary>
+/// A named query of a built query's <c>with</c> (sql-queries-design.md decision 10): a select with a name that the query, its nested
+/// queries and the named queries after it read as a source. A recursive one adds the rows of its repeating part to its anchor's.
+/// </summary>
+public sealed class RNamedQuery
+{
+    /// <summary>The name sources read it by.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The select (for a recursive named query, the anchor); its <see cref="RQuery.Parent"/> is the top query.</summary>
+    public RQuery Query { get; internal set; } = null!;
+
+    /// <summary>The repeating part, or <see langword="null"/> when the named query is not recursive; its parent is the top query.</summary>
+    public RQuery? Recursive { get; internal set; }
+
+    /// <summary>How the repeating part's rows are added: <c>all</c> (<c>UNION ALL</c>) or <c>distinct</c> (<c>UNION</c>); <c>all</c> when not recursive.</summary>
+    public string Union { get; internal set; } = "all";
+
+    /// <summary>
+    /// The columns: the anchor's field names in order, each with the anchor's type (the repeating part's when the anchor's is unknown)
+    /// and nullable when either part's field is.
+    /// </summary>
+    public IReadOnlyList<RQueryField> Columns { get; internal set; } = [];
+
+    /// <summary>The position of the named query in its query's list.</summary>
+    public int Index { get; internal set; }
 }
 
 /// <summary>A parameter of a resolved query.</summary>
@@ -152,7 +219,10 @@ public sealed class RQuerySource
     /// <summary>The view, when the source is one.</summary>
     public RView? View { get; internal set; }
 
-    /// <summary>The physical name of the table or view.</summary>
+    /// <summary>The named query of the query's <c>with</c>, when the source is one; else <see langword="null"/>.</summary>
+    public RNamedQuery? Named { get; internal set; }
+
+    /// <summary>The physical name of the table or view, or the named query's name.</summary>
     public string Name { get; internal set; } = "";
 
     /// <summary>The schema name, or <see langword="null"/>.</summary>
@@ -195,8 +265,8 @@ public sealed class RQueryField
     /// </summary>
     public RColumn? ForeignKeyColumn { get; internal set; }
 
-    /// <summary>The value.</summary>
-    public RQueryExpression Expression { get; internal set; } = null!;
+    /// <summary>The value; <see langword="null"/> for a declared column of a query written as SQL text.</summary>
+    public RQueryExpression? Expression { get; internal set; }
 
     /// <summary>The built-in type keyword: the file's, else inferred from the expression; <see langword="null"/> when unknown.</summary>
     public string? Type { get; internal set; }
@@ -209,6 +279,9 @@ public sealed class RQueryField
 
     /// <summary>Whether the value may be null: the file's, else inferred (a nullable column, the outer side of a join, an aggregate).</summary>
     public bool Nullable { get; internal set; } = true;
+
+    /// <summary>A declared column's description (a query written as SQL text); <see langword="null"/> for a select field.</summary>
+    public string? Description { get; internal set; }
 }
 
 /// <summary>An ordering term of a resolved query.</summary>
@@ -320,7 +393,8 @@ public sealed class RQueryWhen
 
 /// <summary>
 /// A node of a resolved expression tree. <see cref="Node"/> says which members apply: <c>column</c> (<see cref="Alias"/>,
-/// <see cref="ColumnName"/>, <see cref="Column"/> or <see cref="ViewColumn"/>, <see cref="Source"/>, <see cref="IsOuter"/>),
+/// <see cref="ColumnName"/>, <see cref="Column"/>, <see cref="ViewColumn"/> or <see cref="NamedField"/>, <see cref="Source"/>,
+/// <see cref="IsOuter"/>),
 /// <c>param</c> (<see cref="Param"/>), <c>value</c> (<see cref="Value"/>), <c>null</c>, <c>op</c> (<see cref="Op"/>,
 /// <see cref="Args"/>), <c>call</c> (<see cref="Call"/>, <see cref="Routine"/>, <see cref="Args"/>), <c>case</c> (<see cref="Case"/>,
 /// <see cref="Else"/>), <c>cast</c> (<see cref="Cast"/>, <see cref="Type"/>) or <c>sql</c> (<see cref="Sql"/>, <see cref="SqlText"/>).
@@ -349,6 +423,9 @@ public sealed class RQueryExpression
 
     /// <summary>The view column, when the source is a view.</summary>
     public RViewColumn? ViewColumn { get; internal set; }
+
+    /// <summary>The column of a named query (one of its <see cref="RNamedQuery.Columns"/>), when the source is one.</summary>
+    public RQueryField? NamedField { get; internal set; }
 
     /// <summary>The source the column belongs to.</summary>
     public RQuerySource? Source { get; internal set; }

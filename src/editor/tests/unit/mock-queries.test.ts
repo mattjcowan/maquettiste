@@ -8,7 +8,8 @@ import { setupServer } from "msw/node";
 import { MockBackend } from "@/mocks/backend";
 import { statefulHandlers } from "@/mocks/handlers";
 import { queryClassName, resolveQueries } from "@/mocks/model/queries";
-import { quoteIdentifier, sqlLiteral } from "@/mocks/model/querySql";
+import { quoteIdentifier, renderQuery, sqlLiteral } from "@/mocks/model/querySql";
+import { bindingProblems, sourceOf } from "@/editors/storage/fieldMap";
 import { INVOICE_TOTAL } from "@/mocks/model/databaseObjectSeed";
 import recorded from "@/mocks/recorded/database-view-main.json";
 import type { DatabaseView } from "@/api/types";
@@ -87,7 +88,7 @@ describe("the billing queries", () => {
     expectGolden(view);
     const byCustomer = view.queries!.find((q) => q.id === BY_CUSTOMER)!;
     // The projection follows QueryViews.cs: the trees as written, the resolved sources, fields and keys.
-    expect([byCustomer.entityId, byCustomer.from.source, byCustomer.from.tableKey, byCustomer.from.kind]).toEqual([
+    expect([byCustomer.entityId, byCustomer.from!.source, byCustomer.from!.tableKey, byCustomer.from!.kind]).toEqual([
       INVOICE,
       "01J92P0V1T0J6RH4MY9H81NYB4",
       INVOICES_TABLE,
@@ -760,5 +761,196 @@ describe("the rules the review added (MQ4032 to MQ4043), as the engine reports t
       docs.set(id, { kind: "query", id, name, database: MAIN, from: { source: INVOICES_TABLE }, select: [{ name: "n", expression: { value: 1 } }] });
     const found = resolveQueries(resolvedView(backend), docs).diagnostics.filter((d) => d.rule === "MQ4040");
     expect(found.map((d) => [d.elementId, d.jsonPointer])).toEqual([["01K6QRY0000000000000000081", "/name"]]);
+  });
+});
+
+describe("queries written as SQL text", () => {
+  const CUSTOMERS = `${CUSTOMER}@${MAIN}`;
+  const QUERY = "01K6QRY0000000000000000088";
+  const TEXT = "SELECT i.id, i.number FROM billing.invoices i WHERE i.customer_id = :customerId AND i.status = :status;\n";
+  const base = (extra: Json = {}): Json => ({
+    id: QUERY,
+    name: "InvoicesOf",
+    parameters: [
+      { name: "customerId", type: "uuid" },
+      { name: "status", type: "string" },
+    ],
+    sql: { postgresql: TEXT },
+    columns: [
+      { name: "id", type: "uuid", nullable: false },
+      { name: "number", type: "string" },
+    ],
+    reads: [INVOICES_TABLE],
+    ...extra,
+  });
+
+  function bind(json: Json, options: { dialect?: string } = {}) {
+    const backend = new MockBackend();
+    const view = { ...resolvedView(backend), ...(options.dialect ? { dialect: options.dialect } : {}) } as DatabaseView;
+    const docs = new Map(backend.model.docs());
+    docs.set(QUERY, { kind: "query", database: MAIN, ...json });
+    const result = resolveQueries(view, docs);
+    const found = result.diagnostics.filter((d) => d.elementId === QUERY);
+    return {
+      result,
+      found,
+      rules: found.map((d) => [d.rule, d.jsonPointer]),
+      query: result.resolved.get(QUERY)!,
+      view: result.queries.find((q) => q.id === QUERY)!,
+    };
+  }
+
+  it("loads beside the built queries, renders the text as written (trimmed, final semicolon kept), and projects the SQL text form", () => {
+    const { found, query, view } = bind(base());
+    expect(found).toEqual([]);
+    expect(query.sql).toBe("SELECT i.id, i.number FROM billing.invoices i WHERE i.customer_id = @customerId AND i.status = @status;");
+    expect(view.form).toBe("sql");
+    expect(view.from).toBeUndefined();
+    expect(view.texts).toEqual({ postgresql: TEXT });
+    expect(view.select.map((c) => [c.name, c.type, c.nullable, c.expression])).toEqual([
+      ["id", "uuid", false, undefined],
+      ["number", "string", true, undefined],
+    ]);
+    expect(view.sqlParameters).toEqual(["customerId", "status"]);
+    expect(view.uses).toEqual([INVOICES_TABLE]);
+    const names = new MockBackend().generation.databaseView(MAIN)!.view!.queries!.map((q) => q.name);
+    expect(names).toContain("InvoicesByCustomer");
+  });
+
+  it("reads and writes accept an entity id (its table in this database), and uses holds the reads only", () => {
+    const { found, view } = bind(
+      base({
+        reads: [INVOICE],
+        writes: [INVOICE],
+        parameters: [
+          { name: "customerId", type: "uuid" },
+          { name: "status", type: "string" },
+        ],
+      }),
+    );
+    expect(found).toEqual([]);
+    expect(view.uses).toEqual([INVOICES_TABLE]);
+    expect(view.writes).toEqual([INVOICES_TABLE]);
+  });
+
+  it("rewrites the placeholders in each style, numbering $n by first appearance, and falls back to the * text", () => {
+    const { query } = bind(
+      base({
+        sql: { "*": "SELECT :b, :a, :b, ':a', a::text, :a -- :b" },
+        parameters: [
+          { name: "a", type: "int32" },
+          { name: "b", type: "int32" },
+        ],
+        columns: [],
+        reads: [],
+      }),
+    );
+    expect(renderQuery(query).sql).toBe("SELECT @b, @a, @b, ':a', a::text, @a -- :b");
+    expect(renderQuery(query, null, { placeholder: ":" })).toMatchObject({ parameters: ["b", "a"] });
+    expect(renderQuery(query, "oracle", { placeholder: "$" }).sql).toBe("SELECT $1, $2, $1, ':a', a::text, $2 -- :b");
+    expect(() => renderQuery(query, null, { placeholder: "?" })).toThrow();
+  });
+
+  it("MQ4024 names the line and column of a placeholder that names no parameter, and leaves the query without SQL", () => {
+    const { found, query } = bind(base({ sql: { postgresql: "SELECT 1\nFROM billing.invoices i WHERE i.customer_id = :customerId AND i.status = :stats" } }));
+    const d = found.find((x) => x.rule === "MQ4024")!;
+    expect(d.jsonPointer).toBe("/sql/postgresql");
+    expect(d.message).toBe("Query 'InvoicesOf': ':stats' (line 2, column 74 of the postgresql text) names no parameter.");
+    expect(query.sql).toBe("");
+  });
+
+  it("MQ4029 for no text of the database's dialect and no * text", () => {
+    const { rules, query } = bind(base({ sql: { sqlserver: TEXT }, parameters: [], columns: [] }));
+    expect(rules).toContainEqual(["MQ4029", "/sql"]);
+    expect(query.sql).toBe("");
+  });
+
+  it("MQ4096 names a parameter that no text, or not every text, uses; the query still renders", () => {
+    const none = bind(base({ parameters: [...(base().parameters as Json[]), { name: "unused", type: "int32" }] }));
+    expect(none.found.filter((d) => d.rule === "MQ4096").map((d) => [d.jsonPointer, d.message])).toEqual([
+      ["/parameters/2", "Parameter 'unused' of query 'InvoicesOf' appears as :unused in none of its texts."],
+    ]);
+    expect(none.query.sql).not.toBe("");
+    const some = bind(base({ sql: { postgresql: TEXT, sqlserver: "SELECT 1 FROM invoices WHERE x = :customerId" } }));
+    expect(some.found.filter((d) => d.rule === "MQ4096").map((d) => d.message)).toEqual([
+      "Parameter 'status' of query 'InvoicesOf' does not appear as :status in its sqlserver text.",
+    ]);
+  });
+
+  it("MQ4098 in its three cases, comparing names ignoring case", () => {
+    expect(bind(base({ reads: [INVOICES_TABLE, CUSTOMERS] })).found.map((d) => [d.rule, d.jsonPointer])).toEqual([["MQ4098", "/reads/1"]]);
+    expect(bind(base({ sql: { postgresql: "SELECT i.id FROM BILLING.INVOICES i WHERE x = :customerId AND y = :status" } })).found).toEqual([]);
+    const update = "UPDATE billing.invoices SET status = :status WHERE customer_id = :customerId";
+    expect(bind(base({ sql: { postgresql: update }, columns: [] })).rules).toEqual([["MQ4098", "/sql/postgresql"]]);
+    expect(bind(base({ sql: { postgresql: update }, columns: [], writes: [INVOICES_TABLE] })).found).toEqual([]);
+    const withUpdate =
+      "WITH moved AS (SELECT id FROM billing.invoices WHERE customer_id = :customerId) UPDATE billing.invoices SET status = :status WHERE id IN (SELECT id FROM moved)";
+    expect(bind(base({ sql: { postgresql: withUpdate }, columns: [] })).rules).toEqual([["MQ4098", "/sql/postgresql"]]);
+    const withSelect = "WITH r AS (SELECT id FROM billing.invoices WHERE x = :customerId AND y = :status) SELECT id FROM r";
+    expect(bind(base({ sql: { postgresql: withSelect }, columns: [] })).rules).toEqual([["MQ4098", "/sql/postgresql"]]);
+    expect(bind(base({ sql: { postgresql: withSelect } })).found).toEqual([]);
+  });
+
+  it("applies the column, reads and writes cases of MQ4018, MQ4021 and MQ4040, and MQ3001 for a repeated column", () => {
+    const { rules, query } = bind(
+      base({
+        columns: [
+          { name: "id", type: "nonsense" },
+          { name: "ID", type: "uuid" },
+          { name: "mq_key", type: "string" },
+          { name: "first_name", type: "string" },
+          { name: "firstName", type: "string" },
+        ],
+        reads: ["nowhere"],
+        writes: [OUTSTANDING_INVOICES],
+      }),
+    );
+    expect(rules).toEqual(
+      expect.arrayContaining([
+        ["MQ4018", "/columns/0/type"],
+        ["MQ3001", "/columns/1/name"],
+        ["MQ4040", "/columns/2/name"],
+        ["MQ4040", "/columns/4/name"],
+        ["MQ4021", "/reads/0"],
+        ["MQ4021", "/writes/0"],
+      ]),
+    );
+    expect(query.sql).toBe("");
+  });
+
+  it("MQ4044: a binding cannot read through a query that writes or declares no columns", () => {
+    const backend = new MockBackend();
+    const view = resolvedView(backend);
+    const withQuery = (json: Json) =>
+      ({
+        ...view,
+        queries: [
+          ...(view.queries ?? []),
+          resolveQueries(view, new Map([...backend.model.docs(), [QUERY, { kind: "query", database: MAIN, ...json }]])).queries.find((q) => q.id === QUERY)!,
+        ],
+      }) as DatabaseView;
+    const problems = (v: DatabaseView) => bindingProblems({ source: QUERY, fields: [] } as never, [], sourceOf(v, QUERY)).map((p) => p.rule);
+    expect(problems(withQuery(base()))).not.toContain("MQ4044");
+    expect(problems(withQuery(base({ writes: [INVOICES_TABLE] })))).toEqual(["MQ4044"]);
+    expect(problems(withQuery(base({ columns: [] })))).toEqual(["MQ4044"]);
+  });
+
+  it("keeps reads and writes as references, removes them under both delete resolutions with a warning, and refuses a plain delete", () => {
+    const backend = new MockBackend();
+    expect(backend.model.create({ kind: "query", database: MAIN, ...base({ writes: [INVOICES_TABLE], reads: [INVOICES_TABLE, CUSTOMERS] }) }).outcome).toBe(
+      "saved",
+    );
+    const refs = backend.model.references(QUERY);
+    expect(refs).toBeDefined();
+    const refused = backend.model.deletePlan([INVOICE], "refuse");
+    expect(refused.outcome).toBe("referenced");
+    expect(refused.refused.map((r) => r.id)).toContain(QUERY);
+    for (const resolution of ["remove-references", "delete-dependents"] as const) {
+      const plan = backend.model.deletePlan([INVOICE], resolution);
+      expect(plan.deletes.map((d) => d.id)).not.toContain(QUERY);
+      expect(plan.clears.filter((c) => c.id === QUERY)).toEqual([]);
+      expect(plan.removes.filter((c) => c.id === QUERY).map((c) => c.pointer)).toEqual(expect.arrayContaining(["/reads/0", "/writes/0"]));
+      expect(plan.warnings.map((w) => w.message)).toEqual(["Query InvoicesOf's SQL text may still name entity Invoice; check the text."]);
+    }
   });
 });

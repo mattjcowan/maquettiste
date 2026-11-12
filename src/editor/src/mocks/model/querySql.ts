@@ -5,6 +5,7 @@
 // dialect has none, NULLS FIRST/LAST emulated, paging as LIMIT/OFFSET or OFFSET … FETCH NEXT, and each collection as a statement
 // of its own keyed by the parent rows. The output is byte for byte the engine's for the same resolved query.
 import type { Diagnostic } from "@/api/types";
+import { scanSqlText, trimSqlWhite } from "@/model/sqlText";
 import { nativeType } from "./physical";
 
 type Json = Record<string, unknown>;
@@ -118,6 +119,18 @@ export interface RSource {
   schema: string | null;
   on: RPredicate | null;
   optional: boolean;
+  /** The named query (of the query's `with`) the source reads. */
+  named?: RNamedQuery;
+}
+
+/** A named query (an entry of `with`): its anchor, its columns (the anchor's field names), and the part that repeats. */
+export interface RNamedQuery {
+  name: string;
+  index: number;
+  query: RQuery;
+  columns: RField[];
+  recursive: RQuery | null;
+  union: "all" | "distinct";
 }
 
 export interface RWhen {
@@ -236,6 +249,14 @@ export interface RQuery {
   sql: string;
   /** The ids (a synthesized table's key) of the tables, views, routines and database types it reads (the top query only). */
   uses: string[];
+  /** The named queries of the query's `with`, in order (the top query only). */
+  with?: RNamedQuery[];
+  /** `sql` for a query written as SQL text (then `from` is null and `select` holds the declared columns); undefined for a built one. */
+  form?: "sql";
+  /** The file's `sql` of a query written as SQL text: dialect name or `*` to the text as written. */
+  texts?: Record<string, string>;
+  /** The ids (a synthesized table's key) of the tables a query written as SQL text writes. */
+  writes?: string[];
 }
 
 // ------------------------------------------------------------------ rendering
@@ -396,16 +417,117 @@ export function expressionText(query: RQuery, expression: RExpression): string {
 
 /** Renders a query (its collections excluded, their hidden key columns included). Throws on an unknown dialect or option. */
 export function renderQuery(query: RQuery, dialect?: string | null, options?: QuerySqlOptions | null): QuerySqlText {
+  if (query.form === "sql") return renderSqlText(query, dialect ?? null, options ?? null);
   const writer = new Writer(query, dialect ?? null, options ?? null);
   writer.top(query);
   return writer.result();
 }
+
+/**
+ * A query written as SQL text (sql-queries-design.md decision 5): the text for the dialect (its own entry, else `*`) as written, with
+ * white space at both ends removed (a final `;` stays), and each `:name` placeholder written in the requested style: `@name`
+ * (the default), `:name`, or `$1`, `$2` numbered by first appearance. Nothing else changes.
+ */
+function renderSqlText(query: RQuery, dialect: string | null, options: QuerySqlOptions | null): QuerySqlText {
+  const name = dialect ?? query.database.dialect;
+  const parsed = parseDialect(name);
+  if (!parsed) throw new Error(`'${name}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).`);
+  const placeholder = options?.placeholder ?? "@";
+  if (!["@", ":", "$"].includes(placeholder)) throw new Error(`The placeholder style '${placeholder}' is not @, : or $.`);
+  if (!["expand", "any"].includes(options?.lists ?? "expand")) throw new Error(`The list style '${options?.lists}' is not expand or any.`);
+  const written = sqlFor(query.texts ?? {}, parsed);
+  if (written === null)
+    return {
+      sql: "",
+      parameters: [],
+      diagnostics: [
+        {
+          rule: "MQ4029",
+          severity: "error",
+          message: `Query '${query.name}' is written as SQL text without a text for ${parsed} (and no "*" text), so it cannot be rendered there.`,
+          elementId: query.id,
+          filePath: null,
+          jsonPointer: "/sql",
+          line: null,
+          column: null,
+        },
+      ],
+    };
+  const text = trimSqlWhite(written);
+  const parameters: string[] = [];
+  let out = "";
+  let at = 0;
+  for (const p of scanSqlText(text, parsed).placeholders) {
+    let index = parameters.indexOf(p.name);
+    if (index < 0) index = parameters.push(p.name) - 1;
+    out += text.slice(at, p.offset) + (placeholder === "$" ? `$${index + 1}` : placeholder === ":" ? `:${p.name}` : `@${p.name}`);
+    at = p.offset + p.length;
+  }
+  return { sql: out + text.slice(at), parameters, diagnostics: [] };
+}
+
+/** MQ4029's message for a query written as SQL text. One place, as the engine's catalog is. */
+export const sqlTextMissing = (query: string, dialect: string, database: string): string =>
+  `Query '${query}' is written as SQL text without a text for ${dialect} (database '${database}') and no "*" text.`;
 
 /** Renders the statement of one collection: its rows for every parent row at once, matched by the key columns. */
 export function renderCollection(collection: RCollection, dialect?: string | null, options?: QuerySqlOptions | null): QuerySqlText {
   const writer = new Writer(collection.query, dialect ?? null, options ?? null);
   writer.collection(collection);
   return writer.result();
+}
+
+/** The named queries a query reads through its sources and nested queries, and those they read in turn. */
+function namedReads(query: RQuery, reads: Set<RNamedQuery>): void {
+  for (const source of [query.from, ...query.joins]) {
+    if (!source) continue;
+    if (source.named && !reads.has(source.named)) {
+      reads.add(source.named);
+      namedReads(source.named.query, reads);
+      if (source.named.recursive) namedReads(source.named.recursive, reads);
+    }
+    if (source.on) namedPredicate(source.on, reads);
+  }
+  for (const e of [...query.select.map((f) => f.expression), ...query.groupBy, ...query.orderBy.map((o) => o.expression)]) namedExpression(e, reads);
+  if (query.where) namedPredicate(query.where, reads);
+  if (query.having) namedPredicate(query.having, reads);
+}
+
+function namedPredicate(p: RPredicate, reads: Set<RNamedQuery>): void {
+  if (p.exists) namedReads(p.exists, reads);
+  for (const x of [...p.and, ...p.or]) namedPredicate(x, reads);
+  if (p.not) namedPredicate(p.not, reads);
+  for (const e of [...p.values, ...(p.left ? [p.left] : []), ...(p.right ? [p.right] : [])]) namedExpression(e, reads);
+}
+
+function namedExpression(e: RExpression, reads: Set<RNamedQuery>): void {
+  for (const x of [...e.args, ...(e.cast ? [e.cast] : []), ...(e.else ? [e.else] : []), ...e.case.map((w) => w.then)]) namedExpression(x, reads);
+  for (const w of e.case) namedPredicate(w.when, reads);
+}
+
+/**
+ * A rendered query's WITH clause and the statement after it, split where the clause's last parenthesis closes (a binding writes the
+ * clause before its own select over the statement). Both parts are empty/whole when the text starts with no WITH.
+ */
+export function splitWith(sql: string): { with: string; statement: string } {
+  if (!sql.startsWith("WITH ")) return { with: "", statement: sql };
+  let depth = 0;
+  let quote = "";
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i];
+    if (quote) {
+      if (c === quote) quote = "";
+      continue;
+    }
+    if (c === "'" || c === '"' || c === "`") quote = c;
+    else if (c === "[") quote = "]";
+    else if (c === "(") depth++;
+    else if (c === ")") {
+      depth--;
+      if (depth === 0 && sql.startsWith("\nSELECT ", i + 1)) return { with: sql.slice(0, i + 1), statement: sql.slice(i + 2) };
+    }
+  }
+  return { with: "", statement: sql };
 }
 
 export function rootOf(query: RQuery): RQuery {
@@ -447,6 +569,7 @@ class Writer {
   }
 
   top(query: RQuery): void {
+    this.withClause(query.with ?? []);
     const columns = query.select.map((f) => this.expression(f.expression) + " AS " + this.q(f.name));
     const hidden = new Set<string>();
     const hiddenKeys: RExpression[] = [];
@@ -466,12 +589,50 @@ class Writer {
 
   collection(collection: RCollection): void {
     const query = collection.query;
+    // A collection's statement runs on its own: it repeats the named queries it reads, directly or through others, in list order.
+    const reads = new Set<RNamedQuery>();
+    namedReads(query, reads);
+    this.withClause([...reads].sort((a, b) => a.index - b.index));
     const columns = query.select.map((f) => this.expression(f.expression) + " AS " + this.q(f.name));
     for (const key of collection.keys) columns.push(this.expression(key.inner) + " AS " + this.q(key.childField));
     this.select(query.distinct, columns);
     // A grouped collection groups by its key columns too: each group then belongs to one parent row.
     this.body(query, query.where, collection, isGrouped(query) ? collection.keys.map((k) => k.inner) : []);
     this.order(query.orderBy, false);
+  }
+
+  /**
+   * The WITH clause of named queries (decision 14): WITH RECURSIVE where the dialect has the keyword and one entry is recursive; each
+   * entry with its column list, its clauses indented one level, a recursive one's repeating part after UNION ALL or UNION.
+   */
+  private withClause(entries: readonly RNamedQuery[]): void {
+    if (entries.length === 0) return;
+    const keyword = entries.some((e) => e.recursive) && ["postgresql", "mysql", "sqlite"].includes(this.dialect);
+    this.sb += keyword ? "WITH RECURSIVE " : "WITH ";
+    const newline = this.newline;
+    entries.forEach((entry, i) => {
+      if (i > 0) this.sb += "," + newline;
+      this.sb += this.q(entry.name) + " (" + entry.columns.map((c) => this.q(c.name)).join(", ") + ") AS (";
+      this.newline = newline + "    ";
+      this.sb += this.newline;
+      this.part(entry.query);
+      if (entry.recursive) {
+        this.sb += this.newline + (entry.union === "distinct" ? "UNION" : "UNION ALL") + this.newline;
+        this.part(entry.recursive);
+      }
+      this.newline = newline;
+      this.sb += this.newline + ")";
+    });
+    this.sb += this.newline;
+  }
+
+  /** A named query's anchor or repeating part: its select list and body. */
+  private part(part: RQuery): void {
+    this.select(
+      part.distinct,
+      part.select.map((f) => this.expression(f.expression) + " AS " + this.q(f.name)),
+    );
+    this.body(part, part.where, null, []);
   }
 
   private select(distinct: boolean, columns: string[]): void {

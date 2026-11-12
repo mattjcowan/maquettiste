@@ -567,7 +567,15 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
           else walk(value, at);
         }
       };
-      for (const key of ["parameters", "from", "joins", "select", "where", "groupBy", "having", "orderBy", "collections"]) walk(doc[key], `/${key}`);
+      for (const key of ["parameters", "from", "joins", "select", "where", "groupBy", "having", "orderBy", "collections", "columns", "with"])
+        walk(doc[key], `/${key}`);
+      // A query written as SQL text: what it reads and writes are references like any other. Deleting one removes the entry and keeps the
+      // query (the text is the team's own); the delete plan warns that the text may still name it.
+      for (const field of ["reads", "writes"] as const)
+        strings(doc[field]).forEach((value, i) => {
+          for (const to of value.split(/[@.]/).filter((x) => ULID.test(x) && x !== doc.database))
+            if (!own.has(to) && to !== id) out.push({ fromId: id, pointer: `/${field}/${i}`, field, toId: to, required: false, removeItem: `/${field}/${i}` });
+        });
       break;
     }
   }

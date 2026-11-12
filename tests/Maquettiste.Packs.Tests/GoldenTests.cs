@@ -106,6 +106,25 @@ public sealed class GoldenTests
     }
 
     [Fact]
+    public async Task Both_packs_over_the_sql_queries_fixture_match_the_golden_trees_and_queries_create_nothing_in_the_database()
+    {
+        // sql-queries-design.md section 21: a built query with a recursive named query, a query written as SQL text, a command and a
+        // read-only entity bound to the SQL text.
+        using var repo = PackRepo.SqlQueries();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Fixtures.Path("golden", "csharp-dapper", "sql-queries"), repo.PathOf("src/Generated"));
+        Golden.AssertMatches(Fixtures.Path("golden", "sql-ddl", "sql-queries"), repo.PathOf("db"));
+
+        // A query creates nothing in the database: without the queries (and the entity that reads one), sql-ddl writes the same tree.
+        using var without = PackRepo.SqlQueries();
+        foreach (var file in Directory.EnumerateFiles(without.PathOf(".maquettiste/model/databases/main/queries")))
+            File.Delete(file);
+        File.Delete(without.PathOf(".maquettiste/model/entities/region-leader.json"));
+        await without.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        Assert.Empty(Golden.Compare(Fixtures.Path("golden", "sql-ddl", "sql-queries"), without.PathOf("db")));
+    }
+
+    [Fact]
     public async Task Sql_ddl_for_postgresql_sql_server_and_sqlite_matches_the_golden_tree()
     {
         using var repo = PackRepo.BillingDialects();

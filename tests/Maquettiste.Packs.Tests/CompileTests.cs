@@ -239,6 +239,111 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Sql_text_queries_named_queries_and_commands_compile_for_postgresql_and_run_on_sqlite()
+    {
+        // sql-queries-design.md section 21: the PostgreSQL output compiles, and on SQLite the recursive named query, the query written
+        // as SQL text (its "*" text), the command (rows changed) and the repository bound to the SQL text run.
+        using (var postgres = PackRepo.SqlQueries())
+        {
+            await postgres.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+            var library = Path.Combine(postgres.Repo.Root, "compile");
+            WriteProject(library, postgres.PathOf("src/Generated"), program: null);
+            await BuildOrSkipAsync(library);
+        }
+
+        // On SQLite the SQL text also holds four quotes in a row (a raw string one quote longer holds it, in the query and in the bound
+        // repository), and ends with a ; and a note: the query runs it as written, the repository's derived table leaves both out.
+        using var repo = PackRepo.SqlQueries("sqlite");
+        repo.EditJson(".maquettiste/model/databases/main/queries/top-customers-by-region.json", query =>
+        {
+            var text = (string)query["sql"]!["sqlite"]!;
+            query["sql"]!["sqlite"] = text + " AND '\"\"\"\"' <> 'x'; -- the final semicolon stays";
+        });
+        await repo.GenerateCleanlyAsync();
+        var generated = repo.Read("src/Generated/Queries/TopCustomersByRegionQuery.g.cs");
+        Assert.Contains("private const string Sql = \"\"\"\"\"\n", generated, StringComparison.Ordinal);
+        Assert.Contains("'\"\"\"\"' <> 'x'; -- the final semicolon stays\n        \"\"\"\"\";", generated, StringComparison.Ordinal);
+        var repository = repo.Read("src/Generated/Shop/RegionLeaderRepository.g.cs");
+        Assert.Contains("private const string SelectSql = \"\"\"\"\"\n", repository, StringComparison.Ordinal);
+        Assert.Contains("'\"\"\"\"' <> 'x'\n        ) q", repository, StringComparison.Ordinal);
+        var project = Path.Combine(repo.Repo.Root, "roundtrip");
+        WriteProject(project, repo.PathOf("src/Generated"), SqlQueriesProgram);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet,
+            [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll"), repo.PathOf("db/main/schema.sql")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("sql queries ok", StringComparison.Ordinal), run.Output);
+    }
+
+    private const string SqlQueriesProgram = """"
+        using System;
+        using System.IO;
+        using System.Linq;
+        using Dapper;
+        using Microsoft.Data.Sqlite;
+        using Shop.Model;
+        using Shop.Model.Queries;
+        using Shop.Model.Shop;
+
+        // The sql-queries fixture on an in-memory SQLite database built from the sql-ddl schema.
+        DapperTypeHandlers.Register();
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = File.ReadAllText(args[0]) + """
+
+                INSERT INTO categories (id, parent_id, name) VALUES (1, NULL, 'All'), (2, 1, 'Bikes'), (3, 2, 'E-bikes');
+                INSERT INTO customers (id, name, region) VALUES (1, 'Ada', 'north'), (2, 'Bob', 'north'), (3, 'Cy', 'south');
+                INSERT INTO invoices (id, customer_id, total, status, issued_on, due_on) VALUES
+                    (1, 1, 100.25, 'issued', '2026-01-10', '2026-02-10'),
+                    (2, 2, 50.00, 'issued', '2026-01-15', '2026-03-15'),
+                    (3, 3, 70.00, 'paid', '2026-02-01', '2026-03-01'),
+                    (4, 1, 20.00, 'issued', '2026-05-01', '2026-06-01');
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        void Check(bool condition, string what)
+        {
+            if (!condition)
+                throw new InvalidOperationException("SQL queries failed: " + what);
+        }
+
+        // A built query with a recursive named query: the category and its ancestors, nearest first.
+        var chain = await new CategoryAncestorsQuery(connection).ExecuteAsync(3);
+        Check(chain.Select(r => (r.Id, r.Name, r.Depth)).SequenceEqual([(3L, "E-bikes", 0), (2L, "Bikes", 1), (1L, "All", 2)]), "recursive named query");
+        Check((await new CategoryAncestorsQuery(connection).ExecuteAsync(1)).Single().Depth == 0, "a top category has no ancestor");
+
+        // A query written as SQL text with a window function; its parameter with a default.
+        DateOnly from = new(2026, 1, 1), to = new(2026, 3, 31);
+        var best = (await new TopCustomersByRegionQuery(connection).ExecuteAsync(from, to, 1)).OrderBy(r => r.Region).ToList();
+        Check(best.Select(r => (r.Region, r.CustomerId, r.Revenue, r.Place)).SequenceEqual([("north", 1L, (decimal?)100.25m, 1L), ("south", 3L, (decimal?)70m, 1L)]), "SQL text rows");
+        Check((await new TopCustomersByRegionQuery(connection).ExecuteAsync(from, to)).Count == 3, "the default of perRegion");
+
+        // A command: the number of rows changed.
+        var overdue = new MarkOverdueInvoicesQuery(connection);
+        Check(await overdue.ExecuteAsync(new DateOnly(2026, 3, 1)) == 1, "the command's rows changed");
+        Check(await overdue.ExecuteAsync(new DateOnly(2026, 3, 1)) == 0, "a second run changes nothing");
+        using (var transaction = connection.BeginTransaction())
+        {
+            Check(await new MarkOverdueInvoicesQuery(connection, transaction).ExecuteAsync(new DateOnly(2026, 12, 31)) == 2, "the command in a transaction");
+            transaction.Rollback();
+        }
+
+        Check(await connection.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM invoices WHERE status = 'overdue'") == 1, "the rolled back command");
+
+        // A read-only entity bound to the SQL text: the query's parameters first.
+        var leaders = new RegionLeaderRepository(connection);
+        Check((await leaders.ListAsync(from, to, 1)).Select(l => l.CustomerId).SequenceEqual([1L, 3L]), "list through the SQL text");
+        var south = await leaders.GetAsync(from, to, 1, 3);
+        Check(south is { Region: "south", Revenue: 70m, Place: 1 }, "get by key through the SQL text");
+        Check(await leaders.GetAsync(from, to, 1, 2) is null, "a row the SQL text leaves out");
+        Check(QueryRegistrations.All.Count == 3 && ShopRepositories.All.Single().Implementation == typeof(RegionLeaderRepository), "registrations");
+        Console.WriteLine("sql queries ok");
+        """";
+
+    [Fact]
     public async Task Lifecycle_codes_compile_and_map_configurations_to_codes_and_back()
     {
         // lifecycle-design.md section 9: the lifecycle-codes case's whole output builds with warnings as errors, and a program maps

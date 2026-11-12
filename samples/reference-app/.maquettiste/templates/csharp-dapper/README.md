@@ -219,6 +219,15 @@ matches column aliases without regard to case), and converts to the result:
   keeps only the rows whose whole key is one of its own (the `IN` lists over-fetch). An element is the collection's `entity`,
   or a generated `<Name><Collection>Item` record. The collections are on the result record, never on the entity.
 
+A query written as SQL text (`query.form` is `"sql"`) takes the same path. Its `query.select` holds its declared columns, so
+`<Name>Row` has one property per column, typed by the column's type and nullability (a column is nullable unless it says
+`nullable: false`), and the SQL is the team's text for the database's dialect with each `:name` written `@name` (`query_sql`;
+`query.sql_text` is the text as written, for display only). A query with no columns is a command: the interface has
+`Task<int> ExecuteAsync(…)`, which runs the statement with Dapper's `ExecuteAsync` and returns the number of rows it changed,
+as the database counts them; no `Row` record is generated. A command that returns rows (`RETURNING`, `OUTPUT`) declares its
+columns and gets the usual list. A repository bound to a query written as SQL text needs nothing more: the binding reads the
+text as a derived table, the query's parameters first.
+
 A template that binds parameters by position (`$1`, `$2`...) gets their names in placeholder order from
 `query_sql_parameters query` (or a collection), with the same dialect and options arguments as `query_sql`.
 

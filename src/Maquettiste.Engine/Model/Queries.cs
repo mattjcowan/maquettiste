@@ -4,9 +4,12 @@ using System.Text.Json.Serialization;
 namespace Maquettiste.Engine.Model;
 
 /// <summary>
-/// A query over the tables and views of a database, written as data (<c>model/databases/&lt;db&gt;/queries/</c>, added 2026-10-02):
-/// sources, joins, a select list, predicates, grouping, ordering, paging and collections. Its result shape is <see cref="Entity"/>,
-/// or the select list when no entity is named. A query creates nothing in the database: packs turn it into a repository method.
+/// A query of a database (<c>model/databases/&lt;db&gt;/queries/</c>, added 2026-10-02), in one of two forms (sql-queries-design.md
+/// decision 1). <b>Built from parts</b>: sources, joins, a select list, predicates, grouping, ordering, paging, collections and named
+/// queries (<see cref="With"/>), written as data; its result shape is <see cref="Entity"/>, or the select list when no entity is named.
+/// <b>SQL text</b> (<see cref="IsSqlText"/>): the team's statement per dialect (<see cref="Sql"/>) with <c>:name</c> placeholders, its
+/// declared <see cref="Columns"/>, and the objects it <see cref="Reads"/> and <see cref="Writes"/>. The schema keeps the forms apart.
+/// A query creates nothing in the database: packs turn it into a repository method.
 /// </summary>
 public sealed record Query : Element, IPackaged
 {
@@ -30,14 +33,17 @@ public sealed record Query : Element, IPackaged
     /// <summary>The parameters, in order.</summary>
     public IReadOnlyList<QueryParameter> Parameters { get; init; } = [];
 
-    /// <summary>The first source.</summary>
-    public required QuerySource From { get; init; }
+    /// <summary>The named queries (a <c>WITH</c> clause) of a built query, in order; empty for a SQL text.</summary>
+    public IReadOnlyList<QueryNamedQuery> With { get; init; } = [];
+
+    /// <summary>The first source of a built query; <see langword="null"/> for a SQL text.</summary>
+    public QuerySource? From { get; init; }
 
     /// <summary>The joined sources, in order.</summary>
     public IReadOnlyList<QueryJoin> Joins { get; init; } = [];
 
-    /// <summary>The select list.</summary>
-    public required IReadOnlyList<QueryField> Select { get; init; }
+    /// <summary>The select list of a built query (at least one field); empty for a SQL text.</summary>
+    public IReadOnlyList<QueryField> Select { get; init; } = [];
 
     /// <summary>The row filter.</summary>
     public QueryPredicate? Where { get; init; }
@@ -59,6 +65,111 @@ public sealed record Query : Element, IPackaged
 
     /// <summary>The collections filled per result row.</summary>
     public IReadOnlyList<QueryCollection> Collections { get; init; } = [];
+
+    /// <summary>
+    /// The statement as SQL text per dialect name or <c>"*"</c>, with <c>:name</c> placeholders (decisions 3 and 4); set only on a
+    /// SQL text, <see langword="null"/> on a built query.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Sql { get; init; }
+
+    /// <summary>The columns each row of a SQL text has, in order; none for a statement whose rows the code does not read.</summary>
+    public IReadOnlyList<QueryColumn> Columns { get; init; } = [];
+
+    /// <summary>
+    /// The tables, views, routines, sequences and database types of the database that a SQL text reads or calls: file ids, table
+    /// keys or entity ids, as <see cref="QuerySource.Source"/> takes. Keyed references, in file order.
+    /// </summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string> Reads { get; init; } = [];
+
+    /// <summary>The tables of the database that a SQL text inserts into, updates or deletes from, as <see cref="Reads"/> names them.</summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string> Writes { get; init; } = [];
+
+    /// <summary>Whether the query is written as SQL text (it has <see cref="Sql"/>) rather than built from parts.</summary>
+    [JsonIgnore]
+    public bool IsSqlText => Sql is not null;
+}
+
+/// <summary>A column each row of a SQL text has (sql-queries-design.md decision 7).</summary>
+public sealed record QueryColumn
+{
+    /// <summary>The name the SQL returns.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>A built-in type keyword or the id of a database type of the same database.</summary>
+    [ElementRef(Keyed = true)]
+    public required string Type { get; init; }
+
+    /// <summary>Whether the column may be null (the default); <see langword="false"/> where the SQL guarantees a value.</summary>
+    public bool Nullable { get; init; } = true;
+
+    /// <summary>A description of the column.</summary>
+    public string? Description { get; init; }
+}
+
+/// <summary>
+/// A named query of a built query's <c>with</c> (sql-queries-design.md decision 10): a select with a name that the query, its nested
+/// queries and the named queries after it read as a source. With <see cref="Recursive"/>, the select is the anchor.
+/// </summary>
+public sealed record QueryNamedQuery
+{
+    /// <summary>The name sources use to read it.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>The first source.</summary>
+    public required QuerySource From { get; init; }
+
+    /// <summary>The joined sources.</summary>
+    public IReadOnlyList<QueryJoin> Joins { get; init; } = [];
+
+    /// <summary>The select list; each field's name is a column of the named query.</summary>
+    public required IReadOnlyList<QueryField> Select { get; init; }
+
+    /// <summary>The row filter.</summary>
+    public QueryPredicate? Where { get; init; }
+
+    /// <summary>The grouping expressions.</summary>
+    public IReadOnlyList<QueryExpression> GroupBy { get; init; } = [];
+
+    /// <summary>The group filter.</summary>
+    public QueryPredicate? Having { get; init; }
+
+    /// <summary>Whether duplicate rows are removed.</summary>
+    public bool Distinct { get; init; }
+
+    /// <summary>The part that repeats, or <see langword="null"/> when the named query is not recursive.</summary>
+    public QueryRecursivePart? Recursive { get; init; }
+}
+
+/// <summary>The repeating part of a recursive named query (sql-queries-design.md decision 12).</summary>
+public sealed record QueryRecursivePart
+{
+    /// <summary>How its rows are added to the anchor's.</summary>
+    public QueryUnion Union { get; init; } = QueryUnion.All;
+
+    /// <summary>The first source.</summary>
+    public required QuerySource From { get; init; }
+
+    /// <summary>The joined sources.</summary>
+    public IReadOnlyList<QueryJoin> Joins { get; init; } = [];
+
+    /// <summary>The select list: the anchor's field names, in the anchor's order.</summary>
+    public required IReadOnlyList<QueryField> Select { get; init; }
+
+    /// <summary>The row filter.</summary>
+    public QueryPredicate? Where { get; init; }
+}
+
+/// <summary>How a recursive named query adds the rows of its repeating part.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<QueryUnion>))]
+public enum QueryUnion
+{
+    /// <summary><c>all</c>: every row (<c>UNION ALL</c>).</summary>
+    [JsonStringEnumMemberName("all")] All,
+
+    /// <summary><c>distinct</c>: duplicates removed (<c>UNION</c>).</summary>
+    [JsonStringEnumMemberName("distinct")] Distinct,
 }
 
 /// <summary>A parameter of a query.</summary>
@@ -93,7 +204,8 @@ public sealed record QueryParameter
 /// <summary>The first source of a query.</summary>
 public sealed record QuerySource
 {
-    /// <summary>A table or view file id, a table key (<c>&lt;entityId&gt;@&lt;databaseId&gt;</c>) or an entity id.</summary>
+    /// <summary>A table or view file id, a table key (<c>&lt;entityId&gt;@&lt;databaseId&gt;</c>) or an entity id; or the name of a
+    /// named query of the query's <c>with</c> (never an id: a keyed reference ignores a segment that is not one).</summary>
     [ElementRef(Keyed = true)]
     public required string Source { get; init; }
 

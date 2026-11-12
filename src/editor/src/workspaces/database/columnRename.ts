@@ -138,6 +138,49 @@ export async function renameViewColumn(
   return true;
 }
 
+/**
+ * Renames a declared column `index` of a query written as SQL text to `to`, and the bindings that read the query by that name, in
+ * one batch and one undo step. The text is the team's own: it is never rewritten, so the notice says to check it.
+ */
+export async function renameQueryColumn(
+  services: Pick<Services, "store" | "drafts">,
+  qc: QueryClient,
+  queryId: string,
+  index: number,
+  to: string,
+): Promise<boolean> {
+  const next = to.trim();
+  const query = (await qc.fetchQuery({ ...elementQuery(queryId), staleTime: 0 })).json as unknown as Json;
+  const from = String(((query.columns as Json[] | undefined) ?? [])[index]?.name ?? "");
+  if (!next || !from || from === next) return false;
+  const renames = new Map([[from, next]]);
+  const edits = new Map<string, (doc: Json) => void>([
+    [
+      queryId,
+      (d) => {
+        const c = ((d.columns as Json[] | undefined) ?? [])[index];
+        if (c) c.name = next;
+      },
+    ],
+  ]);
+  let bindings = 0;
+  for (const entity of await readDocuments(await bindersOf(qc, queryId))) {
+    if (!renameBindingColumns(JSON.parse(JSON.stringify(entity)) as Json, queryId, renames)) continue;
+    bindings++;
+    edits.set(String(entity.id), (d) => void renameBindingColumns(d, queryId, renames));
+  }
+  const why = await commitDocuments(services, qc, `Rename column ${from} of query ${String(query.name ?? "")} to ${next}`, edits);
+  if (why) return false;
+  services.store
+    .getState()
+    .notify(
+      renameNotice(`Renamed column ${from} to ${next}.`, [], bindings, [
+        `the SQL text of query ${String(query.name ?? queryId)} (it should return ${next} now)`,
+      ]),
+    );
+  return true;
+}
+
 /** The dialect of a database (its resolved view's). */
 async function databaseDialect(qc: QueryClient, database: string): Promise<string | undefined> {
   if (!database) return undefined;

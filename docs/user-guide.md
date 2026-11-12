@@ -1000,8 +1000,11 @@ database shows on the Database screen at once. The explorers remember which rows
   **Queries.** Tables, views and routines are the physical model: they are what the database holds, and they generate the
   repository layer. A **query** reads the tables and views of a database, with joins, filters, grouping, ordering, paging
   and collections; its rows have the shape of its own select list, and a pack turns it into the repository method that
-  runs it. A query is data, a tree of JSON objects an agent reads and writes and a pack walks per dialect, never SQL
-  text; an opaque text per dialect is allowed for one expression at a time. Entities are the shapes the services work
+  runs it. A query is written in one of two ways. **Built from parts**, it is data, a tree of JSON objects an agent
+  reads and writes and a pack walks per dialect; an opaque text per dialect is allowed for one expression at a time, and
+  it may start with named parts (see "Named queries (WITH)"). **Written as SQL text**, it holds your own SQL, and you
+  declare its parameters, its result columns and the tables it reads and writes (see "Queries written as SQL text").
+  Both give the same typed method in a pack. Entities are the shapes the services work
   with, and they stay separate: a table needs no entity, an entity needs no table, and an entity that should read
   through a query (several tables into one entity) binds to it from its own Storage tab (see "A read-only entity over a
   query").
@@ -1140,7 +1143,7 @@ database shows on the Database screen at once. The explorers remember which rows
     optional length, precision and scale, `collection: true` for a list (an `in` or `notIn` right side), a `default`
     the generated method uses when the caller passes none (a value of the parameter's type; another is MQ4043, as is a
     number too large to hold), and a description. Parameter names differ ignoring case (MQ3001). In SQL a parameter is
-    a placeholder, `@name` by default.
+    a placeholder, `@name` by default. In a query written as SQL text the placeholder is written `:name`.
   - **Collections.** A collection fills a list per result row: its `attribute` is a collection attribute of the entity,
     or the relation end a to-many navigation of the entity leads to (the invoice's lines above; only an end with a
     navigation name is a navigation, so an unnamed end is MQ4027), or a name for an ad hoc row; its `entity` is the element shape (the navigation's target by default), and its `query` a nested query
@@ -1153,6 +1156,226 @@ database shows on the Database screen at once. The explorers remember which rows
     and a grouped parent by its hidden key columns; a distinct parent must select its keys or group by them (MQ4032).
     A collection that names its parent anywhere else, or not at all, is MQ4028. Names starting with `mq_` are reserved
     for these columns and parameters and for the generated code's own names (MQ4040).
+  - **Queries written as SQL text.** Some SQL a query builder cannot say: a ranking, a running total, an upsert, a feature
+    one database has. Write it yourself. The query is the same `query` file, with `sql` where a built query has `from` and
+    `select`. You declare what the generated code needs, and the code generation packs write the same typed method they
+    write for a built query. Maquettiste never runs the SQL, never connects to your database and does not parse the text.
+
+    ```json
+    {
+      "kind": "query", "id": "01K9QRY0000000000000000002", "name": "TopCustomersByRegion", "database": "01K6DB00000000000000000001",
+      "description": "The best customers of each region by revenue between two dates.",
+      "parameters": [
+        { "name": "fromDate", "type": "date" }, { "name": "toDate", "type": "date" },
+        { "name": "perRegion", "type": "int32", "default": 5 }
+      ],
+      "sql": { "postgresql": "SELECT region, customer_id, revenue, place\nFROM (\n  SELECT c.region, c.id AS customer_id, SUM(i.total) AS revenue,\n         RANK() OVER (PARTITION BY c.region ORDER BY SUM(i.total) DESC) AS place\n  FROM billing.invoices i\n  JOIN billing.customers c ON c.id = i.customer_id\n  WHERE i.issued_on BETWEEN :fromDate AND :toDate\n  GROUP BY c.region, c.id\n) ranked\nWHERE place <= :perRegion" },
+      "columns": [
+        { "name": "region", "type": "string" },
+        { "name": "customer_id", "type": "uuid", "nullable": false },
+        { "name": "revenue", "type": "decimal" },
+        { "name": "place", "type": "int64", "nullable": false }
+      ],
+      "reads": ["<id of invoices>", "<id of customers>"]
+    }
+    ```
+
+    - **The two forms are kept apart.** A query written as SQL text has none of `entity`, `with`, `from`, `joins`,
+      `select`, `where`, `groupBy`, `having`, `orderBy`, `distinct`, `paging` or `collections`; a built query has none of
+      `sql`, `columns`, `reads` or `writes`. A file that mixes them, or has neither, is MQ1002. It has no `entity`: its
+      rows have their own shape, and an entity reads through the query by a binding (see "A read-only entity over a
+      query").
+    - **`sql`** holds the text per dialect: `{ "postgresql": "...", "*": "..." }`. A dialect's text is its own entry,
+      else the `"*"` entry. The database's dialect must have one (MQ4029). Most queries have one entry; more serve a pack
+      that renders for several dialects, and a team that moves between databases. Each text is read with the rules of
+      its own dialect (`"*"` with the database's).
+    - **Parameters** are the query's `parameters`, as for a built query, and are written `:name` in the text, in every
+      dialect. Each pack turns that into its own style (`@name`, `:name` or `$1`). A placeholder is a `:` followed
+      directly by a name (a letter or `_`, then letters, digits or `_`), outside comments, string literals and quoted
+      identifiers, where the `:` is not half of `::`, and the character before it is not a letter, digit, `_`, `]`, `)` or
+      a quote. So `x = :id`, `(:id)` and `IN :ids` are placeholders. `a::text`, `arr[1:n]`, `arr[a : b]`, `label:` and
+      `:=` are not. `arr[a :b]` is one (a space before the colon only), and MQ4024 then names it. A placeholder that
+      names no parameter is MQ4024, with its line and column in the text. A parameter that appears as `:name` in none
+      of the texts, or not in each of them, is MQ4096 (warning). The engine skips `--` and `/* */` comments in all five
+      dialects (nested in PostgreSQL and SQL Server); `'...'` strings (with `''`) and `"..."` identifiers in all five;
+      PostgreSQL `E'...'` and `$tag$...$tag$`; SQL Server `[...]` and `N'...'`; MySQL `#` comments, backslash escapes in
+      strings and `` `...` ``; SQLite `[...]` and `` `...` ``; Oracle `q'x...x'` and `N'...'`. A list parameter
+      (`collection: true`) is not expanded for you: write `IN :ids` for a library that expands lists, or `= ANY(:ids)`
+      for an array.
+    - **`columns`** declare the rows the statement returns, in the order the code reads them: each has a `name` (the name
+      the SQL returns; an alias in the SQL gives any other), a `type` (a built-in type or a database type of the same
+      database, MQ4018 otherwise), `nullable` and a `description`. **`nullable` defaults to true**: a column may be null
+      unless you say `false`. Say `false` only where the SQL guarantees a value. A wrong `true` costs generated code a
+      null check; a wrong `false` fails at run time on a null. Maquettiste cannot infer it. Column names differ ignoring
+      case (MQ3001), and may not collide once Pascal-cased or start with `mq_` (MQ4040). **No columns** means the
+      statement returns no rows the code reads.
+    - **`reads`** lists the tables, views, routines, sequences and database types of the query's database that the SQL
+      reads or calls. **`writes`** lists the tables it changes (tables only). Both take ids, as `from.source` does (a
+      table file's id, a table key, or an entity id for its table there); anything else is MQ4021. A table may be in
+      both. Each entry is a reference like any other: changing the table lists the query, and a plain delete of the
+      table is refused while the query names it.
+    - **Commands.** A query that lists `writes` changes data: an `INSERT`, `UPDATE`, `DELETE` or an upsert. With
+      `columns`, it returns those rows (`RETURNING`, `OUTPUT`). **Without `columns`, it returns the number of rows
+      changed**: the generated method for it is a command that returns the rows changed, where a query with columns
+      returns its rows. What a count of 0 or -1 means is up to your system. A built query never writes.
+    - **What the rendered text is.** The text as written, with white space at both ends removed and the placeholders
+      rewritten. Nothing else changes: comments, case, line breaks and a final `;` stay. Keep a `;` where your database
+      needs one (SQL Server requires it after a `MERGE`; an Oracle block ends with `END;`) and leave it out where it
+      refuses one (Oracle refuses it after a plain statement). Only where a pack wraps the text in another statement, as
+      an entity's binding does (`FROM (<your text>) q`), is one final `;` left out, with any comments after it; a `;`
+      inside a string, a quoted name, a comment or parentheses is never touched. **A pack that
+      runs the statement uses this rendered text**, `query_sql query` (or `query.sql` in the resolved model), which has
+      the placeholders in the pack's style. `query.sql_text` is your text exactly as written, with `:name`, for
+      documentation and display.
+    - **In a template.** A query written as SQL text has no tree: `query.from` is null, and each declared column in
+      `query.select` has a null `expression`. Reading a member of a null value stops the unit (MQ6006), so a template
+      branches on `query.form` (`"structured"` or `"sql"`), or tests `f.expression` for null, before it reads into
+      them. The shipped `csharp-dapper` pack does. **If your team keeps its own copy of an older `csharp-dapper`, update
+      it:** the older copy stops with MQ6006 on the first query written as SQL text.
+    - **What Maquettiste reads from the text, and what it never reads.** It reads four things, by scanning, not parsing:
+      where the placeholders are; the statement's verb (the first word, or, after a leading `WITH`, the first of
+      `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `REPLACE`, `VALUES` or `TABLE` outside parentheses); which names
+      appear (compared with table and view names, ignoring case: `Invoices` and `invoices` are one table); and whether
+      `ORDER BY`, `OFFSET`, `FETCH` or `TOP` appear outside parentheses. It **never** reads which tables or columns the
+      SQL uses, its structure, its result columns or whether it is valid. The declarations say those, and your database
+      judges the SQL.
+    - **The checks** are in the rules table below. MQ4098 is one warning that covers three cases, so one entry in
+      `validation.rules` turns them all off: a table or view in `reads` or `writes` whose name appears in none of the
+      texts (a table was renamed, or declared by mistake); a statement whose verb changes data (`INSERT`, `UPDATE`,
+      `DELETE`, `MERGE`, `REPLACE` or `TRUNCATE`, directly or after a leading `WITH`) with no `writes`; a statement
+      whose verb returns rows (`SELECT`, `VALUES` or `TABLE`) with no `columns`, which would be generated as a
+      command. A text with a verb it does not know is not checked.
+    - **Renames, deletes and when output changes.** Renaming a table changes no text: MQ4098 then warns that the text no
+      longer names it. Deleting a table that a query lists, with `remove-references` or `delete-dependents`, removes the
+      entry and **keeps the query**, since the text is your own work and the engine cannot tell whether it still needs the
+      table. The delete plan warns that the text may still name the table. The query's generated unit renders again when
+      its own file changes, when a table it lists is a designed table (its columns live in its own file) and a column of
+      it changes, and when a name it prints changes. For a table whose columns come from entities and relations, a
+      column change does not render the query again: the declared columns are what the code is built from. Impact still
+      lists the query as a referrer of the table, which tells you to look.
+
+    The model states what is below. It gives nothing else a runtime meaning.
+
+    | Capability | Where it is written | What it means | What reads it | Left to your system |
+    | --- | --- | --- | --- | --- |
+    | Two forms of query | The `query` file | Built from parts (a tree the engine renders), or SQL text (your text, rendered as written) | The checks, the resolved model, templates (`query.form`), the editor | Which form to use |
+    | SQL text per dialect | `sql` | The text for a dialect is that dialect's entry, else `"*"`. The database's dialect must have one | MQ4029; `query.texts`, `query.sql_text` and `query_sql`; the SQL text tab | Correct SQL, and statements the database accepts |
+    | Parameters | `parameters` | Each is a typed value the caller passes, written `:name` in the text | MQ3001, MQ4018, MQ4024, MQ4040, MQ4043 and MQ4096; the resolved model; the Parameters tab | How a list parameter is passed (expanded or as an array) |
+    | Result columns | `columns` | Each row has these columns, by name, with these types; a column may be null unless `nullable` is false. No columns: the statement returns no rows the code reads | MQ3001, MQ4018 and MQ4040; `query.select`; the Columns tab | That the SQL returns exactly these. Nothing checks it against a database |
+    | What the SQL reads | `reads` | The SQL reads or calls these tables, views, routines, sequences and database types | MQ4021 and MQ4098; impact and deletes; `query.uses`; the Tables tab | Completeness: the engine cannot see what the text reads |
+    | What the SQL writes | `writes` | The SQL inserts into, updates or deletes from these tables | MQ4021, MQ4044 and MQ4098; impact and deletes; `query.writes`; the Tables tab | Transactions, locking, and the order between commands |
+    | Rows changed | Worked out | A query with no columns returns the number of rows changed | Templates (`query.select` is empty); `csharp-dapper` | What a count of 0 or -1 means to the caller |
+    | Entity over SQL text | A binding's `source` | The entity reads its rows through the query | MQ4044 and MQ4097; `binding_sql` | Writes: the binding writes its own table or nothing, as for any query source |
+
+  - **Named queries (WITH).** A built query may start with named parts and read them like tables. This covers a ranking
+    over a grouped result, a step you use twice, and a tree or a chain. The query's `with` is a list; each entry has a
+    `name`, then `from`, `joins`, `select` (at least one field, each with a `name`), `where`, `groupBy`, `having` and
+    `distinct`, as a query has. It has no `orderBy`, `paging` or `collections`: an order inside a named query means
+    nothing, and SQL Server refuses one. Its columns are its select fields' names, with their inferred types, as a
+    view's columns. Only the top query has `with`: a nested query or a named query has none of its own.
+
+    - **Where one is read.** A source (`from` or a join) may be a named query's **name** instead of a table's id. Read
+      its columns as `alias.name`. The top query, its nested queries (collections, `exists`) and the named queries
+      listed after it may read it. Reading one listed later, or reading itself outside `recursive`, is MQ4099. A named
+      query may not be named as a table or view the query reads (ignoring case), or the SQL would read one for the other
+      (MQ4099). Two named queries with names that are equal ignoring case are MQ3001. Renaming a named query or one of its
+      fields in the editor renames the references to it in the same save; a hand edit that misses one is MQ4023.
+    - **Recursion.** An entry with `recursive` repeats over itself, for a tree or a chain. The entry's own select is the
+      **anchor**: the rows to start from. `recursive` is the **repeating part**: `{ union, from, joins, select, where }`.
+      It reads the named query's own name once, and its rows are added with `union` (`all`, the default, or `distinct`)
+      until it adds none. The repeating part has no `groupBy`, `having` or `distinct`. It must fit the anchor:
+      - the same number of fields, with the same names in the same order, and each field of the same type as the anchor's
+        (a built-in type; an unknown type on either side passes, so cast when in doubt);
+      - its own name read exactly once, in its `from` or a join, never in a nested query, and never on the side of an
+        outer join that is padded with nulls: the right side of a left join, the left side of a right join, either side
+        of a full join. So `FROM chain LEFT JOIN categories` is allowed and `FROM categories LEFT JOIN chain` is not;
+      - no aggregate function (`count`, `sum`, `min`, `max`, `avg`);
+      - on SQL Server, no outer join and no nested query at all; and on SQL Server and Oracle, only `union: "all"`.
+
+      Each break is MQ4099 (error), with a message that says what the repeating part may not do. A column of the named
+      query is typed as the anchor's, and may be null when either part's may.
+
+    The ancestors of a category, walked up the tree (the billing sample has no such table; the example is invented):
+
+    ```json
+    {
+      "kind": "query", "id": "01K9QRY0000000000000000001", "name": "CategoryAncestors", "database": "01K6DB00000000000000000001",
+      "parameters": [ { "name": "categoryId", "type": "int64" } ],
+      "with": [ {
+        "name": "chain",
+        "from": { "source": "<id of categories>", "alias": "c" },
+        "select": [
+          { "name": "id", "expression": { "column": "c.id" } },
+          { "name": "parentId", "expression": { "column": "c.parent_id" } },
+          { "name": "depth", "expression": { "value": 0 } } ],
+        "where": { "op": "eq", "left": { "column": "c.id" }, "right": { "param": "categoryId" } },
+        "recursive": {
+          "from": { "source": "chain", "alias": "ch" },
+          "joins": [ { "source": "<id of categories>", "alias": "p",
+                       "on": { "op": "eq", "left": { "column": "p.id" }, "right": { "column": "ch.parentId" } } } ],
+          "select": [
+            { "name": "id", "expression": { "column": "p.id" } },
+            { "name": "parentId", "expression": { "column": "p.parent_id" } },
+            { "name": "depth", "expression": { "op": "+", "args": [ { "column": "ch.depth" }, { "value": 1 } ] } } ] } } ],
+      "from": { "source": "chain", "alias": "a" },
+      "joins": [ { "source": "<id of categories>", "alias": "c",
+                   "on": { "op": "eq", "left": { "column": "c.id" }, "right": { "column": "a.id" } } } ],
+      "select": [
+        { "name": "id", "expression": { "column": "a.id" } },
+        { "name": "name", "expression": { "column": "c.name" } },
+        { "name": "depth", "expression": { "column": "a.depth" } } ],
+      "orderBy": [ { "expression": { "column": "a.depth" } } ]
+    }
+    ```
+
+    Read it in three steps. The **anchor** starts at the category you ask for (`depth` 0). The **repeating part** reads
+    the rows found so far (`chain`), joins each one's parent (`p.id = ch.parentId`) and adds the parent with `depth + 1`.
+    It stops when a category has no parent, since the join then finds nothing. The **main query** reads the chain and
+    joins `categories` again for each name. For `postgresql` it renders as:
+
+    ```sql
+    WITH RECURSIVE chain (id, parentId, depth) AS (
+        SELECT c.id AS id, c.parent_id AS parentId, 0 AS depth
+        FROM shop.categories c
+        WHERE c.id = @categoryId
+        UNION ALL
+        SELECT p.id AS id, p.parent_id AS parentId, (ch.depth + 1) AS depth
+        FROM chain ch
+        INNER JOIN shop.categories p ON p.id = ch.parentId
+    )
+    SELECT a.id AS id, c.name AS name, a.depth AS depth
+    FROM chain a
+    INNER JOIN shop.categories c ON c.id = a.id
+    ORDER BY a.depth ASC
+    ```
+
+    - **How it renders.** The `WITH` clause comes before the statement, each entry with a column list, which all five
+      dialects take and Oracle requires for a recursive one. A collection's statement is a statement of its own, so it
+      repeats the named queries it reads, directly or through others. Parameters are numbered in text order, so a
+      parameter used in a named query comes first. A query without `with` renders as it always did. A binding over a
+      built query with named queries puts the `WITH` first: `WITH ... SELECT <fields> FROM (<query>) q`.
+
+      | | PostgreSQL | SQL Server | MySQL | SQLite | Oracle |
+      | --- | --- | --- | --- | --- | --- |
+      | Keyword | `WITH RECURSIVE` when one is recursive | `WITH` | `WITH RECURSIVE` when one is recursive | `WITH RECURSIVE` when one is recursive | `WITH` |
+      | `union: "distinct"` in a repeating part | yes | no (MQ4099) | yes | yes | no (MQ4099) |
+      | Outer join or nested query in a repeating part | not on its own name (MQ4099) | none at all (MQ4099) | not on its own name | not on its own name | not on its own name |
+      | Default recursion limit | none | 100 levels | 1,000 levels | none | none |
+      | Oldest version that runs named queries | all supported | 2005 | 8.0 | 3.8.3 | 11g R2 |
+
+    - **Recursion limits and cycles.** Maquettiste adds no recursion limit and does not look for cycles. SQL Server stops
+      a recursion after 100 levels and MySQL after 1,000, with an error; PostgreSQL, SQLite and Oracle run until a round
+      adds no row, so a cycle (a category that is its own ancestor) runs forever. To stop one, select a depth column,
+      add 1 to it in the repeating part, and filter on it (`where ch.depth < 20`). Maquettiste checks no version: a
+      feature newer than your database is for you to avoid.
+
+    The model states what is below.
+
+    | Capability | Where it is written | What it means | What reads it | Left to your system |
+    | --- | --- | --- | --- | --- |
+    | Named queries | `with` | Each is a named select the query, its nested queries and later named queries may read as a source | MQ3001, MQ4021, MQ4022, MQ4023 and MQ4099; `query.with`; the Named queries (WITH) tab | Performance: the database decides how to run them |
+    | Recursive named queries | `with[].recursive` | The anchor rows, joined by `union` with the rows the repeating part reads from the rows so far, until it adds none | MQ4099; `query.with`; the Named queries (WITH) tab | Depth limits and cycles |
+
   - **The SQL preview.** `GET /api/model/queries/{id}/sql` and the MCP tool `preview_query_sql` return the query's
     statement and one per collection, each with the parameters it names, for the database's dialect or another
     (`dialect`); `placeholder` picks `@name` (the default), `:name` or `$1`, and `lists` picks `expand` (`IN @ids`, the
@@ -1172,20 +1395,22 @@ database shows on the Database screen at once. The explorers remember which rows
     to write for a query, and the schema diff does not see queries.
   - **Deletes.** A query refers to its database, its entity, its sources, the attributes its fields fill and the ids in
     its column keys. Deleting one of these is refused while the query names it; with its dependents
-    (`delete-dependents`) the query is deleted whole, since its aliases tie its parts together.
+    (`delete-dependents`) the query is deleted whole, since its aliases tie its parts together. A query written as SQL
+    text is the exception: it names its tables in `reads` and `writes`, and deleting a table removes that entry and keeps
+    the query, with a warning that its text may still name the table.
   - **Problems.** The resolver checks a query, where the columns are known, and points at the node:
 
     | Rule | Severity | Finding |
     | --- | --- | --- |
-    | MQ4021 | error | a source that is not a table or view of the query's database, or a call of an id that is not one of its routines |
-    | MQ4022 | error | an alias declared twice, or a column naming an alias no source declares |
-    | MQ4023 | error | a column its source does not have, or a name without an alias that no source or several sources have |
-    | MQ4024 | error | a parameter the query does not declare (in an expression or the paging) |
+    | MQ4021 | error | a source that is not a table or view of the query's database (nor a named query of its `with`), or a call of an id that is not one of its routines; in a query written as SQL text, a `reads` entry that is not a table, view, routine, sequence or database type of the database, or a `writes` entry that is not a table of it |
+    | MQ4022 | error | an alias declared twice, or a column naming an alias no source declares (a named query's source too) |
+    | MQ4023 | error | a column its source does not have, or a name without an alias that no source or several sources have (a named query's columns too) |
+    | MQ4024 | error | a parameter the query does not declare (in an expression or the paging), or a `:name` placeholder in SQL text that names none (the message gives its line and column in the text) |
     | MQ4025 | error | a field naming an attribute the entity does not have, or an attribute where no entity is named |
     | MQ4026 | warning | a required attribute of the entity that no field fills |
     | MQ4027 | error | a collection that names neither a collection attribute nor a to-many navigation, or selects nothing |
     | MQ4028 | error | a nested query naming an alias no enclosing query declares, or a collection naming its parent outside an equality at the top of its where |
-    | MQ4029 | error | an `sql` expression without a text for the database's dialect (nor `*`) |
+    | MQ4029 | error | an `sql` expression, or a query written as SQL text, without a text for the database's dialect (nor `*`) |
     | MQ4030 | error | paging by a parameter that is not an integer |
     | MQ4031 | error | a comparison with the wrong right side (two values for `between`, none for `isNull`, one otherwise) |
     | MQ4032 | error | a distinct parent that neither selects nor groups by a collection's key column |
@@ -1196,19 +1421,28 @@ database shows on the Database screen at once. The explorers remember which rows
     | MQ4037 | warning | a right or full join on a SQLite database (it needs SQLite 3.39) |
     | MQ4038 | error | a distinct query ordering by an expression its select list does not have (or by nulls on `sqlserver` and `mysql`) |
     | MQ4039 | error | a list parameter used other than as the whole right side of `in` or `notIn` |
-    | MQ4040 | error | names that collide in generated code (collections, an ad hoc row's fields, queries of a database, once Pascal-cased) or start with `mq_` |
+    | MQ4040 | error | names that collide in generated code (collections, an ad hoc row's fields, a SQL text query's declared columns, queries of a database, once Pascal-cased) or start with `mq_` |
     | MQ4041 | error | an abstract result or element entity |
     | MQ4042 | error | an operation with fewer than two operands (`-` may take one) |
     | MQ4043 | error | a number too large to hold, a typed literal that is not a decimal number, or a default that does not match its parameter's type |
+    | MQ4096 | warning | a parameter of a query written as SQL text that appears as `:name` in none of its texts, or not in each of them (the message names the dialects) |
+    | MQ4097 | warning | a binding of a SQL Server database reads a query written as SQL text that SQL Server cannot nest as a derived table: its text starts with `WITH`, or has an `ORDER BY` outside parentheses with no `OFFSET`, `FETCH` or `TOP` |
+    | MQ4098 | warning | a query's SQL text and its declarations disagree, by name and verb only: a table or view in `reads` or `writes` whose name appears nowhere in the text (ignoring case); a statement that changes data (`INSERT`, `UPDATE`, `DELETE`, `MERGE`, `REPLACE` or `TRUNCATE`, directly or after a leading `WITH`) with no `writes`; or one that returns rows (`SELECT`, `VALUES` or `TABLE`) with no `columns` |
+    | MQ4099 | error | a named query does not fit: it reads a named query listed after it, reads itself outside `recursive`, or has the name of a table or view the query reads (ignoring case); or its repeating part does not fit its anchor: another number of fields, other names or another order, a field type that differs from the anchor's, its own name read other than once, in a nested query or on the null-padded side of an outer join, an aggregate call, or on SQL Server any outer join or nested query, or `union: "distinct"` on SQL Server or Oracle |
 
-    A parameter type that is neither a built-in type nor a database type of the database is MQ4018; two parameters or
-    two fields with one name, or two queries of a database with one name, are MQ3001.
+    A parameter type that is neither a built-in type nor a database type of the database is MQ4018 (a declared column's
+    type too); two parameters, fields, declared columns or named queries with one name, or two queries of a database with
+    one name, are MQ3001. A file that mixes the two forms of query is MQ1002. MQ4096, MQ4097 and MQ4098 leave the query
+    rendered; they are warnings you may set to another severity, or `off`, in `validation.rules`. Any error, MQ4099 and
+    the new cases of MQ4021, MQ4024 and MQ4029 among them, leaves the query without SQL until it is fixed.
   - **Building a query in the editor.** **New query…** (see "Creating a table, a view, a sequence or another database
     object" above) creates the query and opens its editor; the Databases explorer lists it in the database's Queries
     folder and the Database screen under its **Queries** chip, where picking one shows its SQL in the preview pane. The
-    inspector sums it up (how many fields each row has, and how many sources, parameters and collections it has) with **Show the SQL**, which opens the editor on its SQL tab. Nothing in the editor is SQL text
-    but the SQL per dialect form: every cell writes the query's data, and every change is one save and one step Undo takes
-    back. The tabs:
+    inspector sums it up (how many fields each row has, and how many sources, parameters and collections it has) with **Show the SQL**, which opens the editor on its SQL tab. In a query built from parts,
+    nothing in the editor is SQL text but the SQL per dialect form: every cell writes the query's data, and every change
+    is one save and one step Undo takes back. **New query** first asks **Written as**: **Built from parts** (the dialog
+    asks for the table it reads first) or **SQL text** (a name only; the query opens on its SQL text tab with a `SELECT`
+    for the database's dialect to start from). The tabs of a query built from parts:
     - **General**: the name, marks and description. The editor says nothing about entities: an entity binds to the
       query from its own Storage tab. An older query that still names a result entity (its own, or a collection's
       elements') keeps working and shows one line, "An older result entity is set; bind the entity to this query on its
@@ -1241,6 +1475,13 @@ database shows on the Database screen at once. The explorers remember which rows
     - **Group and order**: **Distinct**, the **Group by** expressions, the **Having** condition, the **Order by** terms
       (direction, and where the nulls go, the database's order by default) and the query's **Paging**: an offset and a
       limit, each none, a number, or an integer parameter.
+    - **Named queries (WITH)**, after Sources: one card per named query, with its **Name**, its own Sources, Select and
+      Filter (the same panels as the query's), and a **Repeats** switch. Switched on, a second panel, **Repeating part**,
+      holds its own Sources, Select and Filter and a **Union** choice (**All rows** or **Distinct rows**); its select
+      starts with the anchor's field names. Every source picker in the query lists
+      **Named queries** as a group above Tables and Views, and the column pickers of a named-query source list its
+      column names. Renaming a named query or one of its fields rewrites the references to it in the same save.
+      MQ4099 shows on the card and row it is about.
     - **Parameters**: a grid of name, type (a built-in type or a database type), length, precision, scale, **List** (a
       list for in and not in), **Default** (a number for a number type, true or false for bool) and description, with
       **Add parameter**, move and delete. Renaming a parameter renames its uses and the paging's.
@@ -1257,6 +1498,20 @@ database shows on the Database screen at once. The explorers remember which rows
       the SQL is not rendered. A dialect other than the database's without an SQL text renders `NULL` in its place, with
       MQ4029 listed above.
     - **JSON**: the query's file, edited as text.
+
+    A query written as SQL text has these tabs instead of Sources, Select, Filter, Group and order, Collections and
+    Named queries: General, **SQL text**, **Parameters**, **Columns**, **Tables**, **SQL**, JSON, Code generation and
+    References.
+    - **SQL text**: one code editor per dialect the text holds, with **Add dialect**, as views and routines have. Each
+      `:name` placeholder is marked, and one that names no parameter is underlined with the MQ4024 text as its hover.
+      The marks show as you type, with no call to the server.
+    - **Parameters**: the same grid as a built query's. A parameter the text never uses shows MQ4096 in its row.
+    - **Columns**: a grid of **Name**, **Type** (built-in and database types), **Can be null** (checked by default) and
+      **Description**. Renaming a column renames it in the bindings that read the query by that name, in the same batch.
+    - **Tables**: two lists, **Reads** and **Writes**, each with an **Add** picker of the database's tables and views
+      (Writes: tables only). **Find in SQL** lists the tables and views whose names appear in the text, unticked, for you
+      to add. It reads the model's index and the open text only. MQ4098 shows on the row it is about.
+    - **SQL**: the same preview as for a built query: the statement a pack receives, for any dialect and placeholder style.
 - **Diagrams**: the saved diagrams outside the domains.
 - **Seed data**: an entity's or a relationship's initial rows, in its editor's **Seed data** tab and in the domain's
   Seed data folder; a reference type's rows are its Rows tab. A seed lists its columns once and holds one row per line,
@@ -1470,6 +1725,15 @@ An entity can read a query of the database: its fields name the query's columns 
 sample's `RevenueMonth` reads the `RevenueByMonth` query (month, invoice count, revenue); a query source does not write, so
 the generated repository has `GetAsync` and `ListAsync` (taking the query's parameters first) and no insert, update or delete.
 
+A query written as SQL text can be the source too, and the entity's repository then runs your own SQL. Its fields name the
+declared columns. The binding wraps the text as a derived table, `FROM (<text>) q`, with the query's parameters first. The
+query must return rows and change none: one that lists `writes`, or declares no columns, is MQ4044. On a SQL Server
+database a derived table may not start with `WITH`, and may not end with an `ORDER BY` unless `OFFSET`, `FETCH` or `TOP`
+goes with it; MQ4097 warns before the statement fails there. A built query with named queries is read too: the binding
+puts its `WITH` first. On the entity's Storage tab the source picker lists written-as-SQL queries with the others, and
+a query that changes data or has no columns shows one line: "This query changes data; an entity can only read through a
+query that returns rows."
+
 ### What the statements look like
 
 The engine renders each binding's five statements for any dialect: `select`, `select-by-key`, `insert`, `update` and
@@ -1656,7 +1920,8 @@ writes no description, so the text stays in one place.
 
 | Rule | Severity | When |
 | --- | --- | --- |
-| MQ4044 | error | the source is not a table, view or query of the binding's database, or the write table is not a table of it |
+| MQ4044 | error | the source is not a table, view or query of the binding's database, or is a query written as SQL text that writes tables or declares no columns, or the write table is not a table of it |
+| MQ4097 | warning | a SQL Server binding reads a query written as SQL text that cannot be a derived table there (it starts with `WITH`, or has an `ORDER BY` outside parentheses with no `OFFSET`, `FETCH` or `TOP`) |
 | MQ4045 | error | a field names nothing of the entity, a column the source does not have, a listed column of no table the binding uses, or maps an attribute or a column twice |
 | MQ4046 | error | a binding that writes maps no field for a key attribute |
 | MQ4047 | warning | a column of the source or write table is accounted for by nothing |
@@ -4355,7 +4620,8 @@ does not declare has no annotations); each column of `table.columns` from its ow
 or extra column or the overlay entry of a synthesized one, never from its attribute, which stays at `column.attribute`;
 and views and sequences (`database.views`, `database.sequences`) from their files, as are routines, database types and
 SQL objects (`database.routines`, `database.types`, `database.objects`, each also on its schema) and queries
-(`database.queries`, with their trees as plain objects: `query.from`, `query.select`, `query.where`, `query.collections`);
+(`database.queries`, with their trees as plain objects: `query.from`, `query.select`, `query.where`, `query.collections`;
+for a query written as SQL text, `query.from` and each declared column's `expression` are null, so branch on `query.form`);
 a column typed by a database type names it at `column.db_type`. `has_stereotype`, `has_tag` and
 `in_category` take any of these as well as an element. A child table (a value object or collection stored as a table)
 names its attribute at `table.attribute`, and the constraints of a table file keep their ids (`table.indexes[0].id`).

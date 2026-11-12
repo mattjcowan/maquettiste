@@ -82,8 +82,8 @@ internal sealed partial class DatabaseRun
         return NativeType(keyword, withDefaults.Length, withDefaults.Precision, withDefaults.Scale);
     }
 
-    /// <summary>The resolution of one query file.</summary>
-    private sealed class QueryBuilder(
+    /// <summary>The resolution of one query file (its named queries in DatabaseRun.NamedQueries.cs).</summary>
+    private sealed partial class QueryBuilder(
         DatabaseRun run,
         Query file,
         RQuery query,
@@ -129,6 +129,19 @@ internal sealed partial class DatabaseRun
             }
 
             query.Parameters = ResolveParameters();
+            if (file.IsSqlText)
+            {
+                BuildSqlText(); // DatabaseRun.SqlQueries.cs
+                return;
+            }
+
+            if (file.From is null)
+            {
+                query.Sql = null; // neither form: the schema's (MQ1002)
+                return;
+            }
+
+            ResolveWith();
             var scope = new Scope(query, null);
             ResolveBody(query, scope, file.From, file.Joins, file.Select, file.Where, file.GroupBy, file.Having, file.OrderBy, "", query.Entity);
             query.Distinct = file.Distinct;
@@ -136,6 +149,7 @@ internal sealed partial class DatabaseRun
             query.Collections = [.. file.Collections.Select((c, i) => ResolveCollection(c, i, scope))];
             CheckCollectionNames();
             CheckDistinctKeys();
+            CheckWithNames();
             query.Uses = [.. _uses];
             if (!_failed)
             {
@@ -152,7 +166,7 @@ internal sealed partial class DatabaseRun
         {
             // Names, unselected attributes, conversions, abstract entities and dialect warnings leave the query renderable; every other
             // finding leaves a node unresolved or the SQL wrong.
-            if (rule is not ("MQ3001" or "MQ4025" or "MQ4026" or "MQ4027" or "MQ4030" or "MQ4033" or "MQ4037" or "MQ4040" or "MQ4041"))
+            if (rule is not ("MQ3001" or "MQ4025" or "MQ4026" or "MQ4027" or "MQ4030" or "MQ4033" or "MQ4037" or "MQ4040" or "MQ4041" or "MQ4096" or "MQ4098"))
                 _failed = true;
             run._run.AddDiagnostic(rule, message, file.Id, pointer);
         }
@@ -203,7 +217,7 @@ internal sealed partial class DatabaseRun
         {
             if (!target.Distinct || target.OrderBy.Count == 0)
                 return;
-            var selected = target.Select.Select(f => f.Expression).Concat(keys).Select(e => QuerySql.ExpressionText(target, e)).ToHashSet(StringComparer.Ordinal);
+            var selected = target.Select.Select(f => f.Expression!).Concat(keys).Select(e => QuerySql.ExpressionText(target, e)).ToHashSet(StringComparer.Ordinal);
             for (var i = 0; i < target.OrderBy.Count; i++)
             {
                 var order = target.OrderBy[i];
@@ -403,7 +417,7 @@ internal sealed partial class DatabaseRun
                 source.Schema = view.Schema;
                 Use(view);
             }
-            else
+            else if (!NamedSource(scope, source, reference, pointer))
             {
                 Report("MQ4021", $"Query '{file.Name}' reads '{reference}', which {WhatIs(reference)}.", pointer + "/source");
                 source.Name = reference;
@@ -432,7 +446,9 @@ internal sealed partial class DatabaseRun
                 return $"is entity '{entity.Name}', which has no table in database '{run._db.Name}'";
             if (element is not null)
                 return $"is {element.KindName} '{element.Name}', not a table or view";
-            return $"is no table or view of database '{run._db.Name}'";
+            return file.With.Count > 0
+                ? $"is no table or view of database '{run._db.Name}' and no named query of the query"
+                : $"is no table or view of database '{run._db.Name}'";
         }
 
         private List<RQueryField> ResolveFields(IReadOnlyList<QueryField> select, Scope scope, string at, REntity? entity)
@@ -482,7 +498,7 @@ internal sealed partial class DatabaseRun
                 {
                     Report("MQ4040", $"Field '{field.Name}' of query '{file.Name}' starts with mq_, which generated code reserves for its own names.", pointer + (f.Name is null ? "/attribute" : "/name"));
                 }
-                else if (entity is null && !properties.TryAdd(Casing.Pascal(field.Name), field.Name))
+                else if (entity is null && !_inWith && !properties.TryAdd(Casing.Pascal(field.Name), field.Name))
                 {
                     // An ad hoc row is a record whose properties are the fields' names Pascal-cased.
                     Report("MQ4040", $"Field '{field.Name}' of query '{file.Name}' becomes property '{Casing.Pascal(field.Name)}', as field '{properties[Casing.Pascal(field.Name)]}' does: give it another name.", pointer + "/name");
@@ -963,18 +979,19 @@ internal sealed partial class DatabaseRun
 
             RColumn? tableColumn = null;
             RViewColumn? viewColumn = null;
+            RQueryField? namedField = null;
             if (source is not null)
             {
-                (tableColumn, viewColumn) = FindColumn(source, name);
-                if (tableColumn is null && viewColumn is null && source.Name.Length > 0 && (source.Table is not null || source.View is not null))
-                    Report("MQ4023", $"Query '{file.Name}' names column '{name}' of '{source.Alias}' ({(source.View is null ? "table" : "view")} '{source.Name}'), which has no such column.", pointer);
+                (tableColumn, viewColumn, namedField) = FindColumn(source, name);
+                if (tableColumn is null && viewColumn is null && namedField is null && source.Name.Length > 0 && (source.Table is not null || source.View is not null || source.Named is not null))
+                    Report("MQ4023", $"Query '{file.Name}' names column '{name}' of '{source.Alias}' ({(source.Named is not null ? "named query" : source.View is null ? "table" : "view")} '{source.Name}'), which has no such column.", pointer);
             }
             else
             {
                 // No alias: the one source of this query (or of the nearest enclosing one) that has the column.
                 for (var s = scope; s is not null && source is null; s = s.Outer)
                 {
-                    var matches = s.Sources.Select(x => (Source: x, Found: FindColumn(x, text))).Where(m => m.Found.Table is not null || m.Found.View is not null).ToList();
+                    var matches = s.Sources.Select(x => (Source: x, Found: FindColumn(x, text))).Where(m => m.Found.Table is not null || m.Found.View is not null || m.Found.Named is not null).ToList();
                     if (matches.Count > 1)
                     {
                         Report("MQ4023", $"Query '{file.Name}' names column '{text}' without an alias, and {string.Join(" and ", matches.Select(m => "'" + m.Source.Alias + "'"))} both have one: write alias.column.", pointer);
@@ -984,7 +1001,7 @@ internal sealed partial class DatabaseRun
                     if (matches.Count == 1)
                     {
                         (source, owner) = (matches[0].Source, s);
-                        (tableColumn, viewColumn) = matches[0].Found;
+                        (tableColumn, viewColumn, namedField) = matches[0].Found;
                     }
                 }
 
@@ -1000,9 +1017,10 @@ internal sealed partial class DatabaseRun
                 Node = "column",
                 Column = text,
                 Alias = source.Alias,
-                ColumnName = tableColumn?.Name ?? viewColumn?.Name ?? name,
+                ColumnName = tableColumn?.Name ?? viewColumn?.Name ?? namedField?.Name ?? name,
                 TableColumn = tableColumn,
                 ViewColumn = viewColumn,
+                NamedField = namedField,
                 Source = source,
                 IsOuter = !ReferenceEquals(owner, scope),
             };
@@ -1020,6 +1038,13 @@ internal sealed partial class DatabaseRun
                 result.NativeType = viewColumn.NativeType;
                 result.CodeType = viewColumn.Type;
                 result.Nullable = viewColumn.Nullable || source.Optional;
+            }
+            else if (namedField is not null)
+            {
+                result.Type = namedField.Type;
+                result.NativeType = namedField.NativeType;
+                result.CodeType = namedField.CodeType;
+                result.Nullable = namedField.Nullable || source.Optional;
             }
 
             if (_barrier is not null && owner is not null && !IsWithin(owner, _barrier))
@@ -1054,7 +1079,7 @@ internal sealed partial class DatabaseRun
         /// A column of a source by physical name, column key or attribute id; else by name ignoring case, then ignoring case and
         /// underscores, when only one column matches (so a change of the conventions' column case keeps a query valid).
         /// </summary>
-        private static (RColumn? Table, RViewColumn? View) FindColumn(RQuerySource source, string name)
+        private static (RColumn? Table, RViewColumn? View, RQueryField? Named) FindColumn(RQuerySource source, string name)
         {
             if (source.Table is { } table)
             {
@@ -1062,12 +1087,14 @@ internal sealed partial class DatabaseRun
                     ?? table.Columns.FirstOrDefault(c => c.Key == name)
                     ?? table.Columns.FirstOrDefault(c => c.Attribute?.Id == name)
                     ?? Loose(table.Columns, c => c.Name, name);
-                return (column, null);
+                return (column, null, null);
             }
 
             if (source.View is { } view)
-                return (null, view.Columns.FirstOrDefault(c => c.Name == name) ?? Loose(view.Columns, c => c.Name, name));
-            return (null, null);
+                return (null, view.Columns.FirstOrDefault(c => c.Name == name) ?? Loose(view.Columns, c => c.Name, name), null);
+            if (source.Named is { } named)
+                return (null, null, named.Columns.FirstOrDefault(c => c.Name == name) ?? Loose(named.Columns, c => c.Name, name));
+            return (null, null, null);
         }
 
         private static T? Loose<T>(IEnumerable<T> columns, Func<T, string> nameOf, string name) where T : class

@@ -51,6 +51,7 @@ public sealed class ResolvedNullContractTests
         ["RQueryField.Name"] = "the file's name, else the attribute's name",
         ["RQueryField.Nullable"] = "the file's nullable, else inferred from the expression and the joins it reads through",
         ["RQueryExpression.Null"] = "true for the null literal, false for every other node (the schema allows only true)",
+        ["RNamedQuery.Query"] = "always set: a named query's where, having and other clauses are its Query's, each null or empty when the file has none",
         ["RColumn.Sensitive"] = "the column's own sensitive, else a projected column's attribute's own, else the strongest own value of the attributes bindings map to it",
 
         // Conceptual objects and their parts.

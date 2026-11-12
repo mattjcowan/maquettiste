@@ -122,6 +122,43 @@ public sealed class MaterializeTests
     }
 
     [Fact]
+    public async Task Materializing_tables_points_sql_text_declarations_and_named_queries_at_the_designed_tables()
+    {
+        // A query written as SQL text that reads Customer by its entity id and writes Payment's table by its key, and a built query
+        // whose named query reads Customer by its entity id: each entry follows the table to its new id (no MQ4021 afterwards).
+        await using var r = EditorRepo.Create(packs: false);
+        var payments = EditorRepo.PaymentId + "@" + EditorRepo.MainDatabaseId;
+        void Write(string file, string json) =>
+            File.WriteAllText(r.Repo.PathOf(".maquettiste/model/databases/main/queries/" + file), json, new UTF8Encoding(false));
+        Write("pay-customers.json", $$"""
+            {"kind": "query", "id": "01KAAAA0000000000000000001", "name": "PayCustomers", "database": "{{EditorRepo.MainDatabaseId}}",
+             "sql": {"*": "INSERT INTO billing.payments (id) SELECT id FROM billing.customers"},
+             "reads": ["{{EditorRepo.CustomerId}}"], "writes": ["{{payments}}"]}
+            """);
+        Write("customer-ids.json", $$"""
+            {"kind": "query", "id": "01KAAAA0000000000000000002", "name": "CustomerIds", "database": "{{EditorRepo.MainDatabaseId}}",
+             "with": [{"name": "picked", "from": {"source": "{{EditorRepo.CustomerId}}", "alias": "c"}, "select": [{"name": "cid", "expression": {"column": "c.id"} }] }],
+             "from": {"source": "picked", "alias": "p"}, "select": [{"name": "cid", "expression": {"column": "p.cid"} }] }
+            """);
+        var before = await r.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(before.Diagnostics, d => d.Rule == "MQ4021");
+
+        var result = await ApplyAsync(r, Tables(EditorRepo.CustomerId, EditorRepo.PaymentId));
+
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        var snapshot = r.Store.Current!;
+        var customers = snapshot.All<Table>().Single(t => t.Name == "customers").Id;
+        var paymentsTable = snapshot.All<Table>().Single(t => t.Name == "payments").Id;
+        var text = snapshot.Get<Query>("01KAAAA0000000000000000001")!;
+        Assert.Equal([customers], text.Reads);
+        Assert.Equal([paymentsTable], text.Writes);
+        Assert.Equal(customers, snapshot.Get<Query>("01KAAAA0000000000000000002")!.With.Single().From.Source);
+        var after = await r.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.DoesNotContain(after.Diagnostics, d => d.Rule is "MQ4021" or "MQ4022" or "MQ4023");
+        Assert.DoesNotContain(after.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
     public async Task Materializing_an_entity_already_bound_is_refused_and_the_next_one_follows_a_foreign_key_to_it()
     {
         await using var r = EditorRepo.Create(packs: false);

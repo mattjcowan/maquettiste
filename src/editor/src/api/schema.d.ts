@@ -647,8 +647,11 @@ export interface paths {
          *     setting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or
          *     `OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries
          *     the correlation columns, the collection's takes their values as the list parameter `mq_keys0` (`mq_keys1`...) and returns
-         *     each row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A model with
-         *     errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql` answers the same.
+         *     each row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A query written as
+         *     SQL text renders its own text for the dialect (else its `*` text; neither is MQ4029) as written, with only the white
+         *     space at both ends removed (a final `;` stays), with its `:name` placeholders in the asked style and no collections; `lists` does not apply to it. Named queries (`with`) render
+         *     as a WITH clause first. A model with errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql`
+         *     answers the same.
          */
         get: operations["getQuerySql"];
         put?: never;
@@ -5910,6 +5913,10 @@ export interface components {
          *     `TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`, a collection's
          *     `query`) are as the file writes them (`query.json`); resolution adds the sources' tables and views, each field's type,
          *     the collections' correlation keys and the SQL for the database's dialect.
+         *
+         *     A query written as SQL text (`form: sql`, sql-queries-design.md) has `texts`, no `from`, an empty `joins`, `groupBy`,
+         *     `orderBy` and `collections`, its declared columns as `select` (each without `expression`), its `reads` as `uses` and its
+         *     `writes`. A built query may have named queries (`with`). Each of `form`, `texts`, `writes` and `with` is left out when unset.
          */
         QueryView: {
             id: components["schemas"]["Ulid"];
@@ -5917,8 +5924,23 @@ export interface components {
             /** @description The entity each result row has, or null for an ad hoc row (the select list). */
             entityId: components["schemas"]["Ulid"] | null;
             parameters: components["schemas"]["QueryParameterView"][];
-            from: components["schemas"]["QuerySourceView"];
+            /**
+             * @description `sql` for a query written as SQL text; left out for a query built from parts.
+             * @enum {string}
+             */
+            form?: "sql";
+            /** @description The file's `sql` of a query written as SQL text, as written (dialect name or `*` to text, `:name` placeholders); left out for a built query. */
+            texts?: {
+                [key: string]: string;
+            };
+            /** @description The ids (a synthesized table's key) of the tables a query written as SQL text writes, in file order; left out when none. */
+            writes?: string[];
+            /** @description The named queries (WITH) of a built query, in order; left out when none. */
+            with?: components["schemas"]["NamedQueryView"][];
+            /** @description The first source of a built query; left out for a query written as SQL text. */
+            from?: components["schemas"]["QuerySourceView"];
             joins: components["schemas"]["QuerySourceView"][];
+            /** @description The select list of a built query, or the declared columns of a query written as SQL text. */
             select: components["schemas"]["QueryFieldView"][];
             where: components["schemas"]["predicate"] | null;
             groupBy: components["schemas"]["expression"][];
@@ -5931,7 +5953,7 @@ export interface components {
             sql: string | null;
             /** @description The parameters the SQL names, in first-appearance order. */
             sqlParameters: string[];
-            /** @description The ids (a synthesized table's key) of the tables, views, routines and database types the query reads. */
+            /** @description The ids (a synthesized table's key) of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order. */
             uses: string[];
             displayName: string | null;
             pluralName: string | null;
@@ -5947,6 +5969,24 @@ export interface components {
             };
             /** @description The entity bindings that read or write it (erratum E43), by entity name; absent in recordings made before. */
             boundBy?: components["schemas"]["BoundByView"][];
+        };
+        /**
+         * @description A named query of a built query's `with` (a WITH clause): the anchor as the file writes it, its columns with their inferred
+         *     types, and for a recursive one the repeating part as written and how its rows are added.
+         */
+        NamedQueryView: {
+            name: string;
+            /** @description The named query's entry as the file writes it, without `recursive`. */
+            query: components["schemas"]["namedQuery"];
+            /** @description Its columns, the anchor's field names in order, with their types (and nullability merged with the repeating part's). */
+            columns: components["schemas"]["QueryFieldView"][];
+            /** @description The repeating part as the file writes it; left out when the named query is not recursive. */
+            recursive?: components["schemas"]["recursivePart"];
+            /**
+             * @description How the repeating part's rows are added; left out when the named query is not recursive.
+             * @enum {string}
+             */
+            union?: "all" | "distinct";
         };
         /** @description A parameter of a query. */
         QueryParameterView: {
@@ -5968,27 +6008,35 @@ export interface components {
         };
         /** @description A source of a query, the first (`kind` from) or a joined one. */
         QuerySourceView: {
-            /** @description The source as the file writes it (a table or view id, a table key or an entity id). */
+            /** @description The source as the file writes it (a table or view id, a table key, an entity id, or a named query's name). */
             source: string;
             alias: string;
             /** @enum {string} */
             kind: "from" | "inner" | "left" | "right" | "full" | "cross";
+            /** @description The name of the named query (of the query's `with`) the source reads; left out otherwise. */
+            namedQuery?: string;
             tableKey: string | null;
             viewId: components["schemas"]["Ulid"] | null;
             name: string;
             schema: string | null;
             on: components["schemas"]["predicate"] | null;
         };
-        /** @description A field of a select list, with its inferred type. */
+        /**
+         * @description A field of a select list, with its inferred type; or a declared column of a query written as SQL text, which has no
+         *     `expression` and may have a `description`.
+         */
         QueryFieldView: {
             name: string;
             /** @description What the field fills: an attribute's id, attributeId.memberId for a member of a value object attribute, or the relation end a to-one navigation leads to (its foreign key); null for an ad hoc field. */
             attributeId: string | null;
-            expression: components["schemas"]["expression"];
+            /** @description The field's value as the file writes it; left out for a declared column. */
+            expression?: components["schemas"]["expression"];
             type: string | null;
             nativeType: string | null;
             codeType: string | null;
             nullable: boolean;
+            /** @description A declared column's description; left out when none. */
+            description?: string;
         };
         /** @description A collection of a query, its nested query and the statement that fills it for every parent row at once. */
         QueryCollectionView: {
@@ -10296,14 +10344,14 @@ export interface components {
         };
         /** Query source */
         from: {
-            /** @description A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there. */
+            /** @description A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there; or the name of a named query of the query's with. */
             source: string;
             /** @description The name column references use (alias.column); absent, the table's or view's name. */
             alias?: components["schemas"]["identifier"];
         };
         /** Join */
         join: {
-            /** @description A table or view of the query's database, as in from. */
+            /** @description A table or view of the query's database, or the name of a named query of the query's with, as in from. */
             source: string;
             alias?: components["schemas"]["identifier"];
             /**
@@ -10358,6 +10406,24 @@ export interface components {
             /** @default false */
             distinct?: boolean;
         };
+        /**
+         * Repeating part
+         * @description The part of a recursive named query that repeats: it reads the named query's own name once, and its rows are added to the anchor's with union until it adds none.
+         */
+        recursivePart: {
+            /**
+             * @description all keeps every row; distinct removes duplicates (not on SQL Server or Oracle).
+             * @default all
+             * @enum {unknown}
+             */
+            union?: "all" | "distinct";
+            from: components["schemas"]["from"];
+            /** @default [] */
+            joins?: components["schemas"]["join"][];
+            /** @description The same number of fields as the anchor, with the same names in the same order. */
+            select: (components["schemas"]["field"] & unknown)[];
+            where?: components["schemas"]["predicate"];
+        };
         /** Query parameter */
         parameter: {
             name: components["schemas"]["identifier"];
@@ -10373,6 +10439,26 @@ export interface components {
             /** @description The value the generated method uses when the caller passes none. */
             default?: string | number | boolean;
             description?: string;
+        };
+        /**
+         * Named query
+         * @description A select with a name (an entry of a WITH clause). Its columns are its select fields' names. With recursive, its select is the anchor and recursive the part that repeats.
+         */
+        namedQuery: {
+            /** @description The name sources use to read it. */
+            name: components["schemas"]["identifier"];
+            from: components["schemas"]["from"];
+            /** @default [] */
+            joins?: components["schemas"]["join"][];
+            /** @description The fields; each has a name, which is a column of the named query. */
+            select: (components["schemas"]["field"] & unknown)[];
+            where?: components["schemas"]["predicate"];
+            /** @default [] */
+            groupBy?: components["schemas"]["expression"][];
+            having?: components["schemas"]["predicate"];
+            /** @default false */
+            distinct?: boolean;
+            recursive?: components["schemas"]["recursivePart"];
         };
         /** Paging */
         paging: {
@@ -10391,8 +10477,23 @@ export interface components {
             query: components["schemas"]["subquery"];
         };
         /**
+         * Declared column
+         * @description A column each row of a SQL text has.
+         */
+        column: {
+            /** @description The name the SQL returns (an alias in the SQL gives any other). */
+            name: components["schemas"]["identifier"];
+            type: components["schemas"]["dbTypeRef"];
+            /**
+             * @description Whether the column may be null; false where the SQL guarantees a value.
+             * @default true
+             */
+            nullable?: boolean;
+            description?: string;
+        };
+        /**
          * Query
-         * @description A query over the tables and views of a database, written as data (model/databases/<db>/queries/): sources, joins, a select list, predicates, grouping, ordering, paging and collections. Its result shape is an entity, or the select list when no entity is named.
+         * @description A query of a database (model/databases/<db>/queries/), in one of two forms. Built from parts: sources, joins, a select list, predicates, grouping, ordering, paging, collections and named queries (with), written as data; its result shape is an entity, or the select list when no entity is named. SQL text: the team's own statement per dialect (sql), with :name placeholders for its parameters, the columns each row has (columns) and the tables and other objects it reads and writes (reads, writes), declared rather than read from the text.
          */
         query: {
             $schema?: components["schemas"]["schemaPath"];
@@ -10428,10 +10529,19 @@ export interface components {
              * @default []
              */
             parameters?: components["schemas"]["parameter"][];
-            from: components["schemas"]["from"];
+            /**
+             * @description Named queries (a WITH clause): each a select with a name that the query, its nested queries and the named queries listed after it may read as a source, by name. Built form only.
+             * @default []
+             */
+            with?: components["schemas"]["namedQuery"][];
+            from?: components["schemas"]["from"];
             /** @default [] */
             joins?: components["schemas"]["join"][];
-            select: components["schemas"]["field"][];
+            /**
+             * @description The select list; required in the built form, and not written in the SQL text form.
+             * @default []
+             */
+            select?: components["schemas"]["field"][];
             where?: components["schemas"]["predicate"];
             /** @default [] */
             groupBy?: components["schemas"]["expression"][];
@@ -10446,6 +10556,23 @@ export interface components {
              * @default []
              */
             collections?: components["schemas"]["collection"][];
+            /** @description The statement as SQL text per dialect (or "*" for any): the text for the database's dialect is its own entry, else "*". Parameters are written :name in every dialect. Rendered as written, with only the white space at both ends removed (a final semicolon stays) and the placeholders rewritten; where a binding wraps it in a derived table, one final semicolon and the comments after it are left out. SQL text form only, and required there. */
+            sql?: components["schemas"]["dialectMap"];
+            /**
+             * @description The columns each row of a SQL text has, by name, in order. None: the statement returns no rows the code reads (a command returns the number of rows changed). Declared, not checked against the text or a database. SQL text form only.
+             * @default []
+             */
+            columns?: components["schemas"]["column"][];
+            /**
+             * @description The tables, views, routines, sequences and database types of the query's database that the SQL text reads or calls, as from.source names a table (a file id, a table key or an entity id). Declared, not read from the text. SQL text form only.
+             * @default []
+             */
+            reads?: string[];
+            /**
+             * @description The tables of the query's database that the SQL text inserts into, updates or deletes from, as from.source names a table. A query that writes changes data. SQL text form only.
+             * @default []
+             */
+            writes?: string[];
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */
@@ -10470,14 +10597,14 @@ export interface components {
                 };
                 /** Query source */
                 from: {
-                    /** @description A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there. */
+                    /** @description A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there; or the name of a named query of the query's with. */
                     source: string;
                     /** @description The name column references use (alias.column); absent, the table's or view's name. */
                     alias?: components["schemas"]["identifier"];
                 };
                 /** Join */
                 join: {
-                    /** @description A table or view of the query's database, as in from. */
+                    /** @description A table or view of the query's database, or the name of a named query of the query's with, as in from. */
                     source: string;
                     alias?: components["schemas"]["identifier"];
                     /**
@@ -10486,6 +10613,59 @@ export interface components {
                      */
                     kind?: "inner" | "left" | "right" | "full" | "cross";
                     on?: components["schemas"]["predicate"];
+                };
+                /**
+                 * Declared column
+                 * @description A column each row of a SQL text has.
+                 */
+                column: {
+                    /** @description The name the SQL returns (an alias in the SQL gives any other). */
+                    name: components["schemas"]["identifier"];
+                    type: components["schemas"]["dbTypeRef"];
+                    /**
+                     * @description Whether the column may be null; false where the SQL guarantees a value.
+                     * @default true
+                     */
+                    nullable?: boolean;
+                    description?: string;
+                };
+                /**
+                 * Named query
+                 * @description A select with a name (an entry of a WITH clause). Its columns are its select fields' names. With recursive, its select is the anchor and recursive the part that repeats.
+                 */
+                namedQuery: {
+                    /** @description The name sources use to read it. */
+                    name: components["schemas"]["identifier"];
+                    from: components["schemas"]["from"];
+                    /** @default [] */
+                    joins?: components["schemas"]["join"][];
+                    /** @description The fields; each has a name, which is a column of the named query. */
+                    select: (components["schemas"]["field"] & unknown)[];
+                    where?: components["schemas"]["predicate"];
+                    /** @default [] */
+                    groupBy?: components["schemas"]["expression"][];
+                    having?: components["schemas"]["predicate"];
+                    /** @default false */
+                    distinct?: boolean;
+                    recursive?: components["schemas"]["recursivePart"];
+                };
+                /**
+                 * Repeating part
+                 * @description The part of a recursive named query that repeats: it reads the named query's own name once, and its rows are added to the anchor's with union until it adds none.
+                 */
+                recursivePart: {
+                    /**
+                     * @description all keeps every row; distinct removes duplicates (not on SQL Server or Oracle).
+                     * @default all
+                     * @enum {unknown}
+                     */
+                    union?: "all" | "distinct";
+                    from: components["schemas"]["from"];
+                    /** @default [] */
+                    joins?: components["schemas"]["join"][];
+                    /** @description The same number of fields as the anchor, with the same names in the same order. */
+                    select: (components["schemas"]["field"] & unknown)[];
+                    where?: components["schemas"]["predicate"];
                 };
                 /** Select field */
                 field: {

@@ -526,6 +526,18 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        // An entry of a SQL text query's reads or writes (sql-queries-design.md decision 17): the text is the team's own work and the engine
+        // cannot tell whether it still needs the object, so in either resolution the entry goes and the query stays, with a delete-plan warning.
+        if (referrer.Element is Query { IsSqlText: true } && SqlTextEntry(reference.JsonPointer))
+        {
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != reference.JsonPointer), new CascadeOp(reference.JsonPointer, true, reference, index)];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                return;
+            }
+        }
+
         // An operation member's `type` or `keyOf` is its one form (MQ3024), as a returns' `entity` is (MQ3025), and the schema cannot
         // say so: clearing it would leave a part with neither. So the member or the returns goes with delete-dependents, and
         // remove-references refuses.
@@ -1501,6 +1513,10 @@ internal sealed partial class ChangePlanner
             ? SetEntry(segments, 4)
             : null;
 
+    /// <summary>Whether a pointer is an entry of a query's <c>reads</c> or <c>writes</c> (<c>/reads/0</c>).</summary>
+    private static bool SqlTextEntry(string pointer) =>
+        JsonPointer.TryParse(pointer, out var segments) && segments is ["reads" or "writes", var at] && JsonPointer.TryIndex(at, out _);
+
     private static bool IsUnder(string pointer, string ancestor) =>
         pointer.Length > ancestor.Length && pointer[ancestor.Length] == '/' && pointer.StartsWith(ancestor, StringComparison.Ordinal);
 
@@ -1643,12 +1659,22 @@ internal sealed partial class ChangePlanner
             .ToList();
         var clears = new List<DeletePlanClear>();
         var removes = new List<DeletePlanRemove>();
+        var warnings = new List<DeletePlanWarning>();
         foreach (var (referrerId, ops) in _cascadeOps.OrderBy(kv => kv.Key, StringComparer.Ordinal))
         {
             var document = _snapshot.GetDocument(referrerId)!;
             foreach (var op in ops.OrderBy(o => o.Pointer, PointerOrder.Instance))
             {
-                if (op.Remove)
+                if (op.Remove && document.Element is Query { IsSqlText: true } && SqlTextEntry(op.Pointer))
+                {
+                    // The query stays; its text may still name the object (sql-queries-design.md decision 17).
+                    var list = op.Pointer[1..op.Pointer.IndexOf('/', 1)];
+                    removes.Add(new DeletePlanRemove(referrerId, document.Element.KindName, NameOf(document.Element), op.Pointer,
+                        list + " entry " + ShortName(op.Reference.ToId), null, null, "names " + Label(op.Reference.ToId) + "; the query and its SQL text stay"));
+                    warnings.Add(new DeletePlanWarning(
+                        $"Query {NameOf(document.Element)}'s SQL text may still name {Label(op.Reference.ToId)}; check the text.", null, null));
+                }
+                else if (op.Remove)
                 {
                     var sub = DocumentReader.Scan(document.Json).Ids.Where(x => x.Pointer == op.Pointer).Select(x => x.Id).FirstOrDefault();
                     var subKind = sub is not null && _snapshot.TryGetEntry(sub, out var entry) ? entry.Kind : null;
@@ -1702,7 +1728,7 @@ internal sealed partial class ChangePlanner
         // Pack parameter refusals carry no element id; the delete plan reads them here, in every resolution (section 4.1).
         refused.AddRange(_packRefusals);
         var roots = _cascadeOrder.Where(id => _cascadeDeleted[id].Because is null).ToList();
-        return new DeletePlanReport(roots, deletes, clears, removes, refused, settings);
+        return new DeletePlanReport(roots, deletes, clears, removes, refused, settings, [.. warnings.Distinct()]);
     }
 
     /// <summary>
@@ -1862,10 +1888,12 @@ internal sealed partial class ChangePlanner
 /// <param name="Removes">Parts of surviving elements removed.</param>
 /// <param name="Refused">References that cannot be resolved.</param>
 /// <param name="Settings">Settings entries removed.</param>
+/// <param name="Warnings">What the deletes leave that may stop working (a SQL text that may still name a deleted table).</param>
 internal sealed record DeletePlanReport(
     IReadOnlyList<string> Roots,
     IReadOnlyList<DeletePlanDelete> Deletes,
     IReadOnlyList<DeletePlanClear> Clears,
     IReadOnlyList<DeletePlanRemove> Removes,
     IReadOnlyList<DeletePlanRefusal> Refused,
-    IReadOnlyList<DeletePlanSetting> Settings);
+    IReadOnlyList<DeletePlanSetting> Settings,
+    IReadOnlyList<DeletePlanWarning>? Warnings = null);

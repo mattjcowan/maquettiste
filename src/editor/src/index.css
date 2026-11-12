@@ -190,6 +190,13 @@
   border-left: 3px solid var(--mq-accent);
 }
 
+/* A :name placeholder in a query's SQL text. */
+.mq-sql-param {
+  background: var(--mq-accent-subtle);
+  color: var(--mq-accent);
+  font-weight: 600;
+}
+
 /* The statechart canvas (phase-3-design.md 6.3): the edges a simulation step just took flash once. Two identical
    animations alternate so a transition taken on two steps in a row flashes again; with reduced motion the edge is
    marked in the accent colour for the same time instead. */

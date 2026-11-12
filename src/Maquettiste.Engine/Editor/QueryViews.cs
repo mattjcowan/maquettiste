@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
@@ -11,9 +12,9 @@ namespace Maquettiste.Engine;
 /// <param name="Name">The query's name.</param>
 /// <param name="EntityId">The result entity's id, or <see langword="null"/> for an ad hoc row.</param>
 /// <param name="Parameters">The parameters, in order.</param>
-/// <param name="From">The first source.</param>
+/// <param name="From">The first source of a built query; <see langword="null"/> (left out) for a query written as SQL text.</param>
 /// <param name="Joins">The joined sources.</param>
-/// <param name="Select">The select list.</param>
+/// <param name="Select">The select list; for a query written as SQL text, its declared columns (each without an expression).</param>
 /// <param name="Where">The row filter as the file writes it (a predicate tree), or <see langword="null"/>.</param>
 /// <param name="GroupBy">The grouping expressions as the file writes them.</param>
 /// <param name="Having">The group filter as the file writes it, or <see langword="null"/>.</param>
@@ -22,11 +23,15 @@ namespace Maquettiste.Engine;
 /// <param name="Paging">The paging as the file writes it, or <see langword="null"/>.</param>
 /// <param name="Collections">The collections.</param>
 /// <param name="Sql">
-/// The SQL for the database's dialect (<c>@name</c> placeholders), with the hidden key columns its collections need, or
-/// <see langword="null"/> when it cannot be rendered there (as <see cref="RQuery.Sql"/>).
+/// The SQL for the database's dialect (<c>@name</c> placeholders), with the hidden key columns its collections need (for a query written
+/// as SQL text, its text as written with the white space at both ends removed, a final <c>;</c> kept), or <see langword="null"/> when it cannot be rendered there (as
+/// <see cref="RQuery.Sql"/>).
 /// </param>
 /// <param name="SqlParameters">The parameters the SQL names, in first-appearance order.</param>
-/// <param name="Uses">The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads.</param>
+/// <param name="Uses">
+/// The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads; for a query written as
+/// SQL text, its <c>reads</c>, resolved, in file order.
+/// </param>
 /// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
 /// <param name="PluralName">As <see cref="TableView.PluralName"/>.</param>
 /// <param name="Description">As <see cref="TableView.Description"/>.</param>
@@ -36,12 +41,22 @@ namespace Maquettiste.Engine;
 /// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
 /// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
 /// <param name="BoundBy">The entity bindings that read the query (erratum E43).</param>
+/// <param name="Form"><c>sql</c> for a query written as SQL text (sql-queries-design.md); <see langword="null"/> (left out) for a built query.</param>
+/// <param name="Texts">
+/// The file's <c>sql</c> of a query written as SQL text, as written (dialect name or <c>*</c> to text, <c>:name</c> placeholders);
+/// <see langword="null"/> (left out) for a built query.
+/// </param>
+/// <param name="Writes">
+/// The ids (keys, for a synthesized table) of the tables a query written as SQL text writes, in file order; <see langword="null"/> (left
+/// out) when none.
+/// </param>
+/// <param name="With">The named queries (a <c>WITH</c> clause) of a built query, in order; left out when it has none.</param>
 public sealed record QueryView(
     string Id,
     string Name,
     string? EntityId,
     IReadOnlyList<QueryParameterView> Parameters,
-    QuerySourceView From,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] QuerySourceView? From,
     IReadOnlyList<QuerySourceView> Joins,
     IReadOnlyList<QueryFieldView> Select,
     JsonElement? Where,
@@ -62,7 +77,24 @@ public sealed record QueryView(
     string? Category,
     IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation,
-    IReadOnlyList<BoundByView> BoundBy);
+    IReadOnlyList<BoundByView> BoundBy,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Form = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, string>? Texts = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Writes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<NamedQueryView>? With = null);
+
+/// <summary>A named query of a built query's <c>with</c> (sql-queries-design.md section 10).</summary>
+/// <param name="Name">The name sources read it by.</param>
+/// <param name="Query">The entry as the file writes it, without its repeating part.</param>
+/// <param name="Columns">Its columns: the anchor's field names in order, with their types, and nullable when either part's field is.</param>
+/// <param name="Recursive">The repeating part as the file writes it; left out when the named query is not recursive.</param>
+/// <param name="Union">How the repeating part's rows are added (<c>all</c> or <c>distinct</c>); left out when the named query is not recursive.</param>
+public sealed record NamedQueryView(
+    string Name,
+    JsonElement Query,
+    IReadOnlyList<QueryFieldView> Columns,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] JsonElement? Recursive,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Union);
 
 /// <summary>A parameter of a query.</summary>
 /// <param name="Name">The name.</param>
@@ -88,7 +120,9 @@ public sealed record QueryParameterView(string Name, string? Type, string? DbTyp
 /// <param name="Name">The physical name.</param>
 /// <param name="Schema">The schema name, or <see langword="null"/>.</param>
 /// <param name="On">The join condition as the file writes it, or <see langword="null"/>.</param>
-public sealed record QuerySourceView(string Source, string Alias, string Kind, string? TableKey, string? ViewId, string Name, string? Schema, JsonElement? On);
+/// <param name="NamedQuery">The name of the named query (of the query's <c>with</c>) the source reads; left out otherwise.</param>
+public sealed record QuerySourceView(string Source, string Alias, string Kind, string? TableKey, string? ViewId, string Name, string? Schema, JsonElement? On,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NamedQuery = null);
 
 /// <summary>A field of a select list.</summary>
 /// <param name="Name">The field's name in the result row.</param>
@@ -96,12 +130,17 @@ public sealed record QuerySourceView(string Source, string Alias, string Kind, s
 /// What it fills: an attribute's id, <c>attributeId.memberId</c> for a value object member, the relation end a to-one navigation leads
 /// to for its foreign key, or <see langword="null"/>.
 /// </param>
-/// <param name="Expression">The value as the file writes it (an expression tree).</param>
+/// <param name="Expression">The value as the file writes it (an expression tree); <see langword="null"/> (left out) for a declared column
+/// of a query written as SQL text.</param>
 /// <param name="Type">The built-in type keyword, or <see langword="null"/> when unknown.</param>
 /// <param name="NativeType">The native type, or <see langword="null"/> when unknown.</param>
 /// <param name="CodeType">The keyword a code type map maps, or <see langword="null"/>.</param>
 /// <param name="Nullable">Whether the value may be null.</param>
-public sealed record QueryFieldView(string Name, string? AttributeId, JsonElement Expression, string? Type, string? NativeType, string? CodeType, bool Nullable);
+/// <param name="Description">A declared column's description; <see langword="null"/> (left out) for a select field or without one.</param>
+public sealed record QueryFieldView(string Name, string? AttributeId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] JsonElement? Expression,
+    string? Type, string? NativeType, string? CodeType, bool Nullable,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Description = null);
 
 /// <summary>A collection of a query: its nested query and the statement that fills it for every parent row.</summary>
 /// <param name="Name">The collection's name.</param>
@@ -163,7 +202,7 @@ internal static class QueryViews
             query.Entity?.Id,
             [.. query.Parameters.Select(p => new QueryParameterView(p.Name, p.Type, p.DbType?.Id, p.Length, p.Precision, p.Scale, p.NativeType, p.CodeType,
                 p.Collection, p.Default, p.Description))],
-            Source(query.From, null),
+            query.From is null ? null : Source(query.From, null),
             [.. query.Joins.Select((j, i) => Source(j, file is not null && i < file.Joins.Count ? file.Joins[i].On : null))],
             Fields(query.Select, file?.Select),
             Tree(file?.Where),
@@ -184,7 +223,22 @@ internal static class QueryViews
             query.Category?.Id,
             query.Properties,
             query.Generation,
-            BindingViews.BoundBy(query.BoundBy, query));
+            BindingViews.BoundBy(query.BoundBy, query),
+            query.Form == "sql" ? "sql" : null,
+            query.Form == "sql" ? query.Texts : null,
+            query.Writes.Count > 0 ? [.. query.Writes.Select(t => t.Key)] : null,
+            query.With.Count == 0 ? null : [.. query.With.Select(n => Named(n, file))]);
+    }
+
+    private static NamedQueryView Named(RNamedQuery named, Query? file)
+    {
+        var entry = file is not null && named.Index < file.With.Count ? file.With[named.Index] : null;
+        return new NamedQueryView(
+            named.Name,
+            Tree(entry is null ? null : entry with { Recursive = null }) ?? EmptyObject,
+            Fields(named.Columns, entry?.Select),
+            Tree(entry?.Recursive),
+            named.Recursive is null ? null : named.Union);
     }
 
     /// <summary>The statements of a query for a dialect, with what the dialect cannot render.</summary>
@@ -223,11 +277,12 @@ internal static class QueryViews
         new(key.Outer.Column ?? key.Outer.Alias + "." + key.Outer.ColumnName, key.ParentField, key.Hidden, key.ChildField, key.Parameter, key.Type, key.NativeType);
 
     private static QuerySourceView Source(RQuerySource source, QueryPredicate? on) =>
-        new(source.Source, source.Alias, source.JoinKind, source.Table?.Key, source.View?.Id, source.Name, source.Schema, Tree(on));
+        new(source.Source, source.Alias, source.JoinKind, source.Table?.Key, source.View?.Id, source.Name, source.Schema, Tree(on), source.Named?.Name);
 
     private static List<QueryFieldView> Fields(IReadOnlyList<RQueryField> fields, IReadOnlyList<QueryField>? files) =>
         [.. fields.Select((f, i) => new QueryFieldView(f.Name, f.Member is { } member ? f.Attribute!.Id + "." + member.Id : f.Navigation?.To.Id ?? f.Attribute?.Id,
-            files is not null && i < files.Count ? Tree(files[i].Expression)!.Value : EmptyObject, f.Type, f.NativeType, f.CodeType, f.Nullable))];
+            f.Expression is null ? null : files is not null && i < files.Count ? Tree(files[i].Expression)!.Value : EmptyObject, f.Type, f.NativeType, f.CodeType,
+            f.Nullable, f.Description))];
 
     private static RQuery RootOf(RQuery query)
     {

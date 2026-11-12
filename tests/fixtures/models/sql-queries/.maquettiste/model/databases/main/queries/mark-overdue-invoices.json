@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01K9Q550000000000000000042",
+  "name": "MarkOverdueInvoices",
+  "database": "01K9Q550000000000000000002",
+  "description": "Marks the issued invoices due before a date as overdue.",
+  "parameters": [
+    {
+      "name": "asOf",
+      "type": "date"
+    }
+  ],
+  "sql": {
+    "*": "UPDATE invoices SET status = 'overdue'\nWHERE status = 'issued' AND due_on < :asOf"
+  },
+  "writes": [
+    "01K9Q550000000000000000030"
+  ]
+}

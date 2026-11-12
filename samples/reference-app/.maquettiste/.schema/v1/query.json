@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Query",
-  "description": "A query over the tables and views of a database, written as data (model/databases/<db>/queries/): sources, joins, a select list, predicates, grouping, ordering, paging and collections. Its result shape is an entity, or the select list when no entity is named.",
+  "description": "A query of a database (model/databases/<db>/queries/), in one of two forms. Built from parts: sources, joins, a select list, predicates, grouping, ordering, paging, collections and named queries (with), written as data; its result shape is an entity, or the select list when no entity is named. SQL text: the team's own statement per dialect (sql), with :name placeholders for its parameters, the columns each row has (columns) and the tables and other objects it reads and writes (reads, writes), declared rather than read from the text.",
   "type": "object",
   "x-order": [
     "$schema",
@@ -23,6 +23,7 @@
     "category",
     "entity",
     "parameters",
+    "with",
     "from",
     "joins",
     "select",
@@ -33,6 +34,10 @@
     "distinct",
     "paging",
     "collections",
+    "sql",
+    "columns",
+    "reads",
+    "writes",
     "properties",
     "generation",
     "source"
@@ -112,6 +117,14 @@
       },
       "default": []
     },
+    "with": {
+      "description": "Named queries (a WITH clause): each a select with a name that the query, its nested queries and the named queries listed after it may read as a source, by name. Built form only.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/namedQuery"
+      },
+      "default": []
+    },
     "from": {
       "$ref": "#/$defs/from"
     },
@@ -123,11 +136,13 @@
       "default": []
     },
     "select": {
+      "description": "The select list; required in the built form, and not written in the SQL text form.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/field"
       },
-      "minItems": 1
+      "minItems": 1,
+      "default": []
     },
     "where": {
       "$ref": "#/$defs/predicate"
@@ -164,6 +179,39 @@
       },
       "default": []
     },
+    "sql": {
+      "description": "The statement as SQL text per dialect (or \"*\" for any): the text for the database's dialect is its own entry, else \"*\". Parameters are written :name in every dialect. Rendered as written, with only the white space at both ends removed (a final semicolon stays) and the placeholders rewritten; where a binding wraps it in a derived table, one final semicolon and the comments after it are left out. SQL text form only, and required there.",
+      "$ref": "common.json#/$defs/dialectMap",
+      "minProperties": 1
+    },
+    "columns": {
+      "description": "The columns each row of a SQL text has, by name, in order. None: the statement returns no rows the code reads (a command returns the number of rows changed). Declared, not checked against the text or a database. SQL text form only.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/column"
+      },
+      "default": []
+    },
+    "reads": {
+      "description": "The tables, views, routines, sequences and database types of the query's database that the SQL text reads or calls, as from.source names a table (a file id, a table key or an entity id). Declared, not read from the text. SQL text form only.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "writes": {
+      "description": "The tables of the query's database that the SQL text inserts into, updates or deletes from, as from.source names a table. A query that writes changes data. SQL text form only.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "default": []
+    },
     "properties": {
       "$ref": "common.json#/$defs/properties",
       "default": {}
@@ -176,7 +224,58 @@
       "$ref": "common.json#/$defs/source"
     }
   },
-  "required": ["kind", "id", "name", "database", "from", "select"],
+  "required": ["kind", "id", "name", "database"],
+  "if": {
+    "required": ["sql"]
+  },
+  "then": {
+    "title": "SQL text",
+    "description": "A query written as SQL text has none of the keys of a built query (an empty list or false is allowed, since the canonical writer drops it).",
+    "x-order": ["entity", "with", "from", "joins", "select", "where", "groupBy", "having", "orderBy", "distinct", "paging", "collections"],
+    "properties": {
+      "entity": false,
+      "with": {
+        "maxItems": 0
+      },
+      "from": false,
+      "joins": {
+        "maxItems": 0
+      },
+      "select": false,
+      "where": false,
+      "groupBy": {
+        "maxItems": 0
+      },
+      "having": false,
+      "orderBy": {
+        "maxItems": 0
+      },
+      "distinct": {
+        "const": false
+      },
+      "paging": false,
+      "collections": {
+        "maxItems": 0
+      }
+    }
+  },
+  "else": {
+    "title": "Built from parts",
+    "description": "A query built from parts has from and select, and none of the keys of a query written as SQL text (an empty list is allowed).",
+    "required": ["from", "select"],
+    "x-order": ["columns", "reads", "writes"],
+    "properties": {
+      "columns": {
+        "maxItems": 0
+      },
+      "reads": {
+        "maxItems": 0
+      },
+      "writes": {
+        "maxItems": 0
+      }
+    }
+  },
   "additionalProperties": false,
   "$defs": {
     "parameter": {
@@ -221,7 +320,7 @@
       "x-order": ["source", "alias"],
       "properties": {
         "source": {
-          "description": "A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there.",
+          "description": "A table or view of the query's database: a table or view file's id, a table key as the database view lists it (<entity id>@<database id>), or an entity id for the entity's table there; or the name of a named query of the query's with.",
           "type": "string",
           "minLength": 1
         },
@@ -239,7 +338,7 @@
       "x-order": ["source", "alias", "kind", "on"],
       "properties": {
         "source": {
-          "description": "A table or view of the query's database, as in from.",
+          "description": "A table or view of the query's database, or the name of a named query of the query's with, as in from.",
           "type": "string",
           "minLength": 1
         },
@@ -255,6 +354,133 @@
         }
       },
       "required": ["source"],
+      "additionalProperties": false
+    },
+    "column": {
+      "title": "Declared column",
+      "description": "A column each row of a SQL text has.",
+      "type": "object",
+      "x-order": ["name", "type", "nullable", "description"],
+      "properties": {
+        "name": {
+          "description": "The name the SQL returns (an alias in the SQL gives any other).",
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "type": {
+          "$ref": "common.json#/$defs/dbTypeRef"
+        },
+        "nullable": {
+          "description": "Whether the column may be null; false where the SQL guarantees a value.",
+          "type": "boolean",
+          "default": true
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "type"],
+      "additionalProperties": false
+    },
+    "namedQuery": {
+      "title": "Named query",
+      "description": "A select with a name (an entry of a WITH clause). Its columns are its select fields' names. With recursive, its select is the anchor and recursive the part that repeats.",
+      "type": "object",
+      "x-order": ["name", "from", "joins", "select", "where", "groupBy", "having", "distinct", "recursive"],
+      "properties": {
+        "name": {
+          "description": "The name sources use to read it.",
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "from": {
+          "$ref": "#/$defs/from"
+        },
+        "joins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/join"
+          },
+          "default": []
+        },
+        "select": {
+          "description": "The fields; each has a name, which is a column of the named query.",
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/field"
+              },
+              {
+                "required": ["name"]
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "where": {
+          "$ref": "#/$defs/predicate"
+        },
+        "groupBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expression"
+          },
+          "default": []
+        },
+        "having": {
+          "$ref": "#/$defs/predicate"
+        },
+        "distinct": {
+          "type": "boolean",
+          "default": false
+        },
+        "recursive": {
+          "$ref": "#/$defs/recursivePart"
+        }
+      },
+      "required": ["name", "from", "select"],
+      "additionalProperties": false
+    },
+    "recursivePart": {
+      "title": "Repeating part",
+      "description": "The part of a recursive named query that repeats: it reads the named query's own name once, and its rows are added to the anchor's with union until it adds none.",
+      "type": "object",
+      "x-order": ["union", "from", "joins", "select", "where"],
+      "properties": {
+        "union": {
+          "description": "all keeps every row; distinct removes duplicates (not on SQL Server or Oracle).",
+          "enum": ["all", "distinct"],
+          "default": "all"
+        },
+        "from": {
+          "$ref": "#/$defs/from"
+        },
+        "joins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/join"
+          },
+          "default": []
+        },
+        "select": {
+          "description": "The same number of fields as the anchor, with the same names in the same order.",
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/field"
+              },
+              {
+                "required": ["name"]
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "where": {
+          "$ref": "#/$defs/predicate"
+        }
+      },
+      "required": ["from", "select"],
       "additionalProperties": false
     },
     "field": {

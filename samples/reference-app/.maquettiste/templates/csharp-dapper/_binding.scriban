@@ -161,14 +161,16 @@ public partial interface I{{ name }}Repository
 /// <summary>The Dapper implementation of <see cref="I{{ name }}Repository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class {{ name }}Repository(IDbConnection connection, IDbTransaction? transaction = null) : I{{ name }}Repository
 {
-    private const string SelectSql = """
-{{ indent (binding_sql b "select-by-key") 8 }}
-        """;
+{{- mq_sql = binding_sql b "select-by-key" }}
+    private const string SelectSql = {{ raw_quotes mq_sql }}
+{{ indent mq_sql 8 }}
+        {{ raw_quotes mq_sql }};
+{{- mq_sql = binding_sql b "select" }}
 
-    private const string ListSql = """
-{{ indent (binding_sql b "select") 8 }}
+    private const string ListSql = {{ raw_quotes mq_sql }}
+{{ indent mq_sql 8 }}
         ORDER BY {{ order_by | array.join ", " }} {{ paging }}
-        """;
+        {{ raw_quotes mq_sql }};
 {{- if writes }}
 
     private const string InsertSql = """

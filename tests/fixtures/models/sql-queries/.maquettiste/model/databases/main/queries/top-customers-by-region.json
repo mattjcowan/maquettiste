@@ -1,0 +1,55 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01K9Q550000000000000000041",
+  "name": "TopCustomersByRegion",
+  "database": "01K9Q550000000000000000002",
+  "description": "The best customers of each region by revenue between two dates.",
+  "parameters": [
+    {
+      "name": "fromDate",
+      "type": "date"
+    },
+    {
+      "name": "toDate",
+      "type": "date"
+    },
+    {
+      "name": "perRegion",
+      "type": "int32",
+      "default": 5
+    }
+  ],
+  "sql": {
+    "*": "SELECT region, customer_id, revenue, place\nFROM (\n  SELECT c.region, c.id AS customer_id, SUM(i.total) AS revenue,\n         RANK() OVER (PARTITION BY c.region ORDER BY SUM(i.total) DESC) AS place\n  FROM invoices i\n  JOIN customers c ON c.id = i.customer_id\n  WHERE i.issued_on BETWEEN :fromDate AND :toDate\n  GROUP BY c.region, c.id\n) ranked\nWHERE place <= :perRegion",
+    "postgresql": "SELECT region, customer_id, revenue, place\nFROM (\n  SELECT c.region, c.id AS customer_id, SUM(i.total)::numeric(14,2) AS revenue,\n         RANK() OVER (PARTITION BY c.region ORDER BY SUM(i.total) DESC) AS place\n  FROM invoices i\n  JOIN customers c ON c.id = i.customer_id\n  WHERE i.issued_on BETWEEN :fromDate AND :toDate\n  GROUP BY c.region, c.id\n) ranked\nWHERE place <= :perRegion",
+    "sqlite": "SELECT region, customer_id, revenue, place\nFROM (\n  SELECT c.region, c.id AS customer_id, CAST(SUM(i.total) AS REAL) AS revenue,\n         RANK() OVER (PARTITION BY c.region ORDER BY SUM(i.total) DESC) AS place\n  FROM invoices i\n  JOIN customers c ON c.id = i.customer_id\n  WHERE i.issued_on BETWEEN :fromDate AND :toDate\n  GROUP BY c.region, c.id\n) ranked\nWHERE place <= :perRegion"
+  },
+  "columns": [
+    {
+      "name": "region",
+      "type": "string",
+      "nullable": false
+    },
+    {
+      "name": "customer_id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "name": "revenue",
+      "type": "decimal",
+      "description": "The customer's invoiced total in the period."
+    },
+    {
+      "name": "place",
+      "type": "int64",
+      "nullable": false,
+      "description": "1 for the region's best customer; ties share a place."
+    }
+  ],
+  "reads": [
+    "01K9Q550000000000000000030",
+    "01K9Q550000000000000000020"
+  ]
+}

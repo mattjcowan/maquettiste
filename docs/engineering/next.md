@@ -143,7 +143,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
 | 3.12 | Projections | no | Later | Added by the roadmap's review; operation payloads and scenarios use them. Needs 3.8. |
-| 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Later | For database-first teams. Written tables and result columns are declared, not read from the SQL text. Includes raw SQL as a binding's read source (from the bindings work below). |
+| 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Built, unreleased | [Design](sql-queries-design.md). For database-first teams. Written tables and result columns are declared, not read from the SQL text. Includes raw SQL as a binding's read source (from the bindings work below), built through hand-written queries. |
 | 6.1 | A live PostgreSQL planner: `db plan`, `db apply`, `db adopt` | yes | Later | Large, PostgreSQL only. Built when more than one team manages databases with Maquettiste. |
 | 6.5 | `db check`: generated DDL run against a scratch database | yes | Later | The second part of 6.5. A SQL parser is decided after `db check` shows how much is left. |
 | 6.3 | SQL objects that revert | yes | Later | Built with the live planner (6.1), which runs the revert statements. |
@@ -225,7 +225,7 @@ Milestone D added provenance, drift and re-sync (3.5).
 Left:
 
 - **Raw SQL as a read source.** A binding reads from a hand-written SQL statement, not only a table, view or query.
-  Moved to the query kind (5.5).
+  Built through hand-written queries (5.5, unreleased): a binding's source may be a query written as SQL text.
 - **Split.** One entity read from and written to several tables.
 - **Routine bindings.** Read, write and delete through stored routines.
 - **Converters** as named, reusable elements on a field map.

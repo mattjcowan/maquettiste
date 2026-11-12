@@ -533,6 +533,31 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// The sql-queries fixture (sql-queries-design.md section 21) with both example packs: PostgreSQL database <c>main</c> with
+    /// designed tables <c>categories</c> (a tree), <c>customers</c> and <c>invoices</c>; the built query <c>CategoryAncestors</c>
+    /// with a recursive named query; <c>TopCustomersByRegion</c>, written as SQL text (a window function; a PostgreSQL text and a
+    /// <c>"*"</c> text every other dialect runs); the command <c>MarkOverdueInvoices</c> (SQL text that writes <c>invoices</c>);
+    /// and entity <c>RegionLeader</c>, bound read-only to <c>TopCustomersByRegion</c>. With <paramref name="dialect"/>, the
+    /// database is of that dialect, so the generated code runs on SQLite in process (CompileTests) or on a server.
+    /// </summary>
+    /// <param name="dialect">The database's dialect; null keeps PostgreSQL.</param>
+    /// <returns>The repo.</returns>
+    public static PackRepo SqlQueries(string? dialect = null)
+    {
+        var repo = new PackRepo();
+        CopyTree(Fixtures.Path("models", "sql-queries", ".maquettiste"), repo.Repo.ModelRoot);
+        foreach (var pack in Packs)
+            CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", pack), Path.Combine(repo.Repo.ModelRoot, "templates", pack));
+        if (dialect is not null)
+            repo.EditJson(".maquettiste/model/databases/main/database.json", database =>
+            {
+                database["dialect"] = dialect;
+                database.AsObject().Remove("version");
+            });
+        return repo;
+    }
+
+    /// <summary>
     /// A fixture model (<c>tests/fixtures/models/&lt;fixture&gt;</c>) with only the TypeScript sample pack
     /// (<c>samples/typescript-pack</c>), writing to the root <c>web</c>. Relative imports end in <c>.ts</c>, so node runs
     /// the output with its type stripping, and zod schemas are off, so the output needs no package beyond node's types.

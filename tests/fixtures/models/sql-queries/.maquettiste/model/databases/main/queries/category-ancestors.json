@@ -1,0 +1,147 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01K9Q550000000000000000040",
+  "name": "CategoryAncestors",
+  "database": "01K9Q550000000000000000002",
+  "description": "A category and its ancestors up to the top, nearest first.",
+  "parameters": [
+    {
+      "name": "categoryId",
+      "type": "int64"
+    }
+  ],
+  "with": [
+    {
+      "name": "chain",
+      "from": {
+        "source": "01K9Q550000000000000000010",
+        "alias": "c"
+      },
+      "select": [
+        {
+          "name": "id",
+          "expression": {
+            "column": "c.id"
+          }
+        },
+        {
+          "name": "parentId",
+          "expression": {
+            "column": "c.parent_id"
+          }
+        },
+        {
+          "name": "depth",
+          "expression": {
+            "value": 0
+          }
+        }
+      ],
+      "where": {
+        "op": "eq",
+        "left": {
+          "column": "c.id"
+        },
+        "right": {
+          "param": "categoryId"
+        }
+      },
+      "recursive": {
+        "from": {
+          "source": "chain",
+          "alias": "ch"
+        },
+        "joins": [
+          {
+            "source": "01K9Q550000000000000000010",
+            "alias": "p",
+            "on": {
+              "op": "eq",
+              "left": {
+                "column": "p.id"
+              },
+              "right": {
+                "column": "ch.parentId"
+              }
+            }
+          }
+        ],
+        "select": [
+          {
+            "name": "id",
+            "expression": {
+              "column": "p.id"
+            }
+          },
+          {
+            "name": "parentId",
+            "expression": {
+              "column": "p.parent_id"
+            }
+          },
+          {
+            "name": "depth",
+            "expression": {
+              "op": "+",
+              "args": [
+                {
+                  "column": "ch.depth"
+                },
+                {
+                  "value": 1
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "from": {
+    "source": "chain",
+    "alias": "a"
+  },
+  "joins": [
+    {
+      "source": "01K9Q550000000000000000010",
+      "alias": "c",
+      "on": {
+        "op": "eq",
+        "left": {
+          "column": "c.id"
+        },
+        "right": {
+          "column": "a.id"
+        }
+      }
+    }
+  ],
+  "select": [
+    {
+      "name": "id",
+      "expression": {
+        "column": "a.id"
+      }
+    },
+    {
+      "name": "name",
+      "expression": {
+        "column": "c.name"
+      }
+    },
+    {
+      "name": "depth",
+      "expression": {
+        "column": "a.depth"
+      }
+    }
+  ],
+  "orderBy": [
+    {
+      "expression": {
+        "column": "a.depth"
+      }
+    }
+  ]
+}

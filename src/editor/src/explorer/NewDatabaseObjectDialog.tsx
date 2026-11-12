@@ -24,6 +24,7 @@ import { useEditor, type NewDatabaseObjectRequest } from "@/state/store";
 import { BUILTIN_TYPES } from "@/model/model";
 import type { BuiltinType } from "@/api/types";
 import { sourceOptions } from "@/model/queryTree";
+import { setView } from "@/editors/tabs";
 import {
   ANY_DIALECT,
   buildDatabaseObject,
@@ -35,6 +36,7 @@ import {
   OBJECT_PHASES,
   queryAlias,
   querySelect,
+  queryTextTemplate,
   ROUTINE_KINDS,
   routineBodyTemplate,
   SEQUENCE_TYPES,
@@ -44,6 +46,7 @@ import {
   viewBodyTemplate,
   type DatabaseElementKind,
   type ObjectPhase,
+  type QueryForm,
   type RoutineKind,
   type SequenceType,
   type TakenName,
@@ -102,7 +105,13 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
   const [body, setBody] = useState<string | null>(null);
   const [routineKind, setRoutineKind] = useState<RoutineKind>("function");
   const bodyTemplate = (d: string, rk: RoutineKind = routineKind) =>
-    kind === "routine" ? routineBodyTemplate(d, rk) : kind === "sql-object" ? SQL_OBJECT_BODY_TEMPLATE : viewBodyTemplate(d);
+    kind === "routine"
+      ? routineBodyTemplate(d, rk)
+      : kind === "sql-object"
+        ? SQL_OBJECT_BODY_TEMPLATE
+        : kind === "query"
+          ? queryTextTemplate(d)
+          : viewBodyTemplate(d);
   const shownBody = body ?? bodyTemplate(shownDialect);
   const [returns, setReturns] = useState<BuiltinType | "">("int32");
   const [typeKind, setTypeKind] = useState<TypeKind>("domain");
@@ -111,6 +120,7 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
   const [members, setMembers] = useState("");
   const [objectKind, setObjectKind] = useState("trigger");
   const [phase, setPhase] = useState<ObjectPhase>("after");
+  const [form, setForm] = useState<QueryForm>("parts");
   const [source, setSource] = useState<string | null>(null);
   const [alias, setAlias] = useState<string | null>(null);
   const [type, setType] = useState<SequenceType>("int64");
@@ -155,8 +165,9 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
     database,
     schema: schemaId,
     withIdColumn,
-    dialect: shownDialect,
+    dialect: kind === "query" ? dialect : shownDialect,
     body: shownBody,
+    form: kind === "query" ? form : undefined,
     type,
     start,
     increment,
@@ -203,6 +214,8 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
       s.setSidebar("databases");
       // Anything but a table opens in front of its database's screen; a table's Open focuses it there itself.
       if (kind !== "table") openDatabase(database);
+      // A query written as SQL text opens on its SQL text tab.
+      if (kind === "query" && form === "sql") s.updateEditors((e) => setView(e, "query", "sqltext"));
       openEditor(summary, true);
       s.notify(`Created ${name.trim()}.`);
     } finally {
@@ -240,6 +253,22 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
             </p>
           ) : null}
           {kind === "query" ? (
+            <Field
+              label="Written as"
+              htmlFor="new-db-form"
+              hint="Built from parts: the editor builds the SQL from sources, fields and filters. SQL text: you write the SQL yourself."
+            >
+              <Select id="new-db-form" value={form} onChange={(e) => setForm(e.target.value as QueryForm)}>
+                <option value="parts">Built from parts</option>
+                <option value="sql">SQL text</option>
+              </Select>
+            </Field>
+          ) : null}
+          {kind === "query" && form === "sql" ? (
+            <p className="text-11 text-secondary">
+              Starts with a SELECT for {dialect}; the query&apos;s editor has the SQL text, parameters, columns and tables.
+            </p>
+          ) : kind === "query" ? (
             <>
               <div className="grid grid-cols-[1fr_8rem] gap-2">
                 <Field label="From" htmlFor="new-db-source" hint="A table or view of this database.">

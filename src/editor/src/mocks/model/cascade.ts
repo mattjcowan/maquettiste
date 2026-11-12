@@ -15,6 +15,9 @@ export interface CascadeDoc {
   json: Json;
 }
 
+/** The delete plan's warning for a query written as SQL text that loses an entry of reads or writes (one place, as the engine's). */
+export const sqlTextMayStillName = (query: string, target: string): string => `Query ${query}'s SQL text may still name ${target}; check the text.`;
+
 interface Op {
   pointer: string;
   /** The pointer names an array item (spliced) rather than a property (deleted). */
@@ -33,6 +36,8 @@ export interface Cascade {
 }
 
 const NOUNS: Record<string, string> = {
+  tables: "table",
+  views: "view",
   attributes: "attribute",
   ends: "end",
   members: "member",
@@ -419,6 +424,14 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
               ? `${describe(op.ref.toId)} was the only ${op.ref.field.replace(/s$/, "")} it names; with none it would apply to everything, so it goes too`
               : `needs ${describe(op.ref.toId)}`,
         });
+      } else if (doc.json.kind === "query" && (op.ref.field === "reads" || op.ref.field === "writes") && /^\/(reads|writes)\/\d+$/.test(op.pointer)) {
+        // A SQL text query keeps its text: the entry goes and the query stays (the plan warns below).
+        plan.removes.push({
+          ...base,
+          pointer: op.pointer,
+          what: `${op.ref.field} entry ${shortName(op.ref.toId)}`,
+          because: `names ${describe(op.ref.toId)}; the query and its SQL text stay`,
+        });
       } else if (doc.json.kind === "diagram" && op.ref.field === "element") {
         plan.removes.push({
           ...base,
@@ -443,6 +456,16 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
       }
     }
   }
+
+  // A query written as SQL text keeps its text when a table it reads or writes goes: the text may still name it.
+  for (const [id, list] of [...ops].sort(([a], [b]) => a.localeCompare(b)))
+    for (const op of list) {
+      if (op.ref.field !== "reads" && op.ref.field !== "writes") continue;
+      const doc = docs.get(id);
+      if (!doc || doc.json.kind !== "query") continue;
+      const message = sqlTextMayStillName(nameOf(doc), describe(op.ref.toId));
+      if (!plan.warnings.some((w) => w.message === message)) plan.warnings.push({ message });
+    }
 
   if (plan.refused.some((r) => r.rule === "not-found")) plan.outcome = "not-found";
   else if (plan.refused.some((r) => r.rule === "referenced")) plan.outcome = "referenced";

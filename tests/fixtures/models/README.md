@@ -16,6 +16,15 @@ Every file is canonical and loads without any diagnostic (`BillingFixtureTests`)
   `limits.scriptTimeoutMs` to 0, which turns the wall clock off for scripts and for guard and action expressions (the statement
   limits still bound them), so every test that replays, verifies or generates over them gives the same result on a busy runner.
 
+- `sql-queries/`: queries written as SQL text and named queries (sql-queries-design.md section 21). PostgreSQL database `main`
+  with designed tables `categories` (a tree: `parent_id` names the parent), `customers` and `invoices`; the built query
+  `CategoryAncestors` with a recursive named query `chain`; `TopCustomersByRegion`, written as SQL text with a window function
+  (a `postgresql` text, a `sqlite` text and a `"*"` text for the other dialects); the command `MarkOverdueInvoices` (an
+  `UPDATE` that writes `invoices`, no columns); and entity `RegionLeader` in package `Shop`, bound read-only to
+  `TopCustomersByRegion`. Validates without any finding. The pack tests generate it (`GoldenTests`), run it on SQLite in
+  process (`CompileTests`) and on PostgreSQL and SQL Server when the test containers are set (`SqlQueryServerTests`), and check
+  the model rules over it (`SqlQueryAcceptanceTests`).
+
 - `showcase/`: Spoke & Chain, an invented bicycle-sharing and repair cooperative, for the documentation's screenshots
   (`npm run docs:screenshots` in src/editor, tests/docs/take.sh) and the guides' story. Four domains, 17 entities, 20 relations,
   two enums, three reference types with seeds, a table seed, PostgreSQL database `main` with 19 bound tables, a view and a query,
