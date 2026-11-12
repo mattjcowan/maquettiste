@@ -1297,7 +1297,7 @@
                   "enums": {
                     "summary": "GET /api/model/resolved?scope=enums on the billing fixture",
                     "value": {
-                      "contract": "0.24.0",
+                      "contract": "0.25.0",
                       "schema": "resolved-model.json",
                       "items": [
                         {
@@ -1362,7 +1362,7 @@
                   "entity": {
                     "summary": "GET /api/model/resolved?scope=entities&limit=1&cursor=... (Product, two of its five attributes shown)",
                     "value": {
-                      "contract": "0.24.0",
+                      "contract": "0.25.0",
                       "schema": "resolved-model.json",
                       "items": [
                         {

@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## Unreleased
+## 0.25.0 (2026-11-11)
 
 - **Hand-written SQL queries and named queries (WITH).** A query can now be written as SQL text, and a built query can start
   with named parts. Maquettiste still never runs SQL and never connects to your database: it states what the query reads and

@@ -2,7 +2,7 @@
 
 <!-- Generated from the engine's record types by the engine tests; do not edit. -->
 
-**Contract 0.24.0.** This page describes what Maquettiste 0.24.0 answers when you read the resolved model: the model as
+**Contract 0.25.0.** This page describes what Maquettiste 0.25.0 answers when you read the resolved model: the model as
 code generation sees it, with names, types, keys, tables and processes worked out. Until version 1 the contract is the
 Maquettiste release and is not frozen: any release may change it, and this page changes with it.
 
@@ -34,7 +34,7 @@ A page (API and MCP):
 
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
-| `contract` | string | never | The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release. Always `0.24.0`. |
+| `contract` | string | never | The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release. Always `0.25.0`. |
 | `schema` | string | never | The file name of the JSON Schema that describes the page: `resolved-model.json`. A project holds it in `.maquettiste/.schema/v1/`; `GET /api/model/resolved/schema` and the MCP tool `get_schema` (`resolved-model`) return it. Always `resolved-model.json`. |
 | `items` | list of record (by `kind`) | never | The records of the page, ordered by kind, then name, then id (ordinal); migration facts by database name, then applied order. Each record has `id`, `kind` and `name`, and `kind` says which record it is. |
 | `next` | string | can be null | The cursor of the next page, or null on the last one. |
