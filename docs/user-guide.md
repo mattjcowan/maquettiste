@@ -5487,7 +5487,7 @@ maquettiste model stats
 maquettiste model export --kind entity --fields name,attributes --format ndjson > entities.ndjson
 maquettiste model export --resolved --scope tables --database main --format ndjson > tables.ndjson
 # a first line with the contract version, then one line per table, each with the table's columns, keys, foreign keys and indexes:
-# {"contract":"0.24.0","schema":"resolved-model.json"}
+# {"contract":"0.25.0","schema":"resolved-model.json"}
 # {"id":"01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4","kind":"table","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","table":{...}}
 ```
 

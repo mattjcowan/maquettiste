@@ -143,7 +143,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
 | 3.12 | Projections | no | Later | Added by the roadmap's review; operation payloads and scenarios use them. Needs 3.8. |
-| 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Built, unreleased | [Design](sql-queries-design.md). For database-first teams. Written tables and result columns are declared, not read from the SQL text. Includes raw SQL as a binding's read source (from the bindings work below), built through hand-written queries. |
+| 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Built, 0.25.0 (#82) | [Design](sql-queries-design.md). For database-first teams. Written tables and result columns are declared, not read from the SQL text. Includes raw SQL as a binding's read source (from the bindings work below), built through hand-written queries. |
 | 6.1 | A live PostgreSQL planner: `db plan`, `db apply`, `db adopt` | yes | Later | Large, PostgreSQL only. Built when more than one team manages databases with Maquettiste. |
 | 6.5 | `db check`: generated DDL run against a scratch database | yes | Later | The second part of 6.5. A SQL parser is decided after `db check` shows how much is left. |
 | 6.3 | SQL objects that revert | yes | Later | Built with the live planner (6.1), which runs the revert statements. |
@@ -159,7 +159,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 | --- | --- | --- | --- | --- |
 | 3.13 | Views of the model: saved criteria that select elements | no | Later | Added by the roadmap's review. It was to be part of the documentation pack (5.6), which is not being built for now. |
 | 5.10 | The trace map from generated lines to element ids | yes | Later | The second part of 5.10. |
-| 4.6 | Processes linked to operations (was "Charts joined to operations"): checks on the operations that fire events, actions that call an operation with typed inputs, service steps that name their operation, both directions in the resolved model, the editor screens | yes | Built, unreleased | [Design](processes-operations-design.md). Trimmed by the owner on 2026-11-10: no generated process runtime; Maquettiste models processes and runs none, and says exactly what each link states and what is left to the team. |
+| 4.6 | Processes linked to operations (was "Charts joined to operations"): checks on the operations that fire events, actions that call an operation with typed inputs, service steps that name their operation, both directions in the resolved model, the editor screens | yes | Built, 0.25.0 (#80) | [Design](processes-operations-design.md). Trimmed by the owner on 2026-11-10: no generated process runtime; Maquettiste models processes and runs none, and says exactly what each link states and what is left to the team. |
 | 4.5 | A structure hash per process, and records in flight when a process changes | yes | Later | Needs the lifecycle (4.1); the state map is a step in the migration ledger (6.2). |
 | 8.1 | Scenarios run against the running system | yes | Later | Needs operations (3.6) and projections (3.12); the team writes the test template. |
 | 8.5 | Upgrade tests from history | yes | Covered | No separate feature: build the previous version from a folder or snapshot, migrate, run the suite. The guide page "Upgrade tests" walks through it. |
@@ -225,7 +225,7 @@ Milestone D added provenance, drift and re-sync (3.5).
 Left:
 
 - **Raw SQL as a read source.** A binding reads from a hand-written SQL statement, not only a table, view or query.
-  Built through hand-written queries (5.5, unreleased): a binding's source may be a query written as SQL text.
+  Built through hand-written queries (5.5, 0.25.0): a binding's source may be a query written as SQL text.
 - **Split.** One entity read from and written to several tables.
 - **Routine bindings.** Read, write and delete through stored routines.
 - **Converters** as named, reusable elements on a field map.
