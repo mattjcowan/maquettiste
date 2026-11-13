@@ -60,6 +60,8 @@ The model keeps two keys on a subject entry for the last items, but does not acc
 | | Revisions: a revision sequence, revising to a chosen name, and release moving the revision on | yes (the owner) | Built, 0.23.0 | [Design](revisions-design.md), [capabilities, part G](lifecycle-capabilities.md#g-revisions). One `revisions` block on a type: levels, separator, Held in, and what a revise carries over (lifecycles, attributes, links); `nextRevision` on a move; scenarios and `process-docs`. Waits: readings in conditions (`is_latest`, `at_revision`), what a copy carries over, an edit that revises by itself, links in a run. Not the same as sealing migration facts (6.2). |
 | | Lifecycles on custom kinds and tables, not only entities | yes (the owner) | Later | [Design, section 12](lifecycle-design.md#12-what-comes-next). Needs the `when` key. |
 | | One of several lifecycles per object | yes (the owner) | Later | [Design, section 2 and decision on subjects](lifecycle-design.md#2-what-the-owner-said). Adds a `when` condition to the subject entry; an entry without one keeps its meaning. |
+| | Rights on types with no lifecycle | yes (the owner) | Later | [Rights design, decision 8](rights-design.md). The owner put it later on 2026-11-06. Until then a type with no lifecycle has no rights. |
+| | Revisions, the rest: reading the revision in conditions (`is_latest`, `at_revision`), what a copy carries over, an edit that revises by itself, links in a run | yes (the owner) | Later | What revisions (0.23.0) left out; see its row above and [the design](revisions-design.md). |
 
 ## Phase 1: built in 0.11.0
 
@@ -125,6 +127,13 @@ it. 0.12.0 was released on 2026-11-04.
 | Sign-off part 2: the simulation panel's Start row clips one select, and the Verbs tab doesn't count `delegate`'s uses | no | Later | Found in 0.20.0's browser passes. The owner said on 2026-11-08 they can wait; neither changes a name. |
 | The provided packs as examples: cut `csharp-dapper`'s lifecycle runtime (step runners, trigger point pipelines, sign-off and delegation) back to examples of reading the model, and have gate 3 check that the generated code builds rather than run every scenario through it | no (proposed) | Proposed, waits for the owner's word | The owner, 2026-11-09: the packs are "an example of how you access the variety of settings", to make it easier to author custom packs; Maquettiste "doesn't just take a model and generate a working system". New designs follow this from revisions on. Cutting the runtime already released changes pack output, so it needs a note in the release notes. |
 | Sealing facts into a revision, and squashing (6.2) | yes | Later | Built with the live planner (6.1): squashing must check each environment's ledger, which only 6.1 reads. Facts stay open until then. |
+| Hand-written queries (5.5): SQL text in a separate `.sql` file beside the query, and for views and routines too | no | Later, if teams ask | [Design, section 19](sql-queries-design.md#19-what-comes-next), question 4. Needs sidecar loading, watching, renames and snapshots for three kinds at once. |
+| Hand-written queries (5.5): a recursion limit (`maxRecursion`) and cycle detection on a recursive named query | no | Later, if teams ask | [Design, section 19](sql-queries-design.md#19-what-comes-next), decision 13. Each dialect says it differently. |
+| Hand-written queries (5.5): **Convert to SQL text** on a built query | no | Later, if teams ask | [Design, section 19](sql-queries-design.md#19-what-comes-next). Starts a hand-written query from the built one's SQL. |
+| Hand-written queries (5.5): one row, or one value, as a query's result | no | Later, if teams ask | [Design, section 19](sql-queries-design.md#19-what-comes-next). A new result shape for both query forms. |
+| Hand-written queries (5.5): `table.written_by`, the queries that write a table | no | Later, if teams ask | [Design, section 19](sql-queries-design.md#19-what-comes-next). Templates can filter `database.queries` by `writes` today. |
+| Hand-written queries (5.5): writes to views | no | Later, if teams ask | [Design, section 19](sql-queries-design.md#19-what-comes-next). Few teams write through views. |
+| Hand-written queries (5.5): declared columns checked against a live database | no | Later | [Design, section 19](sql-queries-design.md#19-what-comes-next). Comes with `db check` (6.5). |
 | Rationale, decision and status in templates for enum members, stereotypes and categories (3.11) | yes | Built, 0.12.0 | |
 | Expression checks on a table an entity's mapping projects, naming the entity's columns (3.8) | yes | Built, 0.12.1 | An overlay's tree check names the entity's attributes and value object members by attribute name, since validation cannot know the column names the conventions give them; resolution lowers it through the projected table's columns, and an attribute the table does not store is MQ4008 at the check. |
 
@@ -147,7 +156,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 | 6.1 | A live PostgreSQL planner: `db plan`, `db apply`, `db adopt` | yes | Later | Large, PostgreSQL only. Built when more than one team manages databases with Maquettiste. |
 | 6.5 | `db check`: generated DDL run against a scratch database | yes | Later | The second part of 6.5. A SQL parser is decided after `db check` shows how much is left. |
 | 6.3 | SQL objects that revert | yes | Later | Built with the live planner (6.1), which runs the revert statements. |
-| 6.3 | Typed triggers and row-level security policies | yes | Later | SQL objects cover these today. Typed grants are in "Not doing". |
+| 6.3 | Typed triggers and row-level security policies | yes | Later | SQL objects cover these today. Typed grants are in "Not doing". Decided 2026-11-12: a policy's conditions (`using`, `withCheck`) and a trigger's `when` are written in the expression language (3.8), checked against the table's columns and lowered to SQL, with a SQL-text form kept for what the language can't say. PostgreSQL first, as for every expression (MQ4056 elsewhere). |
 | 7.6 | Conventions tied to the rules that check them; where each resolved value came from | yes | Later | Helps agents explain answers. |
 | 4.3 | Approval gates with stages | yes | Built, 0.20.0 (#67) | Built with richer sign-off part 2: [design](signoff-design.md) (rounds in series and side by side, and a stage skipped by a condition). |
 | 4.4 | Timers from elements, task contracts, editable fields per state | yes | Later | Close to a team's workflow engine; after the lifecycle (4.1) and shared guards (4.2). Timers are an optional extra and reach beyond charts (the owner, 2026-11-10): before building, list every place a time limit fits (waits on moves, approval reminders, escalation and deadlines, how long a signature stays valid, service steps and people's tasks, time windows in rights, operations started on a schedule, effective dates, retention) and agree one shared way to say how long, counted from what, in which calendar, and what happens when time runs out. Service steps already name their operation (4.6); 4.4 can give them inputs in the shape of a call's. |
@@ -222,15 +231,18 @@ Built in 0.6.0: an entity binds to a table, view or query of a database, with co
 columns and delete by key or soft delete; bulk auto-map, create tables, remove bindings, entities from tables.
 Milestone D added provenance, drift and re-sync (3.5).
 
+Built since:
+
+- **The unmapped-attribute rule in the engine.** MQ4058 (a stored attribute of a bound entity that no field maps) is a
+  binding rule of the engine, as the editor's field map reports it.
+- **Raw SQL as a read source (0.25.0, #82).** A binding reads from a hand-written SQL statement, not only a table, view
+  or built query. It came with hand-written queries (5.5): a binding's source may be a query written as SQL text.
+
 Left:
 
-- **Raw SQL as a read source.** A binding reads from a hand-written SQL statement, not only a table, view or query.
-  Built through hand-written queries (5.5, 0.25.0): a binding's source may be a query written as SQL text.
 - **Split.** One entity read from and written to several tables.
 - **Routine bindings.** Read, write and delete through stored routines.
 - **Converters** as named, reusable elements on a field map.
-- **The unmapped-attribute rule in the engine (built).** MQ4058 (a stored attribute of a bound entity that no field
-  maps) is a binding rule of the engine, as the editor's field map reports it.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
