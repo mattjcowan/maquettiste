@@ -114,8 +114,13 @@ export function useBindingSources(databaseId: string | null, sourceRef?: string 
   const detail = useQuery({ ...tableDetailQuery(databaseId ?? "", sourceRef ?? ""), enabled: !!databaseId && !!sourceRef && !known && !view.isPending });
   return useMemo(() => {
     const extra: BindingSource[] = !known && detail.data ? [tableSource(detail.data as TableView)] : [];
-    return { sources: [...sources, ...extra], pending: view.isPending, stale: view.data?.stale ?? false, dialect: view.data?.view?.dialect ?? null };
-  }, [sources, known, detail.data, view.isPending, view.data]);
+    return {
+      sources: [...sources, ...extra],
+      pending: view.isPending || detail.isLoading,
+      stale: view.data?.stale ?? false,
+      dialect: view.data?.view?.dialect ?? null,
+    };
+  }, [sources, known, detail.data, detail.isLoading, view.isPending, view.data]);
 }
 
 export function databasesOf(rows: readonly ElementSummary[] | undefined): ElementSummary[] {

@@ -945,6 +945,11 @@ export function buildForest(input: TreeInput): Forest {
         push(referenceSeeds, target.id, r);
         continue;
       }
+      // A table belongs to a schema, not a domain: its seed is edited on the table's Data tab, not listed here.
+      if (target?.kind === "table") {
+        unplaced.push(r.id);
+        continue;
+      }
       pkg = target ? (target.package ?? null) : pkg;
     }
     // An operation's domain is its file's, else its subject's (next-phase-2-design.md section 4.1).

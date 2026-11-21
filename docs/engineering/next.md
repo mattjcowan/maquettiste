@@ -324,7 +324,8 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
   - Large charts open at about 5% zoom on first view.
   - Pickers, favorites and some messages show internal names or raw ids where display names belong; a reference error names
     an id rather than the element.
-  - A Problems row reveals its element only with Enter, not with a click or double-click.
+  - A Problems row reveals its element only with Enter, not with a click or double-click. Fixed in 0.25.1: a click opens
+    the element's editor.
   - Clicking a scenario row in the process editor doesn't select it in the inspector.
   - The dark theme was not checked properly; check it in the walkthrough.
 - **The Processes explorer is too flat (the owner, 2026-11-05). Built for 0.13.1 in #41.** Today each domain lists every process in one list

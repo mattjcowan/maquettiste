@@ -363,6 +363,8 @@ function BindingCard({
   const { sources, pending, stale } = useBindingSources(binding.database, binding.source);
   const source = sources.find((s) => s.id === binding.source);
   const columns = source?.columns ?? [];
+  // While the database's tables load, no row can be judged: a column that has not arrived is not a missing one.
+  const loading = pending && !source;
   const fieldRows = attributeRows(binding, attributes, columns);
   const colRows = columnRows(binding, attributes, columns);
   const validation = useValidation();
@@ -547,7 +549,7 @@ function BindingCard({
                   >
                     <option value="">—</option>
                     {canAddColumns && !r.field ? <option value={NEW_COLUMN}>{`New column in ${source!.name}`}</option> : null}
-                    {r.field && !r.column ? <option value={r.field.column}>{`${r.field.column} (not found)`}</option> : null}
+                    {r.field && !r.column ? <option value={r.field.column}>{loading ? "Loading…" : `${r.field.column} (not found)`}</option> : null}
                     {columns.map((c) => (
                       <option key={c.key} value={c.key}>
                         {c.name}
@@ -555,8 +557,16 @@ function BindingCard({
                     ))}
                   </Select>
                 </td>
-                <td className={cn("text-12", r.status === "missing-column" ? "text-danger" : r.status === "unmapped" ? "text-warning" : "text-secondary")}>
-                  {{ mapped: "mapped", "missing-column": "no such column", unmapped: "not mapped", optional: "not mapped (optional)" }[r.status]}
+                <td
+                  className={cn(
+                    "text-12",
+                    loading ? "text-secondary" : r.status === "missing-column" ? "text-danger" : r.status === "unmapped" ? "text-warning" : "text-secondary",
+                  )}
+                  data-testid={loading ? "field-status-loading" : undefined}
+                >
+                  {loading
+                    ? "Loading…"
+                    : { mapped: "mapped", "missing-column": "no such column", unmapped: "not mapped", optional: "not mapped (optional)" }[r.status]}
                 </td>
               </tr>
             ))}
@@ -611,7 +621,7 @@ function BindingCard({
                     {r.column.nullable ? "" : " not null"}
                   </td>
                   <td className={cn("text-12", r.status === "unaccounted" ? "text-warning" : "text-secondary")}>
-                    {statusText(r.status, r.attribute?.name ?? r.fieldRef, r.constant?.value)}
+                    {loading ? "Loading…" : statusText(r.status, r.attribute?.name ?? r.fieldRef, r.constant?.value)}
                   </td>
                   <td className="py-0.5">
                     {free ? (

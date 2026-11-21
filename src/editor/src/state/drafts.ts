@@ -4,7 +4,7 @@
 // meanwhile stay in the draft and are saved next with the hash the save returned, so the editor's
 // own write never comes back as a conflict.
 import type { QueryClient } from "@tanstack/react-query";
-import type { ElementDocument, ModelJson, SaveResult } from "@/api/types";
+import type { Diagnostic, ElementDocument, ElementSummary, ModelJson, SaveResult } from "@/api/types";
 import { applySaveResult, keys } from "@/api/queries";
 import { ApiProblem } from "@/api/client";
 import { clone, jsonEqual } from "@/lib/json";
@@ -22,6 +22,17 @@ export interface DraftDeps {
   clearTimer?: (handle: unknown) => void;
 }
 
+/**
+ * A refused save answers the check of the whole model. The draft keeps the findings of its own element (its id, or a part
+ * whose file path is the element's) and those that name no element. When none of those is left, the errors elsewhere stay,
+ * so a refusal is never shown as an empty one; notes and warnings of other elements are dropped (their own group lists them).
+ */
+export function ownDiagnostics(diagnostics: readonly Diagnostic[], id: string, path: string | null | undefined): Diagnostic[] {
+  const own = diagnostics.filter((d) => (d.elementId == null && d.filePath == null) || d.elementId === id || (!!path && d.filePath === path));
+  if (own.some((d) => d.severity === "error")) return own;
+  return [...own, ...diagnostics.filter((d) => d.severity === "error" && !own.includes(d))];
+}
+
 export class DraftManager {
   private readonly timers = new Map<string, unknown>();
   private readonly inflight = new Map<string, Promise<void>>();
@@ -35,6 +46,11 @@ export class DraftManager {
     this.delays = deps.delays ?? { element: 600, diagram: 500 };
     this.setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
     this.clearTimer = deps.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
+  }
+
+  private own(id: string, diagnostics: readonly Diagnostic[]): Diagnostic[] {
+    const rows = this.deps.queryClient.getQueryData<ElementSummary[]>(keys.index);
+    return ownDiagnostics(diagnostics, id, rows?.find((r) => r.id === id)?.path);
   }
 
   private get state() {
@@ -256,7 +272,7 @@ export class DraftManager {
         return;
       }
       case "invalid":
-        if (draft) this.state.patchDraft(id, { status: "invalid", diagnostics: result.diagnostics });
+        if (draft) this.state.patchDraft(id, { status: "invalid", diagnostics: this.own(id, result.diagnostics) });
         this.requeueIfChanged(id, sent);
         return;
       case "conflict":
@@ -276,14 +292,15 @@ export class DraftManager {
           return;
         }
         this.retriedDiagram.delete(id);
-        this.state.patchDraft(id, { status: "conflict", conflict: result.current ?? null, diagnostics: result.diagnostics });
+        this.state.patchDraft(id, { status: "conflict", conflict: result.current ?? null, diagnostics: this.own(id, result.diagnostics) });
         return;
       case "not-found":
-        if (draft) this.state.patchDraft(id, { status: "invalid", diagnostics: result.diagnostics, error: "This element no longer exists." });
+        if (draft) this.state.patchDraft(id, { status: "invalid", diagnostics: this.own(id, result.diagnostics), error: "This element no longer exists." });
         this.requeueIfChanged(id, sent);
         return;
       case "referenced":
-        if (draft) this.state.patchDraft(id, { status: "invalid", diagnostics: result.diagnostics, error: "Refused: other elements reference it." });
+        if (draft)
+          this.state.patchDraft(id, { status: "invalid", diagnostics: this.own(id, result.diagnostics), error: "Refused: other elements reference it." });
         this.requeueIfChanged(id, sent);
         return;
     }

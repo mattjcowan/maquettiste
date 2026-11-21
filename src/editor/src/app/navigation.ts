@@ -4,13 +4,14 @@ import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 import type { ElementSummary } from "@/api/types";
 import { WORKSPACES, type EditorStore, type SidebarView, type Workspace } from "@/state/store";
-import { keys, type TablesState } from "@/api/queries";
+import { keys, loadElement, type TablesState } from "@/api/queries";
 import { tableKeyOf } from "@/search/engine";
 import { tableKeyOfFile } from "@/workspaces/database/tableList";
 import { tableKeyOfDoc } from "@/workspaces/database/columnEdits";
 import { placeOf } from "@/search/engine";
 import { useServices } from "./context";
 import { activate, hasEditor, openTab, setView } from "@/editors/tabs";
+import { openTableEditor } from "@/workspaces/database/openTableEditor";
 import { focusProcess } from "./processFocus";
 
 /** The centre area shows the screen again, in front of the editor tabs. */
@@ -138,11 +139,48 @@ export function useEditorNavigation() {
   const openTable = useCallback(
     (database: string, key: string, column: string | null = null) => {
       const s = store.getState();
+      // The inspector shows the table, which has no element id for `?sel=`: the element selection is cleared so the address
+      // does not keep naming the previous element (select() also drops the inspected table, so it comes first).
+      if (s.selection.length) s.select([], { pointer: null });
       s.setDatabaseTable(key);
       s.inspectTable({ database, key, column }, tableKeyOf(database, key));
       openDatabase(database);
     },
     [store, openDatabase],
+  );
+
+  /** Opens a table's editor on its Data tab (the seed grid). False when the table is not in the index. */
+  const openTableData = useCallback(
+    (tableId: string): boolean => {
+      const summary = queryClient.getQueryData<ElementSummary[]>(keys.index)?.find((r) => r.id === tableId);
+      if (!summary || summary.kind !== "table" || !summary.database) return false;
+      const database = summary.database;
+      const go = (key: string) => {
+        // As openTable: the address stops naming the element that led here (a seed), select() first as it drops the inspected table.
+        const s = store.getState();
+        if (s.selection.length) s.select([], { pointer: null });
+        openDatabase(database);
+        openTableEditor(store, database, key, { tab: "data", pin: true });
+      };
+      // A table's key is its schema and name: read from its document, else from the database's table list. When neither is
+      // cached the document is fetched; the editor opens once it is there.
+      const doc = queryClient.getQueryData<{ json?: unknown }>(keys.element(summary.id));
+      const key =
+        tableKeyOfDoc(doc?.json as Record<string, unknown> | undefined)?.key ??
+        tableKeyOfFile(summary, queryClient.getQueryData<TablesState>(keys.databaseTables(database))?.tables);
+      if (key) go(key);
+      else
+        void queryClient
+          .fetchQuery({ queryKey: keys.element(summary.id), queryFn: () => loadElement(summary.id) })
+          .then((fetched) => {
+            const fetchedKey = tableKeyOfDoc(fetched.json as Record<string, unknown> | undefined)?.key;
+            if (fetchedKey) go(fetchedKey);
+            else store.getState().notify("The table could not be found to open its rows.", "error");
+          })
+          .catch(() => store.getState().notify("The table could not be read to open its rows.", "error"));
+      return true;
+    },
+    [queryClient, store, openDatabase],
   );
 
   const select = useCallback(
@@ -188,6 +226,8 @@ export function useEditorNavigation() {
         else select([summary.id], pointer);
         return;
       }
+      // The seed of a table is edited on its table's Data tab.
+      if (summary.kind === "seed" && target?.kind === "table" && openTableData(target.id)) return;
       // The seed of an entity or a relation is edited on that element's Seed data tab (its Rows grid).
       if (summary.kind === "seed" && (target?.kind === "entity" || target?.kind === "relation")) {
         const kind = target.kind;
@@ -232,7 +272,7 @@ export function useEditorNavigation() {
       }
       select([summary.id], pointer);
     },
-    [store, queryClient, openDiagram, openDatabase, openSettings, openWorkspace, select, openTable],
+    [store, queryClient, openDiagram, openDatabase, openSettings, openWorkspace, select, openTable, openTableData],
   );
 
   const summaryOf = useCallback((id: string) => queryClient.getQueryData<ElementSummary[]>(keys.index)?.find((r) => r.id === id), [queryClient]);
@@ -286,8 +326,8 @@ export function useEditorNavigation() {
 
   /** Opens an element in its editor tab (3.6): a preview tab unless `pin`; other kinds are revealed as before. */
   const openEditor = useCallback(
-    (summary: ElementSummary, pin: boolean) => {
-      reveal(summary);
+    (summary: ElementSummary, pin: boolean, pointer: string | null = null) => {
+      reveal(summary, pointer);
       const kind = summary.kind;
       if (hasEditor(kind, summary)) store.getState().updateEditors((e) => openTab(e, { id: summary.id, kind }, { pin }));
     },
@@ -326,5 +366,37 @@ export function useEditorNavigation() {
     [summaryOf, store, openWorkspace, openEditor],
   );
 
-  return { openWorkspace, openDiagram, openDatabase, openTable, openEntity, openSettings, select, reveal, goTo, travel, openEditor, openSeedData };
+  /** From a mapping to the relation's editor, pinned on its Storage tab (where the foreign key is edited). */
+  const openRelationStorage = useCallback(
+    (id: string): boolean => {
+      const summary = summaryOf(id);
+      if (!summary || summary.kind !== "relation") {
+        store.getState().notify("That relationship is not in the model.", "error");
+        return false;
+      }
+      store.getState().setSidebar("domain-model");
+      if (store.getState().workspace !== "entities") openWorkspace("entities");
+      select([id]);
+      store.getState().updateEditors((e) => openTab(setView(e, "relation", "storage"), { id, kind: "relation" }, { pin: true }));
+      return true;
+    },
+    [summaryOf, store, openWorkspace, select],
+  );
+
+  return {
+    openWorkspace,
+    openDiagram,
+    openDatabase,
+    openTable,
+    openTableData,
+    openRelationStorage,
+    openEntity,
+    openSettings,
+    select,
+    reveal,
+    goTo,
+    travel,
+    openEditor,
+    openSeedData,
+  };
 }
