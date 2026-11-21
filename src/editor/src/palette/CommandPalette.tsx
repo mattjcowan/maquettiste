@@ -5,7 +5,8 @@
 // worker and search/rank.ts decide the order.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Command } from "cmdk";
-import { useIndex, useProject } from "@/api/queries";
+import { keys, useIndex, useProject } from "@/api/queries";
+import { tableKeyOfDoc } from "@/workspaces/database/columnEdits";
 import type { ElementKind, ElementSummary } from "@/api/types";
 import { useServices } from "@/app/context";
 import { KindIcon } from "@/app/icons";
@@ -17,6 +18,9 @@ import { forgetPage, projectPageId } from "@/state/pageState";
 import { GO_TO_SCREEN, KIND_LABELS, SCREEN_LABELS } from "@/model/labels";
 import { searchClient, useSearchRows, useSearchVersion } from "@/search/client";
 import type { SearchHit } from "@/search/engine";
+import { dropTableDuplicates } from "@/search/dedupe";
+import { hasEditor } from "@/editors/tabs";
+import { openTableEditor } from "@/workspaces/database/openTableEditor";
 import { parseQuery, termMatcher } from "@/search/query";
 import { Tier, bestTier } from "@/search/rank";
 import { CREATE_LABELS, startDomain } from "@/explorer/create";
@@ -162,14 +166,14 @@ function useCommands(close: () => void): LocalItem[] {
 }
 
 function SearchDialog({ mode }: { mode: Mode }) {
-  const { store } = useServices();
+  const { store, queryClient } = useServices();
   const open = useEditor(store, (s) => (mode === "palette" ? s.paletteOpen : s.quickOpen));
   const selection = useEditor(store, (s) => s.selection);
   const recent = useEditor(store, (s) => s.recent);
   const index = useIndex();
   useSearchRows(index.data);
   const version = useSearchVersion();
-  const { reveal, openWorkspace, openDatabase, openTable } = useEditorNavigation();
+  const { reveal, openEditor, openWorkspace, openDatabase, openTable } = useEditorNavigation();
   const [text, setText] = useState("");
   const [answer, setAnswer] = useState<{ text: string; hits: SearchHit[]; total: number } | null>(null);
   const [selected, setSelected] = useState("");
@@ -204,7 +208,12 @@ function SearchDialog({ mode }: { mode: Mode }) {
       .then((a) => {
         if (!live) return;
         setFull(false);
-        setAnswer({ text, hits: a.hits, total: a.total });
+        const hits = dropTableDuplicates(
+          a.hits,
+          byId,
+          (row) => tableKeyOfDoc(queryClient.getQueryData<{ json?: unknown }>(keys.element(row.id))?.json as Record<string, unknown> | undefined)?.key,
+        );
+        setAnswer({ text, hits, total: a.total - (a.hits.length - hits.length) });
       });
     return () => {
       live = false;
@@ -255,15 +264,20 @@ function SearchDialog({ mode }: { mode: Mode }) {
       // A table: the Database screen focused on it, the inspector on the table (its id is its tree key, `<db>/t:<key>`).
       store.getState().setSidebar("databases");
       const prefix = `${hit.db}/t:`;
-      if (hit.id.startsWith(prefix)) openTable(hit.db, hit.id.slice(prefix.length));
-      else openDatabase(hit.db);
+      if (hit.id.startsWith(prefix)) {
+        const key = hit.id.slice(prefix.length);
+        openTable(hit.db, key);
+        openTableEditor(store, hit.db, key);
+      } else openDatabase(hit.db);
       return;
     }
     const summary: ElementSummary | undefined = byId.get(hit.id);
     if (!summary) return;
     store.getState().noteRecent(hit.id);
     if (hit.place !== "settings") store.getState().setSidebar(hit.place);
-    reveal(summary);
+    // An element with an editor opens it (pinned, as a double-click does); the others are revealed.
+    if (hasEditor(summary.kind, summary)) openEditor(summary, true);
+    else reveal(summary);
   };
 
   // The first row is selected whenever the list changes; Enter before the worker answered runs the first result.

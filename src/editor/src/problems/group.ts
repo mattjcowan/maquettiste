@@ -3,6 +3,7 @@
 import type { Diagnostic, ElementSummary } from "@/api/types";
 import type { Draft } from "@/state/store";
 import { displayName } from "@/model/model";
+import { ownDiagnostics } from "@/state/drafts";
 
 export interface ProblemGroup {
   key: string;
@@ -20,6 +21,7 @@ export function groupProblems(report: Diagnostic[], drafts: Draft[], byId: Map<s
   const groups: ProblemGroup[] = [];
   for (const draft of drafts) {
     if (draft.status !== "invalid" && draft.status !== "conflict") continue;
+    const own = ownDiagnostics(draft.diagnostics, draft.id, byId.get(draft.id)?.path);
     const diagnostics =
       draft.status === "conflict"
         ? [
@@ -34,8 +36,8 @@ export function groupProblems(report: Diagnostic[], drafts: Draft[], byId: Map<s
               column: null,
             },
           ]
-        : draft.diagnostics.length
-          ? draft.diagnostics
+        : own.length
+          ? own
           : [
               {
                 rule: "save",

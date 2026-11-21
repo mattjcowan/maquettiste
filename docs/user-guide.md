@@ -109,11 +109,12 @@ An element's inspector has four tabs, switched with the mouse or the arrow keys:
 as name, domain, stereotypes, tags and custom properties, plus the kind's settings), **Attributes** (only for kinds that
 have attributes: a value object's, stereotype's or relationship's attribute grid, edited there, while a relationship's
 Properties keep its kind, inverse name and ends; an entity's attributes as a read-only
-list of name, type and a `*` for required, with **Open editor** opening the entity editor on its Attributes tab, where
-the entity's grid is edited; an attribute's type and length here are the entity's rules, used for validation, whatever
+list of name, type and a `*` for required, edited in the entity editor's Attributes tab; an attribute's type and length here are the entity's rules, used for validation, whatever
 the column that stores it says), **JSON** (the element's document, editable) and **Used** (the elements that
 reference it; a row goes to the referring element). The inspector remembers the tab you chose for each kind of
-element; a kind without the chosen tab shows Properties.
+element; a kind without the chosen tab shows Properties. Every kind that has an editor shows **Open editor** in the
+inspector's header (an entity's opens on its Attributes tab). **Go to element** in the command palette opens the
+element's editor too, and a click on a Problems row opens the owning element's editor as a preview tab.
 
 Every element's Properties end with its **property bag**, titled Properties: free key and value pairs of your own, kept in
 the element's `properties` beside the custom properties a schema declares (see "Custom properties" under "Extending the

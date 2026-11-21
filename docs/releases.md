@@ -5,6 +5,37 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.25.1 (2026-11-21)
+
+Editor fixes. The engine, the file format and generated output do not change.
+
+- **Custom properties whose value is an object.** A property an extension declares as an `object` used to show as
+  `[object Object]`, and a keystroke in it left the element unsaveable until a reload. Now an object with declared
+  properties shows one field per property, nested as deep as the schema goes. A shape the form cannot draw (a list of
+  objects, `oneOf`, an object with no declared properties, or a stored value that does not match its schema) shows as JSON
+  text. While that text is not valid JSON, the field says so and nothing is saved. A list of fixed choices or of true/false
+  values is a comma-separated field, and a part that is not a valid value is refused the same way.
+- **Reference types have Code generation and JSON tabs.** The Reference data screen shows a type's custom properties and
+  its document, like the other editors.
+- **Finding an element opens it.** **Go to element** in the command palette, a click on a Problems row (as a preview tab)
+  and the new **Open editor** button in the inspector open the element's editor, for every kind that has one. Before, they
+  only selected it. A table appears once in the palette, not twice.
+- **A refused save lists only its own problems.** Notes about other elements no longer appear under the element being
+  saved or in its count. When the element has no error of its own, the errors on other elements stay, so the reason for
+  the refusal is always shown.
+- **Table seeds and mappings point to where they are edited.** A table seed's inspector opens the table's editor on its
+  Data tab, and a mapping's inspector opens its relationship's editor on the Storage tab. Table seeds are no longer listed
+  under "Not in a domain": a table belongs to a schema, not a domain. You reach a table seed from the table's Data tab or
+  the palette.
+- **Smaller fixes.**
+  - A translation finding with no element, such as an incomplete locale file, opens the Locales settings on that locale.
+  - While data loads, an entity's Storage tab says "Loading…" instead of "no such column". The Databases summary shows "…"
+    instead of zero counts.
+  - In an editor's header, a long domain name gets the row's full width instead of being cut off.
+  - Arranging a domain's canvas can no longer make a second diagram for the same domain when the model's list refreshes
+    slowly.
+  - The address bar follows the selection when a Problems row or the palette goes to a table.
+
 ## 0.25.0 (2026-11-11)
 
 - **Hand-written SQL queries and named queries (WITH).** A query can now be written as SQL text, and a built query can start

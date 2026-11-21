@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { TranslationsSection } from "@/l10n/TranslationsSection";
 import { Loader2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,6 +38,8 @@ import { OpenTableButton, TableInspector } from "./TableInspector";
 import { sideReferences } from "@/references/data";
 import { DatabaseTypeFields, QueryFields, RoutineFields, SchemaField, SequenceFields, SqlObjectFields, ViewFields } from "@/editors/database/fields";
 import { EntityAttributeList } from "./AttributeList";
+import { OpenEditorButton } from "./OpenEditorButton";
+import { hasEditor } from "@/editors/tabs";
 import { entryIdsOf, useProblems } from "@/editors/process/shared";
 import { FindingsList, findingsFor } from "@/problems/findings";
 import { useProcessSelection, type ProcessSelection } from "@/editors/process/selection";
@@ -72,6 +74,39 @@ export function useInspectorContext(): InspectorContext {
   return useMemo(
     () => inspectorContext({ workspace, explorer: { active, pinned }, selectionFrom, editors, generation, selectionBy, exists, inspectedTable }),
     [workspace, active, pinned, selectionFrom, editors, generation, selectionBy, exists, inspectedTable],
+  );
+}
+
+/** A seed of a table, or a mapping of a relation, has no editor of its own: this leads to the editor that holds what it says. */
+function LinkedEditorBlock({ kind, json }: { kind: ElementKind; json: ModelJson }) {
+  const { openTableData, openRelationStorage } = useEditorNavigation();
+  const index = useIndex();
+  const doc = json as { target?: string; relation?: string };
+  let lead = "";
+  let button: ReactNode = null;
+  if (kind === "seed" && doc.target && (index.data ?? []).find((r) => r.id === doc.target)?.kind === "table") {
+    lead = "Rows are edited in the table editor. ";
+    button = (
+      <Button size="sm" className="self-start" onClick={() => openTableData(doc.target!)} data-testid="inspector-edit-rows">
+        Edit rows in the table editor
+      </Button>
+    );
+  } else if (kind === "mapping" && doc.relation) {
+    lead = "The foreign key is edited on the relationship's Storage tab. ";
+    button = (
+      <Button size="sm" className="self-start" onClick={() => openRelationStorage(doc.relation!)} data-testid="inspector-open-relation-storage">
+        Edit the foreign key in the relationship editor
+      </Button>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      {button}
+      <p className="text-12 text-secondary">
+        {lead}
+        Every other property of this {KIND_LABELS[kind].toLowerCase()} is editable in the JSON view.
+      </p>
+    </div>
   );
 }
 
@@ -254,6 +289,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
           </h2>
           <span data-testid="save-status">{statusBadge(draft?.status, false, savedErrors)}</span>
           {kind === "table" ? <OpenTableButton json={json} /> : null}
+          {kind !== "table" && summary && hasEditor(kind, summary) ? <OpenEditorButton summary={summary} /> : null}
           <DeleteButton id={id} name={String((json as { name?: string }).name ?? id)} />
         </div>
         <p className="truncate font-mono text-11 text-secondary">{element.data?.path ?? KIND_LABELS[kind]}</p>
@@ -341,14 +377,14 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
                 "actor",
                 "scenario",
               ].includes(kind) ? (
-                <p className="text-12 text-secondary">Every other property of this {KIND_LABELS[kind].toLowerCase()} is editable in the JSON view.</p>
+                <LinkedEditorBlock kind={kind} json={json} />
               ) : null}
             </div>
           )}
         </TabsContent>
         {attributesView(kind) ? (
           <TabsContent value="attributes" className="overflow-auto p-2">
-            {attributesView(kind) === "grid" ? <AttributesOnlyFields {...props} withTexts={false} /> : <EntityAttributeList id={id} json={json} />}
+            {attributesView(kind) === "grid" ? <AttributesOnlyFields {...props} withTexts={false} /> : <EntityAttributeList json={json} />}
           </TabsContent>
         ) : null}
         <TabsContent value="json" className="flex min-h-0 flex-col p-0">

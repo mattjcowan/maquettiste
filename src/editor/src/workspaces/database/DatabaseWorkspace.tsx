@@ -496,7 +496,9 @@ function DatabaseCanvas() {
             <div className="flex flex-col gap-1 border-b border-default p-2">
               <div role="group" aria-label="Show" className="flex flex-wrap gap-1" data-testid="database-list-kinds">
                 {LIST_KINDS.map((k) => {
-                  const count = k.kind === "table" ? listed.total : objects[k.kind].length;
+                  // Until the counts have loaded, "…" says so: a 0 would read as nothing there.
+                  const loadingCount = k.kind === "table" ? summaries.isPending : view.isPending;
+                  const count = loadingCount ? "…" : k.kind === "table" ? listed.total : objects[k.kind].length;
                   return (
                     <button
                       key={k.kind}

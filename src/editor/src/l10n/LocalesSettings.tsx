@@ -3,7 +3,8 @@
 // through PUT /api/project/settings. With two or more locales it also shows the completeness matrix (locales × domain
 // shards, plus Reference data); a cell opens the translation queue for that locale and shard. The declaration form is
 // always here, since it is where a second locale is added; the matrix and the queue are not shown with one locale.
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { onQueueRequest, peekQueueRequest, takeQueueRequest } from "./queueTarget";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
@@ -35,7 +36,12 @@ import { TranslationQueue } from "./TranslationQueue";
 export function LocalesSettings() {
   const settings = useSettings();
   const l10n = useLocalization();
-  const [queue, setQueue] = useState<{ locale: string; shard: string } | null>(null);
+  const [queue, setQueue] = useState<{ locale: string; shard: string } | null>(() => peekQueueRequest());
+  // A finding in Problems asks for a queue (l10n/queueTarget.ts): taken at once when this screen already shows.
+  useEffect(() => {
+    takeQueueRequest();
+    return onQueueRequest(() => setQueue(takeQueueRequest()));
+  }, []);
   if (settings.isPending || !settings.data) return <Spinner label="Loading settings" />;
   return (
     <div className="flex max-w-5xl flex-col gap-2">

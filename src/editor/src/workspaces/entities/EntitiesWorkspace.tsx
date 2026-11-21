@@ -19,6 +19,7 @@ import {
 import { Download, LayoutGrid, Link2, Plus, Share2 } from "lucide-react";
 import { activeTab } from "@/editors/tabs";
 import { applySaveResult, elementQuery, keys, loadElement, useElement, useElements, useIndex, useValidation } from "@/api/queries";
+import { ApiProblem } from "@/api/client";
 import * as endpoints from "@/api/endpoints";
 import type { CategoryTreeDoc, DiagramDoc, EntityDoc, ModelJson, PackageDoc, RelationDoc } from "@/api/types";
 import { useEditor } from "@/state/store";
@@ -539,6 +540,10 @@ function EntitiesCanvas() {
   // The first arrangement of a domain's canvas (a drag, Auto-layout, a pan or zoom) creates the domain's diagram, with
   // the entities where they are drawn, as one undoable step, and opens it; mere viewing creates nothing.
   const creatingDomain = useRef<string | null>(null);
+  // The diagram this window made per domain, kept across view changes: an index refresh that started before the save can
+  // answer without the new diagram for a moment, which sends the view back to "All of <domain>"; the next arrangement then
+  // reopens this diagram instead of making a second one for the same domain.
+  const createdDomain = useRef(new Map<string, string>());
   useEffect(() => {
     creatingDomain.current = null;
     latestCollapsed.current = undefined;
@@ -547,6 +552,36 @@ function EntitiesCanvas() {
     async (packageId: string, positions: StoredPositions, viewport: Viewport | null, collapsed?: readonly string[]) => {
       if (creatingDomain.current === packageId) return;
       creatingDomain.current = packageId;
+      const made = createdDomain.current.get(packageId);
+      if (made) {
+        // Still on disk (its creation not undone): open it with the arrangement that triggered this. Gone (an answer of
+        // not-found only): forget it and make a new one. Any other failure creates nothing.
+        let gone = false;
+        try {
+          await queryClient.fetchQuery({ queryKey: keys.element(made), queryFn: () => loadElement(made), staleTime: 0 });
+        } catch (error) {
+          if (error instanceof ApiProblem && (error.status === 404 || error.code === "not-found")) gone = true;
+          else {
+            creatingDomain.current = null;
+            store.getState().notify(`The domain's diagram could not be reopened: ${error instanceof Error ? error.message : String(error)}`, "error");
+            return;
+          }
+        }
+        if (!gone) {
+          // The arrangement (not the collapsed set, which the diagram keeps) joins the diagram's draft as one edit.
+          drafts.edit(
+            made,
+            (json) => {
+              applyPositions(json as unknown as DiagramDoc, positions);
+              if (viewport) (json as unknown as DiagramDoc).viewport = roundViewport(viewport);
+            },
+            { followUp: false },
+          );
+          openDiagram(made, { keepEditors: true, replace: true });
+          return;
+        }
+        createdDomain.current.delete(packageId);
+      }
       const pkg = (await queryClient.fetchQuery(elementQuery(packageId))).json as unknown as PackageDoc;
       const json = newDomainDiagram({
         id: newId(),
@@ -562,6 +597,7 @@ function EntitiesCanvas() {
         store.getState().notify(`The domain's diagram was not saved: ${result.diagnostics[0]?.message ?? result.outcome}`, "error");
         return;
       }
+      createdDomain.current.set(packageId, String(json.id));
       applySaveResult(queryClient, result);
       removePositions(`pkg.${packageId}`);
       store.getState().pushUndo({
@@ -573,7 +609,7 @@ function EntitiesCanvas() {
       });
       openDiagram(String(json.id), { keepEditors: true, replace: true });
     },
-    [queryClient, lookup, store, openDiagram],
+    [queryClient, lookup, store, drafts, openDiagram],
   );
   // Positions from before domains had diagrams (kept per browser): the user arranged this canvas, so it becomes the
   // domain's diagram with them, once, and the browser's copy is removed.

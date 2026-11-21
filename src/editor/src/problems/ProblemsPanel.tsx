@@ -1,3 +1,4 @@
+import { requestQueue, shardTargetOf } from "@/l10n/queueTarget";
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, Info, RefreshCw, TriangleAlert, X } from "lucide-react";
@@ -138,7 +139,7 @@ export function ProblemsPanel() {
     const summary = lookup.byId.get(id);
     if (!summary) return;
     if (target.type === "domain") store.getState().updateEditors((e) => setView(e, "package", target.tab));
-    if (hasEditor(summary.kind, summary)) openEditor(summary, true);
+    if (hasEditor(summary.kind, summary)) openEditor(summary, false);
     else reveal(summary);
   };
   /** A finding located in an extension file (a rule that does not load, an invalid schema) opens that file on the Extensions tab. */
@@ -179,7 +180,14 @@ export function ProblemsPanel() {
                         onClick={() => {
                           const summary = group.elementId ? lookup.byId.get(group.elementId) : undefined;
                           if (openExtension(d)) return;
-                          if (summary) reveal(summary, d.jsonPointer);
+                          const shard = !summary ? shardTargetOf(d) : null;
+                          if (shard) {
+                            requestQueue(shard);
+                            openSettings("locales");
+                            return;
+                          }
+                          if (summary && hasEditor(summary.kind, summary)) openEditor(summary, false, d.jsonPointer);
+                          else if (summary) reveal(summary, d.jsonPointer);
                           else if (group.elementId) select([group.elementId], d.jsonPointer);
                         }}
                       >

@@ -211,6 +211,10 @@ export function NameAndDomain({ id, json, edit, flush, diagnostics, children }: 
   const dom = domIdOf(id);
   const vocab = useVocabularies(String(rec.kind));
   const definition = useDefinition();
+  // The domain's cell takes the whole row for a long picked name (one cell holds about 20 letters), so it is read whole.
+  const domainName = vocab.lookup.ofKind("package").find((p) => p.id === String(rec.package ?? ""))?.name ?? "";
+  // col-span-full never asks for more tracks than the grid has (a fixed span would overflow a narrow editor).
+  const domainSpan = domainName.length > 20 ? "col-span-full" : "";
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] items-end gap-2">
       <TextField
@@ -221,9 +225,10 @@ export function NameAndDomain({ id, json, edit, flush, diagnostics, children }: 
         onChange={(v) => edit((j) => void ((j as Rec).name = v))}
         onBlur={flush}
       />
-      <Field label={KIND_LABELS.package} htmlFor={`${dom}-package`}>
+      <Field label={KIND_LABELS.package} htmlFor={`${dom}-package`} className={domainSpan}>
         <Select
           {...definition.props(String(rec.package ?? "") || null)}
+          title={domainName || undefined}
           id={`${dom}-package`}
           value={String(rec.package ?? "")}
           onChange={(e) => {

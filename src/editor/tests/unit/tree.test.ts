@@ -416,6 +416,19 @@ describe("tree places", () => {
     expectReachable(f, [...rows, ...extra]);
   });
 
+  it("lists a seed of a table in no domain, and still lists a seed of an entity", () => {
+    const table = rows.find((r) => r.kind === "table")!;
+    const extra = [
+      row("7M", "seed", "table rows", null, { target: table.id, rowCount: 2 } as Partial<ElementSummary>),
+      row("7N", "seed", "invoice rows", null, { target: IDS.invoice, rowCount: 3 } as Partial<ElementSummary>),
+    ];
+    const f = buildForest({ rows: [...rows, ...extra], tables });
+    expect(f.unplaced).toContain("7M");
+    expect(f.unplaced).not.toContain("7N");
+    expect(find(f, "domain-model", "Billing", "Seed data", "invoice rows")).toBeTruthy();
+    expect(() => find(f, "domain-model", "Billing", "Seed data", "table rows")).toThrow();
+  });
+
   it("lists no child under a type with one seed, and places that seed on the type", () => {
     const extra = [
       row("7R", "reference-type", "CarModel", null, { displayName: "Car models" } as Partial<ElementSummary>),
