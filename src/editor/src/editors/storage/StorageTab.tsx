@@ -3,10 +3,10 @@
 // and delete, the five statements and the binding's problems; Add binding, and the bulk actions over this entity. An entity
 // with no binding is domain only. Every gesture is one save of the entity and one undo step.
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, Plus, Trash2, TriangleAlert, X } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
-import { applyBatchResult, useIndex, useValidation } from "@/api/queries";
+import { applyBatchResult, useElements, useIndex, useValidation } from "@/api/queries";
 import type { ElementSummary, EntityDoc } from "@/api/types";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
@@ -49,6 +49,8 @@ import {
 } from "./fieldMap";
 import { commitMaterialize, databasesOf, useBindingSources, useMaterializeStatuses, useStorageAttributes } from "./useStorage";
 import { STORAGE_LABELS } from "./labels";
+import { derivedOf } from "@/editors/refWalk";
+import { readCodes, setTypeCode, setTypeColumn, typeColumnRole, type TypeColumnRole } from "./typeColumn";
 
 type Rec = Record<string, unknown>;
 
@@ -83,6 +85,16 @@ export function StorageTab(ctx: EditorContext) {
     bindings.length === 0 || mappings.length > 0,
   );
   const projectedIn = unbound.filter((d) => statuses.statuses.some((s) => s.database === d.id && s.entities.some((e) => e.id === id && e.projected)));
+  // The entities derived from this one, found through what references each (one element at a time, never a scan of the index).
+  const qc = useQueryClient();
+  const derivedQuery = useQuery({
+    queryKey: ["derived-entities", id, index.data?.length ?? -1],
+    queryFn: () => derivedOf(qc, id, (x) => lookup.byId.get(x)?.kind),
+    enabled: lookup.byId.has(id),
+  });
+  const derived = useMemo(() => derivedQuery.data?.ids ?? [], [derivedQuery.data]);
+  const derivedDocs = useElements(derived);
+  const derivedJson = [...derivedDocs.byId.values()].map((d) => d.json as Rec);
   const edit = (i: number, change: (b: Binding) => void) => {
     ctx.edit((j) => {
       const list = ((j as Rec).bindings as Binding[] | undefined) ?? [];
@@ -145,6 +157,9 @@ export function StorageTab(ctx: EditorContext) {
           databaseName={lookup.nameOf(b.database) ?? b.database}
           attributes={attrs}
           typeColumn={typeColumnOf(id, b, docs)}
+          typeRole={typeColumnRole(id, b, docs, derived.length > 0)}
+          entityJson={json as Rec}
+          derivedJson={derivedJson}
           onEdit={(change) => edit(i, change)}
           onRemove={() => remove(i)}
         />
@@ -351,6 +366,9 @@ function BindingCard({
   databaseName,
   attributes,
   typeColumn,
+  typeRole,
+  entityJson,
+  derivedJson,
   onEdit,
   onRemove,
 }: {
@@ -362,6 +380,9 @@ function BindingCard({
   attributes: StorageAttribute[];
   /** The type column the binding names or inherits from a base's binding. */
   typeColumn: string | undefined;
+  typeRole: TypeColumnRole;
+  entityJson: Rec;
+  derivedJson: Rec[];
   onEdit: (change: (b: Binding) => void) => void;
   onRemove: () => void;
 }) {
@@ -489,6 +510,16 @@ function BindingCard({
       ) : null}
 
       <ConstantsGrid dom={dom} binding={binding} columns={columns} onEdit={onEdit} />
+
+      <TypeColumnSection
+        dom={dom}
+        entityName={entityName}
+        binding={binding}
+        role={typeRole}
+        columns={columns}
+        codes={typeRole.role === "none" ? [] : readCodes(entityJson, binding, derivedJson)}
+        onEdit={onEdit}
+      />
 
       <section className="flex flex-col gap-1">
         <SectionTitle
@@ -800,6 +831,103 @@ function statusText(status: ColumnStatus, attribute: string | undefined, value: 
 // ------------------------------------------------------------------ constants
 
 /** The constants grid of a binding. A relation mapping's "Rows of this relation" reuses it, with its own title and empty text. */
+/**
+ * The type column of a hierarchy kept in one table. A base's binding names the column and its own code; a derived entity's binding
+ * reads the column from its bases (read-only) and sets its own code, which defaults to the entity's name. Left out of an entity
+ * outside a hierarchy.
+ */
+function TypeColumnSection({
+  dom,
+  entityName,
+  binding,
+  role,
+  columns,
+  codes,
+  onEdit,
+}: {
+  dom: string;
+  entityName: string;
+  binding: Binding;
+  role: TypeColumnRole;
+  columns: BindingSource["columns"];
+  codes: string[];
+  onEdit: (change: (b: Binding) => void) => void;
+}) {
+  if (role.role === "none") return null;
+  const code = (
+    <Field label="Type code" htmlFor={`${dom}-type-code`} className="w-40">
+      <Input
+        id={`${dom}-type-code`}
+        className="h-6 font-mono"
+        placeholder={entityName}
+        data-testid="binding-type-code"
+        key={String(binding.discriminatorValue ?? "")}
+        defaultValue={binding.discriminatorValue === undefined ? "" : String(binding.discriminatorValue)}
+        onBlur={(e) => {
+          if (e.target.value.trim() !== String(binding.discriminatorValue ?? "")) onEdit((b) => setTypeCode(b, e.target.value));
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+      />
+    </Field>
+  );
+  return (
+    <section className="flex flex-col gap-1" data-testid="binding-type-column" data-role={role.role}>
+      <SectionTitle>Type column</SectionTitle>
+      {role.role === "base" ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="Column" htmlFor={`${dom}-type-column`} className="w-56">
+            <Select
+              id={`${dom}-type-column`}
+              data-testid="binding-type-column-select"
+              value={findColumn(columns, binding.discriminatorColumn ?? "")?.key ?? binding.discriminatorColumn ?? ""}
+              onChange={(e) => {
+                const column = columns.find((c) => c.key === e.target.value) ?? null;
+                onEdit((b) => setTypeColumn(b, column));
+              }}
+            >
+              <option value="">None</option>
+              {binding.discriminatorColumn && !findColumn(columns, binding.discriminatorColumn) ? (
+                <option value={binding.discriminatorColumn}>{`${binding.discriminatorColumn} (not found)`}</option>
+              ) : null}
+              {columns.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {code}
+          {binding.discriminatorColumn ? (
+            <span className="pb-1 text-12 text-secondary" data-testid="binding-type-codes">
+              Reads keep: {codes.join(", ")}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-end gap-2">
+          <p className="pb-1 text-12" data-testid="binding-type-column-inherited">
+            {role.column ? (
+              <>
+                Type column <span className="font-mono">{findColumn(columns, role.column)?.name ?? role.column}</span>, from {role.base}
+              </>
+            ) : (
+              "No base names a type column."
+            )}
+          </p>
+          {role.column ? code : null}
+          {role.column ? (
+            <span className="pb-1 text-12 text-secondary" data-testid="binding-type-codes">
+              Reads keep: {codes.join(", ")}
+            </span>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ConstantsGrid({
   dom,
   binding,

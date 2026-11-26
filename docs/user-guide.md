@@ -1864,6 +1864,21 @@ picks each target's rows by its code too. Templates find the column and the code
 binding: `discriminator_column` (with `column_name`, `value` and `codes`) in a template, and `discriminatorColumn` in the
 resolved model.
 
+**In the editor.** Open the entity, then its Storage tab. Each binding card has a Type column section, shown only for an
+entity in a hierarchy (one with a base, or with entities derived from it):
+
+- On a base entity, pick the column from the Column list (the columns of the binding's source) and fill Type code, the
+  base's own code (it defaults to the entity's name). Choose None to remove the column. A line beside them reads "Reads
+  keep" and lists the codes its reads, updates and deletes keep: its own and those of the entities derived from it that
+  read the same table.
+- On a derived entity, the section says "Type column `kind`, from Note": the column is the base's and is read only. Its own
+  Type code field shows the entity's name until you type a code; empty it to go back to the name. "Reads keep" lists the
+  codes it reads.
+- An entity outside a hierarchy has no Type column section. A derived entity whose bases name no column says so; name
+  it on the base's card.
+
+Problems with the column or the codes (MQ4122 to MQ4126) appear in the Problems panel as for any binding.
+
 ### A read-only entity over a query
 
 An entity can read a query of the database: its fields name the query's columns (its select list's names). The billing
@@ -3895,8 +3910,23 @@ write them for you: teams make ids in too many ways. The packs don't use it yet,
 | MQ3047 | A part entry can't stand: an end that isn't a part end among the entity's parts, two entries for one end, `one` without `choose`, `choose` beside `all` or `none`, both a condition and a state, or `attributes` beside `none`. Also a warning when an entity's parts pass 10,000: they are listed only that far. |
 | MQ3048 | A choice can't stand: a state that isn't of a lifecycle of the part's entity, or `latestBy` that isn't an attribute of the part or has no order. |
 
-A condition that doesn't parse or type is reported by the expression rules (MQ31xx), at `/copy/parts/n/choose/condition`. The editor
-has no screen for the block yet; edit it in the JSON tab.
+A condition that doesn't parse or type is reported by the expression rules (MQ31xx), at `/copy/parts/n/choose/condition`.
+
+**In the editor.** Open the entity and click its Copy tab. It edits the entity's `copy` block and writes only the choices that differ
+from the default (an attribute copied, a kind of part copied whole), so an entity with nothing chosen has no block.
+
+- **Fields.** One row per attribute the entity holds, its own and its bases', without its key and derived attributes. Choose Copied,
+  Reset, Cleared or Id of the original. Only the words that can stand are offered: a required attribute can't be Cleared, and can be
+  Reset only if it has a default; Id of the original needs a key of one attribute with the same type.
+- **Links.** One row per to-one link the entity holds that is not a composition. Choose Copied or The original (the copy links to the
+  record it was made from).
+- **Parts.** The entity's parts as a tree, one row per kind of part at every level. Choose All, One or None. With One, a line under
+  the row asks how it is chosen: by a condition on the part's own fields (type it in the box), or by a state (the states of the
+  lifecycles that govern the part), or by nothing but the latest; and "Latest by", an attribute with an order. The arrow at the start
+  of a row shows the part's own field choices (the same words as Fields), hidden until you open it. A part under one that is None is
+  greyed: it is left out with its owner. An entity that owns no parts says so; its fields and links still apply.
+- **From a base.** An entry a base wrote shows greyed with "from Base". Choosing another word writes the entity's own entry, and
+  choosing Copied (or All) writes one that undoes the base's. A problem with the block (MQ3045 to MQ3048) is listed under the tab.
 
 ### The rules for processes (MQ9xxx)
 
