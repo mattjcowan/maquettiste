@@ -460,13 +460,16 @@ the id of a database type of the same database; a column uses a database type by
 
 Queries (added 2026-10-02) are the kind `query`, one file per query in `model/databases/<db>/queries/`, each belonging to a
 database (`database`, no schema): a query over the database's tables and views written as JSON trees (`from`, `joins`,
-`select`, `where`, `groupBy`, `having`, `orderBy`, `paging`, `collections`), with an `entity` as its result shape or, without
-one, its select list. Column references are `alias.<column key>` (the `key` the database view lists for a column: an attribute
+`select`, `where`, `groupBy`, `having`, `orderBy`, `paging`), whose rows have the shape of its select list (each field a
+`name`). An entity reads a query through its binding (`source` names the query). A query's `entity` (its rows as an entity)
+and `collections` (lists filled per row) are retired: they still resolve and render, `validate` reports MQ4127 (a warning,
+once per file), and they go away in a later version; read a record's parts through composition (`entity.parts`), each part
+with its own binding. Column references are `alias.<column key>` (the `key` the database view lists for a column: an attribute
 id, a value object member's attribute path, a designed column's id), so the reference index sees them; a physical name is
 accepted too. They work with every element tool, `get_model_index` and `get_elements` (`kind: "query"`), `get_schema` and
 `apply_batch`; `get_database_view` lists them with their SQL, `get_resolved_model` reads them in the database records or one at
 a time with the scope `queries` (records `{ id, kind, name, database, query }`), and `preview_query_sql` renders one for any
-dialect. `validate` reports MQ4021 to MQ4043 for them (the resolver checks them, where the columns are known). Deleting a table,
+dialect. `validate` reports MQ4021 to MQ4043 for them (the resolver checks them, where the columns are known), and MQ4127. Deleting a table,
 view, entity or attribute a query reads refuses with the query among the referrers; with `delete-dependents` the query is
 deleted whole.
 

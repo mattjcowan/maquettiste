@@ -142,7 +142,7 @@ public sealed class SettingsTests
         var before = repo.Files();
 
         var result = await repo.Store.SaveSettingsAsync(
-            repo.SettingsWith(s => s["validation"] = new JsonObject { ["rules"] = new JsonObject { ["MQ1003"] = "error" } }),
+            repo.SettingsWith(s => s["validation"] = new JsonObject { ["rules"] = new JsonObject { ["MQ1003"] = "error", ["MQ4127"] = "off" } }),
             loaded.Hash, ChangeSource.Editor, EditorRepo.Ct);
 
         Assert.Equal(SaveOutcome.Invalid, result.Outcome);

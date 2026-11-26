@@ -6,7 +6,8 @@
 // The target project must exist and have an empty model: .maquettiste/maquettiste.json plus the sql-ddl and csharp-dapper
 // packs under .maquettiste/templates/ (see README.md, "Seeding through the editor"). Order: settings, vocabularies, packages,
 // types (enums, scalar types, value objects), the database (sequences, views, the designed table), one batch of entities
-// per package, one batch of relations per package, table overlays, mappings, diagrams.
+// per package, one batch of relations per package, table overlays, mappings, the queries with the entities that read them,
+// diagrams.
 //
 // Usage: node seed.mjs [--url http://127.0.0.1:8080] [--host maquettiste.localhost] [--token <t>] [--no-settings]
 //                      [--dry-run] [--compare <seeded project root>]
@@ -77,7 +78,7 @@ function batches(documents) {
   const packages = [...new Set(relations.map((r) => r.package))];
   const packageName = new Map(documents.filter((d) => d.doc.kind === "package").map((d) => [d.doc.id, d.doc.name]));
   for (const p of packages) out.push({ label: `relations:${packageName.get(p) ?? p}`, docs: relations.filter((r) => r.package === p) });
-  take("physical", "table overlays"); take("mappings"); take("diagrams"); take("queries");
+  take("physical", "table overlays"); take("mappings"); take("queries"); take("diagrams");
   return out;
 }
 

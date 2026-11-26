@@ -183,6 +183,8 @@ public sealed class InitTests
         using var repo = CliRepo.Empty();
         Assert.Equal(0, (await repo.RunAsync("init", "--pack", pack)).ExitCode);
         CliRepo.CopyTree(Fixtures.Path("models", "billing", ".maquettiste", "model"), repo.PathOf(".maquettiste/model"));
+        // The billing model's two older queries keep the retired form (MQ4127) on purpose; its own settings turn the rule off.
+        repo.Replace(".maquettiste/maquettiste.json", "\n}\n", ",\n  \"validation\": {\n    \"rules\": {\n      \"MQ4127\": \"off\"\n    }\n  }\n}\n");
 
         var result = await repo.RunAsync("generate");
         Assert.True(result.ExitCode == 0, result.ToString());

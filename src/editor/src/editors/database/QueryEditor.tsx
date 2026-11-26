@@ -215,7 +215,9 @@ function OlderResultEntity({ doc, update }: { doc: QueryDoc; update: (mutate: (d
   return (
     <div className="flex items-center gap-2 rounded-control border border-default p-1 text-12" data-testid="query-older-result-entity">
       <Info className="size-3.5 shrink-0 text-secondary" aria-hidden />
-      <span className="min-w-0 flex-1">An older result entity is set; bind the entity to this query on its Storage tab instead.</span>
+      <span className="min-w-0 flex-1">
+        A result entity is retired and goes away in a later version; bind the entity to this query on its Storage tab instead.
+      </span>
       <Button
         size="sm"
         variant="ghost"

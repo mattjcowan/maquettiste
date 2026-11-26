@@ -2,10 +2,13 @@
 
 **Owner:** P2-R. See docs/engineering/phase2-design.md section 7 and SPEC.md section 21 (gate 2).
 
-The data layer of a B2B wholesale distributor, modeled in Maquettiste and generated end to end: 202 entities in 12 packages,
+The data layer of a B2B wholesale distributor, modeled in Maquettiste and generated end to end: 203 entities in 12 packages,
 8 value objects, 5 scalar types, 23 enums, 2 reference types, 439 relations, one PostgreSQL 16 database (`main`, schema `northwind`) with
-table overlays, two designed tables, a view, three sequences and two queries (a customer's open sales orders with their lines, and
-revenue by sales channel), and one subject-area diagram per package. One designed table, `remarks`, is shared by two entities
+table overlays, two designed tables, a view, three sequences and two queries (a customer's open sales orders, and revenue by sales
+channel), and one subject-area diagram per package. The read-only entity `OpenSalesOrder` reads the first query through its
+binding, so its repository runs the query (paged and ordered by key; the query class `OpenSalesOrdersQuery` keeps the
+query's own newest-first order); the query itself declares only its columns, and an order's lines are the parts of
+`SalesOrder`, read through their own repository. One designed table, `remarks`, is shared by two entities
 through explicit bindings (erratum E43): `CustomerRemark` and `SalesOrderRemark` are never projected, their binding's constant
 `subject_type` tells their rows apart, and their repositories come from the binding.
 
@@ -57,7 +60,7 @@ From the repository root (the CLI built with `dotnet build -c Release src/Maquet
 
 ```sh
 CLI="dotnet src/Maquettiste.Cli/bin/Release/net10.0/Maquettiste.Cli.dll --repo samples/reference-app"
-$CLI generate                   # db/ and src/ReferenceApp.Data/Generated/ (867 files, 210 tables) and the .gitignore block
+$CLI generate                   # db/ and src/ReferenceApp.Data/Generated/ (870 files, 210 tables) and the .gitignore block
 $CLI generate --check           # exit 0 after a generate: every output equals what the model generates (exit 2 on drift)
 dotnet build samples/reference-app/src/ReferenceApp.Data -warnaserror
 samples/reference-app/tools/db-apply.sh          # 210 tables, 1 view, 3 sequences in both databases

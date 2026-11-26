@@ -160,12 +160,12 @@ test("a field the entity does not have is listed with Remove, and another result
   await expect.poll(async () => ((await queryJson(page)).select as unknown[]).length).toBe(select.length);
   await expect(unknown).toHaveCount(0);
 
-  // A query is the database's: General says the older result entity is set, and Remove turns every field that filled an
+  // A query is the database's: General says the result entity is retired, and Remove turns every field that filled an
   // attribute into a field of its own name (its expression kept), and the lines collection into a collection named lines.
   await tab(page, "General");
   await expect(editor(page).getByLabel("Result entity")).toHaveCount(0);
   const older = editor(page).getByTestId("query-older-result-entity");
-  await expect(older).toHaveText(/An older result entity is set; bind the entity to this query on its Storage tab instead\./);
+  await expect(older).toHaveText(/A result entity is retired and goes away in a later version; bind the entity to this query on its Storage tab instead\./);
   await older.getByRole("button", { name: "Remove" }).click();
   await expect
     .poll(async () => ((await queryJson(page)).select as { attribute?: string; name?: string }[]).map((f) => [f.attribute ?? null, f.name]))

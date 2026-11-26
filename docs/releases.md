@@ -7,8 +7,8 @@ one.
 
 ## 0.27.0 (not released yet)
 
-A base entity and its subtypes can share one table through their bindings, and templates can read the parts of a whole
-record and what a copy of it carries over.
+A base entity and its subtypes can share one table through their bindings, templates can read the parts of a whole
+record and what a copy of it carries over, and a query's `entity` and `collections` are retired.
 
 - **Subtypes in one table.** A base entity's binding names the type column once, with the new optional key
   `discriminatorColumn`. Every derived entity's binding to the same database then uses that column. Its type code is its
@@ -39,6 +39,15 @@ record and what a copy of it carries over.
   a condition or a lifecycle state, else the latest by a field) or `none`. Links inside the copy point at the copies; links out stay
   as they were. Templates read `entity.copy`, merged through the bases, and write their own copy statements. New rules MQ3045 to
   MQ3048 check the block. See [the user guide](user-guide.md#the-parts-of-a-record-and-what-a-copy-carries-over).
+- **A query's `entity` and `collections` are retired.** A database knows nothing about entities, so a query no longer
+  names one. A query that names an `entity` as the shape of its rows, or fills `collections`, gets the new warning MQ4127,
+  once per file. It still resolves and generates as before; removal comes in a later version. The way to write it now: the
+  query declares only its own columns (a `name` on each select field), the entity reads it through its binding's `source`,
+  and a record's parts come through composition (`entity.parts`), each part with its own binding. The `csharp-dapper`
+  example pack and the reference sample now work this way; the pack still renders a query that names an entity. See
+  "Retired: a query's entity and collections" in [the user guide](user-guide.md#the-explorers-and-screens).
+- **The rule family MQ41xx is now labelled "Migrations, bindings and queries"**, since it also holds binding, mapping and
+  query rules. Only the label in the rules list changes.
 
 **When you update:**
 
@@ -47,6 +56,11 @@ record and what a copy of it carries over.
   that column with its `discriminatorValue`.
 - The resolved model's entity records gain `parts` for each entity that owns a composition. Generated output stays the
   same until a template reads the new members.
+- If MQ4127 appears, rewrite the query: give each select field a `name` in place of its `attribute`, remove `entity` and
+  `collections`, and bind the entity to the query (its binding's `source` names the query, each field names a column).
+  Read lines and other parts through their own bindings. In the editor, **Remove** on the query's General tab does the
+  first step. Until you are ready, set `"MQ4127": "off"` (or another severity) in `validation.rules`; nothing else changes
+  for such a query in this version.
 
 ## 0.26.1 (2026-11-26)
 

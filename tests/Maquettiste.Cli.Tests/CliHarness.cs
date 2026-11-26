@@ -62,6 +62,7 @@ public sealed class SharedWriter : StringWriter
 /// <summary>Runs the CLI in-process against a temporary repo.</summary>
 public sealed class CliRepo : IDisposable
 {
+    // MQ4127 is off as in the billing fixture's own settings: its two older queries keep the retired form on purpose.
     public const string SettingsJson = """
         {
           "$schema": ".schema/v1/maquettiste.json",
@@ -83,6 +84,11 @@ public sealed class CliRepo : IDisposable
             },
             "ddl": {
               "output": "db"
+            }
+          },
+          "validation": {
+            "rules": {
+              "MQ4127": "off"
             }
           }
         }

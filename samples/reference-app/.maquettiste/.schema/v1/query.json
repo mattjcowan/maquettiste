@@ -106,7 +106,7 @@
       "$ref": "common.json#/$defs/id"
     },
     "entity": {
-      "description": "The entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field).",
+      "description": "Retired (MQ4127), removed in a later version: the entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field). Bind the entity to the query instead (its binding's source names the query).",
       "$ref": "common.json#/$defs/id"
     },
     "parameters": {
@@ -172,7 +172,7 @@
       "$ref": "#/$defs/paging"
     },
     "collections": {
-      "description": "Collections filled per result row by a correlated query (a sub-select yielding a list per parent row).",
+      "description": "Retired (MQ4127), removed in a later version: collections filled per result row by a correlated query (a sub-select yielding a list per parent row). Read a record's parts through composition, each part with its own binding.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/collection"
@@ -582,7 +582,7 @@
           "minLength": 1
         },
         "entity": {
-          "description": "The entity each element has; absent, the nested select list is the element shape.",
+          "description": "Retired with collections (MQ4127): the entity each element has; absent, the nested select list is the element shape.",
           "$ref": "common.json#/$defs/id"
         },
         "query": {

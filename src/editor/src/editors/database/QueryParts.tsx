@@ -1306,6 +1306,9 @@ export function CollectionsSection({
     });
   return (
     <div className="flex flex-col gap-2" data-testid="query-collections">
+      <p className="text-12 text-secondary" data-testid="query-collections-retired">
+        Collections are retired and go away in a later version: read a record&apos;s parts through composition, each part with its own binding.
+      </p>
       <div className="flex items-center gap-2">
         <p className="min-w-0 flex-1 text-12 text-secondary">
           A collection fills a list per result row from a nested query, run once for all the parent rows; its filter ties its rows to the parent with equalities

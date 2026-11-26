@@ -1013,7 +1013,8 @@ database shows on the Database screen at once. The explorers remember which rows
   A query is one file per query in `model/databases/<db>/queries/<name>.json` (kind `query`). It has a name, a
   description, stereotypes, tags, a category, custom properties and generation hints, like a view, but no schema: a
   query creates nothing in the database. The billing sample's `InvoicesByCustomer`, a little shortened (an older query
-  that names a result entity; see "The result shape" below):
+  that still names a result entity and fills a collection, both retired; see "Retired: a query's entity and collections"
+  below for the way to write it now):
 
   ```json
   {
@@ -1080,8 +1081,8 @@ database shows on the Database screen at once. The explorers remember which rows
 
   - **The result shape.** Without `entity` (every query the editor makes), the select list is the row: each field has a
     `name`, and a `type` (a built-in type) and `nullable` when the expression does not say them, and a pack turns the
-    fields into a record. An older query may name an `entity` (as the sample above does), which the engine still reads:
-    each row is then that entity. Every select field names the `attribute` it fills (its name defaults to the
+    fields into a record. An older query may name an `entity` (as the sample above does). It is retired (warning MQ4127)
+    and goes away in a later version; until then the engine still reads it: each row is then that entity. Every select field names the `attribute` it fills (its name defaults to the
     attribute's), or a `name` of its own for a value the entity does not hold. A field may also fill a member of a value
     object attribute, written `<attribute id>.<member id>` (the members of one attribute build the value together; its
     name defaults to `totalAmount` for `total.amount`), or the foreign key of a to-one navigation, written as the relation
@@ -1145,7 +1146,8 @@ database shows on the Database screen at once. The explorers remember which rows
     the generated method uses when the caller passes none (a value of the parameter's type; another is MQ4043, as is a
     number too large to hold), and a description. Parameter names differ ignoring case (MQ3001). In SQL a parameter is
     a placeholder, `@name` by default. In a query written as SQL text the placeholder is written `:name`.
-  - **Collections.** A collection fills a list per result row: its `attribute` is a collection attribute of the entity,
+  - **Collections.** Retired (warning MQ4127), and removed in a later version; until then they work as described here. A
+    collection fills a list per result row: its `attribute` is a collection attribute of the entity,
     or the relation end a to-many navigation of the entity leads to (the invoice's lines above; only an end with a
     navigation name is a navigation, so an unnamed end is MQ4027), or a name for an ad hoc row; its `entity` is the element shape (the navigation's target by default), and its `query` a nested query
     whose `where` ties its rows to the parent with equalities at its top (`l.<invoice key> = i.<id>`). A collection
@@ -1157,6 +1159,66 @@ database shows on the Database screen at once. The explorers remember which rows
     and a grouped parent by its hidden key columns; a distinct parent must select its keys or group by them (MQ4032).
     A collection that names its parent anywhere else, or not at all, is MQ4028. Names starting with `mq_` are reserved
     for these columns and parameters and for the generated code's own names (MQ4040).
+  - **Retired: a query's entity and collections.** A database knows nothing about entities, so a query no longer names
+    one. A query that names an `entity` or has `collections` (its own, or a collection's nested `entity`) is warning
+    MQ4127, once per file. It still resolves and generates as before, and the warning goes away when you rewrite it. You
+    can set MQ4127 to another severity, or `off`, in `validation.rules`. Removal comes in a later version. The way to
+    write it now:
+
+    - The query declares only its own columns: each select field has a `name` instead of an `attribute`.
+    - The entity reads the query through its binding: the binding's `source` names the query and each field names a
+      column (see "A read-only entity over a query").
+    - Lines and other parts come through composition: the invoice owns its lines, `entity.parts` lists them for
+      templates, and each part reads through its own binding or table (see "The parts of a record, and what a copy
+      carries over").
+
+    Before (retired):
+
+    ```json
+    {
+      "kind": "query", "name": "InvoicesByCustomer", "entity": "<id of Invoice>",
+      "from": { "source": "<id of invoices>", "alias": "i" },
+      "select": [
+        { "attribute": "<id of Invoice.id>", "expression": { "column": "i.id" } },
+        { "attribute": "<id of Invoice.number>", "expression": { "column": "i.number" } }
+      ],
+      "collections": [
+        { "attribute": "<id of the lines end>", "entity": "<id of InvoiceLine>", "query": { "from": { "source": "<id of invoice_lines>", "alias": "l" }, "where": { "op": "eq", "left": { "column": "l.invoice_id" }, "right": { "column": "i.id" } } } }
+      ]
+    }
+    ```
+
+    After:
+
+    ```json
+    {
+      "kind": "query", "name": "InvoicesByCustomer",
+      "from": { "source": "<id of invoices>", "alias": "i" },
+      "select": [
+        { "name": "id", "expression": { "column": "i.id" } },
+        { "name": "number", "expression": { "column": "i.number" } }
+      ]
+    }
+    ```
+
+    and, in the file of the entity that reads it (here `CustomerInvoice`, read-only):
+
+    ```json
+    "bindings": [
+      {
+        "id": "<id of the binding>", "database": "<id of main>", "source": "<id of InvoicesByCustomer>",
+        "fields": [
+          { "attribute": "<id of CustomerInvoice.id>", "column": "id" },
+          { "attribute": "<id of CustomerInvoice.number>", "column": "number" }
+        ]
+      }
+    ]
+    ```
+
+    The invoice's lines are no longer filled by the query: `InvoiceLine` keeps its own binding (or table), and a template
+    that loads an invoice with its lines reads `entity.parts` of `Invoice`, which gives each part's foreign key to its
+    owner. In the editor, the query's General tab offers **Remove** for a result entity, which turns each field that
+    filled an attribute into a named field.
   - **Queries written as SQL text.** Some SQL a query builder cannot say: a ranking, a running total, an upsert, a feature
     one database has. Write it yourself. The query is the same `query` file, with `sql` where a built query has `from` and
     `select`. You declare what the generated code needs, and the code generation packs write the same typed method they
@@ -1391,8 +1453,8 @@ database shows on the Database screen at once. The explorers remember which rows
     order, the order `$1`, `$2`... number them. The csharp-dapper pack writes one query class per query
     (`Queries/<Name>Query.g.cs`, the name Pascal-cased, with `Q` in front when it would start with a digit; two queries
     of a database whose class names are equal are MQ4040, as are two collections, or two fields of an ad hoc row, whose
-    names are equal once Pascal-cased). A query with collections returns `<Name>Result` records, the row and one list
-    per collection; a collection's statement runs for at most 1000 parent keys at a time. The sql-ddl pack has nothing
+    names are equal once Pascal-cased). A query with collections (retired) returns `<Name>Result` records, the row and
+    one list per collection; a collection's statement runs for at most 1000 parent keys at a time. The sql-ddl pack has nothing
     to write for a query, and the schema diff does not see queries.
   - **Deletes.** A query refers to its database, its entity, its sources, the attributes its fields fill and the ids in
     its column keys. Deleting one of these is refused while the query names it; with its dependents
@@ -1430,11 +1492,12 @@ database shows on the Database screen at once. The explorers remember which rows
     | MQ4097 | warning | a binding of a SQL Server database reads a query written as SQL text that SQL Server cannot nest as a derived table: its text starts with `WITH`, or has an `ORDER BY` outside parentheses with no `OFFSET`, `FETCH` or `TOP` |
     | MQ4098 | warning | a query's SQL text and its declarations disagree, by name and verb only: a table or view in `reads` or `writes` whose name appears nowhere in the text (ignoring case); a statement that changes data (`INSERT`, `UPDATE`, `DELETE`, `MERGE`, `REPLACE` or `TRUNCATE`, directly or after a leading `WITH`) with no `writes`; or one that returns rows (`SELECT`, `VALUES` or `TABLE`) with no `columns` |
     | MQ4099 | error | a named query does not fit: it reads a named query listed after it, reads itself outside `recursive`, or has the name of a table or view the query reads (ignoring case); or its repeating part does not fit its anchor: another number of fields, other names or another order, a field type that differs from the anchor's, its own name read other than once, in a nested query or on the null-padded side of an outer join, an aggregate call, or on SQL Server any outer join or nested query, or `union: "distinct"` on SQL Server or Oracle |
+    | MQ4127 | warning | a query that names an `entity` or has `collections` (once per file, at `/entity` or else `/collections`): both are retired; give the query its own columns, bind the entity to it, and read parts through composition (see "Retired: a query's entity and collections") |
 
     A parameter type that is neither a built-in type nor a database type of the database is MQ4018 (a declared column's
     type too); two parameters, fields, declared columns or named queries with one name, or two queries of a database with
-    one name, are MQ3001. A file that mixes the two forms of query is MQ1002. MQ4096, MQ4097 and MQ4098 leave the query
-    rendered; they are warnings you may set to another severity, or `off`, in `validation.rules`. Any error, MQ4099 and
+    one name, are MQ3001. A file that mixes the two forms of query is MQ1002. MQ4096, MQ4097, MQ4098 and MQ4127 leave the
+    query rendered; they are warnings you may set to another severity, or `off`, in `validation.rules`. Any error, MQ4099 and
     the new cases of MQ4021, MQ4024 and MQ4029 among them, leaves the query without SQL until it is fixed.
   - **Building a query in the editor.** **New query…** (see "Creating a table, a view, a sequence or another database
     object" above) creates the query and opens its editor; the Databases explorer lists it in the database's Queries
@@ -1446,8 +1509,8 @@ database shows on the Database screen at once. The explorers remember which rows
     for the database's dialect to start from). The tabs of a query built from parts:
     - **General**: the name, marks and description. The editor says nothing about entities: an entity binds to the
       query from its own Storage tab. An older query that still names a result entity (its own, or a collection's
-      elements') keeps working and shows one line, "An older result entity is set; bind the entity to this query on its
-      Storage tab instead", with **Remove**: each field that filled an attribute becomes a field of its own name, its
+      elements') keeps working and shows one line, "A result entity is retired and goes away in a later version; bind the
+      entity to this query on its Storage tab instead", with **Remove**: each field that filled an attribute becomes a field of its own name, its
       expression kept (the attribute's name, numbered when another field has it), and each such collection takes the name
       of what it filled. Nothing is lost; one undo step.
     - **Sources**: the **From** source and its alias, then the joins, each with its kind (inner, left, right, full or

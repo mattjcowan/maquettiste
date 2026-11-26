@@ -1517,7 +1517,7 @@
     "defaultSeverity": "error",
     "description": "A migration fact lacks the intent its change needs: a conversion, a data check for a narrowing, a drop's acknowledgement, a backfill's value or data check, a raw step's skipWhen guard; complete it or hold it.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1525,7 +1525,7 @@
     "defaultSeverity": "error",
     "description": "A change since the baseline needs a migration fact and has none: a rename or moved key, a type change that is not a widening, a dropped table, column or sequence, or a column made not null.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1533,7 +1533,7 @@
     "defaultSeverity": "warning",
     "description": "An open fact the baseline lacks is stale: the model no longer shows its combined effect (a change made and undone, a pending change reverted or widened back), or a value map's codes were not codes of its type in the baseline model and its names did not change; migration fold removes it.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1541,7 +1541,7 @@
     "defaultSeverity": "error",
     "description": "The after links of a database's open facts form a cycle.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1549,7 +1549,7 @@
     "defaultSeverity": "error",
     "description": "A fact's after link names a fact of another database.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1557,7 +1557,7 @@
     "defaultSeverity": "error",
     "description": "A fact's fields do not fit its type: from equal to to, a conversion or data check with both forms or neither, released without held, a key or object listed twice, a values code listed twice or mapped to itself, an object kind the type does not take, or a value map that maps codes in no column or collection and changes no name, or whose to is also a from.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1565,7 +1565,7 @@
     "defaultSeverity": "error",
     "description": "Two open facts change the same object and neither comes after the other (merged copies changed one object); order them with after or fold them. The object is the fact's object key: a column for a column fact, a table for a table fact; a table drop also changes each of its members.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1573,7 +1573,7 @@
     "defaultSeverity": "warning",
     "description": "A fact's SQL text has no entry for the database's dialect and no \"*\" entry.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1581,7 +1581,7 @@
     "defaultSeverity": "warning",
     "description": "The baseline has errors that leave objects unresolved, so changes to them were not checked.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1589,7 +1589,7 @@
     "defaultSeverity": "info",
     "description": "A write changed objects whose elements have errors, so no facts were recorded for them; validate --against checks them.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1597,7 +1597,7 @@
     "defaultSeverity": "warning",
     "description": "A fact's after link names a fact that does not exist (folded or removed in another copy); the link is ignored for ordering.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1605,7 +1605,7 @@
     "defaultSeverity": "error",
     "description": "Since the baseline, a kept row's code changed, a former code was added, or a type's name or plural name changed, and no open value-map fact of a database holding the type records it.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1613,7 +1613,7 @@
     "defaultSeverity": "error",
     "description": "An open value-map fact maps away a code that is a live code of its reference type.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1621,7 +1621,7 @@
     "defaultSeverity": "warning",
     "description": "A write changed a kept reference row's code, or a reference type's name or plural name, outside the refactor operations, so no value map was recorded.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1629,7 +1629,7 @@
     "defaultSeverity": "info",
     "description": "A relation has an end with several types, and every end has a type it covers placed in a database where no mapping stores the relation (with a junctionTable or an ends entry), so that database stores nothing for it: no table, column or foreign key.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1637,7 +1637,7 @@
     "defaultSeverity": "error",
     "description": "A query field or a query collection names a relation end with several types, a navigation to one, or another end of a relation with such an end; a query can't yet say which type's table it joins.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1645,7 +1645,7 @@
     "defaultSeverity": "error",
     "description": "A relation mapping's storage doesn't fit together: a key that leads to the wrong table, a pointer outside the table that holds its links, entries that give no table to hold them, a referenced column that isn't unique or whose type doesn't match, a type that isn't a target or two types with one code, a code its column can't hold, a key per type at an any-entity end, two mappings that read each other's links, a binding field that maps another column than the mapping names, or a form that waits (a link table per pair of types, column pointers spread over several tables).",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1653,7 +1653,7 @@
     "defaultSeverity": "info",
     "description": "A database holds a relation end with several types in a way it can't fully enforce: no foreign key, a key to a shared table, an id alone, a type column or keys per type with no check found, a one-to-one or a link table with no unique found, keys per type in a link table, or a table whose rows nothing tells apart; the message gives the check or unique to copy.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1661,7 +1661,7 @@
     "defaultSeverity": "warning",
     "description": "Since the baseline, an entity's type code in a database changed, and a type column there holds codes of a relation with an end of several types; links stored with the old code no longer find their object.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1669,7 +1669,7 @@
     "defaultSeverity": "warning",
     "description": "A mapping states how a relation with an end of several types is stored in a database, but names nothing that points at a placed type the relation covers there, so links to it aren't stored.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1677,7 +1677,7 @@
     "defaultSeverity": "error",
     "description": "A binding reads a query with a parameter that has the name of one of the binding's fields (ignoring case): the statements name their parameters after the fields, so one name would carry two values.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1685,7 +1685,7 @@
     "defaultSeverity": "error",
     "description": "A binding's type column is not a column of its source, or of the table it writes: the column its discriminatorColumn names, or the one a derived entity's binding inherits from its nearest base's binding to the database.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1693,7 +1693,7 @@
     "defaultSeverity": "warning",
     "description": "A binding names a type column (discriminatorColumn), but no entity derived from its entity has a binding to the database that shares it in the same table, so the column tells no rows apart.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1701,7 +1701,7 @@
     "defaultSeverity": "error",
     "description": "A binding has a constant on its type column, its own or the one it inherits from a base, or a soft delete that sets it: the column already holds the entity's type code.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1709,7 +1709,7 @@
     "defaultSeverity": "error",
     "description": "Two entities that share a type column in one table have the same type code, so reads cannot tell their rows apart; or an entity's type code cannot fit the type column (the wrong type, too long, out of range).",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {
@@ -1717,7 +1717,15 @@
     "defaultSeverity": "error",
     "description": "A derived entity's binding names a type column (discriminatorColumn) while a base's binding in the same table already names one: the column is inherited, so remove the key. A derived entity bound to another table may name its own.",
     "family": "MQ41xx",
-    "familyLabel": "Migrations",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4127",
+    "defaultSeverity": "warning",
+    "description": "A query names an entity as the shape of its rows (entity) or fills collections (collections): both are retired and go away in a later version. Give the query its own columns and bind the entity to it with its binding's source; read a record with its parts through composition, each part with its own binding.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true
   },
   {

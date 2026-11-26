@@ -10676,7 +10676,7 @@ export interface components {
         collection: {
             /** @description The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row. */
             attribute: string;
-            /** @description The entity each element has; absent, the nested select list is the element shape. */
+            /** @description Retired with collections (MQ4127): the entity each element has; absent, the nested select list is the element shape. */
             entity?: components["schemas"]["id"];
             /** @description The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where. */
             query: components["schemas"]["subquery"];
@@ -10727,7 +10727,7 @@ export interface components {
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
-            /** @description The entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field). */
+            /** @description Retired (MQ4127), removed in a later version: the entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field). Bind the entity to the query instead (its binding's source names the query). */
             entity?: components["schemas"]["id"];
             /**
              * @description The values the caller passes, by name.
@@ -10757,7 +10757,7 @@ export interface components {
             distinct?: boolean;
             paging?: components["schemas"]["paging"];
             /**
-             * @description Collections filled per result row by a correlated query (a sub-select yielding a list per parent row).
+             * @description Retired (MQ4127), removed in a later version: collections filled per result row by a correlated query (a sub-select yielding a list per parent row). Read a record's parts through composition, each part with its own binding.
              * @default []
              */
             collections?: components["schemas"]["collection"][];
@@ -10906,7 +10906,7 @@ export interface components {
                 collection: {
                     /** @description The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row. */
                     attribute: string;
-                    /** @description The entity each element has; absent, the nested select list is the element shape. */
+                    /** @description Retired with collections (MQ4127): the entity each element has; absent, the nested select list is the element shape. */
                     entity?: components["schemas"]["id"];
                     /** @description The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where. */
                     query: components["schemas"]["subquery"];
