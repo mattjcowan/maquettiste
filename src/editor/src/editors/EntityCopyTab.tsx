@@ -1,26 +1,29 @@
 // The Copy tab of the entity editor (parts-and-copy-design.md section 3): what a copy of a whole record carries over. Fields (each attribute),
 // Links (each to-one end the entity holds) and Parts (the entity's compositions as a tree). The entity's own `copy` block is what is written;
-// an entry a base wrote shows "from <Base>" and is replaced by choosing another word. The parts are worked out here from the relations (the
-// editor has no resolved model of an unsaved entity), the way the engine's `entity.parts` lists them.
+// an entry a base wrote shows "from <Base>" and is replaced by choosing another word (and taken back with "Back to base"). The parts are worked
+// out here from the relations that reference each entity on the way down (one where-used call per entity, never a read of the whole model),
+// the way the engine's `entity.parts` lists them.
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { loadElement, useElements, useIndex, useReferencesOf } from "@/api/queries";
+import { loadElement, useElements, useIndex } from "@/api/queries";
 import type { ElementSummary, EntityDoc } from "@/api/types";
+import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { indexLookup } from "@/model/index";
-import { stateChoices, treeText, type TreeNames } from "@/model/effects";
+import { stateChoices } from "@/model/effects";
 import type { ProcessDoc } from "@/model/process";
 import type { EditorContext } from "./EditorFrame";
 import { baseChain } from "./related";
-import { referrersOf, referencesOf, WALK_LIMITS } from "./refWalk";
+import { referenceReader, referrersOf, WALK_LIMITS } from "./refWalk";
 import { ValueBox } from "./ValueBox";
 import {
   ATTRIBUTE_WORDS,
   choiceOf,
   copyAttributes,
+  hasOwnCopyEntry,
   inheritedEntries,
   isOrderable,
   LINK_WORDS,
@@ -28,6 +31,9 @@ import {
   mergedEntries,
   partTree,
   PART_WORDS,
+  printCondition,
+  removeOwnCopyEntry,
+  removeOwnPart,
   setCopyWord,
   setPartAttributeWord,
   setPartChoice,
@@ -47,14 +53,6 @@ interface RelationWalk {
   relatedIds: Map<string, string[]>;
   /** Whether WALK_LIMITS cut the walk. */
   truncated: boolean;
-  sig: string;
-}
-
-/** A cheap signature of some index hashes, so the walk runs again when one of its relations is saved. */
-function hashSignature(hashes: readonly (string | undefined)[]): string {
-  let h = 0;
-  for (const x of hashes) for (let i = 0; i < (x ?? "").length; i++) h = (h * 31 + x!.charCodeAt(i)) | 0;
-  return `${hashes.length}:${h}`;
 }
 
 /** The ids of the custom types the attributes of some entities use. */
@@ -76,81 +74,98 @@ export function EntityCopyTab(ctx: EditorContext) {
   const baseOf = (at: string) => lookup.byId.get(at)?.base ?? undefined;
   const bases = baseChain(lookup.byId, entity.base);
   const baseDocs = useElements(bases);
-  const chain: Json[] = [json as Json, ...bases.flatMap((b) => (baseDocs.byId.get(b)?.json ? [baseDocs.byId.get(b)!.json as Json] : []))];
+  const chain = useMemo<Json[]>(
+    () => [json as Json, ...bases.flatMap((b) => (baseDocs.byId.get(b)?.json ? [baseDocs.byId.get(b)!.json as Json] : []))],
+    [json, bases.join(","), baseDocs.byId], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // Until every base is loaded, what a base wrote is unknown: nothing is edited meanwhile.
+  const locked = bases.some((b) => !baseDocs.byId.has(b));
   const nameOf = (at: string | null | undefined) => (at ? (lookup.byId.get(at)?.name ?? at) : "");
 
   // The relations that touch an entity (it or a base) are the ones that reference it: asked one entity at a time, level by level down the
-  // compositions, never from the whole index. Each entity is one where-used call per base; the walk is cut at WALK_LIMITS.
+  // compositions (the calls of a level run together), never from the whole index. The walk is cut at WALK_LIMITS and says so. It runs again
+  // whenever the index refreshes (an element was saved), keeping the tree it had meanwhile.
   const qc = useQueryClient();
   const kindOf = (x: string) => lookup.byId.get(x)?.kind;
-  const rootIds = [id, ...bases];
-  const rootRefs = useReferencesOf(rootIds);
-  const rootSig = rootIds.map((c) => (rootRefs.get(c) ?? []).map((r) => r.fromElementId).join(",")).join("|");
-  const [tick, setTick] = useState(0);
   const relations = useQuery({
-    queryKey: ["copy-relations", id, bases.join(","), rootSig, tick],
+    queryKey: ["copy-relations", id, bases.join(","), index.dataUpdatedAt],
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<RelationWalk> => {
+      const read = referenceReader(qc);
       const docs = new Map<string, Json>();
       const relatedIds = new Map<string, string[]>();
       const rowsOf = (e: string) => (relatedIds.get(e) ?? []).flatMap((r) => (lookup.byId.get(r) ? [lookup.byId.get(r)!] : []));
       let truncated = false;
-      for (let round = 0; round < WALK_LIMITS.depth + 1; round++) {
+      for (let round = 0; round <= WALK_LIMITS.depth; round++) {
         const tree = partTree(id, rowsOf, docs, baseOf);
         let todo = [...new Set([id, ...tree.map((p) => p.entity)])].filter((e) => !relatedIds.has(e));
         if (!todo.length) break;
+        if (round === WALK_LIMITS.depth) {
+          truncated = true;
+          break;
+        }
         if (relatedIds.size + todo.length > WALK_LIMITS.entities) {
           truncated = true;
           todo = todo.slice(0, Math.max(0, WALK_LIMITS.entities - relatedIds.size));
           if (!todo.length) break;
         }
-        for (const e of todo) {
-          const found: string[] = [];
-          for (let c: string | undefined = e, hops = 0; c && hops < 32; c = baseOf(c), hops++)
-            found.push(...referrersOf(await referencesOf(qc, c), kindOf, "relation"));
-          relatedIds.set(e, [...new Set(found)]);
+        await Promise.all(
+          todo.map(async (e) => {
+            const chainIds: string[] = [];
+            for (let c: string | undefined = e; c && !chainIds.includes(c); c = baseOf(c)) chainIds.push(c);
+            const refs = await Promise.all(chainIds.map(read));
+            relatedIds.set(e, [...new Set(refs.flatMap((r) => referrersOf(r, kindOf, "relation")))]);
+          }),
+        );
+        let wanted = [...new Set([...relatedIds.values()].flat())].filter((r) => !docs.has(r));
+        if (docs.size + wanted.length > WALK_LIMITS.relations) {
+          truncated = true;
+          wanted = wanted.slice(0, Math.max(0, WALK_LIMITS.relations - docs.size));
         }
-        const wanted = [...new Set([...relatedIds.values()].flat())].filter((r) => !docs.has(r));
         for (const doc of await Promise.all(wanted.map((r) => loadElement(r)))) docs.set(String(doc.json.id), doc.json as Json);
-        if (round === WALK_LIMITS.depth) truncated = true;
       }
-      return { docs, relatedIds, truncated, sig: hashSignature([...new Set([...relatedIds.values()].flat())].map((r) => lookup.byId.get(r)?.hash)) };
+      return { docs, relatedIds, truncated };
     },
-    enabled: !index.isPending && rootIds.every((c) => rootRefs.has(c)),
+    enabled: !index.isPending && lookup.byId.has(id),
   });
   const walk = relations.data;
-  // A relation saved since the walk (its index row's hash moved) walks again.
-  const nowSig = walk ? hashSignature([...new Set([...walk.relatedIds.values()].flat())].map((r) => lookup.byId.get(r)?.hash)) : "";
-  useEffect(() => {
-    if (walk && nowSig !== walk.sig) setTick((t) => t + 1);
-  }, [walk, nowSig]);
   const relationDocs = walk?.docs ?? new Map<string, Json>();
   const related = (at: string): ElementSummary[] => (walk?.relatedIds.get(at) ?? []).flatMap((r) => (lookup.byId.get(r) ? [lookup.byId.get(r)!] : []));
   const parts = useMemo(() => partTree(id, related, relationDocs, baseOf), [walk, index.data, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The documents of every part entity and its bases (attributes, order), the lifecycles that name them (their referrers), and the scalar
-  // types its attributes use that give an attribute its order: only what the parts' own attributes name.
+  // The documents of every part entity and its bases (attributes, order), the lifecycles that govern them, and the custom types the
+  // attributes use (which give an attribute its order and what `original` may hold): only what the entity's and the parts' own attributes name.
   const partChains = useMemo(
     () => new Map(parts.map((p) => [p.entity, [p.entity, ...baseChain(lookup.byId, lookup.byId.get(p.entity)?.base)]] as const)),
     [parts, lookup],
   );
   const partDocIds = useMemo(() => [...new Set([...partChains.values()].flat())].sort(), [partChains]);
   const partDocs = useElements(partDocIds);
+  // A lifecycle governs a part when its index row names the part entity or a base as a subject, or covers it; its referrers are the candidates.
   const governingQuery = useQuery({
-    queryKey: ["copy-governing", partDocIds.join(","), rootSig],
+    queryKey: ["copy-governing", partDocIds.join(","), index.dataUpdatedAt],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
+      const read = referenceReader(qc);
       const out = new Map<string, string[]>();
-      for (const [e, c] of partChains) {
-        const found: string[] = [];
-        for (const x of c) found.push(...referrersOf(await referencesOf(qc, x), kindOf, "process").filter((p) => lookup.byId.get(p)?.use === "lifecycle"));
-        out.set(e, [...new Set(found)]);
-      }
+      await Promise.all(
+        [...partChains].map(async ([e, c]) => {
+          const found = (await Promise.all(c.map(read))).flatMap((r) => referrersOf(r, kindOf, "process"));
+          const governs = (p: string) => {
+            const row = lookup.byId.get(p);
+            const named = [...(row?.subject ? [row.subject] : []), ...(row?.subjects ?? []), ...(row?.covers ?? [])];
+            return row?.use === "lifecycle" && c.some((x) => named.includes(x));
+          };
+          out.set(e, [...new Set(found.filter(governs))]);
+        }),
+      );
       return out;
     },
     enabled: partDocIds.length > 0,
   });
   const governing = useMemo(() => governingQuery.data ?? new Map<string, string[]>(), [governingQuery.data]);
   const lifecycleDocs = useElements(useMemo(() => [...new Set([...governing.values()].flat())].sort(), [governing]));
-  const typeIds = useMemo(() => typeRefsOf([...partDocs.byId.values()].map((d) => d.json as Json)), [partDocs.byId]);
+  const typeIds = useMemo(() => typeRefsOf([...chain, ...[...partDocs.byId.values()].map((d) => d.json as Json)]), [chain, partDocs.byId]);
   const typeDocs = useElements(typeIds);
   const typeBaseIds = useMemo(
     () =>
@@ -161,15 +176,22 @@ export function EntityCopyTab(ctx: EditorContext) {
   );
   const typeBaseDocs = useElements(typeBaseIds);
   const scalarBase = (typeId: string) => ((typeDocs.byId.get(typeId) ?? typeBaseDocs.byId.get(typeId))?.json as { base?: unknown } | undefined)?.base;
+  // The names an enum's members go by in a condition.
+  const memberNames = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const d of typeDocs.byId.values()) for (const m of arr((d.json as Json).members)) out.set(String(m.id), String(m.name));
+    return out;
+  }, [typeDocs.byId]);
 
   const commit = (update: (j: Json) => void) => {
     ctx.edit((j) => void update(j as Json));
     ctx.flush();
   };
   const problems = ctx.diagnostics.filter((d) => /^\/copy(\/|$)/.test(d.jsonPointer ?? ""));
+  const base = (at: string | null | undefined) => nameOf(at);
 
   // Fields
-  const attributes = copyAttributes(chain);
+  const attributes = copyAttributes(chain, scalarBase);
   const attributeEntries = mergedEntries(chain, "attributes", "attribute");
   const attributeBase = inheritedEntries(chain, "attributes", "attribute");
   // Links
@@ -180,11 +202,23 @@ export function EntityCopyTab(ctx: EditorContext) {
   const partMerged = mergedEntries(chain, "parts", "end");
   const partBase = inheritedEntries(chain, "parts", "end");
 
+  const fromCell = (from: string | null, key: "attributes" | "links", entryId: string, inherited: boolean) => (
+    <td className="w-48 px-1 text-12 text-secondary">
+      {from ? `from ${base(from)}` : ""}
+      {!from && inherited && hasOwnCopyEntry(json as Json, key, entryId) ? (
+        <Button size="sm" variant="ghost" disabled={locked} onClick={() => commit((j) => removeOwnCopyEntry(j, key, entryId))} data-testid="copy-back-to-base">
+          Back to base
+        </Button>
+      ) : null}
+    </td>
+  );
+
   return (
     <div className="flex max-w-3xl flex-col gap-3" data-testid="editor-copy">
       <p className="text-12 text-secondary">
         What a copy of {entity.name} carries over. Anything not listed is copied as it is; a new copy always gets a new key and starts every lifecycle at its
-        initial state.
+        initial state. Parts reached through an owner end that names a stereotype or any entity, and attributes a stereotype adds, are not listed here: edit
+        them on the JSON tab.
       </p>
 
       <section className="flex flex-col gap-1" data-testid="copy-fields">
@@ -205,10 +239,11 @@ export function EntityCopyTab(ctx: EditorContext) {
                         value={word}
                         words={a.words}
                         labels={ATTRIBUTE_WORDS}
+                        disabled={locked}
                         onChange={(w) => commit((j) => setCopyWord(j, "attributes", a.id, w, attributeBase.get(a.id)?.entry.onCopy as string | undefined))}
                       />
                     </td>
-                    <td className="w-32 px-1 text-12 text-secondary">{from ? `from ${nameOf(from)}` : ""}</td>
+                    {fromCell(from, "attributes", a.id, attributeBase.has(a.id))}
                   </tr>
                 );
               })}
@@ -237,10 +272,11 @@ export function EntityCopyTab(ctx: EditorContext) {
                         value={word}
                         words={e.original ? ["copy", "original"] : ["copy"]}
                         labels={LINK_WORDS}
+                        disabled={locked}
                         onChange={(w) => commit((j) => setCopyWord(j, "links", e.id, w, linkBase.get(e.id)?.entry.onCopy as string | undefined))}
                       />
                     </td>
-                    <td className="w-32 px-1 text-12 text-secondary">{from ? `from ${nameOf(from)}` : ""}</td>
+                    {fromCell(from, "links", e.id, linkBase.has(e.id))}
                   </tr>
                 );
               })}
@@ -255,13 +291,13 @@ export function EntityCopyTab(ctx: EditorContext) {
         <SectionTitle>{`Parts (${parts.length})`}</SectionTitle>
         {walk?.truncated ? (
           <p className="text-12 text-warning" data-testid="copy-parts-cut">
-            The list stops here: a walk looks at {WALK_LIMITS.entities} entities and {WALK_LIMITS.depth} levels at most, so some parts further down are not
-            shown.
+            The list stops here: a walk looks at {WALK_LIMITS.entities} entities, {WALK_LIMITS.relations} relations and {WALK_LIMITS.depth} levels at most, so
+            some parts further down are not shown.
           </p>
         ) : null}
         {parts.length === 0 ? (
           <p className="text-12 text-secondary" data-testid="copy-no-parts">
-            {relations.isPending
+            {relations.isPending || !walk
               ? "Looking for parts…"
               : `${entity.name} owns no parts: no composition has it as the whole. The fields and links above still apply.`}
           </p>
@@ -274,9 +310,12 @@ export function EntityCopyTab(ctx: EditorContext) {
                 entityId={id}
                 merged={partMerged}
                 inherited={partBase}
+                hasOwn={hasOwnCopyEntry(json as Json, "parts", p.end)}
+                locked={locked}
                 nameOf={nameOf}
                 partChain={(partChains.get(p.entity) ?? [p.entity]).flatMap((c) => (partDocs.byId.get(c)?.json ? [partDocs.byId.get(c)!.json as Json] : []))}
                 scalarBase={scalarBase}
+                memberNames={memberNames}
                 lifecycles={(governing.get(p.entity) ?? []).flatMap((l) =>
                   lifecycleDocs.byId.get(l)?.json ? [lifecycleDocs.byId.get(l)!.json as unknown as ProcessDoc] : [],
                 )}
@@ -306,17 +345,19 @@ function WordSelect<W extends string>({
   value,
   words,
   labels,
+  disabled,
   onChange,
 }: {
   label: string;
   value: string;
   words: readonly W[];
   labels: Record<W, string>;
+  disabled?: boolean;
   onChange: (word: W) => void;
 }) {
   const all = words.includes(value as W) ? words : [...words, value as W];
   return (
-    <Select aria-label={label} className="h-6" value={value} onChange={(e) => onChange(e.target.value as W)}>
+    <Select aria-label={label} className="h-6" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as W)}>
       {all.map((w) => (
         <option key={w} value={w}>
           {labels[w] ?? w}
@@ -331,9 +372,12 @@ function PartRow({
   entityId,
   merged,
   inherited,
+  hasOwn,
+  locked,
   nameOf,
   partChain,
   scalarBase,
+  memberNames,
   lifecycles,
   commit,
 }: {
@@ -341,21 +385,28 @@ function PartRow({
   entityId: string;
   merged: ReturnType<typeof mergedEntries>;
   inherited: ReturnType<typeof mergedEntries>;
+  /** The entity writes an entry of its own for the part. */
+  hasOwn: boolean;
+  locked: boolean;
   nameOf: (id: string | null | undefined) => string;
   partChain: Json[];
   scalarBase: (typeId: string) => unknown;
+  memberNames: ReadonlyMap<string, string>;
   lifecycles: ProcessDoc[];
   commit: (update: (j: Json) => void) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // One chosen part waits here until its choice is picked: `one` without a choice is refused (MQ3047), so it is not written before.
+  const [pendingOne, setPendingOne] = useState(false);
   const entry = merged.get(part.end);
   const base = inherited.get(part.end)?.entry;
-  const word = String(entry?.entry.onCopy ?? "all") as PartWord;
+  const stored = String(entry?.entry.onCopy ?? "all") as PartWord;
+  const word: PartWord = pendingOne && stored !== "one" ? "one" : stored;
   const from = entry && entry.from !== entityId ? entry.from : null;
   // A part is left out when one above it is.
   const segments = part.id.split("/");
   const left = segments.slice(0, -1).some((end) => merged.get(end)?.entry.onCopy === "none");
-  const attributes = copyAttributes(partChain);
+  const attributes = copyAttributes(partChain, scalarBase);
   const fieldEntries = new Map(arr(entry?.entry.attributes).map((a) => [String(a.attribute), String(a.onCopy)]));
   const label = `${part.role}`;
   return (
@@ -393,20 +444,42 @@ function PartRow({
             value={word}
             words={["all", "one", "none"] as const}
             labels={PART_WORDS}
-            onChange={(w) => commit((j) => setPartWord(j, part.end, w, base))}
+            disabled={locked}
+            onChange={(w) => {
+              if (w === "one") {
+                // With a choice already written (or a base's), `one` is written now; else it waits for the choice.
+                if (stored !== "one" && (entry?.entry.choose || base?.choose)) commit((j) => setPartWord(j, part.end, "one", base));
+                else if (stored !== "one") setPendingOne(true);
+                return;
+              }
+              setPendingOne(false);
+              commit((j) => setPartWord(j, part.end, w, base));
+            }}
           />
         </span>
-        <span className="w-32 shrink-0 text-12 text-secondary">{from ? `from ${nameOf(from)}` : ""}</span>
+        <span className="w-48 shrink-0 text-12 text-secondary">
+          {from ? `from ${nameOf(from)}` : ""}
+          {!from && hasOwn && base ? (
+            <Button size="sm" variant="ghost" disabled={locked} onClick={() => commit((j) => removeOwnPart(j, part.end))} data-testid="copy-back-to-base">
+              Back to base
+            </Button>
+          ) : null}
+        </span>
       </div>
       {word === "one" ? (
         <PartChoice
           part={part}
-          choice={choiceOf(entry?.entry)}
+          choice={choiceOf(stored === "one" ? entry?.entry : undefined)}
+          pending={pendingOne && stored !== "one"}
+          locked={locked}
           partChain={partChain}
-          attributes={attributes}
           scalarBase={scalarBase}
+          memberNames={memberNames}
           lifecycles={lifecycles}
-          onChange={(c) => commit((j) => setPartChoice(j, part.end, base, c))}
+          onChange={(c) => {
+            commit((j) => void setPartChoice(j, part.end, base, c));
+            if (c.condition || c.state || c.latestBy) setPendingOne(false);
+          }}
         />
       ) : null}
       {open && word !== "none" ? (
@@ -421,6 +494,7 @@ function PartRow({
                     value={fieldEntries.get(a.id) ?? "copy"}
                     words={a.words}
                     labels={ATTRIBUTE_WORDS}
+                    disabled={locked}
                     onChange={(w) => commit((j) => setPartAttributeWord(j, part.end, base, a.id, w))}
                   />
                 </span>
@@ -439,33 +513,41 @@ function PartRow({
 function PartChoice({
   part,
   choice,
+  pending,
+  locked,
   partChain,
-  attributes,
   scalarBase,
+  memberNames,
   lifecycles,
   onChange,
 }: {
   part: PartInfo;
   choice: { condition?: Json; state?: string; latestBy?: string };
+  /** `one` is picked but nothing is written yet: no choice has been made. */
+  pending: boolean;
+  locked: boolean;
   partChain: Json[];
-  attributes: readonly (AttributeLike & { owner: string })[];
   scalarBase: (typeId: string) => unknown;
+  memberNames: ReadonlyMap<string, string>;
   lifecycles: ProcessDoc[];
   onChange: (choice: Choice) => void;
 }) {
   const initial = choice.condition ? "condition" : choice.state ? "state" : "latest";
   const [picked, setPicked] = useState<"condition" | "state" | "latest" | null>(null);
+  // What is stored moved (an undo, another edit): follow it.
+  useEffect(() => setPicked(null), [initial]);
   const mode = picked ?? initial;
   const groups = stateChoices(lifecycles);
-  const ordered = [...partChain]
-    .reverse()
-    .flatMap((d) => arr(d.attributes) as unknown as AttributeLike[])
-    .filter((a) => !a.collection && isOrderable(a.type, scalarBase));
-  const names = new Map(attributes.map((a) => [a.id, a.name]));
-  const states = new Map(groups.flatMap((g) => g.states.map((s) => [s.id, s.label] as const)));
-  const treeNames: TreeNames = { name: (x) => names.get(x), state: (x) => states.get(x), subject: () => false };
-  const conditionText = choice.condition ? treeText(choice.condition, treeNames) : "";
+  const partAttributes = [...partChain].reverse().flatMap((d) => arr(d.attributes) as unknown as AttributeLike[]);
+  const ordered = partAttributes.filter((a) => !a.collection && isOrderable(a.type, scalarBase));
+  const names = new Map<string, string>([...memberNames, ...partAttributes.map((a) => [a.id, a.name] as const)]);
+  const conditionText = choice.condition ? printCondition(choice.condition, { name: (x) => names.get(x) }) : "";
   const dom = `copy-choice-${part.id.replace(/[^a-zA-Z0-9]/g, "")}`;
+  const hint = pending
+    ? "Pick how the one part is chosen."
+    : mode === "latest" && !choice.latestBy
+      ? "Pick Latest by: the part with the greatest value is copied."
+      : null;
   return (
     <div
       className="flex flex-wrap items-start gap-2 pb-1 pt-0.5 text-12"
@@ -478,11 +560,12 @@ function PartChoice({
           aria-label={`How ${part.role} is chosen`}
           className="h-6 w-28"
           value={mode}
+          disabled={locked}
           onChange={(e) => {
             const next = e.target.value as "condition" | "state" | "latest";
             setPicked(next);
-            // Switching the way drops the other's value, and keeps the latest-by attribute.
-            if (next !== initial) onChange({ latestBy: choice.latestBy });
+            // Choosing by the latest alone writes it when there is a latest-by attribute; the others wait for their value.
+            if (next === "latest") onChange({ latestBy: choice.latestBy });
           }}
         >
           <option value="condition">a condition</option>
@@ -491,30 +574,36 @@ function PartChoice({
         </Select>
       </label>
       {mode === "condition" ? (
-        <div className="w-64">
-          <ValueBox
-            key={conditionText}
-            id={`${dom}-condition`}
-            label={`Condition for ${part.role}`}
-            initial={conditionText}
-            placeholder="a condition on its fields, such as current = true"
-            request={() => null}
-            onChange={() => undefined}
-            onCommit={(text) => {
-              if (text.trim() !== conditionText) onChange({ condition: text, latestBy: choice.latestBy });
-            }}
-            condition
-          />
-        </div>
+        conditionText === null ? (
+          <span className="pt-1 text-secondary" data-testid="copy-condition-tree">
+            A condition the box can&apos;t show: edit it on the JSON tab.
+          </span>
+        ) : (
+          <div className="w-64">
+            <ValueBox
+              key={conditionText}
+              id={`${dom}-condition`}
+              label={`Condition for ${part.role}`}
+              initial={conditionText}
+              placeholder="a condition on its fields, such as current = true"
+              request={() => null}
+              onChange={() => undefined}
+              onCommit={(text) => {
+                if (text.trim() && text.trim() !== conditionText) onChange({ condition: text, latestBy: choice.latestBy });
+              }}
+              condition
+            />
+          </div>
+        )
       ) : null}
       {mode === "state" ? (
         <Select
           aria-label={`State for ${part.role}`}
           className="h-6 w-56"
           value={choice.state ?? ""}
-          disabled={!groups.length}
+          disabled={locked || !groups.length}
           title={groups.length ? undefined : "No lifecycle governs this part."}
-          onChange={(e) => onChange({ state: e.target.value || undefined, latestBy: choice.latestBy })}
+          onChange={(e) => e.target.value && onChange({ state: e.target.value, latestBy: choice.latestBy })}
         >
           <option value="">{groups.length ? "Pick a state" : "No lifecycle governs it"}</option>
           {groups.map((g) => (
@@ -534,6 +623,7 @@ function PartChoice({
           aria-label={`Latest ${part.role} by`}
           className="h-6 w-40"
           value={choice.latestBy ?? ""}
+          disabled={locked}
           onChange={(e) => onChange({ condition: choice.condition, state: choice.state, latestBy: e.target.value || undefined })}
         >
           <option value="">Not set</option>
@@ -544,7 +634,11 @@ function PartChoice({
           ))}
         </Select>
       </label>
-      {mode === "condition" || mode === "state" ? null : <span className="pt-1 text-secondary">The latest of all is copied.</span>}
+      {hint ? (
+        <span className="pt-1 text-secondary" data-testid="copy-choice-hint">
+          {hint}
+        </span>
+      ) : null}
     </div>
   );
 }

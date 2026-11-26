@@ -59,6 +59,9 @@ test("fields reset or clear, a part kind is chosen one by latest, and only what 
   await expect(lines).toBeVisible();
   await lines.getByRole("combobox", { name: "lines when copied" }).selectOption("one");
   const choice = tab.getByTestId("copy-part-choice");
+  // `one` is not written until it says how the one part is chosen.
+  await expect(choice.getByTestId("copy-choice-hint")).toHaveText("Pick how the one part is chosen.");
+  expect((await copyOf(page, INVOICE))?.parts).toBeUndefined();
   await choice.getByRole("combobox", { name: "Latest lines by" }).selectOption({ label: "quantity" });
   await expect
     .poll(async () => (await copyOf(page, INVOICE))?.parts)

@@ -1874,8 +1874,10 @@ entity in a hierarchy (one with a base, or with entities derived from it):
 - On a derived entity, the section says "Type column `kind`, from Note": the column is the base's and is read only. Its own
   Type code field shows the entity's name until you type a code; empty it to go back to the name. "Reads keep" lists the
   codes it reads.
-- An entity outside a hierarchy has no Type column section. A derived entity whose bases name no column says so; name
-  it on the base's card.
+- An entity outside a hierarchy has no Type column section. A derived entity that keeps its rows in another table than
+  its base, or whose bases name no column, picks its own column like a base. If a derived entity's binding names a
+  column while a base's binding in the same table does too, the card says the base's applies and offers to remove it.
+- A numeric code is written as a number when the column holds integers, as text otherwise.
 
 Problems with the column or the codes (MQ4122 to MQ4126) appear in the Problems panel as for any binding.
 
@@ -3926,7 +3928,13 @@ from the default (an attribute copied, a kind of part copied whole), so an entit
   of a row shows the part's own field choices (the same words as Fields), hidden until you open it. A part under one that is None is
   greyed: it is left out with its owner. An entity that owns no parts says so; its fields and links still apply.
 - **From a base.** An entry a base wrote shows greyed with "from Base". Choosing another word writes the entity's own entry, and
-  choosing Copied (or All) writes one that undoes the base's. A problem with the block (MQ3045 to MQ3048) is listed under the tab.
+  choosing Copied (or All) writes one that undoes the base's. "Back to base" removes the entity's own entry, so the base's applies
+  again.
+- **One needs a choice.** Choosing One shows "Pick how the one part is chosen" and writes nothing until a condition, a state or
+  "Latest by" is picked. Only lifecycles that govern the part offer states.
+- **What is not listed.** Parts reached through an owner end that names a stereotype or any entity, and attributes a stereotype
+  adds, are not listed; edit them on the JSON tab. The list of parts is looked up one entity at a time (what references it) and stops
+  at 200 entities, 500 relations or 12 levels, and says so. A problem with the block (MQ3045 to MQ3048) is listed under the tab.
 
 ### The rules for processes (MQ9xxx)
 

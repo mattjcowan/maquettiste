@@ -5,9 +5,18 @@ import * as endpoints from "@/api/endpoints";
 import { keys } from "@/api/queries";
 import type { ReferenceInfo } from "@/api/types";
 
-/** What references an element, from the cache the Where used tab shares. */
-export const referencesOf = (qc: QueryClient, id: string): Promise<ReferenceInfo[]> =>
-  qc.fetchQuery({ queryKey: keys.references(id), queryFn: () => endpoints.getReferences(id), staleTime: 5_000 });
+/** The most entities, relations and levels one walk visits: a screen says so when a walk is cut. */
+export const WALK_LIMITS = { entities: 200, relations: 500, depth: 12 } as const;
+
+/** A where-used reader for one walk: each element is asked once (fresh from the server, kept in the cache the Where used tab shares). */
+export function referenceReader(qc: QueryClient): (id: string) => Promise<ReferenceInfo[]> {
+  const asked = new Map<string, Promise<ReferenceInfo[]>>();
+  return (id) => {
+    let p = asked.get(id);
+    if (!p) asked.set(id, (p = qc.fetchQuery({ queryKey: keys.references(id), queryFn: () => endpoints.getReferences(id), staleTime: 0 })));
+    return p;
+  };
+}
 
 /** The ids of the top-level elements of a kind that reference an element, in the order first seen. `kindOf` reads the index row by id. */
 export function referrersOf(refs: readonly ReferenceInfo[], kindOf: (id: string) => string | undefined, kind: string, field?: string): string[] {
@@ -18,28 +27,25 @@ export function referrersOf(refs: readonly ReferenceInfo[], kindOf: (id: string)
   return out;
 }
 
-/** The most entities one walk visits, and how deep: a screen says so when a walk is cut. */
-export const WALK_LIMITS = { entities: 200, depth: 12 } as const;
-
 /**
- * The entities derived from an entity at any depth, found level by level through the entities whose `base` references each. `truncated`
- * when the limits cut the walk.
+ * The entities derived from an entity at any depth, found level by level (the calls of one level run together) through the entities whose
+ * `base` references each. `truncated` when the limits cut the walk.
  */
 export async function derivedOf(qc: QueryClient, id: string, kindOf: (id: string) => string | undefined): Promise<{ ids: string[]; truncated: boolean }> {
+  const read = referenceReader(qc);
   const ids: string[] = [];
   const seen = new Set([id]);
   let level = [id];
   for (let depth = 0; level.length && depth < WALK_LIMITS.depth; depth++) {
     const next: string[] = [];
-    for (const at of level) {
-      for (const d of referrersOf(await referencesOf(qc, at), kindOf, "entity", "base")) {
+    for (const refs of await Promise.all(level.map(read)))
+      for (const d of referrersOf(refs, kindOf, "entity", "base")) {
         if (seen.has(d)) continue;
         if (ids.length >= WALK_LIMITS.entities) return { ids, truncated: true };
         seen.add(d);
         ids.push(d);
         next.push(d);
       }
-    }
     level = next;
   }
   return { ids, truncated: level.length > 0 };

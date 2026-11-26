@@ -50,7 +50,7 @@ import {
 import { commitMaterialize, databasesOf, useBindingSources, useMaterializeStatuses, useStorageAttributes } from "./useStorage";
 import { STORAGE_LABELS } from "./labels";
 import { derivedOf } from "@/editors/refWalk";
-import { readCodes, setTypeCode, setTypeColumn, typeColumnRole, type TypeColumnRole } from "./typeColumn";
+import { isIntegerColumn, readCodes, setTypeCode, setTypeColumn, typeColumnRole, type TypeColumnRole } from "./typeColumn";
 
 type Rec = Record<string, unknown>;
 
@@ -88,13 +88,19 @@ export function StorageTab(ctx: EditorContext) {
   // The entities derived from this one, found through what references each (one element at a time, never a scan of the index).
   const qc = useQueryClient();
   const derivedQuery = useQuery({
-    queryKey: ["derived-entities", id, index.data?.length ?? -1],
+    // The index refreshes whenever an element is saved (a derived entity re-based, say), and the walk runs again then with fresh references.
+    queryKey: ["derived-entities", id, index.dataUpdatedAt],
     queryFn: () => derivedOf(qc, id, (x) => lookup.byId.get(x)?.kind),
     enabled: lookup.byId.has(id),
   });
   const derived = useMemo(() => derivedQuery.data?.ids ?? [], [derivedQuery.data]);
   const derivedDocs = useElements(derived);
-  const derivedJson = [...derivedDocs.byId.values()].map((d) => d.json as Rec);
+  // The documents the type column rules read: this entity and its bases (`docs`), with the derived entities over them.
+  const hierarchyDocs = useMemo(() => {
+    const all = new Map<string, Rec>(docs);
+    for (const d of derivedDocs.byId.values()) all.set(String((d.json as Rec).id), d.json as Rec);
+    return all;
+  }, [docs, derivedDocs.byId]);
   const edit = (i: number, change: (b: Binding) => void) => {
     ctx.edit((j) => {
       const list = ((j as Rec).bindings as Binding[] | undefined) ?? [];
@@ -158,8 +164,9 @@ export function StorageTab(ctx: EditorContext) {
           attributes={attrs}
           typeColumn={typeColumnOf(id, b, docs)}
           typeRole={typeColumnRole(id, b, docs, derived.length > 0)}
-          entityJson={json as Rec}
-          derivedJson={derivedJson}
+          derived={derived}
+          hierarchyDocs={hierarchyDocs}
+          walkCut={derivedQuery.data?.truncated ?? false}
           onEdit={(change) => edit(i, change)}
           onRemove={() => remove(i)}
         />
@@ -367,8 +374,9 @@ function BindingCard({
   attributes,
   typeColumn,
   typeRole,
-  entityJson,
-  derivedJson,
+  derived,
+  hierarchyDocs,
+  walkCut,
   onEdit,
   onRemove,
 }: {
@@ -381,8 +389,9 @@ function BindingCard({
   /** The type column the binding names or inherits from a base's binding. */
   typeColumn: string | undefined;
   typeRole: TypeColumnRole;
-  entityJson: Rec;
-  derivedJson: Rec[];
+  derived: string[];
+  hierarchyDocs: ReadonlyMap<string, Rec>;
+  walkCut: boolean;
   onEdit: (change: (b: Binding) => void) => void;
   onRemove: () => void;
 }) {
@@ -517,7 +526,8 @@ function BindingCard({
         binding={binding}
         role={typeRole}
         columns={columns}
-        codes={typeRole.role === "none" ? [] : readCodes(entityJson, binding, derivedJson)}
+        codes={typeRole.role === "none" ? [] : readCodes(entityId, binding, derived, hierarchyDocs)}
+        walkCut={walkCut}
         onEdit={onEdit}
       />
 
@@ -843,6 +853,7 @@ function TypeColumnSection({
   role,
   columns,
   codes,
+  walkCut,
   onEdit,
 }: {
   dom: string;
@@ -851,9 +862,14 @@ function TypeColumnSection({
   role: TypeColumnRole;
   columns: BindingSource["columns"];
   codes: string[];
+  /** The walk down the derived entities stopped at its limit, so the list of codes may be short. */
+  walkCut: boolean;
   onEdit: (change: (b: Binding) => void) => void;
 }) {
   if (role.role === "none") return null;
+  // A numeric code is written as a number when the type column holds integers (the engine refuses a text code there, MQ4125).
+  const columnName = role.role === "derived" ? role.column : (binding.discriminatorColumn ?? "");
+  const integer = isIntegerColumn(findColumn(columns, columnName)?.type);
   const code = (
     <Field label="Type code" htmlFor={`${dom}-type-code`} className="w-40">
       <Input
@@ -864,13 +880,19 @@ function TypeColumnSection({
         key={String(binding.discriminatorValue ?? "")}
         defaultValue={binding.discriminatorValue === undefined ? "" : String(binding.discriminatorValue)}
         onBlur={(e) => {
-          if (e.target.value.trim() !== String(binding.discriminatorValue ?? "")) onEdit((b) => setTypeCode(b, e.target.value));
+          if (e.target.value.trim() !== String(binding.discriminatorValue ?? "")) onEdit((b) => setTypeCode(b, e.target.value, integer));
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
       />
     </Field>
+  );
+  const keeps = (
+    <span className="pb-1 text-12 text-secondary" data-testid="binding-type-codes">
+      Reads keep: {codes.join(", ")}
+      {walkCut ? " (and more: the list of derived entities was cut)" : ""}
+    </span>
   );
   return (
     <section className="flex flex-col gap-1" data-testid="binding-type-column" data-role={role.role}>
@@ -899,27 +921,21 @@ function TypeColumnSection({
             </Select>
           </Field>
           {code}
-          {binding.discriminatorColumn ? (
-            <span className="pb-1 text-12 text-secondary" data-testid="binding-type-codes">
-              Reads keep: {codes.join(", ")}
-            </span>
-          ) : null}
+          {binding.discriminatorColumn ? keeps : null}
         </div>
       ) : (
         <div className="flex flex-wrap items-end gap-2">
           <p className="pb-1 text-12" data-testid="binding-type-column-inherited">
-            {role.column ? (
-              <>
-                Type column <span className="font-mono">{findColumn(columns, role.column)?.name ?? role.column}</span>, from {role.base}
-              </>
-            ) : (
-              "No base names a type column."
-            )}
+            Type column <span className="font-mono">{findColumn(columns, role.column)?.name ?? role.column}</span>, from {role.base}
           </p>
-          {role.column ? code : null}
-          {role.column ? (
-            <span className="pb-1 text-12 text-secondary" data-testid="binding-type-codes">
-              Reads keep: {codes.join(", ")}
+          {code}
+          {keeps}
+          {role.redundant ? (
+            <span className="flex items-center gap-1 pb-0.5 text-12 text-danger" data-testid="binding-type-column-redundant">
+              This binding names a type column too, which is refused: the base's applies.
+              <Button size="sm" variant="ghost" onClick={() => onEdit((b) => setTypeColumn(b, null))}>
+                Remove it
+              </Button>
             </span>
           ) : null}
         </div>

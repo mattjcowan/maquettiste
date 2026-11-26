@@ -65,16 +65,50 @@ export interface CopyAttribute extends AttributeLike {
   words: AttributeWord[];
 }
 
+/** What the engine's expression types make of a type: built-ins by kind and width, a custom type by its base; null for anything else (an enum, a value object). */
+function kindOfType(type: unknown, scalarBase: (typeId: string) => unknown): { kind: string; bits: number } | null {
+  const kinds: Record<string, [string, number]> = {
+    string: ["string", 0],
+    text: ["string", 0],
+    bool: ["bool", 0],
+    int16: ["int", 16],
+    int32: ["int", 32],
+    int64: ["int", 64],
+    decimal: ["decimal", 0],
+    double: ["double", 0],
+    date: ["date", 0],
+    time: ["time", 0],
+    datetime: ["datetime", 0],
+    datetimeoffset: ["datetimeoffset", 0],
+    uuid: ["uuid", 0],
+    ulid: ["uuid", 0],
+    json: ["json", 0],
+  };
+  let at = type;
+  for (let hops = 0; hops < 8; hops++) {
+    if (typeof at === "object" && at !== null && typeof (at as { ref?: unknown }).ref === "string") at = scalarBase((at as { ref: string }).ref);
+    else if (typeof at === "string") {
+      const found = kinds[at];
+      if (found) return { kind: found[0], bits: found[1] };
+      const next = scalarBase(at);
+      if (next === undefined) return null;
+      at = next;
+    } else return null;
+  }
+  return null;
+}
+
 /**
- * The attributes of an entity (own and inherited, root first) that a copy entry may name. `clear` is left out for a required attribute,
- * `reset` for a required one with no default, and `original` unless the key is one attribute of the same type (MQ3045, MQ3046).
+ * The attributes of an entity (own and inherited, root first) that a copy entry may name (MQ3045, MQ3046): not derived, not in the key (the
+ * nearest key of the entity or a base). `clear` is left out for a required attribute, `reset` for a required one with no default, and `original`
+ * unless the key is one attribute and this one is a single value of the same kind with at least its width, never a value object.
+ * `scalarBase` gives a custom type's base.
  */
-export function copyAttributes(chain: readonly Json[]): CopyAttribute[] {
-  const keys = new Set<string>();
-  for (const doc of chain) for (const id of ((doc.key as { attributes?: string[] } | undefined)?.attributes ?? []) as string[]) keys.add(id);
+export function copyAttributes(chain: readonly Json[], scalarBase: (typeId: string) => unknown = () => undefined): CopyAttribute[] {
+  const keys = new Set<string>(((chain.find((d) => d.key)?.key as { attributes?: string[] } | undefined)?.attributes ?? []) as string[]);
   const attributes = [...chain].reverse().flatMap((doc) => arr(doc.attributes).map((a) => ({ a: a as unknown as AttributeLike, owner: String(doc.id) })));
   const keyAttributes = attributes.filter((x) => keys.has(x.a.id));
-  const keyType = keyAttributes.length === 1 ? JSON.stringify(keyAttributes[0].a.type ?? null) : null;
+  const keyType = keyAttributes.length === 1 && keys.size === 1 ? kindOfType(keyAttributes[0].a.type, scalarBase) : null;
   return attributes
     .filter((x) => !keys.has(x.a.id) && !x.a.derived)
     .map(({ a, owner }) => {
@@ -82,7 +116,8 @@ export function copyAttributes(chain: readonly Json[]): CopyAttribute[] {
       const hasDefault = a.default !== undefined || !!a.defaultExpression;
       if (!a.required || hasDefault) words.push("reset");
       if (!a.required) words.push("clear");
-      if (keyType !== null && !a.collection && JSON.stringify(a.type ?? null) === keyType) words.push("original");
+      const mine = keyType && !a.collection ? kindOfType(a.type, scalarBase) : null;
+      if (keyType && mine && mine.kind === keyType.kind && mine.bits >= keyType.bits) words.push("original");
       return { ...a, owner, words };
     });
 }
@@ -146,7 +181,9 @@ export function partTree(
 ): PartInfo[] {
   const out: PartInfo[] = [];
   const walk = (owner: string, depth: number, path: string[], prefix: string) => {
-    for (const row of related(owner)) {
+    // The owner's relations in name, then id, order, as the engine walks them.
+    const sorted = [...related(owner)].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    for (const row of sorted) {
       const doc = docs.get(row.id);
       const ends = arr(doc?.ends);
       const rowEnds = (row.ends ?? []) as EndLike[];
@@ -168,7 +205,7 @@ export function partTree(
 
 /** Whether a type holds an order a copy can take the latest by: a number, a text, a date or a time (MQ3048). `scalarBase` gives a custom type's base. */
 export function isOrderable(type: unknown, scalarBase: (typeId: string) => unknown): boolean {
-  const ORDER = new Set(["string", "text", "int16", "int32", "int64", "decimal", "float", "double", "date", "time", "datetime", "datetimeoffset"]);
+  const ORDER = new Set(["string", "text", "int16", "int32", "int64", "decimal", "double", "date", "time", "datetime", "datetimeoffset"]);
   for (let at = type, hops = 0; hops < 8; hops++) {
     if (typeof at === "string") {
       if (ORDER.has(at)) return true;
@@ -245,6 +282,9 @@ function dropPlainPart(json: Json, end: string, inherited: Json | undefined): vo
 
 /** Says which parts of a kind a copy carries: all, one (chosen as `choose` says), or none. */
 export function setPartWord(json: Json, end: string, word: PartWord, inherited: Json | undefined): void {
+  // `one` needs a choice (MQ3047): without one already written, it is set by setPartChoice, not here.
+  const current = arr((json.copy as Json | undefined)?.parts).find((e) => e.end === end) ?? inherited;
+  if (word === "one" && !current?.choose) return;
   const entry = ownPart(json, end, inherited);
   entry.onCopy = word;
   if (word !== "one") delete entry.choose;
@@ -252,7 +292,7 @@ export function setPartWord(json: Json, end: string, word: PartWord, inherited: 
   dropPlainPart(json, end, inherited);
 }
 
-/** How one part is chosen: a condition or a state, and the attribute whose greatest value is the latest. An empty choice is left out. */
+/** How one part is chosen: a condition or a state, and the attribute whose greatest value is the latest. Writing one makes the entry `one`. */
 export interface Choice {
   /** The condition's text, or its tree as it is stored (kept when it didn't change). */
   condition?: string | Json;
@@ -260,15 +300,18 @@ export interface Choice {
   latestBy?: string;
 }
 
-export function setPartChoice(json: Json, end: string, inherited: Json | undefined, choice: Choice): void {
-  const entry = ownPart(json, end, inherited);
+export function setPartChoice(json: Json, end: string, inherited: Json | undefined, choice: Choice): boolean {
   const choose: Json = {};
   if (typeof choice.condition === "string" ? choice.condition.trim() : choice.condition) {
     choose.condition = typeof choice.condition === "string" ? { text: choice.condition.trim() } : choice.condition;
   } else if (choice.state) choose.state = choice.state;
   if (choice.latestBy) choose.latestBy = choice.latestBy;
-  if (Object.keys(choose).length) entry.choose = choose;
-  else delete entry.choose;
+  // `one` needs a choice (MQ3047): with none to write, nothing is written and the entry stays as it was.
+  if (!Object.keys(choose).length) return false;
+  const entry = ownPart(json, end, inherited);
+  entry.onCopy = "one";
+  entry.choose = choose;
+  return true;
 }
 
 /** What the choice says now: a condition (kept as its tree when it is not text), a state and the latest-by attribute. */
@@ -291,10 +334,105 @@ export function setPartAttributeWord(json: Json, end: string, inherited: Json | 
   dropPlainPart(json, end, inherited);
 }
 
+/** Removes the entity's own entry for an attribute or link, so a base's applies again. */
+export function removeOwnCopyEntry(json: Json, key: "attributes" | "links", id: string): void {
+  const copy = json.copy as Json | undefined;
+  if (!copy || !Array.isArray(copy[key])) return;
+  const idKey = key === "attributes" ? "attribute" : "end";
+  copy[key] = (copy[key] as Json[]).filter((e) => e[idKey] !== id);
+  tidy(json);
+}
+
 /** Removes the entity's own entry for a part, so a base's applies again (or the part is copied whole). */
 export function removeOwnPart(json: Json, end: string): void {
   const copy = json.copy as Json | undefined;
   if (!copy || !Array.isArray(copy.parts)) return;
   copy.parts = (copy.parts as Json[]).filter((e) => e.end !== end);
   tidy(json);
+}
+
+// ------------------------------------------------------------------ a condition as text
+
+const PRECEDENCE: Record<string, number> = {
+  or: 1,
+  and: 2,
+  not: 3,
+  eq: 4,
+  ne: 4,
+  lt: 4,
+  le: 4,
+  gt: 4,
+  ge: 4,
+  add: 5,
+  sub: 5,
+  concat: 5,
+  mul: 6,
+  div: 6,
+  neg: 7,
+};
+const SYMBOL: Record<string, string> = { eq: "=", ne: "<>", lt: "<", le: "<=", gt: ">", ge: ">=", add: "+", sub: "-", mul: "*", div: "/", concat: "||" };
+
+export interface ConditionNames {
+  /** The name of an attribute, enum member or code by id. */
+  name(id: string): string | undefined;
+}
+
+/**
+ * A stored condition tree as text that reads back the same: operands of a lower precedence are put in parentheses ((a or b) and c), and
+ * a comparison or `not` operand that is itself an operation is too. Null for a tree this printer can't write (a case, an unknown node):
+ * the box then shows it read only instead of rewriting it as something else.
+ */
+export function printCondition(tree: unknown, names: ConditionNames): string | null {
+  if (!tree || typeof tree !== "object") return null;
+  const t = tree as Json;
+  if (typeof t.text === "string") return t.text;
+  const print = (node: unknown, parent: number, right = false): string | null => {
+    const n = node as Json;
+    if (!n || typeof n !== "object") return null;
+    if (typeof n.text === "string") return "(" + n.text + ")";
+    const args = Array.isArray(n.args) ? (n.args as unknown[]) : [];
+    if (typeof n.op === "string" && PRECEDENCE[n.op]) {
+      const own = PRECEDENCE[n.op];
+      const out = printOp(n.op, args);
+      if (out === null) return null;
+      return own < parent || (right && own === parent) || (own === 4 && parent >= 3) ? "(" + out + ")" : out;
+    }
+    return printLeaf(n);
+  };
+  const printOp = (op: string, args: unknown[]): string | null => {
+    const own = PRECEDENCE[op];
+    if ((op === "and" || op === "or") && args.length) {
+      const parts = args.map((a) => print(a, own));
+      return parts.every((x) => x !== null) ? parts.join(" " + op + " ") : null;
+    }
+    if (op === "not" && args.length === 1) {
+      const x = print(args[0], own);
+      return x === null ? null : "not " + x;
+    }
+    if (op === "neg" && args.length === 1) {
+      const x = print(args[0], own);
+      return x === null ? null : "-" + x;
+    }
+    if (SYMBOL[op] && args.length === 2) {
+      const l = print(args[0], own);
+      const r = print(args[1], own, true);
+      return l === null || r === null ? null : l + " " + SYMBOL[op] + " " + r;
+    }
+    return null;
+  };
+  const printLeaf = (n: Json): string | null => {
+    if ("null" in n) return "null";
+    if ("value" in n) return typeof n.value === "string" ? "'" + n.value.replace(/'/g, "''") + "'" : String(n.value);
+    if (Array.isArray(n.path)) {
+      const parts = (n.path as string[]).map((id) => names.name(id));
+      return parts.every((x) => x !== undefined) ? parts.join(".") : null;
+    }
+    if (typeof n.ref === "string") return names.name(n.ref) ?? null;
+    if (typeof n.call === "string") {
+      const args = (Array.isArray(n.args) ? n.args : []).map((a) => print(a, 0));
+      return args.every((x) => x !== null) ? n.call + "(" + args.join(", ") + ")" : null;
+    }
+    return null;
+  };
+  return print(t, 0);
 }
