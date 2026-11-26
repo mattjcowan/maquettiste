@@ -50,7 +50,7 @@ public sealed class TypeStorageCodeTests
             repo.EditJson($".maquettiste/model/entities/{entity}.json", e => e["attributes"]![0]!["required"] = true);
         BindComment(repo);
         var result = await repo.GenerateCleanlyAsync();
-        Assert.DoesNotContain(result.Diagnostics, d => d.Rule is "MQ4045" or "MQ4116" or "MQ4117");
+        Assert.DoesNotContain(result.Diagnostics, d => d.Rule is "MQ4045" or "MQ4117");
 
         // The binding's new fields are the entity's properties, read and written by its repository.
         var comment = string.Concat(Directory.EnumerateFiles(repo.PathOf("src/Generated"), "*.cs", SearchOption.AllDirectories)

@@ -8,7 +8,6 @@
     "MQ3116",
     "MQ4009",
     "MQ4115",
-    "MQ4116",
     "MQ7105",
     "MQ9211",
     "MQ9305"
@@ -146,41 +145,6 @@
       "pointer": "/ends/1",
       "message": "Relation 'Entries' has an end with several types, so database 'main' stores nothing for it.",
       "severity": "info"
-    },
-    {
-      "rule": "MQ4116",
-      "elementId": "01KST0QRY00000000000000001",
-      "pointer": "/collections/0/attribute",
-      "message": "Collection 0 of query 'Comments' names end 'tagged', which leads to several types; a collection can't fill it.",
-      "severity": "error"
-    },
-    {
-      "rule": "MQ4116",
-      "elementId": "01KST0QRY00000000000000001",
-      "pointer": "/collections/0/query/select/0/attribute",
-      "message": "Field 0 of collection 0 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it.",
-      "severity": "error"
-    },
-    {
-      "rule": "MQ4116",
-      "elementId": "01KST0QRY00000000000000001",
-      "pointer": "/select/1/attribute",
-      "message": "Field 1 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it.",
-      "severity": "error"
-    },
-    {
-      "rule": "MQ4116",
-      "elementId": "01KST0QRY00000000000000002",
-      "pointer": "/collections/0/attribute",
-      "message": "Collection 0 of query 'PartNotes' names end 'comment' of relation 'AttachedTo', which has an end with several types; a collection can't fill it.",
-      "severity": "error"
-    },
-    {
-      "rule": "MQ4116",
-      "elementId": "01KST0QRY00000000000000003",
-      "pointer": "/select/1/attribute",
-      "message": "Field 1 of query 'ToolFiling' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.",
-      "severity": "error"
     },
     {
       "rule": "MQ7105",

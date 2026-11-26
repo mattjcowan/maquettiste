@@ -21,7 +21,7 @@ public sealed record QuerySqlOptions
     public string Placeholder { get; init; } = "@";
 
     /// <summary>
-    /// How a list parameter (<c>collection: true</c>, and a collection's key list) is written in <c>in</c> and <c>notIn</c>:
+    /// How a list parameter (<c>collection: true</c>) is written in <c>in</c> and <c>notIn</c>:
     /// <c>expand</c> (the default: <c>x IN @ids</c>, for a data access library that expands a list into its items) or <c>any</c>
     /// (<c>x = ANY(@ids)</c> with an array parameter, on PostgreSQL; other dialects expand).
     /// </summary>
@@ -37,13 +37,12 @@ public sealed record QuerySqlText(string Sql, IReadOnlyList<string> Parameters, 
 /// <summary>
 /// Renders a resolved query as parameterised SQL for a dialect (added 2026-10-02; engine-design.md section 7, "Queries"): identifiers
 /// quoted by the database's quoting setting, functions spelled per dialect, <c>ilike</c> lowered where the dialect has none, paging as
-/// <c>LIMIT/OFFSET</c> or <c>OFFSET … FETCH NEXT</c>, and each collection as a statement of its own run once for every parent row (a
-/// second round trip): the parent's statement carries the correlation columns, the collection's takes their values as a list.
+/// <c>LIMIT/OFFSET</c> or <c>OFFSET … FETCH NEXT</c>.
 /// </summary>
 public static class QuerySql
 {
     /// <summary>
-    /// Renders a query (its collections excluded, their hidden key columns included). A query written as SQL text renders its text for
+    /// Renders a query. A query written as SQL text renders its text for
     /// the dialect (its own, else <c>"*"</c>'s; neither is MQ4029) as written, with only the white space at both ends removed (a final
     /// <c>;</c> stays), its <c>:name</c> placeholders in the options' style (sql-queries-design.md decision 5);
     /// <see cref="QuerySqlOptions.Lists"/> does not apply to it.
@@ -61,20 +60,6 @@ public static class QuerySql
             writer.HandWritten(query);
         else
             writer.Top(query);
-        return writer.Result();
-    }
-
-    /// <summary>Renders the statement of one collection: its rows for every parent row at once, matched by the key columns.</summary>
-    /// <param name="collection">The collection.</param>
-    /// <param name="dialect">A dialect name, or <see langword="null"/> for the query's database's.</param>
-    /// <param name="options">The options, or <see langword="null"/> for <see cref="QuerySqlOptions.Default"/>.</param>
-    /// <returns>The statement.</returns>
-    /// <exception cref="ArgumentException">The dialect or an option is not one this renderer knows.</exception>
-    public static QuerySqlText RenderCollection(RQueryCollection collection, string? dialect = null, QuerySqlOptions? options = null)
-    {
-        ArgumentNullException.ThrowIfNull(collection);
-        var writer = new Writer(collection.Query, dialect, options);
-        writer.Collection(collection);
         return writer.Result();
     }
 
@@ -275,24 +260,8 @@ public static class QuerySql
         public void Top(RQuery query)
         {
             With(query.With);
-            var columns = query.Select.Select(f => Expression(f.Expression!) + " AS " + Q(f.Name)).ToList();
-            var hidden = new HashSet<string>(StringComparer.Ordinal);
-            var hiddenKeys = new List<RQueryExpression>();
-            foreach (var collection in query.Collections)
-            {
-                foreach (var key in collection.Keys)
-                {
-                    if (key.Hidden && hidden.Add(key.ParentField))
-                    {
-                        columns.Add(Expression(key.Outer) + " AS " + Q(key.ParentField));
-                        hiddenKeys.Add(key.Outer);
-                    }
-                }
-            }
-
-            Select(query.Distinct, columns);
-            // A grouped parent groups by its hidden key columns too, or they would be neither grouped nor aggregated.
-            Body(query, query.Where, null, IsGrouped(query) ? hiddenKeys : []);
+            Select(query.Distinct, [.. query.Select.Select(f => Expression(f.Expression!) + " AS " + Q(f.Name))]);
+            Body(query, query.Where);
             Order(query.OrderBy, query.Paging is not null);
             Paging(query.Paging);
         }
@@ -321,22 +290,6 @@ public static class QuerySql
             }
 
             _sb.Append(body, at, body.Length - at);
-        }
-
-        public void Collection(RQueryCollection collection)
-        {
-            var query = collection.Query;
-            // A collection's statement runs on its own: it repeats the named queries it reads, directly or through others, in list order.
-            var reads = new HashSet<RNamedQuery>();
-            NamedReads(query, reads);
-            With([.. reads.OrderBy(n => n.Index)]);
-            var columns = query.Select.Select(f => Expression(f.Expression!) + " AS " + Q(f.Name)).ToList();
-            foreach (var key in collection.Keys)
-                columns.Add(Expression(key.Inner) + " AS " + Q(key.ChildField));
-            Select(query.Distinct, columns);
-            // A grouped collection groups by its key columns too: each group then belongs to one parent row.
-            Body(query, query.Where, collection, IsGrouped(query) ? [.. collection.Keys.Select(k => k.Inner)] : []);
-            Order(query.OrderBy, false);
         }
 
         /// <summary>
@@ -378,60 +331,7 @@ public static class QuerySql
         private void Part(RQuery part)
         {
             Select(part.Distinct, [.. part.Select.Select(f => Expression(f.Expression!) + " AS " + Q(f.Name))]);
-            Body(part, part.Where, null, []);
-        }
-
-        /// <summary>The named queries a query reads through its sources and nested queries, and those they read in turn.</summary>
-        private static void NamedReads(RQuery query, HashSet<RNamedQuery> reads)
-        {
-            foreach (var source in query.Joins.Prepend(query.From))
-            {
-                if (source?.Named is { } named && reads.Add(named))
-                {
-                    NamedReads(named.Query, reads);
-                    if (named.Recursive is { } recursive)
-                        NamedReads(recursive, reads);
-                }
-
-                if (source?.On is { } on)
-                    NamedReads(on, reads);
-            }
-
-            foreach (var expression in query.Select.Select(f => f.Expression).OfType<RQueryExpression>().Concat(query.GroupBy).Concat(query.OrderBy.Select(o => o.Expression)))
-                NamedReads(expression, reads);
-            if (query.Where is { } where)
-                NamedReads(where, reads);
-            if (query.Having is { } having)
-                NamedReads(having, reads);
-        }
-
-        private static void NamedReads(RQueryPredicate predicate, HashSet<RNamedQuery> reads)
-        {
-            if (predicate.Exists is { } exists)
-                NamedReads(exists, reads);
-            foreach (var p in predicate.And.Concat(predicate.Or))
-                NamedReads(p, reads);
-            if (predicate.Not is { } not)
-                NamedReads(not, reads);
-            foreach (var e in predicate.Values.Append(predicate.Left).Append(predicate.Right))
-            {
-                if (e is not null)
-                    NamedReads(e, reads);
-            }
-        }
-
-        private static void NamedReads(RQueryExpression expression, HashSet<RNamedQuery> reads)
-        {
-            foreach (var e in expression.Args.Append(expression.Cast).Append(expression.Else).Concat(expression.Case.Select(w => w.Then)))
-            {
-                if (e is not null)
-                    NamedReads(e, reads);
-            }
-
-            foreach (var when in expression.Case)
-                NamedReads(when.When, reads);
-            if (expression.Pred is { } pred)
-                NamedReads(pred, reads);
+            Body(part, part.Where);
         }
 
         private void Select(bool distinct, List<string> columns)
@@ -439,11 +339,8 @@ public static class QuerySql
             _sb.Append(distinct ? "SELECT DISTINCT " : "SELECT ").Append(string.Join(", ", columns));
         }
 
-        /// <summary>
-        /// FROM, the joins, WHERE (a collection's key equalities replaced by its key lists), GROUP BY (with <paramref name="keys"/>, the
-        /// key columns a grouped statement adds, each once) and HAVING.
-        /// </summary>
-        private void Body(RQuery query, RQueryPredicate? where, RQueryCollection? collection, IReadOnlyList<RQueryExpression> keys)
+        /// <summary>FROM, the joins, WHERE, GROUP BY and HAVING.</summary>
+        private void Body(RQuery query, RQueryPredicate? where)
         {
             _sb.Append(_newline).Append("FROM ").Append(Source(query.From!)); // a SQL text renders apart (sql-queries-design.md section 11)
             foreach (var join in query.Joins)
@@ -460,39 +357,9 @@ public static class QuerySql
                     _sb.Append(" ON ").Append(Predicate(on, true));
             }
 
-            var conditions = new List<string>();
             if (where is not null)
-            {
-                if (collection is not null)
-                {
-                    foreach (var conjunct in where.Node == "and" ? where.And : [where])
-                    {
-                        if (!collection.KeyConjuncts.Contains(conjunct))
-                            conditions.Add(Predicate(conjunct, false));
-                    }
-                }
-                else
-                {
-                    conditions.Add(Predicate(where, true));
-                }
-            }
-
-            if (collection is not null)
-            {
-                foreach (var key in collection.Keys)
-                    conditions.Add(InList(Expression(key.Inner), key.Parameter, negate: false));
-            }
-
-            if (conditions.Count > 0)
-                _sb.Append(_newline).Append("WHERE ").Append(string.Join(" AND ", conditions));
+                _sb.Append(_newline).Append("WHERE ").Append(Predicate(where, true));
             var groups = query.GroupBy.Select(Expression).ToList();
-            foreach (var key in keys)
-            {
-                var text = Expression(key);
-                if (!groups.Contains(text, StringComparer.Ordinal))
-                    groups.Add(text);
-            }
-
             if (groups.Count > 0)
                 _sb.Append(_newline).Append("GROUP BY ").Append(string.Join(", ", groups));
             if (query.Having is { } having)
@@ -668,7 +535,7 @@ public static class QuerySql
             _sb.Clear();
             _newline = newline + "    ";
             Select(false, ["1"]);
-            Body(query, query.Where, null, []);
+            Body(query, query.Where);
             var text = _sb.ToString();
             _newline = newline;
             _sb.Clear().Append(saved);

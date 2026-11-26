@@ -1,5 +1,5 @@
 // Relations with several types at an end, in the mock (several-types-design.md part 1): the index row of an end, MQ3041 to MQ3043,
-// MQ4115 and MQ4116 with the design's texts, the references of an entry, and the cascade when an entity or stereotype is deleted.
+// MQ4115 with the design's texts, the references of an entry, and the cascade when an entity or stereotype is deleted.
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
 
@@ -16,7 +16,6 @@ const ID = {
   e1: "01J92P0V0JR8BE8253SKT29B08",
   e2: "01J92P0V0JR8BE8253SKT29B09",
   e3: "01J92P0V0JR8BE8253SKT29B0A",
-  query: "01J92P0V0JR8BE8253SKT29B0B",
 };
 
 const entity = (id: string, name: string, extra: Json = {}): Json => ({ kind: "entity", id, name, abstract: true, ...extra });
@@ -189,52 +188,6 @@ describe("MQ4115", () => {
 
   it("never fires for a one-type relation", () => {
     expect(found(backendWith([near, far({ entity: ID.part })]), "MQ4115")).toEqual([]);
-  });
-});
-
-describe("MQ4116", () => {
-  it("refuses a query field and a collection that name an end with several types", () => {
-    const backend = backendWith([near, far({ types: types({ entity: ID.part }, { entity: ID.assembly }) })]);
-    const database = [...backend.model.entries.values()].find((e) => e.json.kind === "database")!;
-    // Created with a field that names no end, then edited as an outside edit would: the query's own binding findings are not under test.
-    const created = backend.model.create({
-      kind: "query",
-      id: ID.query,
-      name: "Notes",
-      database: database.id,
-      entity: ID.comment,
-      from: { source: ID.comment },
-      select: [{ attribute: ID.comment, expression: { column: "x" } }],
-    });
-    expect(created.outcome).toBe("saved");
-    backend.model.externalEdit(ID.query, (json) => {
-      (json.select as Json[])[0].attribute = ID.e2;
-      json.collections = [{ attribute: ID.e2, query: { from: { source: ID.comment } } }];
-    });
-    const messages = backend.model
-      .validate()
-      .diagnostics.filter((d) => d.rule === "MQ4116" && d.elementId === ID.query)
-      .map((d) => [d.jsonPointer, d.message]);
-    expect(messages).toEqual([
-      ["/select/0/attribute", "Field 0 of query 'Notes' names end 'attachedTo', which leads to several types; a field can't map it."],
-      ["/collections/0/attribute", "Collection 0 of query 'Notes' names end 'attachedTo', which leads to several types; a collection can't fill it."],
-    ]);
-  });
-
-  it("says nothing for an end with one type", () => {
-    const backend = backendWith([near, far({ entity: ID.part })]);
-    const database = [...backend.model.entries.values()].find((e) => e.json.kind === "database")!;
-    backend.model.create({
-      kind: "query",
-      id: ID.query,
-      name: "Notes",
-      database: database.id,
-      entity: ID.comment,
-      from: { source: ID.comment },
-      select: [{ attribute: ID.comment, expression: { column: "x" } }],
-    });
-    backend.model.externalEdit(ID.query, (json) => void ((json.select as Json[])[0].attribute = ID.e2));
-    expect(backend.model.validate().diagnostics.filter((d) => d.rule === "MQ4116")).toEqual([]);
   });
 });
 

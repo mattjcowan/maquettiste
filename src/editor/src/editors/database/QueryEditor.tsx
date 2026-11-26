@@ -1,33 +1,28 @@
-// The query editor (schemas/v1/query.json; engine-design.md section 7, "Queries"): General (the common fields), Sources, Select, Filter, Group and order, Parameters, Collections, SQL (the statements the engine renders for a dialect,
-// with what stops them), JSON, Code generation and References. The trees are edited as data, never as SQL text; every gesture is
+// The query editor (schemas/v1/query.json; engine-design.md section 7, "Queries"): General (the common fields), Sources, Select, Filter, Group and order, Parameters, SQL (the statement the engine renders for a dialect,
+// with what stops it), JSON, Code generation and References. The trees are edited as data, never as SQL text; every gesture is
 // one edit of the document and one save, so one undo step. A query is the database's: it knows no entities (the entity side binds
-// an entity to a query on the entity's Storage tab). An older query that names a result entity keeps working, and General says so
-// in one line with Remove, which turns it into an ad hoc row without losing a value.
+// an entity to a query on the entity's Storage tab).
 import { useMemo, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, Info } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { useDatabaseView, useElements, useIndex, useQuerySql } from "@/api/queries";
-import type { DatabaseDoc, Diagnostic, ModelJson, StereotypeDoc } from "@/api/types";
+import type { DatabaseDoc, Diagnostic, ModelJson } from "@/api/types";
 import { CodeView } from "@/code";
 import { Select } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { EmptyState, Spinner } from "@/components/ui/misc";
-import { CommonFields, DIALECTS, useVocabularies } from "@/inspector/fields";
+import { CommonFields, DIALECTS } from "@/inspector/fields";
 import { JsonTab, References } from "@/inspector/Inspector";
 import { EDITOR_TAB_LABELS } from "@/model/labels";
 import { isSqlTextQuery } from "@/model/sqlQuery";
 import { useProblems } from "@/editors/process/shared";
-import { hasResultEntity, namedOptions, removeResultEntities, scopeOf, tidy, type QueryDoc } from "@/model/queryTree";
+import { namedOptions, scopeOf, tidy, type QueryDoc } from "@/model/queryTree";
 import { domIdOf, EditorLayout, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
 import { DatabaseLine } from "./fields";
 import { SqlColumnsTab, SqlTablesTab, SqlTextTab } from "./SqlQueryParts";
 import { NamedQueriesSection } from "./NamedQueries";
 import { FunctionList, type QueryEnv } from "./queryExpression";
 import {
-  CollectionsSection,
   FilterSection,
   GroupOrderSection,
-  loadEntityShape,
   ParametersSection,
   SelectSection,
   SourcesSection,
@@ -47,7 +42,6 @@ export const QUERY_EDITOR_TABS = {
   sqltext: "SQL text",
   columns: "Columns",
   tables: "Tables",
-  collections: "Collections",
   sql: "SQL",
   json: "JSON",
 } as const;
@@ -109,7 +103,6 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
           content: (
             <div className="flex max-w-xl flex-col gap-2" data-testid="query-editor-general">
               <CommonFields {...form} inEditorHeader />
-              <OlderResultEntity doc={doc} update={update} />
             </div>
           ),
         },
@@ -142,9 +135,7 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
           : {
               value: "select",
               label: QUERY_EDITOR_TABS.select,
-              content: withFunctions(
-                <SelectSection body={doc} update={bodyUpdate} q={q} entity={doc.entity ?? null} label="Query" resolved={resolved?.select} />,
-              ),
+              content: withFunctions(<SelectSection body={doc} update={bodyUpdate} q={q} label="Query" resolved={resolved?.select} />),
             },
         sqlForm
           ? null
@@ -157,13 +148,6 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
               content: withFunctions(<GroupOrderSection body={doc} update={bodyUpdate} q={q} label="Query" paging={{ value: doc.paging, update }} />),
             },
         sqlForm ? null : { value: "parameters", label: QUERY_EDITOR_TABS.parameters, content: <ParametersSection doc={doc} update={update} /> },
-        sqlForm
-          ? null
-          : {
-              value: "collections",
-              label: QUERY_EDITOR_TABS.collections,
-              content: withFunctions(<CollectionsSection doc={doc} update={update} q={q} resolved={resolved?.collections} />),
-            },
         { value: "sql", label: QUERY_EDITOR_TABS.sql, content: <SqlTab id={ctx.id} name={ctx.name} databaseDialect={dialect} />, fill: true },
         {
           value: "json",
@@ -178,61 +162,7 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
   );
 }
 
-/**
- * An older query's result entity (its own, or a collection's elements'): one line saying where that belongs now, and Remove, which
- * turns every field that filled an attribute into a named field with its expression and names each such collection after what it
- * filled (removeResultEntities), as one save and one undo step.
- */
-function OlderResultEntity({ doc, update }: { doc: QueryDoc; update: (mutate: (d: QueryDoc) => void) => void }) {
-  const index = useIndex();
-  const qc = useQueryClient();
-  const vocab = useVocabularies("entity");
-  const [busy, setBusy] = useState(false);
-  if (!hasResultEntity(doc)) return null;
-  const remove = async () => {
-    setBusy(true);
-    try {
-      const stereotypes = vocab.allStereotypes as StereotypeDoc[];
-      const shapeOf = (entity: string | null | undefined) => (entity ? loadEntityShape(qc, entity, index.data, stereotypes) : Promise.resolve(null));
-      const top = await shapeOf(doc.entity);
-      const elements = await Promise.all(
-        (doc.collections ?? []).map((c) => shapeOf(c.entity ?? top?.collections.find((t) => t.value === c.attribute)?.entity)),
-      );
-      const nameIn = (shape: Awaited<ReturnType<typeof shapeOf>>) => (a: string) =>
-        shape?.attributes.find((x) => x.id === a)?.name ?? shape?.fills.find((x) => x.id === a)?.fieldName;
-      update((d) =>
-        removeResultEntities(
-          d,
-          nameIn(top),
-          (a) => top?.collections.find((t) => t.value === a)?.name,
-          (i) => nameIn(elements[i] ?? null),
-        ),
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="flex items-center gap-2 rounded-control border border-default p-1 text-12" data-testid="query-older-result-entity">
-      <Info className="size-3.5 shrink-0 text-secondary" aria-hidden />
-      <span className="min-w-0 flex-1">
-        A result entity is retired and goes away in a later version; bind the entity to this query on its Storage tab instead.
-      </span>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={busy}
-        title="Make each row an ad hoc shape: every field keeps its value under a name"
-        onClick={() => void remove()}
-        data-testid="query-older-result-entity-remove"
-      >
-        Remove
-      </Button>
-    </div>
-  );
-}
-
-/** The SQL tab: the query's statement and its collections' for a dialect (the database's first), and what stops them. */
+/** The SQL tab: the query's statement for a dialect (the database's first), and what stops it. */
 function SqlTab({ id, name, databaseDialect }: { id: string; name: string; databaseDialect: string }) {
   const [dialect, setDialect] = useState<string | null>(null);
   const shown = dialect ?? databaseDialect;
@@ -280,21 +210,8 @@ function SqlTab({ id, name, databaseDialect }: { id: string; name: string; datab
             {sql.error ? String((sql.error as Error).message) : "The model has errors: fix the problems above and it renders again."}
           </EmptyState>
         ) : (
-          <div className="flex flex-col gap-2">
-            <div className="h-40 rounded-control border border-default" data-testid="query-sql-statement">
-              <CodeView language="sql" readOnly label={`SQL of ${name}`} value={preview.sql} />
-            </div>
-            {preview.collections.map((c) => (
-              <section key={c.name} className="flex flex-col gap-1" aria-label={`Collection ${c.name}`} data-testid={`query-sql-collection-${c.name}`}>
-                <p className="text-12 text-secondary">
-                  Collection <span className="font-medium text-primary">{c.name}</span>: run once for all the parent rows, with{" "}
-                  {c.keys.map((k) => `@${k.parameter} (the parents' ${k.hidden ? `hidden column ${k.parentField}` : k.parentField} values)`).join(", ")}.
-                </p>
-                <div className="h-32 rounded-control border border-default">
-                  <CodeView language="sql" readOnly label={`SQL of collection ${c.name}`} value={c.sql} />
-                </div>
-              </section>
-            ))}
+          <div className="h-40 rounded-control border border-default" data-testid="query-sql-statement">
+            <CodeView language="sql" readOnly label={`SQL of ${name}`} value={preview.sql} />
           </div>
         )}
       </div>

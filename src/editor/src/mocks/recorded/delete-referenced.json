@@ -78,27 +78,6 @@
     {
       "fromElementId": "01K6QRY0000000000000000001",
       "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/collections/0/query/where/left/column",
-      "field": "column",
-      "toId": "01J92P0V0Q9EK961M5HAQ3C5MY"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/collections/0/query/where/right/0/column",
-      "field": "column",
-      "toId": "01J92P0V0Q9EK961M5HAQ3C5MY"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/entity",
-      "field": "entity",
-      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
       "jsonPointer": "/orderBy/0/expression/column",
       "field": "column",
       "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
@@ -113,23 +92,9 @@
     {
       "fromElementId": "01K6QRY0000000000000000001",
       "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/0/attribute",
-      "field": "attribute",
-      "toId": "01J92P0V0Q9EK961M5HAQ3C5MY"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
       "jsonPointer": "/select/0/expression/column",
       "field": "column",
       "toId": "01J92P0V0Q9EK961M5HAQ3C5MY"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/1/attribute",
-      "field": "attribute",
-      "toId": "01J92P0V0R3VSP7D5238DTNZX1"
     },
     {
       "fromElementId": "01K6QRY0000000000000000001",
@@ -141,13 +106,6 @@
     {
       "fromElementId": "01K6QRY0000000000000000001",
       "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/2/attribute",
-      "field": "attribute",
-      "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
       "jsonPointer": "/select/2/expression/column",
       "field": "column",
       "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
@@ -155,23 +113,9 @@
     {
       "fromElementId": "01K6QRY0000000000000000001",
       "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/3/attribute",
-      "field": "attribute",
-      "toId": "01J92P0V0VB1Z49SWERMAGR4TV"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
       "jsonPointer": "/select/3/expression/column",
       "field": "column",
       "toId": "01J92P0V0VB1Z49SWERMAGR4TV"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/4/attribute",
-      "field": "attribute",
-      "toId": "01J92P0V0WKRGKH7YBKA2V30NC"
     },
     {
       "fromElementId": "01K6QRY0000000000000000001",

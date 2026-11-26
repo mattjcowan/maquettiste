@@ -53,7 +53,6 @@ public sealed class ResolvedCoverageTests
         new("query field", "query.json", "$defs/field", typeof(RQueryField)),
         new("query order", "query.json", "$defs/order", typeof(RQueryOrder)),
         new("query paging", "query.json", "$defs/paging", typeof(RQueryPaging)),
-        new("query collection", "query.json", "$defs/collection", typeof(RQueryCollection)),
         new("nested query", "query.json", "$defs/subquery", typeof(RQuery)),
         new("named query", "query.json", "$defs/namedQuery", typeof(RNamedQuery)),
         new("repeating part", "query.json", "$defs/recursivePart", typeof(RQuery)),

@@ -1,7 +1,6 @@
 // The mock's rules for relation ends with several types (several-types-design.md section 6, part 1): MQ3041 an end with several
 // types where it can't be, MQ3042 a list of one entity, MQ3043 an entry another entry covers, MQ4115 (info) a database that stores
-// nothing for such a relation, and MQ4116 a binding field, query field or query collection that names such an end. The texts are
-// the design's, word for word. Each check runs only for a relation that has such an end, so a model without them is untouched.
+// nothing for such a relation. The texts are the design's, word for word. Each check runs only for a relation that has such an end, so a model without them is untouched.
 import { conventionOf, placesEntity } from "@/model/databaseMapping";
 import { docEndHasSeveralTypes, docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
 import { appliesToEntities, Coverage } from "./coverage";
@@ -176,53 +175,6 @@ export function storageDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
       str(ends[first].id) || undefined,
     );
   }
-}
-
-/**
- * The relation with an end of several types that a field's `attribute` goes through, and the end it names: the first segment of the
- * reference is an end of such a relation, the end with several types or another one (RelationTypeRules.ThroughSeveralTypes).
- */
-function through(reference: string, ctx: EndRuleContext): { relation: Json; end: Json } | null {
-  const dot = reference.indexOf(".");
-  const id = dot > 0 ? reference.slice(0, dot) : reference;
-  const owner = ctx.ownerOf?.(id);
-  if (!owner || owner.json.kind !== "relation") return null;
-  const end = arr(owner.json.ends).find((e) => e.id === id);
-  return end && relationHasSeveralTypes(owner.json) ? { relation: owner.json, end } : null;
-}
-
-/** "end 'attachedTo', which leads to several types", or for another end of such a relation, the words MQ7105 uses. */
-const named = (t: { relation: Json; end: Json }): string =>
-  docEndHasSeveralTypes(t.end as EndDocLike)
-    ? `end '${str(t.end.role)}', which leads to several types`
-    : `end '${str(t.end.role)}' of relation '${str(t.relation.name)}', which has an end with several types`;
-
-/**
- * MQ4116 on an entity (the fields of its bindings) and on a query (its select fields, a collection and its nested select fields): one
- * that names an end of a relation with an end of several types, which leads to more than one table or which no database stores yet.
- * Fields and collections are counted from 0, and a nested field's text names its collection, as the engine says.
- */
-export function fieldDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit): void {
-  if (!ctx.ownerOf) return;
-  if (json.kind !== "query") return;
-  const fields = (list: Json[], at: string, within: string) =>
-    list.forEach((f, fi) => {
-      const found = typeof f.attribute === "string" ? through(f.attribute, ctx) : null;
-      if (found)
-        emit("MQ4116", "error", `Field ${fi}${within} of query '${str(json.name)}' names ${named(found)}; a field can't map it.`, `${at}/${fi}/attribute`);
-    });
-  fields(arr(json.select), "/select", "");
-  arr(json.collections).forEach((c, ci) => {
-    const found = typeof c.attribute === "string" ? through(c.attribute, ctx) : null;
-    if (found)
-      emit(
-        "MQ4116",
-        "error",
-        `Collection ${ci} of query '${str(json.name)}' names ${named(found)}; a collection can't fill it.`,
-        `/collections/${ci}/attribute`,
-      );
-    fields(arr((c.query as Json | undefined)?.select), `/collections/${ci}/query/select`, ` of collection ${ci}`);
-  });
 }
 
 /** The ways an `ends` entry can point at its end (decision 38): `types` counts as a way only when its items carry `foreignKey`. */

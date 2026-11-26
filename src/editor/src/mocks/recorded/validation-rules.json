@@ -1025,33 +1025,9 @@
     "canBeOff": true
   },
   {
-    "id": "MQ4025",
-    "defaultSeverity": "error",
-    "description": "A select field names an attribute that the query's entity (or the collection's entity) does not have, or names an attribute where no entity is named.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4026",
-    "defaultSeverity": "warning",
-    "description": "A required attribute of the query's entity is not selected, so the rows leave it at its default.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4027",
-    "defaultSeverity": "error",
-    "description": "A query collection names neither a collection attribute nor a to-many navigation of the query's entity, or its nested query selects nothing.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
     "id": "MQ4028",
     "defaultSeverity": "error",
-    "description": "A nested query names an outer alias that no enclosing query declares, or a collection's query names its parent's aliases outside an equality at the top of its where.",
+    "description": "A nested query names an outer alias that no enclosing query declares.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1076,22 +1052,6 @@
     "id": "MQ4031",
     "defaultSeverity": "error",
     "description": "A query comparison's right side has the wrong shape: between takes two values, isNull and isNotNull none, in and notIn a list or one list parameter, the others one value.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4032",
-    "defaultSeverity": "error",
-    "description": "A collection's correlation key is neither selected nor grouped by its parent, which is distinct: the hidden key column would change which rows DISTINCT removes.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4033",
-    "defaultSeverity": "warning",
-    "description": "A select field's value cannot convert to the type of the entity attribute it fills.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1147,15 +1107,7 @@
   {
     "id": "MQ4040",
     "defaultSeverity": "error",
-    "description": "Names of a query collide in generated code or are reserved: two collections with one name, fields, declared columns, collections or parameters whose names are equal ignoring case or once Pascal-cased, a name starting with mq_, or two queries of a database whose class names are equal once Pascal-cased.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4041",
-    "defaultSeverity": "error",
-    "description": "A query's result entity, or a collection's element entity, is abstract.",
+    "description": "Names of a query collide in generated code or are reserved: fields, declared columns or parameters whose names are equal ignoring case or once Pascal-cased, a name starting with mq_, or two queries of a database whose class names are equal once Pascal-cased.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1633,14 +1585,6 @@
     "canBeOff": true
   },
   {
-    "id": "MQ4116",
-    "defaultSeverity": "error",
-    "description": "A query field or a query collection names a relation end with several types, a navigation to one, or another end of a relation with such an end; a query can't yet say which type's table it joins.",
-    "family": "MQ41xx",
-    "familyLabel": "Migrations, bindings and queries",
-    "canBeOff": true
-  },
-  {
     "id": "MQ4117",
     "defaultSeverity": "error",
     "description": "A relation mapping's storage doesn't fit together: a key that leads to the wrong table, a pointer outside the table that holds its links, entries that give no table to hold them, a referenced column that isn't unique or whose type doesn't match, a type that isn't a target or two types with one code, a code its column can't hold, a key per type at an any-entity end, two mappings that read each other's links, a binding field that maps another column than the mapping names, or a form that waits (a link table per pair of types, column pointers spread over several tables).",
@@ -1722,11 +1666,11 @@
   },
   {
     "id": "MQ4127",
-    "defaultSeverity": "warning",
-    "description": "A query names an entity as the shape of its rows (entity) or fills collections (collections): both are retired and go away in a later version. Give the query its own columns and bind the entity to it with its binding's source; read a record with its parts through composition, each part with its own binding.",
+    "defaultSeverity": "error",
+    "description": "A query file has a key removed in 0.28.0: entity (the entity each row had), collections, or a select field's attribute; the file does not load, and no setting changes the error. Give each select field a name of its own and bind the entity to the query with its binding's source; read a record with its parts through composition (entity.parts), each part with its own binding.",
     "family": "MQ41xx",
     "familyLabel": "Migrations, bindings and queries",
-    "canBeOff": true
+    "canBeOff": false
   },
   {
     "id": "MQ5001",
@@ -1835,7 +1779,7 @@
   {
     "id": "MQ5018",
     "defaultSeverity": "error",
-    "description": "A suppression names a rule that cannot be suppressed: MQ1xxx, MQ7012 or MQ5018 to MQ5020.",
+    "description": "A suppression names a rule that cannot be suppressed: MQ1xxx, MQ4127, MQ7012 or MQ5018 to MQ5020.",
     "family": "MQ50xx",
     "familyLabel": "Extensions and script rules",
     "canBeOff": true

@@ -10,11 +10,12 @@ namespace Maquettiste.Engine.Validation;
 /// </summary>
 internal static class SuppressionRules
 {
-    /// <summary>Whether findings of a rule may be suppressed: every rule but MQ1xxx (files that do not load), MQ7012 and MQ5018 to MQ5020.</summary>
+    /// <summary>Whether findings of a rule may be suppressed: every rule but MQ1xxx (files that do not load), MQ4127 and MQ7012 (keys refused
+    /// at load) and MQ5018 to MQ5020.</summary>
     /// <param name="rule">The rule id.</param>
     /// <returns><see langword="true"/> when an entry may name it.</returns>
     public static bool CanBeSuppressed(string rule) =>
-        !(rule.Length == 6 && rule.StartsWith("MQ1", StringComparison.Ordinal)) && rule is not ("MQ7012" or "MQ5018" or "MQ5019" or "MQ5020");
+        !(rule.Length == 6 && rule.StartsWith("MQ1", StringComparison.Ordinal)) && rule is not ("MQ4127" or "MQ7012" or "MQ5018" or "MQ5019" or "MQ5020");
 
     /// <summary>Checks one element's suppressions.</summary>
     /// <param name="context">The validation context (its <see cref="ValidationContext.RuleNames"/> judge <c>x/</c> ids).</param>

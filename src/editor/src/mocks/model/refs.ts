@@ -551,10 +551,9 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
     }
     case "query": {
       push("/database", "database", doc.database, true);
-      push("/entity", "entity", doc.entity, false);
-      // Keyed references (a source's table key, a column's alias.key, a call's routine, a parameter's database type, a collection's
-      // attribute or end): every segment that is an id; a field's attribute and a collection's entity: the id itself.
-      const keyed = new Set(["source", "column", "call", "type", "attribute"]);
+      // Keyed references (a source's table key, a column's alias.key, a call's routine, a parameter's database type): every segment
+      // that is an id.
+      const keyed = new Set(["source", "column", "call", "type"]);
       const walk = (node: unknown, pointer: string): void => {
         if (Array.isArray(node)) return node.forEach((x, i) => walk(x, `${pointer}/${i}`));
         if (!node || typeof node !== "object") return;
@@ -563,12 +562,10 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
           if (typeof value === "string" && keyed.has(key)) {
             for (const to of value.split(/[@.]/).filter((x) => ULID.test(x)))
               if (!own.has(to) && to !== id) out.push({ fromId: id, pointer: at, field: key, toId: to, required: true });
-          } else if (typeof value === "string" && key === "entity" && pointer !== "") push(at, key, value, false);
-          else walk(value, at);
+          } else walk(value, at);
         }
       };
-      for (const key of ["parameters", "from", "joins", "select", "where", "groupBy", "having", "orderBy", "collections", "columns", "with"])
-        walk(doc[key], `/${key}`);
+      for (const key of ["parameters", "from", "joins", "select", "where", "groupBy", "having", "orderBy", "columns", "with"]) walk(doc[key], `/${key}`);
       // A query written as SQL text: what it reads and writes are references like any other. Deleting one removes the entry and keeps the
       // query (the text is the team's own); the delete plan warns that the text may still name it.
       for (const field of ["reads", "writes"] as const)

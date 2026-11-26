@@ -73,7 +73,7 @@ every relation between two of them.
 **Queries** (`database.queries` in `00-project.yaml`): each one is a query file's JSON tree written as YAML (`parameters`,
 `from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`), with names where the file has ids: a `source` is an entity
 name (its table), a designed table's name or `view:<name>`. Every select field has a `name`: a query's rows have the shape of
-its select list, and the retired `entity` and `collections` are refused. Column references are written `alias.column_name`.
+its select list, and `entity` and `collections` (removed in 0.28.0) are refused. Column references are written `alias.column_name`.
 
 ## Ids
 

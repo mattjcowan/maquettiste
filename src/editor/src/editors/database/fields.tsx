@@ -434,8 +434,7 @@ export function SqlObjectFields(props: FormProps) {
   );
 }
 
-/** A query's summary in the inspector: its database, its result shape, how many sources, parameters and collections it has,
- * and the way to its SQL. */
+/** A query's summary in the inspector: its database, its row's fields, how many sources and parameters it has, and the way to its SQL. */
 export function QueryFields(props: FormProps) {
   const rec = props.json as Rec;
   const { store } = useServices();
@@ -460,8 +459,8 @@ export function QueryFields(props: FormProps) {
         </p>
       ) : (
         <p className="text-12 text-secondary">
-          {`Each row has ${words(fields, "field", "fields")}`}; {words(sources, "source", "sources")}; {words(count("parameters"), "parameter", "parameters")};{" "}
-          {words(count("collections"), "collection", "collections")}. The query&apos;s editor edits them.
+          {`Each row has ${words(fields, "field", "fields")}`}; {words(sources, "source", "sources")}; {words(count("parameters"), "parameter", "parameters")}.
+          The query&apos;s editor edits them.
         </p>
       )}
       <Button

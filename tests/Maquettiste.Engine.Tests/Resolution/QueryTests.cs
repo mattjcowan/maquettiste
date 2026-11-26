@@ -15,8 +15,8 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Resolution;
 
 /// <summary>
-/// Queries (added 2026-10-02, erratum E41): a query file resolved over the database's tables and views, its trees, types and
-/// collections, the SQL renderer per dialect, the resolver's rules MQ4021 to MQ4043 with their pointers, the <c>each query</c> scope
+/// Queries (added 2026-10-02, erratum E41): a query file resolved over the database's tables and views, its trees and types, the SQL
+/// renderer per dialect, the resolver's rules MQ4021 to MQ4043 with their pointers, the <c>each query</c> scope
 /// and the <c>query_sql</c> helper, the database view and resolved records, and what the schema diff makes of them (nothing).
 /// </summary>
 public sealed class QueryTests
@@ -85,7 +85,6 @@ public sealed class QueryTests
     private static string Report(Shop s) => s.Query($$"""
         {
           "name": "CustomerReport",
-          "entity": "{{s.Customer.Id}}",
           "parameters": [
             { "name": "pattern", "type": "string", "length": 100 },
             { "name": "ids", "type": "uuid", "collection": true },
@@ -96,8 +95,8 @@ public sealed class QueryTests
             { "source": "{{s.InvoiceTable}}", "alias": "order", "kind": "left", "on": { "op": "eq", "left": { "column": "order.customer_id" }, "right": { "column": "c.id" } } }
           ],
           "select": [
-            { "attribute": "{{s.Customer.AttrId("id")}}", "expression": { "column": "c.{{s.Customer.AttrId("id")}}" } },
-            { "attribute": "{{s.Customer.AttrId("name")}}", "expression": { "call": "upper", "args": [{ "column": "c.name" }] } },
+            { "name": "id", "expression": { "column": "c.{{s.Customer.AttrId("id")}}" } },
+            { "name": "name", "expression": { "call": "upper", "args": [{ "column": "c.name" }] } },
             { "name": "lastNumber", "expression": { "call": "max", "args": [{ "column": "order.number" }] } },
             { "name": "label", "expression": { "op": "concat", "args": [{ "column": "c.name" }, { "value": " <" }, { "column": "c.email" }, { "value": ">" }] } },
             { "name": "nameLength", "expression": { "call": "length", "args": [{ "column": "c.name" }] } }
@@ -114,36 +113,6 @@ public sealed class QueryTests
         }
         """);
 
-    /// <summary>A customer's invoices as a collection, correlated on the invoice's customer column, which the parent does not select.</summary>
-    private static string WithInvoices(Shop s) => s.Query($$"""
-        {
-          "name": "CustomersWithInvoices",
-          "entity": "{{s.Customer.Id}}",
-          "from": { "source": "{{s.Customer.Id}}", "alias": "c" },
-          "select": [
-            { "attribute": "{{s.Customer.AttrId("name")}}", "expression": { "column": "c.name" } },
-            { "attribute": "{{s.Customer.AttrId("id")}}", "expression": { "column": "c.id" } }
-          ],
-          "collections": [
-            {
-              "attribute": "{{s.Places.EndIds[1]}}",
-              "query": {
-                "from": { "source": "{{s.InvoiceTable}}", "alias": "i" },
-                "select": [
-                  { "attribute": "{{s.Invoice.AttrId("id")}}", "expression": { "column": "i.id" } },
-                  { "attribute": "{{s.Invoice.AttrId("number")}}", "expression": { "column": "i.number" } }
-                ],
-                "where": { "and": [
-                  { "op": "eq", "left": { "column": "c.id" }, "right": { "column": "i.customer_id" } },
-                  { "op": "gt", "left": { "column": "i.total" }, "right": { "call": "{{s.Routine}}", "args": [{ "value": 10 }] } }
-                ] },
-                "orderBy": [{ "expression": { "column": "i.number" } }]
-              }
-            }
-          ]
-        }
-        """);
-
     [Fact]
     public void A_query_resolves_its_sources_columns_parameters_types_and_dependencies()
     {
@@ -156,7 +125,6 @@ public sealed class QueryTests
         var query = Assert.Single(db.Queries);
         Assert.Same(query, model.Find(id));
         Assert.Equal("query", query.Kind);
-        Assert.Same(model.Entity("Customer"), query.Entity);
         Assert.Same(db.Table("customers"), query.From!.Table);
         Assert.Equal(("c", "from"), (query.From.Alias, query.From.JoinKind));
         var join = Assert.Single(query.Joins);
@@ -176,7 +144,6 @@ public sealed class QueryTests
         var fields = query.Select;
         Assert.Equal(["id", "name", "lastNumber", "label", "nameLength"], fields.Select(f => f.Name));
         Assert.Same(db.Table("customers").Column("id"), fields[0].Expression!.TableColumn);
-        Assert.Same(model.Entity("Customer").Attributes.Single(a => a.Name == "name"), fields[1].Attribute);
         Assert.Equal(("uuid", "uuid", false), (fields[0].Type, fields[0].NativeType, fields[0].Nullable));
         Assert.Equal(("string", true), (fields[2].Type, fields[2].Nullable)); // max over the outer side of a left join
         Assert.Equal(("string", true), (fields[3].Type, fields[3].Nullable)); // concat of a nullable email
@@ -253,62 +220,6 @@ public sealed class QueryTests
     }
 
     [Fact]
-    public void A_collection_is_a_second_statement_keyed_by_its_correlation()
-    {
-        var s = new Shop();
-        WithInvoices(s);
-        var model = s.Resolve();
-        var query = Assert.Single(model.Db("main").Queries);
-
-        var collection = Assert.Single(query.Collections);
-        Assert.Equal("invoices", collection.Name);
-        Assert.True(collection.Navigation!.IsCollection);
-        Assert.Same(model.Entity("Invoice"), collection.Entity); // the navigation's target when the file names none
-        Assert.Same(query, collection.Query.Parent);
-        var key = Assert.Single(collection.Keys);
-        Assert.Equal(("id", false, "mq_key0", "mq_keys0", "uuid"), (key.ParentField, key.Hidden, key.ChildField, key.Parameter, key.Type));
-        Assert.True(key.Outer.IsOuter);
-        Assert.Equal("customer_id", key.Inner.ColumnName);
-        Assert.Same(model.Db("main").Routines.Single(), collection.Query.Where!.And[1].Right!.Routine);
-
-        Assert.Equal("""
-            SELECT c.name AS name, c.id AS id
-            FROM public.customers c
-            """, QuerySql.Render(query).Sql);
-        var statement = QuerySql.RenderCollection(collection);
-        Assert.Equal("""
-            SELECT i.id AS id, i.number AS number, i.customer_id AS mq_key0
-            FROM public.invoices i
-            WHERE i.total > public.tax_of(10) AND i.customer_id IN @mq_keys0
-            ORDER BY i.number ASC
-            """, statement.Sql);
-        Assert.Equal(["mq_keys0"], statement.Parameters);
-
-        // A parent that does not select the key column carries it as a hidden column.
-        var hidden = new Shop();
-        hidden.Query($$"""
-            {
-              "name": "Names",
-              "from": { "source": "{{hidden.Customer.Id}}", "alias": "c" },
-              "select": [{ "name": "name", "expression": { "column": "c.name" } }],
-              "collections": [{
-                "attribute": "invoiceNumbers",
-                "query": {
-                  "from": { "source": "{{hidden.InvoiceTable}}", "alias": "i" },
-                  "select": [{ "name": "number", "expression": { "column": "i.number" } }],
-                  "where": { "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } }
-                }
-              }]
-            }
-            """);
-        var adHoc = Assert.Single(hidden.Resolve().Db("main").Queries);
-        var hiddenKey = Assert.Single(adHoc.Collections.Single().Keys);
-        Assert.Equal(("mq_key0_0", true), (hiddenKey.ParentField, hiddenKey.Hidden));
-        Assert.Null(adHoc.Entity);
-        Assert.Equal("SELECT c.name AS name, c.id AS mq_key0_0\nFROM public.customers c", QuerySql.Render(adHoc).Sql);
-    }
-
-    [Fact]
     public void Each_rule_reports_its_finding_at_the_offending_node()
     {
         var s = new Shop();
@@ -316,7 +227,6 @@ public sealed class QueryTests
         var id = s.Query($$"""
             {
               "name": "Broken",
-              "entity": "{{s.Customer.Id}}",
               "parameters": [
                 { "name": "word", "type": "string" },
                 { "name": "word", "type": "int32" },
@@ -328,23 +238,14 @@ public sealed class QueryTests
                 { "source": "{{s.View}}", "alias": "c" }
               ],
               "select": [
-                { "attribute": "{{s.Invoice.AttrId("number")}}", "expression": { "column": "c.nope" } },
+                { "name": "a", "expression": { "column": "c.nope" } },
                 { "name": "b", "expression": { "column": "z.id" } },
                 { "name": "c", "expression": { "param": "missing" } },
                 { "name": "d", "expression": { "sql": { "sqlserver": "GETDATE()" } } }
               ],
               "where": { "op": "between", "left": { "column": "c.name" }, "right": { "value": 1 } },
               "paging": { "limit": "word" },
-              "collections": [
-                {
-                  "attribute": "{{s.Customer.AttrId("email")}}",
-                  "query": {
-                    "from": { "source": "{{s.InvoiceTable}}", "alias": "i" },
-                    "select": [{ "name": "n", "expression": { "column": "i.number" } }],
-                    "where": { "or": [{ "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } }, { "op": "eq", "left": { "column": "q.id" }, "right": { "value": 1 } }] }
-                  }
-                }
-              ]
+              "having": { "exists": { "from": { "source": "{{s.InvoiceTable}}", "alias": "i" }, "where": { "op": "eq", "left": { "column": "q.id" }, "right": { "column": "c.id" } } } }
             }
             """);
 
@@ -354,19 +255,13 @@ public sealed class QueryTests
         Assert.Contains(("MQ4018", "/parameters/2/type"), findings);
         Assert.Contains(("MQ4021", "/joins/0/source"), findings);
         Assert.Contains(("MQ4022", "/joins/1/alias"), findings);
-        Assert.Contains(("MQ4025", "/select/0/attribute"), findings);
         Assert.Contains(("MQ4023", "/select/0/expression/column"), findings);
         Assert.Contains(("MQ4022", "/select/1/expression/column"), findings);
         Assert.Contains(("MQ4024", "/select/2/expression/param"), findings);
         Assert.Contains(("MQ4029", "/select/3/expression/sql"), findings);
-        Assert.Contains(("MQ4026", "/select"), findings);
         Assert.Contains(("MQ4031", "/where/right"), findings);
         Assert.Contains(("MQ4030", "/paging/limit"), findings);
-        Assert.Contains(("MQ4027", "/collections/0/attribute"), findings);
-        Assert.Contains(("MQ4028", "/collections/0/query/where/or/1/left/column"), findings);
-        Assert.Contains(("MQ4028", "/collections/0/query/where/or/0/right/column"), findings);
-        Assert.Contains(("MQ4028", "/collections/0/query"), findings);
-        Assert.Equal(DiagnosticSeverity.Warning, s.Resolve().Diagnostics.Single(d => d.ElementId == id && d.Rule == "MQ4026").Severity);
+        Assert.Contains(("MQ4028", "/having/exists/where/left/column"), findings);
 
         // The query is not rendered while it has errors, and the database view refuses a model that has them.
         Assert.Null(s.Resolve().Db("main").Queries.Single().Sql);
@@ -414,22 +309,20 @@ public sealed class QueryTests
 
         var shop = new Shop();
         Report(shop);
-        WithInvoices(shop);
         shop.Builder.Database("other", Dialect.Sqlite);
         var pack = PlanningKit.Pack("p", [PlanningKit.Unit("query", "each query"), PlanningKit.Unit("other", "each query", new UnitWhere { Database = "other" })]);
         var plan = await new UnitPlanner(PlanningKit.Options).PlanAsync(shop.Resolve(), new PackSet([pack], []), new ScriptSandboxFactory(), null, Ct);
         Assert.Empty(plan.Diagnostics);
-        Assert.Equal(["CustomerReport (main)", "CustomersWithInvoices (main)"],
+        Assert.Equal(["CustomerReport (main)"],
             plan.Units.Where(u => u.Unit.Id == "query").Select(u => GenerationService.NameOf(u.Element!)!).Order(StringComparer.Ordinal));
         Assert.DoesNotContain(plan.Units, u => u.Unit.Id == "other");
 
         var byCustomer = queries.Single(q => q.Name == "InvoicesByCustomer");
-        var text = (await Adhoc.RenderAsync("{{ query_sql query 'sqlserver' }}|{{ query_collection_sql query.collections[0] }}|{{ query_sql query null { placeholder: ':' } }}",
+        var text = (await Adhoc.RenderAsync("{{ query_sql query 'sqlserver' }}|{{ query_sql query null { placeholder: ':' } }}",
             byCustomer, u => u with { For = "each query" })).Text();
         var parts = text.Split('|');
         Assert.Equal(QuerySql.Render(byCustomer, "sqlserver").Sql, parts[0]);
-        Assert.Equal(QuerySql.RenderCollection(byCustomer.Collections[0]).Sql, parts[1]);
-        Assert.Contains("i.customer_id = :customerId", parts[2], StringComparison.Ordinal);
+        Assert.Contains("i.customer_id = :customerId", parts[1], StringComparison.Ordinal);
 
         // A dialect the query has no sql text for fails the unit with MQ4029; the wrong argument with MQ6006.
         var revenue = queries.Single(q => q.Name == "RevenueByMonth");
@@ -444,16 +337,11 @@ public sealed class QueryTests
         var view = DatabaseViews.From(model.Databases.Single());
 
         var query = view.Queries.Single(q => q.Name == "InvoicesByCustomer");
-        Assert.Equal("01J92P0V0FJ23CGSNKM7P1W5V7", query.EntityId);
         Assert.Equal(["customerId", "statuses", "offset", "limit"], query.SqlParameters);
         Assert.StartsWith("SELECT i.id AS id, i.number AS number", query.Sql, StringComparison.Ordinal);
         Assert.Equal(("01J92P0V1T0J6RH4MY9H81NYB4", "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4", "from"), (query.From!.Source, query.From.TableKey, query.From.Kind));
         Assert.Equal("and", query.Where!.Value.EnumerateObject().Single().Name);
         Assert.Equal("desc", query.OrderBy[0].GetProperty("direction").GetString());
-        var lines = Assert.Single(query.Collections);
-        Assert.Equal(("lines", "01J92P0V1H4D2M1HCK82ASJEWT", "01J92P0V0GWFR78HZH0P8Z3GY7"), (lines.Name, lines.Attribute, lines.EntityId));
-        Assert.Equal(["mq_keys0"], lines.SqlParameters);
-        Assert.Equal("i.01J92P0V0Q9EK961M5HAQ3C5MY", Assert.Single(lines.Keys).Outer);
         Assert.Contains("01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4", query.Uses);
         Assert.Equal(JsonValueKind.Object, query.Select[0].Expression!.Value.ValueKind);
 
@@ -472,7 +360,6 @@ public sealed class QueryTests
 
         var with = new Shop();
         Report(with);
-        WithInvoices(with);
 
         Assert.True(differ.Diff(before, with.Resolve().Db("main")).IsEmpty);
     }

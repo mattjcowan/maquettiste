@@ -269,8 +269,12 @@ Built since:
   the query declares only its columns, the entity reads it through its binding's `source`, and a record's parts come
   through composition (`entity.parts`), each part with its own binding. `csharp-dapper` teaches the binding way and still
   renders a query that names an entity; the reference sample's `OpenSalesOrders` query lost its entity and its lines
-  collection, and the new read-only entity `OpenSalesOrder` binds to it. The billing fixture keeps its two older queries
-  in the retired form, with the rule off, to cover them until removal. Requested.
+  collection, and the new read-only entity `OpenSalesOrder` binds to it. Requested.
+- **Queries stop naming entities: removal (0.28.0).** `entity`, `collections` and a select field's `attribute` are gone
+  from the query format, the resolved model, the SQL renderer (`query_collection_sql` too), `csharp-dapper` and the
+  editor. A file that still has one does not load: MQ4127 is now an error at load that no setting changes, naming the
+  replacement. The rules that only judged those keys (MQ4025, MQ4026, MQ4027, MQ4032, MQ4033, MQ4041, MQ4116) left the
+  catalog, their ids not reused. The billing fixture's two older queries now declare their own columns. Requested.
 
 Left:
 
@@ -284,10 +288,9 @@ design questions on 2026-11-26; their answers are folded in below.
 - **The parts of a whole record** and **what a copy carries over.** Built in 0.27.0; see "Built since" above. Settled: a
   part that is not copied leaves its own parts out too; `reset` on a column the database fills means the insert leaves it
   to the column's default, so the copy gets a fresh value.
-- **Queries stop naming entities.** Built in 0.27.0; see "Built since" above. A query's `entity` (its rows' shape) and
-  `collections` (an entity's lists filled per relation end) predated the decision below that the database knows no
-  entities. They are now warning MQ4127, with `csharp-dapper` moved to bindings in the same change. Removal comes in a
-  later version.
+- **Queries stop naming entities.** Built: retired in 0.27.0 (warning MQ4127), removed in 0.28.0 (MQ4127 an error at
+  load); see "Built since" above. A query's `entity` (its rows' shape) and `collections` (an entity's lists filled per
+  relation end) predated the decision below that the database knows no entities.
 - **Views and functions a stereotype adds.** Later. A script works them out from a table's columns and the model treats
   them like written ones; a script that writes them into the model with `upsert` works today.
 

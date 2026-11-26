@@ -41,6 +41,7 @@ import { Coverage } from "./coverage";
 import { planDelete } from "./cascade";
 import { typedElement } from "./typed";
 import { applyRules, diagnosticKey, enumDrift, validateModel, type ModelEntry } from "./validate";
+import { coveredByRemovedKeys, failurePointer, REMOVED_QUERY_KEYS_RULE, removedQueryKeys, removedQueryKeysMessage } from "./removedQueryKeys";
 import { ModelIndex } from "./modelIndex";
 import { applyCase, foreignKeyMismatches, resolveDatabase, typeStorageDiagnostics } from "./physical";
 import { resolveQueries } from "./queries";
@@ -668,8 +669,9 @@ export class MockModel {
           column: null,
         },
       ];
+    const doc: Json = json;
     if (validate(json)) return [];
-    return describeErrors(validate.errors).map((message, i) => ({
+    const found: Diagnostic[] = describeErrors(validate.errors).map((message, i) => ({
       rule: "MQ1002",
       severity: "error" as const,
       message,
@@ -679,6 +681,22 @@ export class MockModel {
       line: null,
       column: null,
     }));
+    // A query's keys that 0.28.0 removed are one MQ4127 naming the replacement, in place of the schema failures they cause.
+    const removed = doc.kind === "query" ? removedQueryKeys(doc) : [];
+    if (!removed.length) return found;
+    return [
+      {
+        rule: REMOVED_QUERY_KEYS_RULE,
+        severity: "error",
+        message: removedQueryKeysMessage(doc, removed),
+        elementId: id,
+        filePath: path,
+        jsonPointer: removed[0],
+        line: null,
+        column: null,
+      },
+      ...found.filter((_, i) => !coveredByRemovedKeys(failurePointer(validate.errors![i]), removed)),
+    ];
   }
 
   private commit(candidate: Map<string, Entry>, source: ChangeSet["source"] = "editor"): ChangeSet {

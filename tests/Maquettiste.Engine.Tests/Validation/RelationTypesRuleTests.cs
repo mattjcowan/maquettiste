@@ -12,13 +12,13 @@ namespace Maquettiste.Engine.Tests.Validation;
 
 /// <summary>
 /// The rules of relations with several types at an end, part 1 (several-types-design.md decisions 2 to 12 and 21 to 23, section 6): MQ3041,
-/// MQ3042, MQ3043, MQ2003 and MQ9211 on entries, MQ2020 on entity entries only, MQ3009 holders, MQ3016, MQ4009, MQ4115, MQ4116 and MQ7105,
+/// MQ3042, MQ3043, MQ2003 and MQ9211 on entries, MQ2020 on entity entries only, MQ3009 holders, MQ3016, MQ4009, MQ4115 and MQ7105,
 /// their failing and passing cases, the stale findings of MQ4115, and today's models keeping their findings. Over <see cref="SeveralTypesKit"/>.
 /// </summary>
 public sealed class RelationTypesRuleTests
 {
     private const string Main = "01JDBS00000000000000000901";
-    private static readonly string[] NewRules = ["MQ3041", "MQ3042", "MQ3043", "MQ4115", "MQ4116"];
+    private static readonly string[] NewRules = ["MQ3041", "MQ3042", "MQ3043", "MQ4115"];
 
     private static string Database(string extra = "") =>
         $$"""{"kind":"database","id":"{{Main}}","name":"main","dialect":"postgresql"{{extra}}}""";
@@ -228,7 +228,7 @@ public sealed class RelationTypesRuleTests
         Assert.Equal([("/ends/1/types/1", "Entity 'Memo' is already owned through composition .maquettiste/model/relations/a-holds.json; a composition child has one owner.")], Of(reversed, "MQ3016", "/relations/b-holds"));
     }
 
-    // ---- MQ4009, MQ4115, MQ4116, MQ7105 ----
+    // ---- MQ4009, MQ4115, MQ7105, and binding fields through such an end ----
 
     [Fact]
     public async Task MQ4009_refuses_the_keys_that_shape_engine_made_storage_on_a_mapping_of_such_a_relation()
@@ -274,7 +274,7 @@ public sealed class RelationTypesRuleTests
     }
 
     [Fact]
-    public async Task MQ4116_refuses_a_query_field_and_a_query_collection_naming_such_an_end_and_a_binding_field_resolves()
+    public async Task A_binding_field_naming_an_end_with_several_types_resolves()
     {
         const string Table = "01JTAB00000000000000000901";
         var found = await ValidateAsync(h =>
@@ -289,32 +289,16 @@ public sealed class RelationTypesRuleTests
                  {"id":"{{TextAttribute}}","name":"text","type":"string","length":40},{"id":"{{Note2}}","name":"note2","type":"string","length":40}],
                 "bindings":[{"id":"01JBND00000000000000000901","database":"{{Main}}","source":"{{Table}}","fields":[{"attribute":"01JATT00000000000000000981","column":"id"},{"attribute":"{{AttachedEnd}}","column":"attached_id"}]}]
                 """));
-            h.Write("model/databases/main/queries/comments.json", $$"""
-                {"kind":"query","id":"01JQRY00000000000000000901","name":"Comments","database":"{{Main}}","entity":"{{Comment}}","from":{"source":"{{Table}}","alias":"c"},
-                 "select":[{"attribute":"01JATT00000000000000000981","expression":{"column":"c.id"} },{"attribute":"{{AttachedEnd}}","expression":{"column":"c.attached_id"} }],
-                 "collections":[{"attribute":"{{TaggedEnd}}","query":{"from":{"source":"{{Table}}","alias":"t"},"select":[{"attribute":"{{AttachedEnd}}","expression":{"column":"t.id"} }]} }]}
-                """);
         });
         // Part 2: the binding field resolves (several-types-design.md decision 46): Comment holds the to-one end, which has several types.
-        Assert.Empty(Of(found, "MQ4116", "/entities/comment"));
-        Assert.Equal(
-        [
-            ("/select/1/attribute", "Field 1 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it."),
-            ("/collections/0/attribute", "Collection 0 of query 'Comments' names end 'tagged', which leads to several types; a collection can't fill it."),
-            ("/collections/0/query/select/0/attribute", "Field 0 of collection 0 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it."),
-        ], Of(found, "MQ4116", "/queries/comments"));
-
-        // MQ4116 alone: the resolver reports nothing more about such a field or collection.
-        Assert.DoesNotContain(found, d => d.Rule is "MQ4045" or "MQ4025" or "MQ4027" && ((d.FilePath ?? "").Contains("/entities/comment", StringComparison.Ordinal)
-            || (d.FilePath ?? "").Contains("/queries/comments", StringComparison.Ordinal)));
+        Assert.DoesNotContain(found, d => d.Rule == "MQ4045" && (d.FilePath ?? "").Contains("/entities/comment", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task MQ4116_refuses_a_field_or_collection_through_such_a_relation_from_the_one_type_side_and_nothing_else_reports_it()
+    public async Task A_binding_field_through_such_a_relation_from_the_one_type_side_resolves()
     {
         // Filed: a comment (to-one) filed under tools or documents. Tool's binding maps the comment end, a to-one end Tool holds through its
-        // type; a query on Part fills AttachedTo's comments, and one on Tool selects Filed's comment end. Part 1 stores nothing for
-        // such a relation, so each is MQ4116 alone, with no MQ4045, MQ4025 or MQ4027.
+        // type.
         const string Tools = "01JTAB00000000000000000911", Parts = "01JTAB00000000000000000912", Comments = "01JTAB00000000000000000913";
         const string Filed = "01JRXN00000000000000000991", FiledComment = "01JEND00000000000000000995", FiledUnder = "01JEND00000000000000000996";
         var found = await ValidateAsync(h =>
@@ -334,24 +318,9 @@ public sealed class RelationTypesRuleTests
                 ,"key":{"attributes":["01JATT00000000000000000971"]},"attributes":[{"id":"01JATT00000000000000000971","name":"id","type":"uuid"}],
                 "bindings":[{"id":"01JBND00000000000000000911","database":"{{Main}}","source":"{{Tools}}","fields":[{"attribute":"01JATT00000000000000000971","column":"id"},{"attribute":"{{FiledComment}}","column":"comment_id"}]}]
                 """));
-            h.Write("model/databases/main/queries/part-notes.json", $$"""
-                {"kind":"query","id":"01JQRY00000000000000000911","name":"PartNotes","database":"{{Main}}","entity":"{{Part}}","from":{"source":"{{Parts}}","alias":"p"},
-                 "select":[{"attribute":"01JATT00000000000000000911","expression":{"column":"p.id"} }],
-                 "collections":[{"attribute":"{{CommentsEnd}}","query":{"from":{"source":"{{Comments}}","alias":"n"},"select":[{"attribute":"01JATT00000000000000000981","expression":{"column":"n.id"} }]} }]}
-                """);
-            h.Write("model/databases/main/queries/tool-filing.json", $$"""
-                {"kind":"query","id":"01JQRY00000000000000000912","name":"ToolFiling","database":"{{Main}}","entity":"{{Tool}}","from":{"source":"{{Tools}}","alias":"t"},
-                 "select":[{"attribute":"01JATT00000000000000000971","expression":{"column":"t.id"} },{"attribute":"{{FiledComment}}","expression":{"column":"t.comment_id"} }]}
-                """);
         });
         // Part 2: Tool's binding field resolves, as a key Tool holds through its type (way 1, decision 46).
-        Assert.Empty(Of(found, "MQ4116", "/entities/tool"));
-        Assert.Equal([("/collections/0/attribute", "Collection 0 of query 'PartNotes' names end 'comment' of relation 'AttachedTo', which has an end with several types; a collection can't fill it.")],
-            Of(found, "MQ4116", "/queries/part-notes"));
-        Assert.Equal([("/select/1/attribute", "Field 1 of query 'ToolFiling' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.")],
-            Of(found, "MQ4116", "/queries/tool-filing"));
-        foreach (var path in new[] { "/entities/tool", "/queries/part-notes", "/queries/tool-filing" })
-            Assert.DoesNotContain(found, d => d.Rule is "MQ4045" or "MQ4025" or "MQ4027" && (d.FilePath ?? "").Contains(path, StringComparison.Ordinal));
+        Assert.DoesNotContain(found, d => d.Rule == "MQ4045" && (d.FilePath ?? "").Contains("/entities/tool", StringComparison.Ordinal));
     }
 
     [Fact]

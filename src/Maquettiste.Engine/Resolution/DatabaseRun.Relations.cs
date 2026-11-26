@@ -143,16 +143,6 @@ internal sealed partial class DatabaseRun
     /// <summary>One-type relations whose designed link table's mapping writes constants or attribute columns (answer 9), in relation order.</summary>
     private readonly List<(RRelation Relation, RelationPhysical Physical)> _linkTableLinks = [];
 
-    /// <summary>
-    /// Whether a query field or a query collection names any end of a relation with an end of several types, or a path under one: MQ4116
-    /// refuses it (several-types-design.md decisions 22 and 46), so resolution reports nothing more about it.
-    /// </summary>
-    /// <param name="model">The model.</param>
-    /// <param name="reference">The field's or collection's <c>attribute</c>.</param>
-    /// <returns>Whether it goes through such a relation.</returns>
-    internal static bool NamesSeveralTypesEnd(ModelSnapshot model, string reference) =>
-        EndCoverage.Of(model).Any && Validation.RelationTypeRules.ThroughSeveralTypes(model, reference) is not null;
-
     private void ResolveRelation(RRelation rel)
     {
         var src = _run.RelationSource(rel.Id);

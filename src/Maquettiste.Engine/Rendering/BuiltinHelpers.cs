@@ -121,7 +121,7 @@ internal static class BuiltinHelpers
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_calculated", "has_tag", "in_category", "lookup", "referenced_by",
         "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "custom_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
-        "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
+        "state_path", "iso_duration_ms", "query_sql", "query_sql_parameters",
         "binding_sql", "binding_sql_parameters", "expression_sql", "expression_runtime", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort", "exported");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
@@ -186,7 +186,6 @@ internal static class BuiltinHelpers
         Add(builtins, "sql_quote", 1, 3, (c, a) => SqlQuote(c, a[0], a.Count > 1 ? a[1] : null, a.Count > 2 ? AsText(a[2]) : null));
         Add(builtins, "sql_literal", 2, 2, (c, a) => SqlLiteral(c, a[0], a[1]));
         Add(builtins, "query_sql", 1, 3, (c, a) => QuerySqlText(c, "query_sql", a));
-        Add(builtins, "query_collection_sql", 1, 3, (c, a) => QuerySqlText(c, "query_collection_sql", a));
         Add(builtins, "query_sql_parameters", 1, 3, (c, a) => QuerySqlText(c, "query_sql_parameters", a));
         Add(builtins, "binding_sql", 2, 4, (c, a) => BindingSqlText(c, "binding_sql", a));
         Add(builtins, "binding_sql_parameters", 2, 4, (c, a) => BindingSqlText(c, "binding_sql_parameters", a));
@@ -579,11 +578,11 @@ internal static class BuiltinHelpers
     }
 
     /// <summary>
-    /// <c>query_sql(query, dialect?, options?)</c> and <c>query_collection_sql(collection, dialect?, options?)</c>: the statement
+    /// <c>query_sql(query, dialect?, options?)</c>: the statement
     /// <see cref="QuerySql"/> renders for the query's database's dialect, or the one named (a name or a database); <c>options</c>
     /// takes <c>placeholder</c> (<c>@</c>, <c>:</c> or <c>$</c>) and <c>lists</c> (<c>expand</c> or <c>any</c>). A query that cannot
     /// be rendered for the dialect fails the unit with the renderer's diagnostic (MQ4029). <c>query_sql_parameters(query, dialect?,
-    /// options?)</c> (a query or a collection; the options may stand in the dialect's place) returns the parameter names of the
+    /// options?)</c> (the options may stand in the dialect's place) returns the parameter names of the
     /// statement in placeholder order, the order <c>$n</c> placeholders number them.
     /// </summary>
     private static object QuerySqlText(TrackingTemplateContext context, string name, IReadOnlyList<object?> args)
@@ -619,21 +618,12 @@ internal static class BuiltinHelpers
                     context.Recorder.RecordObject(Top(query));
                     result = QuerySql.Render(query, dialect, options);
                     break;
-                case ("query_collection_sql" or "query_sql_parameters", RQueryCollection collection):
-                    context.Recorder.RecordObject(Top(collection.Query));
-                    result = QuerySql.RenderCollection(collection, dialect, options);
-                    break;
                 case ("query_sql_parameters", RQuery query):
                     context.Recorder.RecordObject(Top(query));
                     result = QuerySql.Render(query, dialect, options);
                     break;
                 default:
-                    throw new RenderHelperException("MQ6006", name switch
-                    {
-                        "query_sql" => $"`query_sql` takes a query, not a {TemplateValues.TypeName(args[0])}.",
-                        "query_sql_parameters" => $"`query_sql_parameters` takes a query or a collection of one, not a {TemplateValues.TypeName(args[0])}.",
-                        _ => $"`query_collection_sql` takes a collection of a query (query.collections[i]), not a {TemplateValues.TypeName(args[0])}.",
-                    });
+                    throw new RenderHelperException("MQ6006", $"`{name}` takes a query, not a {TemplateValues.TypeName(args[0])}.");
             }
         }
         catch (ArgumentException ex)

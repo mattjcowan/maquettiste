@@ -3,8 +3,7 @@
   "rules": [
     "MQ4009",
     "MQ4011",
-    "MQ4115",
-    "MQ4116"
+    "MQ4115"
   ],
   "diagnostics": [
     {
@@ -216,13 +215,6 @@
       "pointer": "/ends/0",
       "message": "Relation 'Unmapped' has an end with several types, so database 'main' stores nothing for it.",
       "severity": "info"
-    },
-    {
-      "rule": "MQ4116",
-      "elementId": "01KST3QRY00000000000000001",
-      "pointer": "/select/1/attribute",
-      "message": "Field 1 of query 'Comments' names end 'target', which leads to several types; a field can't map it.",
-      "severity": "error"
     }
   ]
 }

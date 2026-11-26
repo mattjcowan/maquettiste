@@ -1972,7 +1972,6 @@
       {
         "id": "01K6QRY0000000000000000003",
         "name": "FindCustomersWithIssuedInvoices",
-        "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
         "parameters": [
           {
             "name": "namePattern",
@@ -2002,7 +2001,6 @@
         "select": [
           {
             "name": "id",
-            "attributeId": "01J92P0V0KGPC29TQQG8R57EBM",
             "expression": {
               "column": "c.01J92P0V0KGPC29TQQG8R57EBM"
             },
@@ -2013,7 +2011,6 @@
           },
           {
             "name": "name",
-            "attributeId": "01J92P0V0MS09YFZHX07JQ3KMN",
             "expression": {
               "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
             },
@@ -2024,7 +2021,6 @@
           },
           {
             "name": "email",
-            "attributeId": "01J92P0V0NRX99014KNVAZGPEW",
             "expression": {
               "column": "c.01J92P0V0NRX99014KNVAZGPEW"
             },
@@ -2035,7 +2031,6 @@
           },
           {
             "name": "createdAt",
-            "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
             "expression": {
               "column": "c.01J92P0V26XYZRDQ8FJ6KZXT6S"
             },
@@ -2110,7 +2105,6 @@
         ],
         "distinct": false,
         "paging": null,
-        "collections": [],
         "sql": "SELECT c.id AS id, c.name AS name, c.email AS email, c.created_at AS createdAt\nFROM billing.customers c\nWHERE c.name ILIKE @namePattern AND EXISTS (SELECT 1\n    FROM billing.invoices i\n    WHERE i.customer_id = c.id AND i.status = 'I')\nORDER BY LOWER(c.name) ASC",
         "sqlParameters": [
           "namePattern"
@@ -2132,7 +2126,6 @@
       {
         "id": "01K6QRY0000000000000000001",
         "name": "InvoicesByCustomer",
-        "entityId": "01J92P0V0FJ23CGSNKM7P1W5V7",
         "parameters": [
           {
             "name": "customerId",
@@ -2201,7 +2194,6 @@
         "select": [
           {
             "name": "id",
-            "attributeId": "01J92P0V0Q9EK961M5HAQ3C5MY",
             "expression": {
               "column": "i.01J92P0V0Q9EK961M5HAQ3C5MY"
             },
@@ -2212,7 +2204,6 @@
           },
           {
             "name": "number",
-            "attributeId": "01J92P0V0R3VSP7D5238DTNZX1",
             "expression": {
               "column": "i.01J92P0V0R3VSP7D5238DTNZX1"
             },
@@ -2223,7 +2214,6 @@
           },
           {
             "name": "issuedOn",
-            "attributeId": "01J92P0V0SNXS6PZ42VDK42HP9",
             "expression": {
               "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
             },
@@ -2234,7 +2224,6 @@
           },
           {
             "name": "status",
-            "attributeId": "01J92P0V0VB1Z49SWERMAGR4TV",
             "expression": {
               "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
             },
@@ -2245,7 +2234,6 @@
           },
           {
             "name": "notes",
-            "attributeId": "01J92P0V0WKRGKH7YBKA2V30NC",
             "expression": {
               "column": "i.01J92P0V0WKRGKH7YBKA2V30NC"
             },
@@ -2256,7 +2244,6 @@
           },
           {
             "name": "createdAt",
-            "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
             "expression": {
               "column": "i.01J92P0V26XYZRDQ8FJ6KZXT6S"
             },
@@ -2315,109 +2302,6 @@
           "offset": "offset",
           "limit": "limit"
         },
-        "collections": [
-          {
-            "name": "lines",
-            "attribute": "01J92P0V1H4D2M1HCK82ASJEWT",
-            "entityId": "01J92P0V0GWFR78HZH0P8Z3GY7",
-            "query": {
-              "from": {
-                "source": "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4",
-                "alias": "l"
-              },
-              "joins": [],
-              "select": [
-                {
-                  "attribute": "01J92P0V0X1EDKMF6X5RA8NZWG",
-                  "expression": {
-                    "column": "l.01J92P0V0X1EDKMF6X5RA8NZWG"
-                  }
-                },
-                {
-                  "attribute": "01J92P0V0Y049452AH0K8CDC9N",
-                  "expression": {
-                    "column": "l.01J92P0V0Y049452AH0K8CDC9N"
-                  }
-                },
-                {
-                  "attribute": "01J92P0V1015JY6PVQZG6MY8AS",
-                  "expression": {
-                    "column": "l.01J92P0V1015JY6PVQZG6MY8AS"
-                  }
-                }
-              ],
-              "where": {
-                "op": "eq",
-                "left": {
-                  "column": "l.01J92P0V1GMF7GJPA7981CH7YG.01J92P0V0Q9EK961M5HAQ3C5MY"
-                },
-                "right": {
-                  "column": "i.01J92P0V0Q9EK961M5HAQ3C5MY"
-                }
-              },
-              "groupBy": [],
-              "orderBy": [
-                {
-                  "expression": {
-                    "column": "l.01J92P0V0X1EDKMF6X5RA8NZWG"
-                  },
-                  "direction": "asc"
-                }
-              ],
-              "distinct": false
-            },
-            "select": [
-              {
-                "name": "id",
-                "attributeId": "01J92P0V0X1EDKMF6X5RA8NZWG",
-                "expression": {
-                  "column": "l.01J92P0V0X1EDKMF6X5RA8NZWG"
-                },
-                "type": "ulid",
-                "nativeType": "char(26)",
-                "codeType": "ulid",
-                "nullable": false
-              },
-              {
-                "name": "quantity",
-                "attributeId": "01J92P0V0Y049452AH0K8CDC9N",
-                "expression": {
-                  "column": "l.01J92P0V0Y049452AH0K8CDC9N"
-                },
-                "type": "int32",
-                "nativeType": "integer",
-                "codeType": "int32",
-                "nullable": false
-              },
-              {
-                "name": "description",
-                "attributeId": "01J92P0V1015JY6PVQZG6MY8AS",
-                "expression": {
-                  "column": "l.01J92P0V1015JY6PVQZG6MY8AS"
-                },
-                "type": "string",
-                "nativeType": "varchar(500)",
-                "codeType": "string",
-                "nullable": true
-              }
-            ],
-            "keys": [
-              {
-                "outer": "i.01J92P0V0Q9EK961M5HAQ3C5MY",
-                "parentField": "id",
-                "hidden": false,
-                "childField": "mq_key0",
-                "parameter": "mq_keys0",
-                "type": "uuid",
-                "nativeType": "uuid"
-              }
-            ],
-            "sql": "SELECT l.id AS id, l.quantity AS quantity, l.description AS description, l.invoice_id AS mq_key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @mq_keys0\nORDER BY l.id ASC",
-            "sqlParameters": [
-              "mq_keys0"
-            ]
-          }
-        ],
         "sql": "SELECT i.id AS id, i.number AS number, i.issued_on AS issuedOn, i.status AS status, i.notes AS notes, i.created_at AS createdAt\nFROM billing.invoices i\nWHERE i.customer_id = @customerId AND i.status IN @statuses AND i.deleted_at IS NULL\nORDER BY i.issued_on DESC, i.number ASC\nLIMIT @limit OFFSET @offset",
         "sqlParameters": [
           "customerId",
@@ -2442,7 +2326,6 @@
       {
         "id": "01K6QRY0000000000000000002",
         "name": "RevenueByMonth",
-        "entityId": null,
         "parameters": [
           {
             "name": "from",
@@ -2485,7 +2368,6 @@
         "select": [
           {
             "name": "month",
-            "attributeId": null,
             "expression": {
               "sql": {
                 "postgresql": "CAST(date_trunc('month', i.issued_on) AS date)",
@@ -2500,7 +2382,6 @@
           },
           {
             "name": "invoiceCount",
-            "attributeId": null,
             "expression": {
               "call": "count"
             },
@@ -2511,7 +2392,6 @@
           },
           {
             "name": "revenue",
-            "attributeId": null,
             "expression": {
               "call": "coalesce",
               "args": [
@@ -2589,7 +2469,6 @@
         ],
         "distinct": false,
         "paging": null,
-        "collections": [],
         "sql": "SELECT CAST(date_trunc('month', i.issued_on) AS date) AS month, COUNT(*) AS invoiceCount, COALESCE(SUM(i.total_amount), 0) AS revenue\nFROM billing.invoices i\nWHERE i.issued_on >= @from AND i.issued_on < @to AND i.status <> 'V'\nGROUP BY CAST(date_trunc('month', i.issued_on) AS date)\nORDER BY CAST(date_trunc('month', i.issued_on) AS date) ASC",
         "sqlParameters": [
           "from",

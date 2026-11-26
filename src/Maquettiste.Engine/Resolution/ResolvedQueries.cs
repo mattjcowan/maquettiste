@@ -4,23 +4,21 @@ namespace Maquettiste.Engine.Resolution;
 /// A resolved query (added 2026-10-02): its sources resolved to the database's tables and views, its column references to their
 /// columns, its parameters to native types, with the annotations (<see cref="RAnnotated"/>) of its file. The trees cross to templates
 /// as plain objects (<see cref="RQueryExpression"/>, <see cref="RQueryPredicate"/>) a pack can walk per dialect; <see cref="Sql"/> is
-/// the engine's own rendering for the database's dialect (<c>QuerySql</c>, the template helper <c>query_sql</c>). A nested query (a
-/// collection's, or an <c>exists</c> condition's) is an <see cref="RQuery"/> too, with <see cref="Parent"/> set and no parameters,
-/// paging, collections or annotations of its own.
+/// the engine's own rendering for the database's dialect (<c>QuerySql</c>, the template helper <c>query_sql</c>). A nested query (an
+/// <c>exists</c> condition's, or a named query's part) is an <see cref="RQuery"/> too, with <see cref="Parent"/> set and no parameters,
+/// paging or annotations of its own. Its rows have the shape of its select list: a query names no entity (an entity reads a query
+/// through its binding, <see cref="BoundBy"/>).
 /// </summary>
 public sealed class RQuery : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "query";
 
-    /// <summary>The query's name (for a nested query, its collection's name, or <c>exists</c>).</summary>
+    /// <summary>The query's name (for a nested query, <c>exists</c> or its named query's name).</summary>
     public string Name { get; internal set; } = "";
 
     /// <summary>The database.</summary>
     public RDatabase Database { get; internal set; } = null!;
-
-    /// <summary>The entity each result row has, or <see langword="null"/> for an ad hoc row (the select list).</summary>
-    public REntity? Entity { get; internal set; }
 
     /// <summary>
     /// How the query is written (sql-queries-design.md decision 1): <c>structured</c> (built from parts, the default) or <c>sql</c>
@@ -77,9 +75,6 @@ public sealed class RQuery : RAnnotated
     /// <summary>The paging, or <see langword="null"/>.</summary>
     public RQueryPaging? Paging { get; internal set; }
 
-    /// <summary>The collections filled per result row.</summary>
-    public IReadOnlyList<RQueryCollection> Collections { get; internal set; } = [];
-
     /// <summary>The query that encloses a nested query, or <see langword="null"/> for a top query.</summary>
     public RQuery? Parent { get; internal set; }
 
@@ -90,10 +85,10 @@ public sealed class RQuery : RAnnotated
     public IReadOnlyList<RNamedQuery> With { get; internal set; } = [];
 
     /// <summary>
-    /// The SQL for the database's dialect with <c>@name</c> placeholders (<c>QuerySql.Render</c> with the default options), with the
-    /// hidden key columns the collections need (for a query written as SQL text, its text as written with the white space at both ends
-    /// removed, a final <c>;</c> kept, its <c>:name</c> placeholders written <c>@name</c>); <see langword="null"/> when it cannot be rendered there (MQ4029) and for a nested
-    /// query (a collection's or a subquery's), whose SQL is part of its root's.
+    /// The SQL for the database's dialect with <c>@name</c> placeholders (<c>QuerySql.Render</c> with the default options; for a query
+    /// written as SQL text, its text as written with the white space at both ends removed, a final <c>;</c> kept, its <c>:name</c>
+    /// placeholders written <c>@name</c>); <see langword="null"/> when it cannot be rendered there (MQ4029) and for a nested query, whose
+    /// SQL is part of its root's.
     /// </summary>
     public string? Sql { get; internal set; }
 
@@ -238,32 +233,8 @@ public sealed class RQuerySource
 /// <summary>A field of a resolved select list.</summary>
 public sealed class RQueryField
 {
-    /// <summary>The field's name in the result row (the attribute's when the file gives none).</summary>
+    /// <summary>The field's name in the result row.</summary>
     public string Name { get; internal set; } = "";
-
-    /// <summary>
-    /// The attribute of the result entity the field fills (for a value object member, the value object attribute), or
-    /// <see langword="null"/>.
-    /// </summary>
-    public RAttribute? Attribute { get; internal set; }
-
-    /// <summary>
-    /// The member of the value object <see cref="Attribute"/> the field fills (the file writes <c>attributeId.memberId</c>), or
-    /// <see langword="null"/> when the field fills the attribute itself.
-    /// </summary>
-    public RAttribute? Member { get; internal set; }
-
-    /// <summary>
-    /// The to-one navigation of the result entity whose foreign key the field fills (the file names the relation end the navigation
-    /// leads to, or the navigation's id), or <see langword="null"/>.
-    /// </summary>
-    public RNavigation? Navigation { get; internal set; }
-
-    /// <summary>
-    /// The column of the result entity's table that holds the foreign key <see cref="Navigation"/> fills (its key is
-    /// <c>&lt;end id&gt;.&lt;key attribute id&gt;</c>), or <see langword="null"/>.
-    /// </summary>
-    public RColumn? ForeignKeyColumn { get; internal set; }
 
     /// <summary>The value; <see langword="null"/> for a declared column of a query written as SQL text.</summary>
     public RQueryExpression? Expression { get; internal set; }
@@ -311,74 +282,6 @@ public sealed class RQueryPaging
 
     /// <summary>The most rows to return as a number, or <see langword="null"/>.</summary>
     public long? Limit { get; internal set; }
-}
-
-/// <summary>
-/// A collection of a resolved query: a nested query run once for all parent rows (a second round trip), its rows matched to their
-/// parent by <see cref="Keys"/> (the correlation).
-/// </summary>
-public sealed class RQueryCollection
-{
-    /// <summary>The collection's name: the attribute's or the navigation's, or the name the file gives an ad hoc collection.</summary>
-    public string Name { get; internal set; } = "";
-
-    /// <summary>The collection attribute it fills, or <see langword="null"/>.</summary>
-    public RAttribute? Attribute { get; internal set; }
-
-    /// <summary>The to-many navigation it fills, or <see langword="null"/>.</summary>
-    public RNavigation? Navigation { get; internal set; }
-
-    /// <summary>The entity each element has, or <see langword="null"/> for an ad hoc element (the nested select list).</summary>
-    public REntity? Entity { get; internal set; }
-
-    /// <summary>The nested query.</summary>
-    public RQuery Query { get; internal set; } = null!;
-
-    /// <summary>The correlation: each equality between a column of the nested query and one of the parent's, in where order.</summary>
-    public IReadOnlyList<RQueryKey> Keys { get; internal set; } = [];
-
-    /// <summary>The position of the collection in its query's list.</summary>
-    public int Index { get; internal set; }
-
-    /// <summary>The file's record of the collection.</summary>
-    internal Model.QueryCollection? Definition { get; set; }
-
-    /// <summary>The conjuncts of the nested query's where that the keys replace in the collection's statement.</summary>
-    internal HashSet<RQueryPredicate> KeyConjuncts { get; } = [];
-}
-
-/// <summary>
-/// One correlation key of a collection: the parent's row carries the value as <see cref="ParentField"/>, the collection's statement
-/// takes the list of parent values as the parameter <see cref="Parameter"/> and returns each row's value as <see cref="ChildField"/>.
-/// </summary>
-public sealed class RQueryKey
-{
-    /// <summary>The parent's column expression.</summary>
-    public RQueryExpression Outer { get; internal set; } = null!;
-
-    /// <summary>The nested query's expression it equals.</summary>
-    public RQueryExpression Inner { get; internal set; } = null!;
-
-    /// <summary>The parent row's field that carries the value: a select field over the same column, else a hidden key column.</summary>
-    public string ParentField { get; internal set; } = "";
-
-    /// <summary>Whether <see cref="ParentField"/> is a hidden column the parent's SQL adds after the select list.</summary>
-    public bool Hidden { get; internal set; }
-
-    /// <summary>The column of the collection's statement that carries the value for matching (<c>mq_key0</c>, <c>mq_key1</c>...).</summary>
-    public string ChildField { get; internal set; } = "";
-
-    /// <summary>The list parameter of the collection's statement (<c>mq_keys0</c>, <c>mq_keys1</c>...).</summary>
-    public string Parameter { get; internal set; } = "";
-
-    /// <summary>The value's built-in type keyword, or <see langword="null"/>.</summary>
-    public string? Type { get; internal set; }
-
-    /// <summary>The value's native type, or <see langword="null"/>.</summary>
-    public string? NativeType { get; internal set; }
-
-    /// <summary>The built-in keyword a code type map should map, or <see langword="null"/>.</summary>
-    public string? CodeType { get; internal set; }
 }
 
 /// <summary>A branch of a resolved case expression.</summary>

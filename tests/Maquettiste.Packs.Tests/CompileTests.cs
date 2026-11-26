@@ -2360,7 +2360,7 @@ public sealed class CompileTests
 
         // Builds an in-memory SQLite database from the sql-ddl schema and seed scripts, then drives every generated repository
         // operation: insert (with a database identity key, a generated uuid key and a generated ulid key), get, list, update and delete,
-        // and a generated query with a list parameter, paging and a collection.
+        // and a generated query with a list parameter and paging.
         DapperTypeHandlers.Register();
         using var connection = new SqliteConnection("Data Source=:memory:");
         connection.Open();
@@ -2403,12 +2403,10 @@ public sealed class CompileTests
         Check(line.Id is { Length: 26 } && line.Id.All(c => "0123456789ABCDEFGHJKMNPQRSTVWXYZ".Contains(c)), "ulid key assigned on insert");
         Check((await lines.GetAsync(line.Id))?.Quantity == 2, "invoice line");
 
-        // The generated query: the customer's issued invoices, each with its lines from the second statement.
+        // The generated query: the customer's issued invoices, as rows of the query's own shape.
         var found = await new App.Model.Queries.LocalInvoicesByCustomerQuery(connection).ExecuteAsync(customer.Id, [1, 2]);
-        Check(found.Count == 1 && found[0].Item.Id == invoice.Id && found[0].Item.Status == InvoiceStatus.Issued, "query rows");
-        Check(found[0].Lines.Count == 1 && found[0].Lines[0].Id == line.Id && found[0].Lines[0].Quantity == 2, "query collection");
-        Check(found[0].Item.CustomerId == customer.Id && found[0].Item.Total == invoice.Total, "query foreign key and value object members");
-        Check(found[0].SameLines.Count == 1 && found[0].SameLines[0].Id == line.Id && found[0].SameLines[0].Quantity == 2, "query collection with two keys");
+        Check(found.Count == 1 && found[0].Id == invoice.Id && found[0].Number == "INV-1", "query rows");
+        Check(found[0].CustomerId == customer.Id && found[0].TotalAmount == 12.5m && found[0].TotalCurrency == "EUR", "query foreign key and value object member columns");
         Check((await new App.Model.Queries.LocalInvoicesByCustomerQuery(connection).ExecuteAsync(customer.Id, [3])).Count == 0, "query filter");
 
         read.Status = InvoiceStatus.Paid;

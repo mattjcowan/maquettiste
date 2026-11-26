@@ -6,7 +6,7 @@ namespace Maquettiste.Engine.Validation;
 /// <summary>
 /// The rules of relations with several types at an end, part 1 (several-types-design.md section 6): MQ3041 (where such an end can't be),
 /// MQ3042 (a one-entity list), MQ3043 (an entry another entry covers), MQ2003 and MQ9211 on an entry's stereotype, MQ4115 (a database
-/// stores nothing for such a relation, info in part 1) and MQ4116 (a binding field, a query field or a query collection naming such an end).
+/// stores nothing for such a relation, info in part 1).
 /// Every rule here needs an end with several types, or an end that writes <c>types</c>, so a model without them gets nothing new and pays
 /// one test per relation end.
 /// </summary>
@@ -197,7 +197,7 @@ internal static class RelationTypeRules
     /// <summary>
     /// MQ4009 on an entity's bindings: a <c>discriminatorValue</c> on an entity outside an inheritance hierarchy that no relation end with
     /// several types covers (several-types-design.md decision 42). Binding fields that name such an end resolve or get MQ4045 in the database
-    /// run (decision 46), so MQ4116 no longer reads them.
+    /// run (decision 46).
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="entity">The entity.</param>
@@ -215,63 +215,4 @@ internal static class RelationTypeRules
             }
         }
     }
-
-    /// <summary>
-    /// MQ4116 on a query: a field of its select list, or of a collection's nested select list, or a collection, that names a relation end
-    /// with several types, which leads to more than one table, or another end of a relation with such an end (as a navigation from one of
-    /// that end's types does), which no database stores yet. A nested field's text names its collection.
-    /// </summary>
-    /// <param name="context">The validation context.</param>
-    /// <param name="query">The query.</param>
-    /// <param name="report">The report.</param>
-    public static void CheckQuery(ValidationContext context, Query query, Report report)
-    {
-        var model = context.Model;
-        if (!EndCoverage.Of(model).Any)
-            return;
-        CheckFields(query.Select, "/select", "");
-        for (var c = 0; c < query.Collections.Count; c++)
-        {
-            var collection = query.Collections[c];
-            var pointer = Ptr.At("/collections", c);
-            var index = c.ToString(CultureInfo.InvariantCulture);
-            if (ThroughSeveralTypes(model, collection.Attribute) is { } through)
-                report.Add("MQ4116", $"Collection {index} of query '{query.Name}' names {Named(through)}; a collection can't fill it.", pointer + "/attribute");
-
-            CheckFields(collection.Query.Select, pointer + "/query/select", " of collection " + index);
-        }
-
-        void CheckFields(IReadOnlyList<QueryField> fields, string at, string within)
-        {
-            for (var i = 0; i < fields.Count; i++)
-            {
-                if (fields[i].Attribute is { } attribute && ThroughSeveralTypes(model, attribute) is { } through)
-                {
-                    report.Add("MQ4116", $"Field {i.ToString(CultureInfo.InvariantCulture)}{within} of query '{query.Name}' names {Named(through)}; a field can't map it.",
-                        Ptr.At(at, i) + "/attribute");
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// The relation with an end of several types that a binding field's, query field's or query collection's <c>attribute</c> goes through,
-    /// and the end it names: its first id segment is an end of such a relation, the end with several types or another one (a path under the
-    /// end included). <see langword="null"/> otherwise, and always for a relation whose ends each have one type.
-    /// </summary>
-    /// <param name="model">The model.</param>
-    /// <param name="reference">The <c>attribute</c>.</param>
-    /// <returns>The relation and the end named.</returns>
-    public static (Relation Relation, RelationEnd End)? ThroughSeveralTypes(ModelSnapshot model, string reference)
-    {
-        var dot = reference.IndexOf('.', StringComparison.Ordinal);
-        var first = dot > 0 ? reference[..dot] : reference;
-        return EndOf(model, dot > 0 ? reference[..dot] : reference) is { } found && EndCoverage.HasSeveralTypes(found.Relation) ? found : null;
-    }
-
-    // "end 'attachedTo', which leads to several types" for the end with several types itself; "end 'comment' of relation 'AttachedTo', which
-    // has an end with several types" for another end of such a relation, in the words MQ7105 uses.
-    private static string Named((Relation Relation, RelationEnd End) through) => through.End.HasSeveralTypes
-        ? $"end '{through.End.Role}', which leads to several types"
-        : $"end '{through.End.Role}' of relation '{through.Relation.Name}', which has an end with several types";
 }

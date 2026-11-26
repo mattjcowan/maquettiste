@@ -68,7 +68,7 @@ public sealed class SqlTextQueryModelTests
 
     [Theory]
     [InlineData(""", "from": { "source": "01J92P0V1T0J6RH4MY9H81NYB4" }""")]
-    [InlineData(""", "entity": "01J92P0V0FJ23CGSNKM7P1W5V7" """)]
+    [InlineData(""", "paging": { "limit": 5 }""")]
     [InlineData(""", "orderBy": [ { "expression": { "column": "id" } } ]""")]
     public async Task A_file_that_mixes_the_two_forms_is_refused(string extra)
     {

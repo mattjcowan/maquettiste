@@ -2964,13 +2964,11 @@ paths:
       summary: The SQL of one query for a dialect
       description: |
         Renders a query (a query element over a database's tables and views) as parameterised SQL for its database's dialect, or
-        the one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting
-        setting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or
-        `OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries
-        the correlation columns, the collection's takes their values as the list parameter `mq_keys0` (`mq_keys1`...) and returns
-        each row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A query written as
-        SQL text renders its own text for the dialect (else its `*` text; neither is MQ4029) as written, with only the white
-        space at both ends removed (a final `;` stays), with its `:name` placeholders in the asked style and no collections; `lists` does not apply to it. Named queries (`with`) render
+        the one named. Identifiers are quoted by the database's quoting setting, functions spelled per dialect, `ilike` lowered
+        where the dialect has none, paging written as `LIMIT/OFFSET` or `OFFSET … FETCH NEXT`. An `sql` expression without a text
+        for the dialect is MQ4029 in `diagnostics`. A query written as SQL text renders its own text for the dialect (else its `*`
+        text; neither is MQ4029) as written, with only the white space at both ends removed (a final `;` stays), with its `:name`
+        placeholders in the asked style; `lists` does not apply to it. Named queries (`with`) render
         as a WITH clause first. A model with errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql`
         answers the same.
       x-maquettiste-role: viewer
@@ -13713,26 +13711,21 @@ components:
       x-engine-record: Maquettiste.Engine.QueryView
       description: |
         One resolved query (a query over the database's tables and views, written as data), with the annotations of its file (as
-        `TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`, a collection's
-        `query`) are as the file writes them (`query.json`); resolution adds the sources' tables and views, each field's type,
-        the collections' correlation keys and the SQL for the database's dialect.
+        `TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`) are as the file
+        writes them (`query.json`); resolution adds the sources' tables and views, each field's type and the SQL for the database's
+        dialect. A query names no entity: an entity reads it through its binding (`boundBy`).
 
-        A query written as SQL text (`form: sql`, sql-queries-design.md) has `texts`, no `from`, an empty `joins`, `groupBy`,
-        `orderBy` and `collections`, its declared columns as `select` (each without `expression`), its `reads` as `uses` and its
+        A query written as SQL text (`form: sql`, sql-queries-design.md) has `texts`, no `from`, an empty `joins`, `groupBy` and
+        `orderBy`, its declared columns as `select` (each without `expression`), its `reads` as `uses` and its
         `writes`. A built query may have named queries (`with`). Each of `form`, `texts`, `writes` and `with` is left out when unset.
       type: object
-      required: [id, name, entityId, parameters, joins, select, where, groupBy, having, orderBy, distinct, paging, collections, sql,
+      required: [id, name, parameters, joins, select, where, groupBy, having, orderBy, distinct, paging, sql,
         sqlParameters, uses, displayName, pluralName, description, stereotypes, tags, category, properties, generation]
       properties:
         id:
           $ref: '#/components/schemas/Ulid'
         name:
           type: string
-        entityId:
-          description: The entity each result row has, or null for an ad hoc row (the select list).
-          oneOf:
-            - $ref: '#/components/schemas/Ulid'
-            - type: 'null'
         parameters:
           type: array
           items:
@@ -13790,13 +13783,9 @@ components:
           oneOf:
             - $ref: '../../schemas/v1/query.json#/$defs/paging'
             - type: 'null'
-        collections:
-          type: array
-          items:
-            $ref: '#/components/schemas/QueryCollectionView'
         sql:
           type: [string, 'null']
-          description: The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need; null when it cannot be rendered there (MQ4029).
+          description: The SQL for the database's dialect with `@name` placeholders; null when it cannot be rendered there (MQ4029).
         sqlParameters:
           type: array
           description: The parameters the SQL names, in first-appearance order.
@@ -13934,15 +13923,10 @@ components:
         A field of a select list, with its inferred type; or a declared column of a query written as SQL text, which has no
         `expression` and may have a `description`.
       type: object
-      required: [name, attributeId, type, nativeType, codeType, nullable]
+      required: [name, type, nativeType, codeType, nullable]
       properties:
         name:
           type: string
-        attributeId:
-          description: >-
-            What the field fills: an attribute's id, attributeId.memberId for a member of a value object attribute, or the
-            relation end a to-one navigation leads to (its foreign key); null for an ad hoc field.
-          type: [string, 'null']
         expression:
           description: The field's value as the file writes it; left out for a declared column.
           $ref: '../../schemas/v1/query.json#/$defs/expression'
@@ -13957,60 +13941,6 @@ components:
         description:
           type: string
           description: A declared column's description; left out when none.
-    QueryCollectionView:
-      x-engine-record: Maquettiste.Engine.QueryCollectionView
-      description: A collection of a query, its nested query and the statement that fills it for every parent row at once.
-      type: object
-      required: [name, attribute, entityId, query, select, keys, sql, sqlParameters]
-      properties:
-        name:
-          type: string
-        attribute:
-          type: string
-          description: The file's attribute (an attribute id, a relation end id or an ad hoc name).
-        entityId:
-          oneOf:
-            - $ref: '#/components/schemas/Ulid'
-            - type: 'null'
-        query:
-          $ref: '../../schemas/v1/query.json#/$defs/subquery'
-        select:
-          type: array
-          items:
-            $ref: '#/components/schemas/QueryFieldView'
-        keys:
-          type: array
-          items:
-            $ref: '#/components/schemas/QueryKeyView'
-        sql:
-          type: string
-        sqlParameters:
-          type: array
-          items:
-            type: string
-    QueryKeyView:
-      x-engine-record: Maquettiste.Engine.QueryKeyView
-      description: |
-        A correlation key of a collection: the parent row carries the value as `parentField` (a hidden column when no select field
-        does), the collection's statement takes the parent values as the list parameter `parameter` and returns each row's value as
-        `childField`.
-      type: object
-      required: [outer, parentField, hidden, childField, parameter, type, nativeType]
-      properties:
-        outer:
-          type: string
-        parentField:
-          type: string
-        hidden:
-          type: boolean
-        childField:
-          type: string
-        parameter:
-          type: string
-        type:
-          type: [string, 'null']
-        nativeType:
-          type: [string, 'null']
     BoundByView:
       x-engine-record: Maquettiste.Engine.BoundByView
       description: An entity bound to a table, view or query (erratum E43).
@@ -14462,7 +14392,7 @@ components:
       x-engine-record: Maquettiste.Engine.QuerySqlPreview
       description: The SQL of one query for one dialect.
       type: object
-      required: [id, name, database, dialect, sql, parameters, collections]
+      required: [id, name, database, dialect, sql, parameters]
       properties:
         id:
           $ref: '#/components/schemas/Ulid'
@@ -14480,10 +14410,6 @@ components:
           description: The parameters the statement names, in first-appearance order (the positions of `$n` placeholders).
           items:
             type: string
-        collections:
-          type: array
-          items:
-            $ref: '#/components/schemas/QueryCollectionSql'
       example:
         id: 01K6QRY0000000000000000001
         name: InvoicesByCustomer
@@ -14491,30 +14417,6 @@ components:
         dialect: postgresql
         sql: "SELECT i.id AS id, i.number AS number\nFROM billing.invoices i\nWHERE i.customer_id = @customerId\nORDER BY i.issued_on DESC\nLIMIT @limit OFFSET @offset"
         parameters: [customerId, offset, limit]
-        collections:
-          - name: lines
-            sql: "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS mq_key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @mq_keys0"
-            parameters: [mq_keys0]
-            keys:
-              - { outer: i.id, parentField: id, hidden: false, childField: mq_key0, parameter: mq_keys0, type: uuid, nativeType: uuid }
-    QueryCollectionSql:
-      x-engine-record: Maquettiste.Engine.QueryCollectionSql
-      description: The statement of one collection, run once for all parent rows with the list of their key values.
-      type: object
-      required: [name, sql, parameters, keys]
-      properties:
-        name:
-          type: string
-        sql:
-          type: string
-        parameters:
-          type: array
-          items:
-            type: string
-        keys:
-          type: array
-          items:
-            $ref: '#/components/schemas/QueryKeyView'
     GenerationHintsView:
       x-engine-record: Maquettiste.Engine.Model.GenerationHints
       description: One pack's generation hints on a resolved object (every member written).

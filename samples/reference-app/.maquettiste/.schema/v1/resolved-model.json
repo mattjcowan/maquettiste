@@ -6773,85 +6773,11 @@
       ],
       "additionalProperties": false
     },
-    "queryCollectionView": {
-      "description": "A collection of a query: its nested query and the statement that fills it for every parent row.",
-      "type": "object",
-      "x-order": [
-        "name",
-        "attribute",
-        "entityId",
-        "query",
-        "select",
-        "keys",
-        "sql",
-        "sqlParameters"
-      ],
-      "properties": {
-        "name": {
-          "description": "The collection's name.",
-          "type": "string"
-        },
-        "attribute": {
-          "description": "The file's `attribute`: an attribute id, a relation end id or an ad hoc name.",
-          "type": "string"
-        },
-        "entityId": {
-          "description": "The element entity's id, or null for an ad hoc element.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "query": {
-          "description": "The nested query as the file writes it.",
-          "not": {
-            "type": "null"
-          }
-        },
-        "select": {
-          "description": "The nested select list, resolved.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/queryFieldView"
-          }
-        },
-        "keys": {
-          "description": "The correlation keys.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/queryKeyView"
-          }
-        },
-        "sql": {
-          "description": "The collection's statement for the database's dialect.",
-          "type": "string"
-        },
-        "sqlParameters": {
-          "description": "The parameters it names, in first-appearance order.",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [
-        "name",
-        "attribute",
-        "entityId",
-        "query",
-        "select",
-        "keys",
-        "sql",
-        "sqlParameters"
-      ],
-      "additionalProperties": false
-    },
     "queryFieldView": {
       "description": "A field of a select list.",
       "type": "object",
       "x-order": [
         "name",
-        "attributeId",
         "expression",
         "type",
         "nativeType",
@@ -6863,13 +6789,6 @@
         "name": {
           "description": "The field's name in the result row.",
           "type": "string"
-        },
-        "attributeId": {
-          "description": "What it fills: an attribute's id, `attributeId.memberId` for a value object member, the relation end a to-one navigation leads to for its foreign key, or null.",
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "expression": {
           "description": "The value as the file writes it (an expression tree); null (left out) for a declared column of a query written as SQL text."
@@ -6906,70 +6825,10 @@
       },
       "required": [
         "name",
-        "attributeId",
         "type",
         "nativeType",
         "codeType",
         "nullable"
-      ],
-      "additionalProperties": false
-    },
-    "queryKeyView": {
-      "description": "A correlation key of a collection.",
-      "type": "object",
-      "x-order": [
-        "outer",
-        "parentField",
-        "hidden",
-        "childField",
-        "parameter",
-        "type",
-        "nativeType"
-      ],
-      "properties": {
-        "outer": {
-          "description": "The parent's column (`alias.column`).",
-          "type": "string"
-        },
-        "parentField": {
-          "description": "The parent row's field that carries the value.",
-          "type": "string"
-        },
-        "hidden": {
-          "description": "Whether the parent's SQL adds the field as a hidden column.",
-          "type": "boolean"
-        },
-        "childField": {
-          "description": "The collection statement's column that carries the value.",
-          "type": "string"
-        },
-        "parameter": {
-          "description": "The list parameter of the collection's statement.",
-          "type": "string"
-        },
-        "type": {
-          "description": "The value's built-in type keyword, or null.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "nativeType": {
-          "description": "The value's native type, or null.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "outer",
-        "parentField",
-        "hidden",
-        "childField",
-        "parameter",
-        "type",
-        "nativeType"
       ],
       "additionalProperties": false
     },
@@ -7182,12 +7041,11 @@
       "additionalProperties": false
     },
     "queryView": {
-      "description": "One resolved query: the trees as the file writes them, with what resolution adds (sources, field types, collection keys) and the SQL for the database's dialect.",
+      "description": "One resolved query: the trees as the file writes them, with what resolution adds (sources, field types) and the SQL for the database's dialect.",
       "type": "object",
       "x-order": [
         "id",
         "name",
-        "entityId",
         "parameters",
         "from",
         "joins",
@@ -7198,7 +7056,6 @@
         "orderBy",
         "distinct",
         "paging",
-        "collections",
         "sql",
         "sqlParameters",
         "uses",
@@ -7224,13 +7081,6 @@
         "name": {
           "description": "The query's name.",
           "type": "string"
-        },
-        "entityId": {
-          "description": "The result entity's id, or null for an ad hoc row.",
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "parameters": {
           "description": "The parameters, in order.",
@@ -7288,15 +7138,8 @@
         "paging": {
           "description": "The paging as the file writes it, or null."
         },
-        "collections": {
-          "description": "The collections.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/queryCollectionView"
-          }
-        },
         "sql": {
-          "description": "The SQL for the database's dialect (`@name` placeholders), with the hidden key columns its collections need (for a query written as SQL text, its text as written with the white space at both ends removed, a final `;` kept), or null when it cannot be rendered there.",
+          "description": "The SQL for the database's dialect (`@name` placeholders; for a query written as SQL text, its text as written with the white space at both ends removed, a final `;` kept), or null when it cannot be rendered there.",
           "type": [
             "string",
             "null"
@@ -7406,7 +7249,6 @@
       "required": [
         "id",
         "name",
-        "entityId",
         "parameters",
         "joins",
         "select",
@@ -7416,7 +7258,6 @@
         "orderBy",
         "distinct",
         "paging",
-        "collections",
         "sql",
         "sqlParameters",
         "uses",

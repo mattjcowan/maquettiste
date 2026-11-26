@@ -86,8 +86,8 @@ golden tree).
   `sql_quote`, `sql_literal`, `indent`, `dedent`, `escape_md`, `escape_xml`, `escape_json`, `json` (with optional
   fields), `array_index_of`, `array_find`, `table_named`, `column_named`, `toposort`, `has_stereotype`, `has_tag`,
   `in_category` (these three take any `RAnnotated`: a conceptual element, a database, schema, table, column, view or sequence), `lookup`, `banner`, `file`,
-  `query_sql` and `query_collection_sql` (2026-10-02: a query's or a collection's statement from `QuerySql`, for the database's
-  dialect or the one given, with `{ placeholder, lists }` options; they record the top query and fail the unit with MQ4029 when an
+  `query_sql` (2026-10-02: a query's statement from `QuerySql`, for the database's
+  dialect or the one given, with `{ placeholder, lists }` options; it records the top query and fails the unit with MQ4029 when an
   `sql` expression has no text for the dialect).
   The `hints` variable reads any `RAnnotated`'s `Generation` too, so a table unit sees its table file's hints (2026-10-01). Pack JavaScript helpers register under their own names (callable and pipeable);
   a name that collides with a builtin or a variable is MQ6013 and fails every unit of the pack. Transforms run before the
@@ -123,11 +123,10 @@ golden tree).
   third argument, else that database's `quoting`, else `reserved`. `reserved` quotes reserved words of the dialect **and** any
   name that is not `^[A-Za-z_][A-Za-z0-9_]*$` or starts with `_` (Oracle's unquoted identifiers start with a letter; added
   2026-10-02). Dialect aliases: `postgres`, `pg`, `mssql`, `mariadb`.
-- `QuerySql` (public, 2026-10-02, engine-design.md section 7 "Queries"): renders an `RQuery` or `RQueryCollection` as
+- `QuerySql` (public, 2026-10-02, engine-design.md section 7 "Queries"): renders an `RQuery` as
   parameterised SQL per dialect (`@`, `:` or positional `$` placeholders; lists `IN @x` or `= ANY(@x)`), quoting through
   `SqlDialects`, function spellings, `ilike` lowered, `NULLS FIRST|LAST` emulated, paging per dialect, MySQL casts to the types
-  its `CAST` takes, a grouped statement grouping by its key columns too, an `exists` indented on lines of its own; a collection
-  is its own statement keyed by `mq_keys<n>`/`mq_key<n>`. `QuerySql.Parameters` (the helper `query_sql_parameters`) lists the
+  its `CAST` takes, an `exists` indented on lines of its own (a query's `collections` were removed in 0.28.0). `QuerySql.Parameters` (the helper `query_sql_parameters`) lists the
   parameter names in placeholder order.
 - `type_of`: pack maps (`types/<target>.json`) win over dialect names; a collection attribute takes the map's `collection`
   pattern, otherwise an optional attribute or nullable column takes `nullable`. With a dialect target, a column of a database

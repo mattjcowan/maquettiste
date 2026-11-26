@@ -2,13 +2,11 @@
 // "Queries"): a resolved query (queries.ts binds it) written as parameterised SQL for a dialect, one clause per line;
 // identifiers quoted by the database's quoting setting (SqlDialects.Quote with the engine's reserved-word lists, which
 // scripts/copy-fixture.mjs copies into src/mocks/fixture/reserved/), functions spelled per dialect, ilike lowered where the
-// dialect has none, NULLS FIRST/LAST emulated, paging as LIMIT/OFFSET or OFFSET … FETCH NEXT, and each collection as a statement
-// of its own keyed by the parent rows. The output is byte for byte the engine's for the same resolved query.
+// dialect has none, NULLS FIRST/LAST emulated, paging as LIMIT/OFFSET or OFFSET … FETCH NEXT. The output is byte for byte the
+// engine's for the same resolved query.
 import type { Diagnostic } from "@/api/types";
 import { scanSqlText, trimSqlWhite } from "@/model/sqlText";
 import { nativeType } from "./physical";
-
-type Json = Record<string, unknown>;
 
 /** The dialect names the renderer writes (DialectTypeMaps.Name). */
 export const QUERY_DIALECTS = ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"] as const;
@@ -178,12 +176,6 @@ export interface RPredicate {
 
 export interface RField {
   name: string;
-  /** The attribute it fills (a value object member's attribute), or null. */
-  attributeId: string | null;
-  /** The value object member it fills (the file writes `attributeId.memberId`), or null. */
-  memberId: string | null;
-  /** The relation end a to-one navigation leads to, whose foreign key it fills, or null. */
-  endId: string | null;
   expression: RExpression;
   type: string | null;
   nativeType: string | null;
@@ -204,35 +196,10 @@ export interface RPaging {
   limit: number | null;
 }
 
-export interface RKey {
-  outer: RExpression;
-  inner: RExpression;
-  parentField: string;
-  hidden: boolean;
-  childField: string;
-  parameter: string;
-  type: string | null;
-  nativeType: string | null;
-  codeType: string | null;
-}
-
-export interface RCollection {
-  name: string;
-  attribute: string;
-  entityId: string | null;
-  query: RQuery;
-  keys: RKey[];
-  index: number;
-  keyConjuncts: Set<RPredicate>;
-  /** The collection as the file writes it. */
-  definition: Json;
-}
-
 export interface RQuery {
   id: string;
   name: string;
   database: RDatabaseRef;
-  entityId: string | null;
   parameters: RParameter[];
   from: RSource;
   joins: RSource[];
@@ -243,7 +210,6 @@ export interface RQuery {
   orderBy: ROrder[];
   distinct: boolean;
   paging: RPaging | null;
-  collections: RCollection[];
   parent: RQuery | null;
   /** The SQL for the database's dialect, "" when the query has errors (the top query only). */
   sql: string;
@@ -415,7 +381,7 @@ export function expressionText(query: RQuery, expression: RExpression): string {
   return new Writer(query, null, null).text(expression);
 }
 
-/** Renders a query (its collections excluded, their hidden key columns included). Throws on an unknown dialect or option. */
+/** Renders a query. Throws on an unknown dialect or option. */
 export function renderQuery(query: RQuery, dialect?: string | null, options?: QuerySqlOptions | null): QuerySqlText {
   if (query.form === "sql") return renderSqlText(query, dialect ?? null, options ?? null);
   const writer = new Writer(query, dialect ?? null, options ?? null);
@@ -469,41 +435,6 @@ function renderSqlText(query: RQuery, dialect: string | null, options: QuerySqlO
 /** MQ4029's message for a query written as SQL text. One place, as the engine's catalog is. */
 export const sqlTextMissing = (query: string, dialect: string, database: string): string =>
   `Query '${query}' is written as SQL text without a text for ${dialect} (database '${database}') and no "*" text.`;
-
-/** Renders the statement of one collection: its rows for every parent row at once, matched by the key columns. */
-export function renderCollection(collection: RCollection, dialect?: string | null, options?: QuerySqlOptions | null): QuerySqlText {
-  const writer = new Writer(collection.query, dialect ?? null, options ?? null);
-  writer.collection(collection);
-  return writer.result();
-}
-
-/** The named queries a query reads through its sources and nested queries, and those they read in turn. */
-function namedReads(query: RQuery, reads: Set<RNamedQuery>): void {
-  for (const source of [query.from, ...query.joins]) {
-    if (!source) continue;
-    if (source.named && !reads.has(source.named)) {
-      reads.add(source.named);
-      namedReads(source.named.query, reads);
-      if (source.named.recursive) namedReads(source.named.recursive, reads);
-    }
-    if (source.on) namedPredicate(source.on, reads);
-  }
-  for (const e of [...query.select.map((f) => f.expression), ...query.groupBy, ...query.orderBy.map((o) => o.expression)]) namedExpression(e, reads);
-  if (query.where) namedPredicate(query.where, reads);
-  if (query.having) namedPredicate(query.having, reads);
-}
-
-function namedPredicate(p: RPredicate, reads: Set<RNamedQuery>): void {
-  if (p.exists) namedReads(p.exists, reads);
-  for (const x of [...p.and, ...p.or]) namedPredicate(x, reads);
-  if (p.not) namedPredicate(p.not, reads);
-  for (const e of [...p.values, ...(p.left ? [p.left] : []), ...(p.right ? [p.right] : [])]) namedExpression(e, reads);
-}
-
-function namedExpression(e: RExpression, reads: Set<RNamedQuery>): void {
-  for (const x of [...e.args, ...(e.cast ? [e.cast] : []), ...(e.else ? [e.else] : []), ...e.case.map((w) => w.then)]) namedExpression(x, reads);
-  for (const w of e.case) namedPredicate(w.when, reads);
-}
 
 /**
  * A rendered query's WITH clause and the statement after it, split where the clause's last parenthesis closes (a binding writes the
@@ -570,35 +501,13 @@ class Writer {
 
   top(query: RQuery): void {
     this.withClause(query.with ?? []);
-    const columns = query.select.map((f) => this.expression(f.expression) + " AS " + this.q(f.name));
-    const hidden = new Set<string>();
-    const hiddenKeys: RExpression[] = [];
-    for (const collection of query.collections)
-      for (const key of collection.keys)
-        if (key.hidden && !hidden.has(key.parentField)) {
-          hidden.add(key.parentField);
-          columns.push(this.expression(key.outer) + " AS " + this.q(key.parentField));
-          hiddenKeys.push(key.outer);
-        }
-    this.select(query.distinct, columns);
-    // A grouped parent groups by its hidden key columns too, or they would be neither grouped nor aggregated.
-    this.body(query, query.where, null, isGrouped(query) ? hiddenKeys : []);
+    this.select(
+      query.distinct,
+      query.select.map((f) => this.expression(f.expression) + " AS " + this.q(f.name)),
+    );
+    this.body(query, query.where);
     this.order(query.orderBy, query.paging !== null);
     this.paging(query.paging);
-  }
-
-  collection(collection: RCollection): void {
-    const query = collection.query;
-    // A collection's statement runs on its own: it repeats the named queries it reads, directly or through others, in list order.
-    const reads = new Set<RNamedQuery>();
-    namedReads(query, reads);
-    this.withClause([...reads].sort((a, b) => a.index - b.index));
-    const columns = query.select.map((f) => this.expression(f.expression) + " AS " + this.q(f.name));
-    for (const key of collection.keys) columns.push(this.expression(key.inner) + " AS " + this.q(key.childField));
-    this.select(query.distinct, columns);
-    // A grouped collection groups by its key columns too: each group then belongs to one parent row.
-    this.body(query, query.where, collection, isGrouped(query) ? collection.keys.map((k) => k.inner) : []);
-    this.order(query.orderBy, false);
   }
 
   /**
@@ -632,35 +541,23 @@ class Writer {
       part.distinct,
       part.select.map((f) => this.expression(f.expression) + " AS " + this.q(f.name)),
     );
-    this.body(part, part.where, null, []);
+    this.body(part, part.where);
   }
 
   private select(distinct: boolean, columns: string[]): void {
     this.sb += (distinct ? "SELECT DISTINCT " : "SELECT ") + columns.join(", ");
   }
 
-  /** FROM, the joins, WHERE, GROUP BY (with `keys`, the key columns a grouped statement adds, each once) and HAVING. */
-  private body(query: RQuery, where: RPredicate | null, collection: RCollection | null, keys: readonly RExpression[]): void {
+  /** FROM, the joins, WHERE, GROUP BY and HAVING. */
+  private body(query: RQuery, where: RPredicate | null): void {
     this.sb += this.newline + "FROM " + this.source(query.from);
     for (const join of query.joins) {
       const keyword = { left: "LEFT JOIN ", right: "RIGHT JOIN ", full: "FULL JOIN ", cross: "CROSS JOIN " }[join.joinKind] ?? "INNER JOIN ";
       this.sb += this.newline + keyword + this.source(join);
       if (join.joinKind !== "cross" && join.on) this.sb += " ON " + this.predicate(join.on, true);
     }
-    const conditions: string[] = [];
-    if (where) {
-      if (collection) {
-        for (const conjunct of where.node === "and" ? where.and : [where])
-          if (!collection.keyConjuncts.has(conjunct)) conditions.push(this.predicate(conjunct, false));
-      } else conditions.push(this.predicate(where, true));
-    }
-    if (collection) for (const key of collection.keys) conditions.push(this.inList(this.expression(key.inner), key.parameter, false));
-    if (conditions.length) this.sb += this.newline + "WHERE " + conditions.join(" AND ");
+    if (where) this.sb += this.newline + "WHERE " + this.predicate(where, true);
     const groups = query.groupBy.map((g) => this.expression(g));
-    for (const key of keys) {
-      const text = this.expression(key);
-      if (!groups.includes(text)) groups.push(text);
-    }
     if (groups.length) this.sb += this.newline + "GROUP BY " + groups.join(", ");
     if (query.having) this.sb += this.newline + "HAVING " + this.predicate(query.having, true);
   }
@@ -779,7 +676,7 @@ class Writer {
     this.sb = "";
     this.newline = newline + "    ";
     this.select(false, ["1"]);
-    this.body(query, query.where, null, []);
+    this.body(query, query.where);
     const text = this.sb;
     this.newline = newline;
     this.sb = saved;

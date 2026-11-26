@@ -643,13 +643,11 @@ export interface paths {
         /**
          * The SQL of one query for a dialect
          * @description Renders a query (a query element over a database's tables and views) as parameterised SQL for its database's dialect, or
-         *     the one named: the query's statement and one statement per collection. Identifiers are quoted by the database's quoting
-         *     setting, functions spelled per dialect, `ilike` lowered where the dialect has none, paging written as `LIMIT/OFFSET` or
-         *     `OFFSET … FETCH NEXT`. A collection runs once for all parent rows (a second round trip): the parent's statement carries
-         *     the correlation columns, the collection's takes their values as the list parameter `mq_keys0` (`mq_keys1`...) and returns
-         *     each row's as `mq_key0`. An `sql` expression without a text for the dialect is MQ4029 in `diagnostics`. A query written as
-         *     SQL text renders its own text for the dialect (else its `*` text; neither is MQ4029) as written, with only the white
-         *     space at both ends removed (a final `;` stays), with its `:name` placeholders in the asked style and no collections; `lists` does not apply to it. Named queries (`with`) render
+         *     the one named. Identifiers are quoted by the database's quoting setting, functions spelled per dialect, `ilike` lowered
+         *     where the dialect has none, paging written as `LIMIT/OFFSET` or `OFFSET … FETCH NEXT`. An `sql` expression without a text
+         *     for the dialect is MQ4029 in `diagnostics`. A query written as SQL text renders its own text for the dialect (else its `*`
+         *     text; neither is MQ4029) as written, with only the white space at both ends removed (a final `;` stays), with its `:name`
+         *     placeholders in the asked style; `lists` does not apply to it. Named queries (`with`) render
          *     as a WITH clause first. A model with errors returns `preview: null` and the diagnostics. The MCP tool `preview_query_sql`
          *     answers the same.
          */
@@ -6020,19 +6018,17 @@ export interface components {
         };
         /**
          * @description One resolved query (a query over the database's tables and views, written as data), with the annotations of its file (as
-         *     `TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`, a collection's
-         *     `query`) are as the file writes them (`query.json`); resolution adds the sources' tables and views, each field's type,
-         *     the collections' correlation keys and the SQL for the database's dialect.
+         *     `TableView`). The trees (`where`, `having`, `groupBy`, `orderBy`, each field's `expression`, a join's `on`) are as the file
+         *     writes them (`query.json`); resolution adds the sources' tables and views, each field's type and the SQL for the database's
+         *     dialect. A query names no entity: an entity reads it through its binding (`boundBy`).
          *
-         *     A query written as SQL text (`form: sql`, sql-queries-design.md) has `texts`, no `from`, an empty `joins`, `groupBy`,
-         *     `orderBy` and `collections`, its declared columns as `select` (each without `expression`), its `reads` as `uses` and its
+         *     A query written as SQL text (`form: sql`, sql-queries-design.md) has `texts`, no `from`, an empty `joins`, `groupBy` and
+         *     `orderBy`, its declared columns as `select` (each without `expression`), its `reads` as `uses` and its
          *     `writes`. A built query may have named queries (`with`). Each of `form`, `texts`, `writes` and `with` is left out when unset.
          */
         QueryView: {
             id: components["schemas"]["Ulid"];
             name: string;
-            /** @description The entity each result row has, or null for an ad hoc row (the select list). */
-            entityId: components["schemas"]["Ulid"] | null;
             parameters: components["schemas"]["QueryParameterView"][];
             /**
              * @description `sql` for a query written as SQL text; left out for a query built from parts.
@@ -6058,8 +6054,7 @@ export interface components {
             orderBy: components["schemas"]["order"][];
             distinct: boolean;
             paging: components["schemas"]["paging"] | null;
-            collections: components["schemas"]["QueryCollectionView"][];
-            /** @description The SQL for the database's dialect with `@name` placeholders, with the hidden key columns its collections need; null when it cannot be rendered there (MQ4029). */
+            /** @description The SQL for the database's dialect with `@name` placeholders; null when it cannot be rendered there (MQ4029). */
             sql: string | null;
             /** @description The parameters the SQL names, in first-appearance order. */
             sqlParameters: string[];
@@ -6137,8 +6132,6 @@ export interface components {
          */
         QueryFieldView: {
             name: string;
-            /** @description What the field fills: an attribute's id, attributeId.memberId for a member of a value object attribute, or the relation end a to-one navigation leads to (its foreign key); null for an ad hoc field. */
-            attributeId: string | null;
             /** @description The field's value as the file writes it; left out for a declared column. */
             expression?: components["schemas"]["expression"];
             type: string | null;
@@ -6147,32 +6140,6 @@ export interface components {
             nullable: boolean;
             /** @description A declared column's description; left out when none. */
             description?: string;
-        };
-        /** @description A collection of a query, its nested query and the statement that fills it for every parent row at once. */
-        QueryCollectionView: {
-            name: string;
-            /** @description The file's attribute (an attribute id, a relation end id or an ad hoc name). */
-            attribute: string;
-            entityId: components["schemas"]["Ulid"] | null;
-            query: components["schemas"]["subquery"];
-            select: components["schemas"]["QueryFieldView"][];
-            keys: components["schemas"]["QueryKeyView"][];
-            sql: string;
-            sqlParameters: string[];
-        };
-        /**
-         * @description A correlation key of a collection: the parent row carries the value as `parentField` (a hidden column when no select field
-         *     does), the collection's statement takes the parent values as the list parameter `parameter` and returns each row's value as
-         *     `childField`.
-         */
-        QueryKeyView: {
-            outer: string;
-            parentField: string;
-            hidden: boolean;
-            childField: string;
-            parameter: string;
-            type: string | null;
-            nativeType: string | null;
         };
         /** @description An entity bound to a table, view or query (erratum E43). */
         BoundByView: {
@@ -6387,26 +6354,6 @@ export interface components {
          *         "customerId",
          *         "offset",
          *         "limit"
-         *       ],
-         *       "collections": [
-         *         {
-         *           "name": "lines",
-         *           "sql": "SELECT l.id AS id, l.quantity AS quantity, l.invoice_id AS mq_key0\nFROM billing.invoice_lines l\nWHERE l.invoice_id IN @mq_keys0",
-         *           "parameters": [
-         *             "mq_keys0"
-         *           ],
-         *           "keys": [
-         *             {
-         *               "outer": "i.id",
-         *               "parentField": "id",
-         *               "hidden": false,
-         *               "childField": "mq_key0",
-         *               "parameter": "mq_keys0",
-         *               "type": "uuid",
-         *               "nativeType": "uuid"
-         *             }
-         *           ]
-         *         }
          *       ]
          *     }
          */
@@ -6419,14 +6366,6 @@ export interface components {
             sql: string;
             /** @description The parameters the statement names, in first-appearance order (the positions of `$n` placeholders). */
             parameters: string[];
-            collections: components["schemas"]["QueryCollectionSql"][];
-        };
-        /** @description The statement of one collection, run once for all parent rows with the list of their key values. */
-        QueryCollectionSql: {
-            name: string;
-            sql: string;
-            parameters: string[];
-            keys: components["schemas"]["QueryKeyView"][];
         };
         /** @description One pack's generation hints on a resolved object (every member written). */
         GenerationHintsView: {
@@ -10568,16 +10507,14 @@ export interface components {
         };
         /** Select field */
         field: {
-            /** @description The field's name in the result row; absent, the attribute's name. */
-            name?: components["schemas"]["identifier"];
-            /** @description What the field fills on the query's entity (or a collection's entity): an attribute id, attributeId.memberId for a member of a value object attribute, or the id of the relation end a to-one navigation of the entity leads to (or the navigation's id), for its foreign key column. */
-            attribute?: string;
-            /** @description The field's type in an ad hoc row; absent, inferred from the expression. */
+            /** @description The field's name in the result row. */
+            name: components["schemas"]["identifier"];
+            /** @description The field's type; absent, inferred from the expression. */
             type?: components["schemas"]["builtinType"];
             /** @description Whether the field may be null; absent, inferred from the expression. */
             nullable?: boolean;
             expression: components["schemas"]["expression"];
-        } | unknown | unknown;
+        };
         /** Order */
         order: {
             expression: components["schemas"]["expression"];
@@ -10591,14 +10528,14 @@ export interface components {
         };
         /**
          * Nested query
-         * @description A query inside a collection or an exists condition; it may name the aliases of the queries around it.
+         * @description A query inside an exists condition; it may name the aliases of the queries around it.
          */
         subquery: {
             from: components["schemas"]["from"];
             /** @default [] */
             joins?: components["schemas"]["join"][];
             /**
-             * @description The fields; required in a collection, ignored by exists (which selects 1).
+             * @description The fields; ignored by exists (which selects 1).
              * @default []
              */
             select?: components["schemas"]["field"][];
@@ -10672,15 +10609,6 @@ export interface components {
             /** @description The most rows to return: an integer parameter's name or a number. */
             limit?: components["schemas"]["identifier"] | number;
         };
-        /** Collection */
-        collection: {
-            /** @description The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row. */
-            attribute: string;
-            /** @description Retired with collections (MQ4127): the entity each element has; absent, the nested select list is the element shape. */
-            entity?: components["schemas"]["id"];
-            /** @description The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where. */
-            query: components["schemas"]["subquery"];
-        };
         /**
          * Declared column
          * @description A column each row of a SQL text has.
@@ -10698,7 +10626,7 @@ export interface components {
         };
         /**
          * Query
-         * @description A query of a database (model/databases/<db>/queries/), in one of two forms. Built from parts: sources, joins, a select list, predicates, grouping, ordering, paging, collections and named queries (with), written as data; its result shape is an entity, or the select list when no entity is named. SQL text: the team's own statement per dialect (sql), with :name placeholders for its parameters, the columns each row has (columns) and the tables and other objects it reads and writes (reads, writes), declared rather than read from the text.
+         * @description A query of a database (model/databases/<db>/queries/), in one of two forms. Built from parts: sources, joins, a select list, predicates, grouping, ordering, paging and named queries (with), written as data; its rows have the shape of its select list. SQL text: the team's own statement per dialect (sql), with :name placeholders for its parameters, the columns each row has (columns) and the tables and other objects it reads and writes (reads, writes), declared rather than read from the text.
          */
         query: {
             $schema?: components["schemas"]["schemaPath"];
@@ -10727,8 +10655,6 @@ export interface components {
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
-            /** @description Retired (MQ4127), removed in a later version: the entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field). Bind the entity to the query instead (its binding's source names the query). */
-            entity?: components["schemas"]["id"];
             /**
              * @description The values the caller passes, by name.
              * @default []
@@ -10756,11 +10682,6 @@ export interface components {
             /** @default false */
             distinct?: boolean;
             paging?: components["schemas"]["paging"];
-            /**
-             * @description Retired (MQ4127), removed in a later version: collections filled per result row by a correlated query (a sub-select yielding a list per parent row). Read a record's parts through composition, each part with its own binding.
-             * @default []
-             */
-            collections?: components["schemas"]["collection"][];
             /** @description The statement as SQL text per dialect (or "*" for any): the text for the database's dialect is its own entry, else "*". Parameters are written :name in every dialect. Rendered as written, with only the white space at both ends removed (a final semicolon stays) and the placeholders rewritten; where a binding wraps it in a derived table, one final semicolon and the comments after it are left out. SQL text form only, and required there. */
             sql?: components["schemas"]["dialectMap"];
             /**
@@ -10874,16 +10795,14 @@ export interface components {
                 };
                 /** Select field */
                 field: {
-                    /** @description The field's name in the result row; absent, the attribute's name. */
-                    name?: components["schemas"]["identifier"];
-                    /** @description What the field fills on the query's entity (or a collection's entity): an attribute id, attributeId.memberId for a member of a value object attribute, or the id of the relation end a to-one navigation of the entity leads to (or the navigation's id), for its foreign key column. */
-                    attribute?: string;
-                    /** @description The field's type in an ad hoc row; absent, inferred from the expression. */
+                    /** @description The field's name in the result row. */
+                    name: components["schemas"]["identifier"];
+                    /** @description The field's type; absent, inferred from the expression. */
                     type?: components["schemas"]["builtinType"];
                     /** @description Whether the field may be null; absent, inferred from the expression. */
                     nullable?: boolean;
                     expression: components["schemas"]["expression"];
-                } | unknown | unknown;
+                };
                 /** Order */
                 order: {
                     expression: components["schemas"]["expression"];
@@ -10902,25 +10821,16 @@ export interface components {
                     /** @description The most rows to return: an integer parameter's name or a number. */
                     limit?: components["schemas"]["identifier"] | number;
                 };
-                /** Collection */
-                collection: {
-                    /** @description The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row. */
-                    attribute: string;
-                    /** @description Retired with collections (MQ4127): the entity each element has; absent, the nested select list is the element shape. */
-                    entity?: components["schemas"]["id"];
-                    /** @description The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where. */
-                    query: components["schemas"]["subquery"];
-                };
                 /**
                  * Nested query
-                 * @description A query inside a collection or an exists condition; it may name the aliases of the queries around it.
+                 * @description A query inside an exists condition; it may name the aliases of the queries around it.
                  */
                 subquery: {
                     from: components["schemas"]["from"];
                     /** @default [] */
                     joins?: components["schemas"]["join"][];
                     /**
-                     * @description The fields; required in a collection, ignored by exists (which selects 1).
+                     * @description The fields; ignored by exists (which selects 1).
                      * @default []
                      */
                     select?: components["schemas"]["field"][];
@@ -13308,7 +13218,7 @@ export interface components {
             formerNames?: string[];
         };
         /** @description A template-defined collection of a value map: the codes it holds, by its owner table and attribute. */
-        "$defs-collection": {
+        collection: {
             /** @description The owner table's key at the time. */
             table: components["schemas"]["factKey"];
             /** @description The owner table's database schema name at the time. */
@@ -13406,7 +13316,7 @@ export interface components {
              * @description A value map's template-defined collections that hold the codes: each by its owner table's key and attribute, both historical.
              * @default []
              */
-            collections?: components["schemas"]["$defs-collection"][];
+            collections?: components["schemas"]["collection"][];
             /** @description The state before: a rename's name and schema, a change-type's type facets. */
             from?: components["schemas"]["migrationState"];
             /** @description The state after. */
