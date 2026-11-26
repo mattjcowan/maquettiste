@@ -53,8 +53,9 @@ public sealed record EntityBinding
     /// The type column a base entity shares with the entities derived from it in one table: a column key or physical name of the source
     /// (and of the write table), written as <see cref="BindingConstant.Column"/> is. The binding of each derived entity to the same database
     /// inherits it from its nearest base whose binding names one: the derived entity's type code (<see cref="DiscriminatorValue"/>, else its
-    /// name) then filters its reads, updates and deletes, and is the value its insert writes. The base's own reads, updates and deletes are
-    /// not filtered; its insert writes its own code. <see langword="null"/> (absent): no type column.
+    /// name) then filters its reads, updates and deletes, and is the value its insert writes. The base's own reads, updates and deletes keep
+    /// every row of its hierarchy in the table, subtypes included; its insert writes its own code. A derived entity that keeps its rows in
+    /// the base's table inherits the column and may not name one (MQ4126). <see langword="null"/> (absent): no type column.
     /// </summary>
     [ElementRef(Keyed = true)]
     public string? DiscriminatorColumn { get; init; }

@@ -1785,12 +1785,15 @@ created_at)` that holds `Note` and the notes derived from it:
   keep their rows in the same table, reading it returns theirs too: `WHERE t.kind IN ('invoice', 'urgent')`.
 - Its updates and deletes find their row by key and by the same codes, so they never touch a row it cannot read.
 - Its insert writes its own code.
-- Reading the base returns every row, subtypes included. Its updates and deletes find their row by key alone, for the same
-  reason: they reach exactly the rows it reads. Its insert writes its own code. A base is saved only when its binding
-  writes, so give an abstract base `"write": "none"`.
-- A field on the type column is read but never written, as a field on a constant's column is.
-- A derived entity further down may name its own `discriminatorColumn`. It and the entities below it then use that
-  column instead.
+- Reading the base returns every row of its hierarchy, subtypes included: `WHERE t.kind IN ('note', 'invoice', ...)`, its
+  own code and those of the entities derived from it in that table. Rows another entity keeps in the same table stay out.
+  Its updates and deletes find their row by key and the same codes. Its insert writes its own code. A base is saved only
+  when its binding writes, so give an abstract base `"write": "none"`.
+- A field on the type column is read but never written, as a field on a constant's column is. A soft delete may not set
+  the type column (MQ4124), since that would overwrite the code.
+- A derived entity that keeps its rows in the base's table inherits the column and may not name its own (MQ4126). A
+  derived entity bound to another table may name its own `discriminatorColumn` there; it and the entities below it in
+  that table then use it.
 
 Constants still work beside the type column, for a tenant for example. The database view's `boundBy` shows each binding's
 type column, code and filter codes beside its constants. A relation end with several types whose targets share the table
@@ -2005,9 +2008,10 @@ writes no description, so the text stays in one place.
 | MQ4097 | warning | a SQL Server binding reads a query written as SQL text that cannot be a derived table there (it starts with `WITH`, or has an `ORDER BY` outside parentheses with no `OFFSET`, `FETCH` or `TOP`) |
 | MQ4121 | error | the source query has a parameter with the name of one of the binding's fields (ignoring case); rename the query's parameter, since the statements name their parameters after the fields |
 | MQ4122 | error | the type column is not a column of the source or of the write table: the one `discriminatorColumn` names, or the one a derived entity's binding takes from its base |
-| MQ4123 | warning | a binding names `discriminatorColumn`, but no entity derived from it has a binding to the database that shares the column |
-| MQ4124 | error | a constant is on the type column, which already holds the entity's type code |
+| MQ4123 | warning | a binding names `discriminatorColumn`, but no entity derived from it has a binding to the database that shares the column in the same table |
+| MQ4124 | error | a constant or a soft delete is on the type column, which already holds the entity's type code |
 | MQ4125 | error | two entities that share the type column in one table have the same type code, or a type code does not fit the column |
+| MQ4126 | error | a derived entity's binding names `discriminatorColumn` while a base's binding in the same table already names one; remove the key, since the column is inherited |
 | MQ4045 | error | a field names nothing of the entity, a column the source does not have, a listed column of no table the binding uses, or maps an attribute or a column twice |
 | MQ4046 | error | a binding that writes maps no field for a key attribute |
 | MQ4047 | warning | a column of the source or write table is accounted for by nothing |

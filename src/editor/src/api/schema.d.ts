@@ -6081,7 +6081,7 @@ export interface components {
             column: string;
             /** @description The entity's type code, what its insert writes. */
             value: string | number;
-            /** @description The codes its reads, updates and deletes keep; empty for the entity whose binding names the column. */
+            /** @description The codes its reads, updates and deletes keep, its own and those of the entities derived from it in the same table. */
             codes: (string | number)[];
         };
         /** @description A reference type whose rows a table holds (its binding to the table's database). */
@@ -6140,7 +6140,7 @@ export interface components {
             base: components["schemas"]["Ulid"];
             /** @description The entity's type code, what the insert writes. */
             value: string | number;
-            /** @description The codes reads, updates and deletes filter on; empty for the entity whose binding names the column. */
+            /** @description The codes reads, updates and deletes filter on, its own and those of the entities derived from it in the same table. */
             codes: (string | number)[];
         };
         BindingFieldRecord: {
@@ -9211,7 +9211,7 @@ export interface components {
                         value?: string | number | boolean | null;
                     };
                 };
-                /** @description The type column a base entity shares with the entities derived from it in one table: a column of the source (and of the write table), its key or physical name. The binding of each derived entity to the same database inherits it from its nearest base whose binding names one: the derived entity's type code (its discriminatorValue, else its name) then filters its reads, updates and deletes, and is the value its insert writes. The base reads every row; its insert writes its own code. A field on the column is read but never written. */
+                /** @description The type column a base entity shares with the entities derived from it in one table: a column of the source (and of the write table), its key or physical name. The binding of each derived entity to the same database inherits it from its nearest base whose binding names one: the derived entity's type code (its discriminatorValue, else its name) then filters its reads, updates and deletes, and is the value its insert writes. The base reads every row of its hierarchy in the table, subtypes included; its insert writes its own code. A derived entity in the base's table inherits the column and may not name one (MQ4126). A field on the column is read but never written. */
                 discriminatorColumn?: string;
                 /** @description The entity's type code in this database, where a type column holds it: a column of a relation end with several types, or the type column its base's discriminatorColumn names. Absent: the discriminatorValue of the entity's mapping there, else the entity's name. An entity outside a hierarchy takes one only when an end with several types covers it (MQ4009). */
                 discriminatorValue?: string | number;

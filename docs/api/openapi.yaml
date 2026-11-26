@@ -13868,7 +13868,7 @@ components:
           description: The entity's type code, what its insert writes.
         codes:
           type: array
-          description: The codes its reads, updates and deletes keep; empty for the entity whose binding names the column.
+          description: The codes its reads, updates and deletes keep, its own and those of the entities derived from it in the same table.
           items:
             type: [string, integer]
     ReferenceBindingView:
@@ -13989,7 +13989,7 @@ components:
           description: The entity's type code, what the insert writes.
         codes:
           type: array
-          description: The codes reads, updates and deletes filter on; empty for the entity whose binding names the column.
+          description: The codes reads, updates and deletes filter on, its own and those of the entities derived from it in the same table.
           items:
             type: [string, integer]
     BindingFieldRecord:

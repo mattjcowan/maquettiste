@@ -62,17 +62,48 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// The entity whose binding to this database gives the entity's type column: the entity itself when its binding names
-    /// <c>discriminatorColumn</c>, else its nearest base whose binding names one; <see langword="null"/> when none does.
+    /// <c>discriminatorColumn</c>, else its nearest base whose binding names one; <see langword="null"/> when none does. A binding that names
+    /// one while a base's binding in the same table already does (<see cref="NamesInheritedTypeColumn"/>, MQ4126) gives none: the column is
+    /// the base's.
     /// </summary>
     private REntity? TypeColumnOwner(REntity entity)
     {
         for (var e = entity; e is not null; e = e.Base)
         {
-            if (_bindingByEntity.TryGetValue(e.Id, out var bound) && bound.Binding.DiscriminatorColumn is not null)
+            if (_bindingByEntity.TryGetValue(e.Id, out var bound) && bound.Binding.DiscriminatorColumn is not null && !NamesInheritedTypeColumn(e))
                 return e;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// MQ4126: whether the entity's binding names <c>discriminatorColumn</c> while the binding of one of its bases to this database, in the
+    /// same table, names one too. A derived entity bound to another table may name its own.
+    /// </summary>
+    private bool NamesInheritedTypeColumn(REntity entity)
+    {
+        if (!_bindingByEntity.TryGetValue(entity.Id, out var own) || own.Binding.DiscriminatorColumn is null)
+            return false;
+        var host = BindingHostKey(own.Binding);
+        for (var e = entity.Base; e is not null; e = e.Base)
+        {
+            if (_bindingByEntity.TryGetValue(e.Id, out var bound) && bound.Binding.DiscriminatorColumn is not null
+                && string.Equals(BindingHostKey(bound.Binding), host, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// What holds a binding's rows, by table key (another source by its id as written): the table it writes, else (writing nowhere) its
+    /// source.
+    /// </summary>
+    private string BindingHostKey(EntityBinding binding)
+    {
+        var key = binding.Write is { None: true } ? binding.Source : binding.Write?.Table ?? binding.Source;
+        return _tables.TryGetValue(key, out var t) || _tables.TryGetValue(key + "@" + _db.Id, out t) ? t.Table.Key : key;
     }
 
     /// <summary>The bound entities that use each type column, by the entity whose binding names it, in entity order (built once).</summary>
@@ -730,15 +761,18 @@ internal sealed partial class DatabaseRun
         /// The type column the entity shares with its base or the entities derived from it in one table: the column the binding's
         /// <c>discriminatorColumn</c> names, else the one its nearest base's binding to the database names, resolved against this binding's
         /// source and write table like a constant (MQ4122 when either lacks it). The insert writes the entity's type code; the reads, updates
-        /// and deletes of a derived entity filter on its code and those of the entities derived from it that keep their rows in the same
-        /// table, and those of the entity that names the column filter on nothing. MQ4123 for a column no derived entity shares, MQ4125
-        /// for a code another entity sharing the column in the same table already has, or one the column cannot hold.
+        /// and deletes filter on its code and those of the entities derived from it that share the column in the same table, so the entity
+        /// that names the column reaches every row of its hierarchy there and none of another entity's. MQ4123 for a column no derived
+        /// entity shares in the same table, MQ4125 for a code another entity sharing the column in the same table already has, or one the
+        /// column cannot hold, MQ4126 for a binding that names the column a base's binding in the same table already names.
         /// </summary>
         private void ResolveTypeColumn()
         {
             if (run.TypeColumnOwner(entity) is not { } owner)
                 return;
             var own = ReferenceEquals(owner, entity);
+            if (!own && file.DiscriminatorColumn is not null)
+                Report("MQ4126", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' names type column '{file.DiscriminatorColumn}', but it keeps its rows in the table of base '{owner.Name}', whose binding already names the type column: remove discriminatorColumn, since the column is inherited.", "/discriminatorColumn");
             var text = run._bindingByEntity[owner.Id].Binding.DiscriminatorColumn!;
             var d = new RBindingDiscriminator { Column = text, ColumnName = text, Base = owner, Value = run.CodeOf(entity) };
             _b.DiscriminatorColumn = d;
@@ -769,18 +803,14 @@ internal sealed partial class DatabaseRun
                 CheckCodeFit(d.Value, PhysicalType(writeColumn), writeColumn.Length, writeColumn.Name, codeAt);
             }
 
-            // The entities that share the column in the same table: a derived entity reads its own rows and those of the entities
-            // derived from it; the entity that names the column reads every row.
+            // The entities that share the column in the same table: an entity reads its own rows and those of the entities derived from it
+            // (for the entity that names the column, every member of its hierarchy there), and never the rows of another entity.
             var host = HostOf(file);
             var codes = new List<object> { d.Value };
-            var shared = false;
             var members = run.TypeColumnMembers(owner);
             foreach (var other in members)
             {
-                if (ReferenceEquals(other, entity))
-                    continue;
-                shared = true;
-                if (own || !DerivesFrom(other, entity) || !string.Equals(HostOf(run._bindingByEntity[other.Id].Binding), host, StringComparison.Ordinal))
+                if (ReferenceEquals(other, entity) || !DerivesFrom(other, entity) || !string.Equals(HostOf(run._bindingByEntity[other.Id].Binding), host, StringComparison.Ordinal))
                     continue;
                 _deps.Element(other.Id);
                 var code = run.CodeOf(other);
@@ -788,9 +818,9 @@ internal sealed partial class DatabaseRun
                     codes.Add(code);
             }
 
-            d.Codes = own ? [] : codes;
-            if (own && !shared)
-                Report("MQ4123", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' names type column '{text}', but no entity derived from '{entity.Name}' has a binding to the database that shares it, so the column tells no rows apart: remove discriminatorColumn, or bind the derived entities.", "/discriminatorColumn");
+            d.Codes = codes;
+            if (own && !members.Exists(o => !ReferenceEquals(o, entity) && string.Equals(HostOf(run._bindingByEntity[o.Id].Binding), host, StringComparison.Ordinal)))
+                Report("MQ4123", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' names type column '{text}', but no entity derived from '{entity.Name}' has a binding to the database that shares it in the same table, so the column tells no rows apart: remove discriminatorColumn, or bind the derived entities to that table.", "/discriminatorColumn");
 
             // Two entities that share the column in one table with one code: reported on the later one, in entity order.
             foreach (var other in members)
@@ -805,7 +835,7 @@ internal sealed partial class DatabaseRun
         }
 
         /// <summary>What holds a binding's rows, by key or id: the table it writes, else (writing nowhere) its source.</summary>
-        private string HostOf(EntityBinding binding) => KeyOf(HostKey(binding));
+        private string HostOf(EntityBinding binding) => run.BindingHostKey(binding);
 
         /// <summary>A table's key for any way a binding names it; another source's id as written.</summary>
         private string KeyOf(string key) => FindTable(key)?.Table.Key ?? key;
@@ -888,6 +918,8 @@ internal sealed partial class DatabaseRun
                         return;
                     }
 
+                    if (_b.DiscriminatorColumn is { WriteColumn: { } typeColumn } && ReferenceEquals(typeColumn, column))
+                        Report("MQ4124", $"The soft delete of the binding of entity '{entity.Name}' to database '{run._db.Name}' sets column '{column.Name}', the type column, which holds the entity's type code: a soft delete would overwrite the code. Mark deleted rows in another column.", "/delete/soft/column");
                     CheckFit(_b.SoftDeleteValue, PhysicalType(column), column.Length, column.Nullable, column.Name, "/delete/soft/value");
                     _b.Delete = "soft";
                     return;

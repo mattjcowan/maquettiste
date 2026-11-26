@@ -834,7 +834,7 @@
           }
         },
         "codes": {
-          "description": "The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that share the column in the same table. Empty for the entity whose binding names the column, which reads every row.",
+          "description": "The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that share the column in the same table (for the entity whose binding names the column, its whole hierarchy there).",
           "type": "array",
           "items": {
             "not": {
@@ -873,7 +873,7 @@
           }
         },
         "codes": {
-          "description": "The codes its reads, updates and deletes keep; empty for the entity whose binding names the column, which reads every row.",
+          "description": "The codes its reads, updates and deletes keep: its own and those of the entities derived from it that share the column in the same table.",
           "type": "array",
           "items": {
             "not": {

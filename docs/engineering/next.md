@@ -246,9 +246,10 @@ Built since:
   derived binding's type code (its `discriminatorValue`, else its name) then filters reads, updates and deletes and is the
   value an insert writes. Reading a derived entity also returns the rows of the entities derived from it in the same table.
   The code is one value per entity per database: the same `discriminatorValue` serves relation ends with several types.
-  Reading the base returns every row, subtypes included; the base is saved only when its binding writes, its insert then
-  writes its own code, and its updates and deletes find their row by key alone. A field on the type column is read only.
-  MQ4122 to MQ4125 check the column and the codes. Requested.
+  Reading the base returns every row of its hierarchy, subtypes included, and none of another entity's in the table; the
+  base is saved only when its binding writes, its insert then writes its own code, and its updates and deletes keep the
+  same codes. A field on the type column is read only. A derived entity in its base's table may not name its own column.
+  MQ4122 to MQ4126 check the column and the codes. Requested.
 
 Left:
 

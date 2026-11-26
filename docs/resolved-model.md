@@ -412,7 +412,7 @@ The type column of a resolved binding: one column a base entity and the entities
 | `writeColumn` | string | can be null | The key of the write table's column the insert writes the code into, or null. |
 | `base` | string | never | The id of the entity whose binding names the column: this binding's entity, or its nearest base that names one. |
 | `value` | any | never | The entity's type code, a string or an integer: what the insert writes. |
-| `codes` | list of any | never | The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that share the column in the same table. Empty for the entity whose binding names the column, which reads every row. |
+| `codes` | list of any | never | The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that share the column in the same table (for the entity whose binding names the column, its whole hierarchy there). |
 
 ### entityCheckRecord
 
@@ -1761,7 +1761,7 @@ A binding's type column, as a table's list of bindings shows it.
 | --- | --- | --- | --- |
 | `column` | string | never | The column's physical name. |
 | `value` | any | never | The entity's type code, a string or an integer: what its insert writes. |
-| `codes` | list of any | never | The codes its reads, updates and deletes keep; empty for the entity whose binding names the column, which reads every row. |
+| `codes` | list of any | never | The codes its reads, updates and deletes keep: its own and those of the entities derived from it that share the column in the same table. |
 
 ### referenceBindingView
 

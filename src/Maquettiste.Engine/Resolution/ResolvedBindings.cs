@@ -143,8 +143,8 @@ public sealed class RBindingDiscriminator
 
     /// <summary>
     /// The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it whose bindings to the
-    /// database share the column and keep their rows in the same table, so reading an entity returns its subtypes' rows too. Empty on
-    /// the entity whose binding names the column: it reads, updates and deletes every row.
+    /// database share the column and keep their rows in the same table, so reading an entity returns its subtypes' rows too. For the
+    /// entity whose binding names the column, the codes of its whole hierarchy in that table: it never reaches another entity's rows.
     /// </summary>
     public IReadOnlyList<object> Codes { get; internal set; } = [];
 }

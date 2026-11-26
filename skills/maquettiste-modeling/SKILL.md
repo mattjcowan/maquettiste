@@ -117,7 +117,7 @@ clobber a concurrent edit or leave a dangling id.
    SQL text comes back as written (a final `;` kept), its `:name` placeholders in the asked style. For an entity's binding, `preview_binding_sql` returns its select,
    insert, update and delete statements; `validate` reports MQ4044 to MQ4054 and MQ4121 for bindings. When a base entity and its
    subtypes share one table, the base's binding names the type column once (`discriminatorColumn`); each subtype's
-   `discriminatorValue` (else its name) then filters its statements and is what its insert writes (MQ4122 to MQ4125).
+   `discriminatorValue` (else its name) then filters its statements and is what its insert writes (MQ4122 to MQ4126).
    Custom property schemas (`extensions/<name>.json`) and script rules (`extensions/rules/<name>.js`, findings `x/<id>`, run by `validate`) are files: `list_extension_files`, `read_extension_file`, `write_extension_file` (with `expectedHash`, `new` to create; a rule's syntax error comes back at once), `move_extension_file`, `delete_extension_file`.
    A check across the model (every reference type used, no two tables alike) is a whole-model rule: `scope: "model"`,
    `check(model, report)`, each `report` naming its `element` id; it runs once per whole-model `validate`, never on a

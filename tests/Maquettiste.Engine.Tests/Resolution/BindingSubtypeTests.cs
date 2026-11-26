@@ -57,6 +57,21 @@ public sealed class BindingSubtypeTests
                 ],
                 PrimaryKey = new PrimaryKey { Columns = [archiveId] },
             });
+            Filed = B.NewId();
+            var filedId = B.NewId();
+            B.Add(new Table
+            {
+                Id = Filed, Name = "filed_notes", Database = Main,
+                Columns =
+                [
+                    new Column { Id = filedId, Name = "id", Type = "uuid", Nullable = false },
+                    new Column { Id = B.NewId(), Name = "kind", Type = "string", Length = 32, Nullable = false },
+                    new Column { Id = B.NewId(), Name = "entity_id", Type = "uuid", Nullable = true },
+                    new Column { Id = B.NewId(), Name = "body", Type = "text", Nullable = false },
+                    new Column { Id = B.NewId(), Name = "created_at", Type = "datetimeoffset", Nullable = false, DefaultSql = new Dictionary<string, string> { ["*"] = "CURRENT_TIMESTAMP" } },
+                ],
+                PrimaryKey = new PrimaryKey { Columns = [filedId] },
+            });
 
             Note = B.Entity("Note").Key("id", "uuid", IdentityStrategy.UuidV7).Attr("body", "text", a => a.Required()).Attr("createdAt", "datetimeoffset", a => a.ReadOnly());
             if (baseShowsKind)
@@ -95,6 +110,18 @@ public sealed class BindingSubtypeTests
 
         public static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
 
+        /// <summary>A derived binding moved to <c>filed_notes</c>, its columns named by their names there.</summary>
+        public EntityBinding ToFiled(EntityBinding b)
+        {
+            var names = new Dictionary<string, string>(StringComparer.Ordinal) { [Id] = "id", [Kind] = "kind", [EntityId] = "entity_id", [Body] = "body", [Created] = "created_at" };
+            return b with
+            {
+                Source = Filed,
+                Fields = [.. b.Fields.Select(f => f with { Column = names[f.Column] })],
+                Columns = [.. b.Columns.Select(c => c with { Column = names[c.Column] })],
+            };
+        }
+
         public ModelBuilder B { get; }
 
         public string Main { get; }
@@ -102,6 +129,8 @@ public sealed class BindingSubtypeTests
         public string Table { get; }
 
         public string Archive { get; }
+
+        public string Filed { get; }
 
         public string Id { get; }
 
@@ -126,29 +155,35 @@ public sealed class BindingSubtypeTests
 
     private static REntityBinding BindingOf(ResolvedModel model, string entity) => model.Entity(entity).Bindings["main"];
 
+    /// <summary>The codes the base keeps: its own, then its hierarchy's in the shared table, in entity order.</summary>
+    private static readonly object[] BaseCodes = ["note", "customer", "invoice", "UrgentNote"];
+
+    private const string BaseIn = "('note', 'customer', 'invoice', 'UrgentNote')";
+
     private static (string Select, string ByKey, string Insert, string Update, string Delete) Statements(REntityBinding binding) =>
         (BindingSql.Render(binding, "select").Sql, BindingSql.Render(binding, "select-by-key").Sql, BindingSql.Render(binding, "insert").Sql,
             BindingSql.Render(binding, "update").Sql, BindingSql.Render(binding, "delete").Sql);
 
     [Fact]
-    public void The_base_reads_every_row_and_writes_its_own_code()
+    public void The_base_reads_every_row_of_its_hierarchy_and_writes_its_own_code()
     {
         var model = new Notes().Resolve();
 
-        Assert.DoesNotContain(model.Diagnostics, d => d.Severity >= DiagnosticSeverity.Warning);
+        Assert.DoesNotContain(model.Diagnostics, d => d.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning);
         var binding = BindingOf(model, "Note");
         var typeColumn = Assert.IsType<RBindingDiscriminator>(binding.DiscriminatorColumn);
         Assert.Equal(("kind", "Note", "note"), (typeColumn.ColumnName, typeColumn.Base.Name, typeColumn.Value));
-        Assert.Empty(typeColumn.Codes);
+        Assert.Equal(BaseCodes, typeColumn.Codes);
         Assert.Same(typeColumn.SourceColumn, typeColumn.WriteColumn);
         Assert.Equal("discriminator", Assert.Single(binding.Columns, c => c.Name == "kind").Status);
 
         var (select, byKey, insert, update, delete) = Statements(binding);
-        Assert.Equal("SELECT t.id AS id, t.body AS body, t.created_at AS createdAt\nFROM public.notes t", select);
-        Assert.Equal("SELECT t.id AS id, t.body AS body, t.created_at AS createdAt\nFROM public.notes t\nWHERE t.id = @id", byKey);
+        // Every row of its hierarchy, subtypes included, and none of another entity's.
+        Assert.Equal("SELECT t.id AS id, t.body AS body, t.created_at AS createdAt\nFROM public.notes t\nWHERE t.kind IN " + BaseIn, select);
+        Assert.Equal("SELECT t.id AS id, t.body AS body, t.created_at AS createdAt\nFROM public.notes t\nWHERE t.kind IN " + BaseIn + " AND t.id = @id", byKey);
         Assert.Equal("INSERT INTO public.notes (id, body, kind)\nVALUES (@id, @body, 'note')", insert);
-        Assert.Equal("UPDATE public.notes SET body = @body\nWHERE id = @id", update);
-        Assert.Equal("DELETE FROM public.notes\nWHERE id = @id", delete);
+        Assert.Equal("UPDATE public.notes SET body = @body\nWHERE id = @id AND kind IN " + BaseIn, update);
+        Assert.Equal("DELETE FROM public.notes\nWHERE id = @id AND kind IN " + BaseIn, delete);
     }
 
     [Fact]
@@ -156,7 +191,7 @@ public sealed class BindingSubtypeTests
     {
         var result = await EngineServices.Create(ResolutionKit.Options).Validator.ValidateAsync(new Notes().B.Build(), ValidationScope.All, null, TestContext.Current.CancellationToken);
 
-        Assert.DoesNotContain(result.Diagnostics, d => d.Severity >= DiagnosticSeverity.Warning);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning);
     }
 
     [Fact]
@@ -209,7 +244,7 @@ public sealed class BindingSubtypeTests
         Assert.Equal((false, false), (field.InInsert, field.InUpdate));
         Assert.Equal("field", Assert.Single(binding.Columns, c => c.Name == "kind").Status);
         Assert.Equal("INSERT INTO public.notes (id, body, kind)\nVALUES (@id, @body, 'note')", BindingSql.Render(binding, "insert").Sql);
-        Assert.Equal("SELECT t.id AS id, t.body AS body, t.created_at AS createdAt, t.kind AS kind\nFROM public.notes t", BindingSql.Render(binding, "select").Sql);
+        Assert.Equal("SELECT t.id AS id, t.body AS body, t.created_at AS createdAt, t.kind AS kind\nFROM public.notes t\nWHERE t.kind IN " + BaseIn, BindingSql.Render(binding, "select").Sql);
     }
 
     [Fact]
@@ -224,7 +259,7 @@ public sealed class BindingSubtypeTests
         Assert.Equal(("kind", model.Entity("Note").Id, "invoice"), (typeColumn.Column, typeColumn.Base, typeColumn.Value));
         Assert.Equal(new object[] { "invoice", "UrgentNote" }, typeColumn.Codes);
         Assert.NotNull(typeColumn.WriteColumn);
-        Assert.Empty(BindingViews.Record(BindingOf(model, "Note")).DiscriminatorColumn!.Codes);
+        Assert.Equal(BaseCodes, BindingViews.Record(BindingOf(model, "Note")).DiscriminatorColumn!.Codes);
 
         // The table's list of bindings shows how each entity's rows are told apart: the type column and the codes.
         var notes = model.Db("main").Table("notes");
@@ -233,7 +268,7 @@ public sealed class BindingSubtypeTests
         Assert.All(boundBy.Values, b => Assert.Equal("kind", b.Discriminator!.Column));
         Assert.Equal("invoice", boundBy["InvoiceNote"].Discriminator!.Value);
         Assert.Equal(new object[] { "invoice", "UrgentNote" }, boundBy["InvoiceNote"].Discriminator!.Codes);
-        Assert.Empty(boundBy["Note"].Discriminator!.Codes);
+        Assert.Equal(BaseCodes, boundBy["Note"].Discriminator!.Codes);
     }
 
     [Fact]
@@ -273,13 +308,48 @@ public sealed class BindingSubtypeTests
         Assert.Null(BindingDrift.TypeColumnOf(snapshot, entity, entity.Bindings[0] with { Database = notes.Archive }));
     }
 
+    [Fact]
+    public void A_derived_entity_bound_to_another_table_may_name_its_own_type_column()
+    {
+        // InvoiceNote and UrgentNote keep their rows in filed_notes; InvoiceNote names the type column there.
+        var notes = new Notes((s, entity, b) => entity switch
+        {
+            "InvoiceNote" => s.ToFiled(b) with { DiscriminatorColumn = "kind" },
+            "UrgentNote" => s.ToFiled(b),
+            _ => b,
+        });
+        var model = notes.Resolve();
+
+        Assert.DoesNotContain(model.Diagnostics, d => d.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning);
+        var invoice = BindingOf(model, "InvoiceNote").DiscriminatorColumn!;
+        Assert.Equal("InvoiceNote", invoice.Base.Name);
+        Assert.Equal(new object[] { "invoice", "UrgentNote" }, invoice.Codes);
+        Assert.Equal("InvoiceNote", BindingOf(model, "UrgentNote").DiscriminatorColumn!.Base.Name);
+        Assert.Equal(new object[] { "note", "customer" }, BindingOf(model, "Note").DiscriminatorColumn!.Codes);
+    }
+
+    [Fact]
+    public void A_derived_entity_in_the_base_table_takes_the_base_column_when_it_names_one()
+    {
+        // MQ4126 refuses the key, and the binding keeps the base's column and filters as before.
+        var model = new Notes((s, entity, b) => entity == "InvoiceNote" ? b with { DiscriminatorColumn = "entity_id" } : b).Resolve();
+
+        var refused = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4126");
+        Assert.Equal((DiagnosticSeverity.Error, "/bindings/0/discriminatorColumn"), (refused.Severity, refused.JsonPointer));
+        var invoice = BindingOf(model, "InvoiceNote").DiscriminatorColumn!;
+        Assert.Equal(("Note", "kind"), (invoice.Base.Name, invoice.ColumnName));
+        Assert.Equal(BaseCodes, BindingOf(model, "Note").DiscriminatorColumn!.Codes);
+    }
+
     public static TheoryData<string, string, string, string> Rules() => new()
     {
         { "missing", "Note", "MQ4122", "/bindings/0/discriminatorColumn" },
         { "derived-source", "CustomerNote", "MQ4122", "/bindings/0/source" },
         { "derived-write", "CustomerNote", "MQ4122", "/bindings/0/write/table" },
-        { "leaf", "UrgentNote", "MQ4123", "/bindings/0/discriminatorColumn" },
+        { "elsewhere", "Note", "MQ4123", "/bindings/0/discriminatorColumn" },
         { "constant", "InvoiceNote", "MQ4124", "/bindings/0/constants/0/column" },
+        { "soft-type", "InvoiceNote", "MQ4124", "/bindings/0/delete/soft/column" },
+        { "nested", "UrgentNote", "MQ4126", "/bindings/0/discriminatorColumn" },
         { "same-code", "CustomerNote", "MQ4125", "/bindings/0/discriminatorValue" },
         { "fit", "UrgentNote", "MQ4125", "/bindings/0/discriminatorValue" },
     };
@@ -290,6 +360,9 @@ public sealed class BindingSubtypeTests
     {
         EntityBinding Break(Notes s, string name, EntityBinding b)
         {
+            // Every derived note moves to filed_notes: the base keeps the table alone.
+            if (mistake == "elsewhere")
+                return name == "Note" ? b : s.ToFiled(b);
             if (name != entity && !(mistake == "same-code" && name == "InvoiceNote"))
                 return b;
             return mistake switch
@@ -297,7 +370,8 @@ public sealed class BindingSubtypeTests
                 "missing" => b with { DiscriminatorColumn = "nope" },
                 "derived-source" => b with { Source = s.Archive },
                 "derived-write" => b with { Write = new BindingWrite { Table = s.Archive } },
-                "leaf" => b with { DiscriminatorColumn = s.Kind },
+                "soft-type" => b with { Delete = new BindingDelete { Mode = BindingDeleteMode.Soft, Soft = new SoftDelete { Column = s.Kind, Value = Notes.Json("\"gone\"") } } },
+                "nested" => b with { DiscriminatorColumn = s.Kind },
                 "constant" => b with { Constants = [new BindingConstant { Column = s.Kind, Value = Notes.Json("\"invoice\"") }] },
                 "same-code" => b with { DiscriminatorValue = Notes.Json("\"shared\"") },
                 "fit" => b with { DiscriminatorValue = Notes.Json("\"" + new string('x', 40) + "\"") },

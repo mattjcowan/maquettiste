@@ -472,7 +472,7 @@
             ]
           },
           "discriminatorColumn": {
-            "description": "The type column a base entity shares with the entities derived from it in one table: a column of the source (and of the write table), its key or physical name. The binding of each derived entity to the same database inherits it from its nearest base whose binding names one: the derived entity's type code (its discriminatorValue, else its name) then filters its reads, updates and deletes, and is the value its insert writes. The base reads every row; its insert writes its own code. A field on the column is read but never written.",
+            "description": "The type column a base entity shares with the entities derived from it in one table: a column of the source (and of the write table), its key or physical name. The binding of each derived entity to the same database inherits it from its nearest base whose binding names one: the derived entity's type code (its discriminatorValue, else its name) then filters its reads, updates and deletes, and is the value its insert writes. The base reads every row of its hierarchy in the table, subtypes included; its insert writes its own code. A derived entity in the base's table inherits the column and may not name one (MQ4126). A field on the column is read but never written.",
             "type": "string",
             "minLength": 1
           },

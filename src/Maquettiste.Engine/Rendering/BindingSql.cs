@@ -22,7 +22,7 @@ namespace Maquettiste.Engine;
 /// <item><c>delete</c>: by key plus the constants and the type codes, or the soft-delete update.</item>
 /// </list>
 /// The type codes are those of <see cref="REntityBinding.DiscriminatorColumn"/>: <c>column = code</c> for one, <c>column IN (…)</c> for
-/// several, and nothing for the entity whose binding names the column.
+/// several.
 /// Parameters are named after the fields. A statement the binding does not have (a write of a read-only binding, a lookup by key
 /// without key fields) renders as the empty string.
 /// </summary>
@@ -127,7 +127,7 @@ public static class BindingSql
         private static string Equal(string column, object? value, Func<object?, string> literal) =>
             value is null ? column + " IS NULL" : column + " = " + literal(value);
 
-        /// <summary>The type codes a read, update or delete keeps, or <see langword="null"/> when it keeps every row.</summary>
+        /// <summary>The type codes a read, update or delete keeps, or <see langword="null"/> without a type column.</summary>
         private string? Codes(string column) => _b.DiscriminatorColumn is not { Codes: { Count: > 0 } codes }
             ? null
             : codes.Count == 1 ? column + " = " + Literal(codes[0]) : column + " IN (" + string.Join(", ", codes.Select(Literal)) + ")";

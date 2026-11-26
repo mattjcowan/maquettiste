@@ -19,8 +19,8 @@ public sealed record BoundByView(string EntityId, string EntityName, string Bind
 /// <summary>A binding's type column, as a table's list of bindings shows it.</summary>
 /// <param name="Column">The column's physical name.</param>
 /// <param name="Value">The entity's type code, a string or an integer: what its insert writes.</param>
-/// <param name="Codes">The codes its reads, updates and deletes keep; empty for the entity whose binding names the column, which reads
-/// every row.</param>
+/// <param name="Codes">The codes its reads, updates and deletes keep: its own and those of the entities derived from it that share the
+/// column in the same table.</param>
 public sealed record BindingDiscriminatorView(string Column, object Value, IReadOnlyList<object> Codes);
 
 /// <summary>A constant column of a binding.</summary>
@@ -59,7 +59,7 @@ public sealed record EntityBindingRecord(string Id, string Database, string? Sou
 /// <param name="Base">The id of the entity whose binding names the column: this binding's entity, or its nearest base that names one.</param>
 /// <param name="Value">The entity's type code, a string or an integer: what the insert writes.</param>
 /// <param name="Codes">The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that
-/// share the column in the same table. Empty for the entity whose binding names the column, which reads every row.</param>
+/// share the column in the same table (for the entity whose binding names the column, its whole hierarchy there).</param>
 public sealed record BindingDiscriminatorRecord(string Column, string? ColumnKey, string? WriteColumn, string Base, object Value, IReadOnlyList<object> Codes);
 
 /// <summary>One field of a resolved binding.</summary>
