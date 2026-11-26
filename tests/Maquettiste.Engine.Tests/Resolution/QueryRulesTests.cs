@@ -10,9 +10,8 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Resolution;
 
 /// <summary>
-/// Queries after the 2026-10-02 review: grouped collections and parents, MySQL casts, fields typed from their attributes, foreign
-/// key and value object member fields, the rules MQ4032 to MQ4043, hidden key names, exists indentation, typed decimal literals,
-/// blank sql texts and the <c>query_sql_parameters</c> helper.
+/// Queries after the 2026-10-02 review: MySQL casts, the rules MQ4034 to MQ4043, reserved names, exists indentation, typed decimal
+/// literals, blank sql texts and the <c>query_sql_parameters</c> helper.
 /// </summary>
 public sealed class QueryRulesTests
 {
@@ -74,109 +73,6 @@ public sealed class QueryRulesTests
     private static readonly string[] Dialects = ["postgresql", "sqlserver", "mysql", "sqlite", "oracle"];
 
     [Fact]
-    public void A_grouped_collection_groups_by_its_keys_and_a_grouped_parent_by_its_hidden_keys()
-    {
-        var s = new Store();
-        var id = s.Query($$"""
-            {
-              "name": "CustomerTotals",
-              "from": { "source": "{{s.Customers}}", "alias": "c" },
-              "select": [
-                { "name": "name", "expression": { "column": "c.name" } },
-                { "name": "customers", "expression": { "call": "count" } }
-              ],
-              "groupBy": [{ "column": "c.name" }],
-              "collections": [
-                {
-                  "attribute": "byNumber",
-                  "query": {
-                    "from": { "source": "{{s.Invoices}}", "alias": "i" },
-                    "select": [
-                      { "name": "number", "expression": { "column": "i.number" } },
-                      { "name": "total", "expression": { "call": "sum", "args": [{ "column": "i.total" }] } }
-                    ],
-                    "where": { "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } },
-                    "groupBy": [{ "column": "i.number" }]
-                  }
-                },
-                {
-                  "attribute": "invoiceCount",
-                  "query": {
-                    "from": { "source": "{{s.Invoices}}", "alias": "i" },
-                    "select": [{ "name": "count", "expression": { "call": "COUNT" } }],
-                    "where": { "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } }
-                  }
-                }
-              ]
-            }
-            """);
-        var model = s.Resolve();
-        Assert.Empty(Store.Findings(model, id));
-        var query = model.Db("main").Queries.Single();
-
-        Assert.Equal("""
-            SELECT c.name AS name, COUNT(*) AS customers, c.id AS mq_key0_0, c.id AS mq_key1_0
-            FROM public.customers c
-            GROUP BY c.name, c.id
-            """, query.Sql);
-        Assert.Equal("""
-            SELECT i.number AS number, SUM(i.total) AS total, i.customer_id AS mq_key0
-            FROM public.invoices i
-            WHERE i.customer_id IN @mq_keys0
-            GROUP BY i.number, i.customer_id
-            """, QuerySql.RenderCollection(query.Collections[0]).Sql);
-        Assert.Equal("""
-            SELECT COUNT(*) AS count, i.customer_id AS mq_key0
-            FROM public.invoices i
-            WHERE i.customer_id IN @mq_keys0
-            GROUP BY i.customer_id
-            """, QuerySql.RenderCollection(query.Collections[1]).Sql);
-
-        // Every dialect family groups the same way (quoting aside).
-        foreach (var dialect in Dialects)
-        {
-            static string Unquoted(string sql) => sql.Replace("\"", "", StringComparison.Ordinal).Replace("[", "", StringComparison.Ordinal)
-                .Replace("]", "", StringComparison.Ordinal).Replace("`", "", StringComparison.Ordinal);
-            Assert.EndsWith("GROUP BY c.name, c.id", Unquoted(QuerySql.Render(query, dialect).Sql), StringComparison.Ordinal);
-            Assert.EndsWith("GROUP BY i.number, i.customer_id", Unquoted(QuerySql.RenderCollection(query.Collections[0], dialect).Sql), StringComparison.Ordinal);
-            Assert.EndsWith("GROUP BY i.customer_id", Unquoted(QuerySql.RenderCollection(query.Collections[1], dialect).Sql), StringComparison.Ordinal);
-        }
-    }
-
-    [Fact]
-    public void A_distinct_parent_must_select_or_group_its_collection_keys_MQ4032()
-    {
-        var s = new Store();
-        string Query(string name, string select, string groupBy) => s.Query($$"""
-            {
-              "name": "{{name}}",
-              "distinct": true,
-              "from": { "source": "{{s.Customers}}", "alias": "c" },
-              "select": [{{select}}],
-              "groupBy": [{{groupBy}}],
-              "collections": [{
-                "attribute": "numbers",
-                "query": {
-                  "from": { "source": "{{s.Invoices}}", "alias": "i" },
-                  "select": [{ "name": "number", "expression": { "column": "i.number" } }],
-                  "where": { "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } }
-                }
-              }]
-            }
-            """);
-        var hidden = Query("Hidden", """{ "name": "name", "expression": { "column": "c.name" } }""", "");
-        var selected = Query("Selected", """{ "name": "name", "expression": { "column": "c.name" } }, { "name": "id", "expression": { "column": "c.id" } }""", "");
-        var grouped = Query("Grouped", """{ "name": "name", "expression": { "column": "c.name" } }""", """{ "column": "c.name" }, { "column": "c.id" }""");
-        var model = s.Resolve();
-
-        Assert.Equal([("MQ4032", "/collections/0/query/where")], Store.Findings(model, hidden));
-        Assert.Equal(DiagnosticSeverity.Error, model.Diagnostics.Single(d => d.ElementId == hidden).Severity);
-        Assert.Null(model.Db("main").Queries.Single(q => q.Id == hidden).Sql);
-        Assert.Empty(Store.Findings(model, selected));
-        Assert.Empty(Store.Findings(model, grouped));
-    }
-
-    [Fact]
     public void A_cast_on_MySQL_takes_a_type_its_cast_accepts()
     {
         var s = new Store(Dialect.MySql);
@@ -214,96 +110,6 @@ public sealed class QueryRulesTests
         var other = pg.Resolve().Db("main").Queries.Single();
         Assert.StartsWith("SELECT CAST(i.total AS SIGNED) AS a", QuerySql.Render(other, "mysql").Sql, StringComparison.Ordinal);
         Assert.StartsWith("SELECT CAST(i.total AS integer) AS a", other.Sql, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_field_that_fills_an_attribute_takes_its_type_and_warns_when_it_cannot_convert_MQ4033()
-    {
-        var s = new Store();
-        var id = s.Query($$"""
-            {
-              "name": "Typed",
-              "entity": "{{s.Customer.Id}}",
-              "from": { "source": "{{s.Customers}}", "alias": "c" },
-              "select": [
-                { "attribute": "{{s.Customer.AttrId("id")}}", "expression": { "column": "c.id" } },
-                { "attribute": "{{s.Customer.AttrId("name")}}", "expression": { "call": "initcap", "args": [{ "column": "c.name" }] } },
-                { "attribute": "{{s.Customer.AttrId("visits")}}", "expression": { "call": "count" } },
-                { "attribute": "{{s.Customer.AttrId("email")}}", "expression": { "sql": { "*": "c.email" } } }
-              ],
-              "groupBy": [{ "column": "c.id" }]
-            }
-            """);
-        var wrong = s.Query($$"""
-            {
-              "name": "Wrong",
-              "entity": "{{s.Customer.Id}}",
-              "from": { "source": "{{s.Customers}}", "alias": "c" },
-              "select": [
-                { "attribute": "{{s.Customer.AttrId("id")}}", "expression": { "column": "c.id" } },
-                { "attribute": "{{s.Customer.AttrId("name")}}", "expression": { "column": "c.name" } },
-                { "attribute": "{{s.Customer.AttrId("visits")}}", "expression": { "column": "c.name" } }
-              ]
-            }
-            """);
-        var model = s.Resolve();
-        var typed = model.Db("main").Queries.Single(q => q.Id == id);
-
-        Assert.Empty(Store.Findings(model, id));
-        Assert.Equal(("string", "string"), (typed.Select[1].Type, typed.Select[1].CodeType)); // an unknown function: the attribute's type
-        Assert.NotNull(typed.Select[1].NativeType);
-        Assert.Equal("int64", typed.Select[2].CodeType); // count into an int32: converted in code
-        Assert.Equal("string", typed.Select[3].CodeType); // an sql text: the attribute's type
-        Assert.Equal([("MQ4033", "/select/2/expression")], Store.Findings(model, wrong));
-        Assert.Equal(DiagnosticSeverity.Warning, model.Diagnostics.Single(d => d.ElementId == wrong).Severity);
-        Assert.NotEmpty(model.Db("main").Queries.Single(q => q.Id == wrong).Sql!);
-    }
-
-    [Fact]
-    public void A_field_fills_a_foreign_key_by_its_relation_end_and_a_value_object_member_by_its_path()
-    {
-        var s = new Store();
-        var id = s.Query($$"""
-            {
-              "name": "Invoices",
-              "entity": "{{s.Invoice.Id}}",
-              "from": { "source": "{{s.Invoices}}", "alias": "i" },
-              "select": [
-                { "attribute": "{{s.Invoice.AttrId("id")}}", "expression": { "column": "i.id" } },
-                { "attribute": "{{s.Invoice.AttrId("number")}}", "expression": { "column": "i.number" } },
-                { "attribute": "{{s.Places.EndIds[0]}}", "expression": { "column": "i.customer_id" } },
-                { "attribute": "{{s.Invoice.AttrId("price")}}.{{s.Money.AttrId("amount")}}", "expression": { "column": "i.{{s.Invoice.AttrId("price")}}.{{s.Money.AttrId("amount")}}" } },
-                { "attribute": "{{s.Invoice.AttrId("price")}}.{{s.Money.AttrId("currency")}}", "expression": { "column": "i.price_currency" } }
-              ]
-            }
-            """);
-        var bad = s.Query($$"""
-            {
-              "name": "Bad",
-              "entity": "{{s.Invoice.Id}}",
-              "from": { "source": "{{s.Invoices}}", "alias": "i" },
-              "select": [
-                { "attribute": "{{s.Invoice.AttrId("id")}}", "expression": { "column": "i.id" } },
-                { "attribute": "{{s.Invoice.AttrId("number")}}", "expression": { "column": "i.number" } },
-                { "attribute": "{{s.Invoice.AttrId("number")}}.{{s.Money.AttrId("amount")}}", "expression": { "column": "i.number" } },
-                { "attribute": "{{s.Places.EndIds[1]}}", "expression": { "column": "i.id" } }
-              ]
-            }
-            """);
-        var model = s.Resolve();
-        Assert.Empty(Store.Findings(model, id));
-        var fields = model.Db("main").Queries.Single(q => q.Id == id).Select;
-
-        Assert.Equal(["id", "number", "customerId", "priceAmount", "priceCurrency"], fields.Select(f => f.Name));
-        Assert.Equal(("customer", "customer_id"), (fields[2].Navigation!.Name, fields[2].ForeignKeyColumn!.Name));
-        Assert.Null(fields[2].Attribute);
-        Assert.Equal(("price", "amount"), (fields[3].Attribute!.Name, fields[3].Member!.Name));
-        Assert.Equal("decimal", fields[3].Type);
-        var view = DatabaseViews.From(model.Db("main")).Queries.Single(q => q.Id == id);
-        Assert.Equal(s.Places.EndIds[0], view.Select[2].AttributeId);
-        Assert.Equal(s.Invoice.AttrId("price") + "." + s.Money.AttrId("amount"), view.Select[3].AttributeId);
-
-        Assert.Equal([("MQ4025", "/select/2/attribute"), ("MQ4025", "/select/3/attribute")], Store.Findings(model, bad).OrderBy(f => f.Pointer, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -432,17 +238,12 @@ public sealed class QueryRulesTests
         var id = s.Query($$"""
             {
               "name": "Names",
-              "parameters": [{ "name": "word", "type": "string" }, { "name": "Word", "type": "string" }, { "name": "mq_keys0", "type": "string" }],
+              "parameters": [{ "name": "word", "type": "string" }, { "name": "Word", "type": "string" }, { "name": "mq_cancellationToken", "type": "string" }],
               "from": { "source": "{{s.Customers}}", "alias": "c" },
               "select": [
                 { "name": "issued_on", "expression": { "column": "c.name" } },
                 { "name": "issuedOn", "expression": { "column": "c.email" } },
-                { "name": "mq_key0_0", "expression": { "column": "c.id" } }
-              ],
-              "collections": [
-                { "attribute": "item", "query": { "from": { "source": "{{s.Invoices}}", "alias": "i" }, "select": [{ "name": "n", "expression": { "column": "i.number" } }], "where": { "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } } } },
-                { "attribute": "lines", "query": { "from": { "source": "{{s.Invoices}}", "alias": "i" }, "select": [{ "name": "n", "expression": { "column": "i.number" } }], "where": { "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } } } },
-                { "attribute": "Lines", "query": { "from": { "source": "{{s.Invoices}}", "alias": "i" }, "select": [{ "name": "n", "expression": { "column": "i.number" } }], "where": { "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } } } }
+                { "name": "mq_rows", "expression": { "column": "c.id" } }
               ]
             }
             """);
@@ -453,33 +254,13 @@ public sealed class QueryRulesTests
 
         Assert.Equal(
             [
-                ("MQ3001", "/parameters/1/name"), ("MQ4040", "/collections/0/attribute"), ("MQ4040", "/collections/2/attribute"),
-                ("MQ4040", "/parameters/2/name"), ("MQ4040", "/select/1/name"), ("MQ4040", "/select/2/name"),
+                ("MQ3001", "/parameters/1/name"), ("MQ4040", "/parameters/2/name"), ("MQ4040", "/select/1/name"), ("MQ4040", "/select/2/name"),
             ],
             Store.Findings(model, id).OrderBy(f => f.Rule, StringComparer.Ordinal).ThenBy(f => f.Pointer, StringComparer.Ordinal));
         Assert.NotEmpty(model.Db("main").Queries.Single(q => q.Id == id).Sql!); // names do not stop the SQL
         Assert.Equal([("MQ4040", "/name")], Store.Findings(model, first).Concat(Store.Findings(model, second)));
         Assert.Empty(Store.Findings(model, digits));
         Assert.Equal("Q2024Report", DatabaseRun.QueryClassName("2024 report"));
-    }
-
-    [Fact]
-    public void An_abstract_result_or_element_entity_is_MQ4041()
-    {
-        var s = new Store();
-        var id = s.Query($$"""
-            {
-              "name": "Parties",
-              "entity": "{{s.Party.Id}}",
-              "from": { "source": "{{s.Customers}}", "alias": "c" },
-              "select": [{ "attribute": "{{s.Party.AttrId("id")}}", "expression": { "column": "c.id" } }],
-              "collections": [{ "attribute": "others", "entity": "{{s.Party.Id}}", "query": { "from": { "source": "{{s.Invoices}}", "alias": "i" }, "select": [{ "attribute": "{{s.Party.AttrId("id")}}", "expression": { "column": "i.id" } }], "where": { "op": "eq", "left": { "column": "i.customer_id" }, "right": { "column": "c.id" } } } }]
-            }
-            """);
-        var findings = Store.Findings(s.Resolve(), id);
-
-        Assert.Contains(("MQ4041", "/entity"), findings);
-        Assert.Contains(("MQ4041", "/collections/0/entity"), findings);
     }
 
     [Fact]
@@ -581,10 +362,10 @@ public sealed class QueryRulesTests
         var byCustomer = model.Databases.Single().Queries.Single(q => q.Name == "InvoicesByCustomer");
 
         var text = (await Adhoc.RenderAsync(
-            "{{ query_sql_parameters query | array.join ',' }}|{{ query_sql_parameters query 'sqlserver' | array.join ',' }}|{{ query_sql_parameters query { placeholder: '$' } | array.join ',' }}|{{ query_sql_parameters query.collections[0] | array.join ',' }}",
+            "{{ query_sql_parameters query | array.join ',' }}|{{ query_sql_parameters query 'sqlserver' | array.join ',' }}|{{ query_sql_parameters query { placeholder: '$' } | array.join ',' }}",
             byCustomer, u => u with { For = "each query" })).Text();
 
-        Assert.Equal("customerId,statuses,offset,limit|customerId,statuses,offset,limit|customerId,statuses,offset,limit|mq_keys0", text);
+        Assert.Equal("customerId,statuses,offset,limit|customerId,statuses,offset,limit|customerId,statuses,offset,limit", text);
         Assert.Equal(["customerId", "statuses", "offset", "limit"], QuerySql.Parameters(byCustomer));
         Assert.Equal("MQ6006", (await Adhoc.RenderAsync("{{ query_sql_parameters model }}")).Error().Rule);
     }

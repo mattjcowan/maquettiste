@@ -9,7 +9,7 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// <summary>
 /// Named queries in built queries (sql-queries-design.md decisions 10 to 14 and 16, section 21): a <c>with</c> entry resolved as a
 /// select over the database's tables and earlier named queries, read by name from the query, its nested queries and later named
-/// queries; a recursive one's repeating part; the <c>WITH</c> clause per dialect, in collections and in a binding over the query; the
+/// queries; a recursive one's repeating part; the <c>WITH</c> clause per dialect, with an exists and in a binding over the query; the
 /// rules MQ3001, MQ4021, MQ4023, MQ4099 and MQ4099; inferred types and merged nullability; the records.
 /// </summary>
 public sealed class NamedQueryTests
@@ -196,8 +196,8 @@ public sealed class NamedQueryTests
         Assert.Same(query.With[0], query.With[1].Query.From!.Named);
     }
 
-    /// <summary>A query over categories with a collection of each one's children read through named queries, and an exists over one.</summary>
-    private static string WithCollection(Tree t) => t.Query($$"""
+    /// <summary>A query over categories with named queries it does not all read, and an exists over one.</summary>
+    private static string WithExists(Tree t) => t.Query($$"""
         {
           "name": "Parents",
           "with": [
@@ -210,22 +210,15 @@ public sealed class NamedQueryTests
           ],
           "from": { "source": "{{t.Categories}}", "alias": "p" },
           "select": [ { "name": "id", "expression": { "column": "p.id" } } ],
-          "where": { "exists": { "from": { "source": "roots", "alias": "r" }, "where": { "op": "eq", "left": { "column": "r.id" }, "right": { "column": "p.id" } } } },
-          "collections": [ {
-            "attribute": "children",
-            "query": {
-              "from": { "source": "kids", "alias": "k" },
-              "select": [ { "name": "id", "expression": { "column": "k.id" } } ],
-              "where": { "op": "eq", "left": { "column": "k.parentId" }, "right": { "column": "p.id" } }
-            } } ]
+          "where": { "exists": { "from": { "source": "roots", "alias": "r" }, "where": { "op": "eq", "left": { "column": "r.id" }, "right": { "column": "p.id" } } } }
         }
         """);
 
     [Fact]
-    public void A_collection_repeats_the_named_queries_it_reads_and_an_exists_reads_one()
+    public void An_exists_reads_a_named_query_and_every_named_query_stays_in_the_with()
     {
         var t = new Tree();
-        var id = WithCollection(t);
+        var id = WithExists(t);
         var model = t.Resolve();
         Assert.DoesNotContain(model.Diagnostics, d => d.ElementId == id);
         var query = Single(model);
@@ -254,22 +247,6 @@ public sealed class NamedQueryTests
                 FROM roots r
                 WHERE r.id = p.id)
             """.ReplaceLineEndings("\n"), query.Sql);
-
-        // The collection's statement runs on its own: it repeats kids and base, which kids reads, in list order, and nothing else.
-        Assert.Equal("""
-            WITH base (id, parentId) AS (
-                SELECT c.id AS id, c.parent_id AS parentId
-                FROM public.categories c
-            ),
-            kids (id, parentId) AS (
-                SELECT b.id AS id, b.parentId AS parentId
-                FROM base b
-            )
-            SELECT k.id AS id, k.parentId AS mq_key0
-            FROM kids k
-            WHERE k.parentId IN @mq_keys0
-            """.ReplaceLineEndings("\n"), QuerySql.RenderCollection(Assert.Single(query.Collections)).Sql);
-        Assert.Equal(("int64", true), (query.Collections[0].Keys[0].Inner.Type, query.Collections[0].Keys[0].Inner.Nullable));
     }
 
     [Fact]

@@ -13,8 +13,9 @@ namespace Maquettiste.Engine.Diagnostics;
 /// section 3, "Quick fixes"), or <see langword="null"/>.</param>
 public sealed record RuleInfo(string Id, DiagnosticSeverity DefaultSeverity, string Description, string? QuickFix = null)
 {
-    /// <summary>Whether <c>validation.rules</c> may turn the rule off (every rule except MQ1xxx).</summary>
-    public bool CanBeDisabled => !Id.StartsWith("MQ1", StringComparison.Ordinal);
+    /// <summary>Whether <c>validation.rules</c> may turn the rule off (every rule except MQ1xxx and MQ4127, a query file that does not
+    /// load).</summary>
+    public bool CanBeDisabled => !Id.StartsWith("MQ1", StringComparison.Ordinal) && Id != "MQ4127";
 }
 
 /// <summary>A built-in rule as the editor's Validation settings and the MCP tool list it: <see cref="RuleInfo"/> with its family.</summary>
@@ -23,7 +24,7 @@ public sealed record RuleInfo(string Id, DiagnosticSeverity DefaultSeverity, str
 /// <param name="Description">The short description.</param>
 /// <param name="Family">The rule's hundreds group, for example <c>MQ72xx</c>.</param>
 /// <param name="FamilyLabel">What the family's rules cover, for example <c>Localization</c>.</param>
-/// <param name="CanBeOff">Whether <c>validation.rules</c> may set the rule to <c>off</c> (false for MQ1xxx).</param>
+/// <param name="CanBeOff">Whether <c>validation.rules</c> may set the rule to <c>off</c> (false for MQ1xxx and MQ4127).</param>
 /// <param name="QuickFix">The batch operation that fixes a finding (for example <c>sync-enum</c>); left out of the JSON when none.</param>
 public sealed record RuleCatalogEntry(string Id, DiagnosticSeverity DefaultSeverity, string Description, string Family, string FamilyLabel, bool CanBeOff,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QuickFix = null);
@@ -186,23 +187,17 @@ public static class RuleCatalog
         new("MQ4022", E, "A query declares an alias twice, or a column reference names an alias that no source of the query declares."),
         new("MQ4023", E, "A query's column reference names no column of its source (by name, attribute id or column key), or a column name without an alias is ambiguous or unknown."),
         new("MQ4024", E, "A query expression or its paging names a parameter the query does not declare, or a :name placeholder of a query written as SQL text names none (the message gives its line and column in the text)."),
-        new("MQ4025", E, "A select field names an attribute that the query's entity (or the collection's entity) does not have, or names an attribute where no entity is named."),
-        new("MQ4026", W, "A required attribute of the query's entity is not selected, so the rows leave it at its default."),
-        new("MQ4027", E, "A query collection names neither a collection attribute nor a to-many navigation of the query's entity, or its nested query selects nothing."),
-        new("MQ4028", E, "A nested query names an outer alias that no enclosing query declares, or a collection's query names its parent's aliases outside an equality at the top of its where."),
+        new("MQ4028", E, "A nested query names an outer alias that no enclosing query declares."),
         new("MQ4029", E, "A query's sql expression, or a query written as SQL text, has no text for the database's dialect and no \"*\" text, so the query cannot be rendered there."),
         new("MQ4030", E, "A query's paging names a parameter whose type is not an integer type."),
         new("MQ4031", E, "A query comparison's right side has the wrong shape: between takes two values, isNull and isNotNull none, in and notIn a list or one list parameter, the others one value."),
-        new("MQ4032", E, "A collection's correlation key is neither selected nor grouped by its parent, which is distinct: the hidden key column would change which rows DISTINCT removes."),
-        new("MQ4033", W, "A select field's value cannot convert to the type of the entity attribute it fills."),
         new("MQ4034", E, "A query calls a function whose name is neither an identifier (optionally schema-qualified, name or schema.name) nor a routine id."),
         new("MQ4035", E, "A join's condition does not fit its kind: a join other than cross needs on, a cross join takes none."),
         new("MQ4036", E, "A query uses a full join on a MySQL database, which has none."),
         new("MQ4037", W, "A query uses a right or full join on a SQLite database, which needs SQLite 3.39 or later."),
         new("MQ4038", E, "A distinct query orders by an expression that is not in its select list, or by nulls first or last where the dialect emulates them (SQL Server, MySQL)."),
         new("MQ4039", E, "A list parameter (collection: true) is used other than as the whole right side of in or notIn."),
-        new("MQ4040", E, "Names of a query collide in generated code or are reserved: two collections with one name, fields, declared columns, collections or parameters whose names are equal ignoring case or once Pascal-cased, a name starting with mq_, or two queries of a database whose class names are equal once Pascal-cased."),
-        new("MQ4041", E, "A query's result entity, or a collection's element entity, is abstract."),
+        new("MQ4040", E, "Names of a query collide in generated code or are reserved: fields, declared columns or parameters whose names are equal ignoring case or once Pascal-cased, a name starting with mq_, or two queries of a database whose class names are equal once Pascal-cased."),
         new("MQ4042", E, "An operation has fewer than two operands (only - takes one, as a negation)."),
         new("MQ4043", E, "A literal or a parameter's default does not fit: a number too large to hold, a typed literal whose text is not a decimal number, or a default whose value does not match the parameter's type."),
         new("MQ4044", E, "A binding's source is not a table, view or query of its database, or is a query written as SQL text that writes tables or declares no columns, or its write table is not a table of its database."),
@@ -263,7 +258,6 @@ public static class RuleCatalog
         new("MQ4113", E, "An open value-map fact maps away a code that is a live code of its reference type."),
         new("MQ4114", W, "A write changed a kept reference row's code, or a reference type's name or plural name, outside the refactor operations, so no value map was recorded."),
         new("MQ4115", I, "A relation has an end with several types, and every end has a type it covers placed in a database where no mapping stores the relation (with a junctionTable or an ends entry), so that database stores nothing for it: no table, column or foreign key."),
-        new("MQ4116", E, "A query field or a query collection names a relation end with several types, a navigation to one, or another end of a relation with such an end; a query can't yet say which type's table it joins."),
         new("MQ4117", E, "A relation mapping's storage doesn't fit together: a key that leads to the wrong table, a pointer outside the table that holds its links, entries that give no table to hold them, a referenced column that isn't unique or whose type doesn't match, a type that isn't a target or two types with one code, a code its column can't hold, a key per type at an any-entity end, two mappings that read each other's links, a binding field that maps another column than the mapping names, or a form that waits (a link table per pair of types, column pointers spread over several tables)."),
         new("MQ4118", I, "A database holds a relation end with several types in a way it can't fully enforce: no foreign key, a key to a shared table, an id alone, a type column or keys per type with no check found, a one-to-one or a link table with no unique found, keys per type in a link table, or a table whose rows nothing tells apart; the message gives the check or unique to copy."),
         new("MQ4119", W, "Since the baseline, an entity's type code in a database changed, and a type column there holds codes of a relation with an end of several types; links stored with the old code no longer find their object."),
@@ -274,7 +268,7 @@ public static class RuleCatalog
         new("MQ4124", E, "A binding has a constant on its type column, its own or the one it inherits from a base, or a soft delete that sets it: the column already holds the entity's type code."),
         new("MQ4125", E, "Two entities that share a type column in one table have the same type code, so reads cannot tell their rows apart; or an entity's type code cannot fit the type column (the wrong type, too long, out of range)."),
         new("MQ4126", E, "A derived entity's binding names a type column (discriminatorColumn) while a base's binding in the same table already names one: the column is inherited, so remove the key. A derived entity bound to another table may name its own."),
-        new("MQ4127", W, "A query names an entity as the shape of its rows (entity) or fills collections (collections): both are retired and go away in a later version. Give the query its own columns and bind the entity to it with its binding's source; read a record with its parts through composition, each part with its own binding."),
+        new("MQ4127", E, "A query file has a key removed in 0.28.0: entity (the entity each row had), collections, or a select field's attribute; the file does not load, and no setting changes the error. Give each select field a name of its own and bind the entity to the query with its binding's source; read a record with its parts through composition (entity.parts), each part with its own binding."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule or calculation script error."),
@@ -289,7 +283,7 @@ public static class RuleCatalog
         new("MQ5015", E, "Two project rules share an id: a declared rule and another declared rule or a rule script."),
         new("MQ5016", E, "A declared rule names what does not exist or does not apply: a kind, a stereotype key, a package id, a path, a calculated value, a link kind, bounds or a message placeholder."),
         new("MQ5017", W, "A declared rule selects no object."),
-        new("MQ5018", E, "A suppression names a rule that cannot be suppressed: MQ1xxx, MQ7012 or MQ5018 to MQ5020."),
+        new("MQ5018", E, "A suppression names a rule that cannot be suppressed: MQ1xxx, MQ4127, MQ7012 or MQ5018 to MQ5020."),
         new("MQ5019", W, "A suppression names a rule nothing defines or a member the element does not hold, or repeats another entry."),
         new("MQ5020", W, "A suppression matched no finding in a whole-model validate."),
 

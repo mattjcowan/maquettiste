@@ -185,7 +185,7 @@ Tests: `tests/Maquettiste.Engine.Tests/Validation/`; fixtures under `tests/fixtu
 
 - `Element.Suppressions` (`rule`, optional `member`, `reason`) sits on top-level files only. `SuppressionRules` judges
   the entries per document, so saves see them: MQ5018 for a rule that cannot be suppressed (`CanBeSuppressed`: not
-  MQ1xxx, MQ7012 or MQ5018 to MQ5020), MQ5019 for an unknown rule (catalog ids; `x/` ids when every rule script loads,
+  MQ1xxx, MQ4127, MQ7012 or MQ5018 to MQ5020), MQ5019 for an unknown rule (catalog ids; `x/` ids when every rule script loads,
   which is why `NamesRules` loads the pool for an `x/` entry, and no declaration file failed), a member the element does
   not hold (an indexed part it owns, an attribute through a base or a stereotype, a table's inherited keyed id) or a
   repeated rule and member.

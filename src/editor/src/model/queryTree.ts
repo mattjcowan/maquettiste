@@ -59,7 +59,6 @@ export interface Join extends QuerySource {
 
 export interface Field {
   name?: string;
-  attribute?: string;
   type?: string;
   nullable?: boolean;
   expression: Expression;
@@ -76,7 +75,7 @@ export interface Paging {
   limit?: string | number;
 }
 
-/** A nested query (a collection's, an exists condition's), and the body of a query. */
+/** A nested query (an exists condition's), and the body of a query. */
 export interface Subquery {
   from: QuerySource;
   joins?: Join[];
@@ -97,12 +96,6 @@ export interface QueryParameter {
   collection?: boolean;
   default?: string | number | boolean;
   description?: string;
-}
-
-export interface Collection {
-  attribute: string;
-  entity?: string;
-  query: Subquery;
 }
 
 /** The part of a recursive named query that repeats: it reads the named query's own name once. */
@@ -126,11 +119,9 @@ export interface QueryDoc extends Subquery {
   id: string;
   name: string;
   database: string;
-  entity?: string;
   parameters?: QueryParameter[];
   select: Field[];
   paging?: Paging;
-  collections?: Collection[];
   with?: NamedQuery[];
   [member: string]: unknown;
 }
@@ -514,7 +505,7 @@ export function renameParameter(doc: QueryDoc, from: string, to: string, dialect
   const target = parameters.find((p) => p.name === from);
   if (!target) return false;
   target.name = to;
-  for (const member of ["select", "joins", "where", "groupBy", "having", "orderBy", "collections"] as const)
+  for (const member of ["select", "joins", "where", "groupBy", "having", "orderBy"] as const)
     forEachExpression(doc[member], (e) => {
       if (e.param === from) e.param = to;
     });
@@ -526,75 +517,15 @@ export function renameParameter(doc: QueryDoc, from: string, to: string, dialect
   return true;
 }
 
-/**
- * Renames an alias and every column reference through it in a query body, and in its collections' nested queries that do not
- * declare the alias themselves (their correlation names the parent's aliases).
- */
-export function renameAlias(body: Subquery & { collections?: Collection[] }, from: string, to: string): void {
+/** Renames an alias and every column reference through it in a query body. */
+export function renameAlias(body: Subquery, from: string, to: string): void {
   const rewrite = (node: unknown) =>
     forEachExpression(node, (e) => {
       if (e.column && splitColumn(e.column).alias === from) e.column = `${to}${e.column.slice(from.length)}`;
     });
   for (const member of ["select", "joins", "where", "groupBy", "having", "orderBy"] as const) rewrite(body[member]);
-  for (const c of body.collections ?? []) if (![c.query.from, ...(c.query.joins ?? [])].some((s) => s.alias === from)) rewrite(c.query);
   if (body.from.alias === from) body.from.alias = to;
   for (const j of body.joins ?? []) if (j.alias === from) j.alias = to;
-}
-
-/**
- * Sets the result entity, or none (an ad hoc row). A field that names what the new entity does not have (any attribute, with
- * none) becomes a named field of the row: it keeps its expression, and takes its own name, else the old attribute's (numbered when
- * another field has it), so nothing is lost and nothing names an attribute the entity lacks. A field the new entity has keeps it.
- * `attributeName` names an attribute of the current entity; `has` tells whether the new entity has what a field's attribute names
- * (an attribute, a value object member, a foreign key's relation end).
- */
-export function setResultEntity(
-  doc: QueryDoc,
-  entity: string | null,
-  attributeName: (id: string) => string | undefined,
-  has: (attribute: string) => boolean = () => false,
-): void {
-  if (entity) doc.entity = entity;
-  else delete doc.entity;
-  const taken = doc.select.map((f) => f.name ?? (f.attribute && (!entity || !has(f.attribute)) ? "" : (attributeName(f.attribute ?? "") ?? "")));
-  doc.select = doc.select.map((f, i) => {
-    if (!f.attribute || (entity && has(f.attribute))) return f;
-    const { attribute, ...rest } = f;
-    if (rest.name) return rest;
-    const base = attributeName(attribute) ?? fieldName(attribute.replace(/\./g, "_"));
-    const used = new Set(taken.filter((_, j) => j !== i).map((t) => t.toLowerCase()));
-    let name = base;
-    for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base}${n}`;
-    taken[i] = name;
-    return { ...rest, name };
-  });
-}
-
-/** Whether a query still names an older result entity (its own, or a collection's elements'). */
-export const hasResultEntity = (doc: Pick<QueryDoc, "entity" | "collections">): boolean => !!doc.entity || (doc.collections ?? []).some((c) => !!c.entity);
-
-/**
- * Drops an older query's result entities (the query's `entity` and each collection's element entity): a query is the database's,
- * and the entity side binds an entity to it instead. Every field that filled an attribute becomes a named field with its
- * expression (setResultEntity), and a collection that filled a collection attribute or a navigation takes its name
- * (`collectionName`, made a unique field name). `attributeName` names the query's attributes; `elementName(i)` the attributes of
- * collection i's elements. Nothing is lost: each value keeps its expression under a name.
- */
-export function removeResultEntities(
-  doc: QueryDoc,
-  attributeName: (id: string) => string | undefined,
-  collectionName: (attribute: string) => string | undefined,
-  elementName: (index: number) => (id: string) => string | undefined,
-): void {
-  setResultEntity(doc, null, attributeName);
-  const taken: string[] = [];
-  (doc.collections ?? []).forEach((c, i) => {
-    const named = collectionName(c.attribute);
-    if (named) c.attribute = fieldName(named, taken);
-    taken.push(c.attribute);
-    if (c.query.select) setResultEntity(c.query as QueryDoc, null, elementName(i));
-    delete c.entity;
-  });
 }
 
 /** Removes an empty optional list member (the canonical writer leaves out empty defaults). */
@@ -805,48 +736,6 @@ export function foreignKeyJoins(joined: ScopeAlias, earlier: readonly ScopeAlias
   return out;
 }
 
-/** An attribute a select list may fill. */
-export interface AttributeOption {
-  id: string;
-  name: string;
-}
-
-/**
- * Fills the select list from the columns of an alias: each attribute without a field gets the column that stores it (its
- * attribute id) or, failing that, the column whose name matches the attribute's ignoring case and underscores. Returns the
- * names of the attributes filled; the fields keep the attributes' order.
- */
-export function fillFromColumns(select: Field[], attributes: readonly AttributeOption[], alias: ScopeAlias): { select: Field[]; filled: string[] } {
-  const filled: string[] = [];
-  const has = new Set(select.map((f) => f.attribute).filter(Boolean));
-  let next = [...select];
-  for (const a of attributes) {
-    if (has.has(a.id)) continue;
-    // An attribute by the column that stores it; a value object member or a foreign key by its column key; else by name.
-    const keyed = alias.columns.filter((x) => x.ref.startsWith(a.id + "."));
-    const c =
-      alias.columns.find((x) => x.column?.attributeId === a.id || x.ref === a.id) ??
-      (keyed.length === 1 ? keyed[0] : undefined) ??
-      alias.columns.find((x) => fold(x.name) === fold(a.name));
-    if (!c) continue;
-    next = withAttributeField(next, attributes, { attribute: a.id, expression: { column: columnRef(alias.alias, c) } });
-    filled.push(a.name);
-  }
-  return { select: next, filled };
-}
-
-/** Adds a field for an attribute in the attributes' order (before the first field of a later attribute), or replaces its field. */
-export function withAttributeField(select: readonly Field[], attributes: readonly AttributeOption[], field: Field): Field[] {
-  const at = select.findIndex((f) => f.attribute === field.attribute);
-  if (at >= 0) return select.map((f, i) => (i === at ? field : f));
-  const order = new Map(attributes.map((a, i) => [a.id, i]));
-  const mine = order.get(field.attribute ?? "") ?? Number.MAX_SAFE_INTEGER;
-  const before = select.findIndex((f) => f.attribute !== undefined && (order.get(f.attribute) ?? -1) > mine);
-  const next = [...select];
-  next.splice(before < 0 ? next.length : before, 0, field);
-  return next;
-}
-
 /** A name for an ad hoc field from a column name (`issued_on` → issuedOn), not one of `taken`. */
 export function fieldName(columnName: string, taken: readonly string[] = []): string {
   const words = columnName.split(/[^A-Za-z0-9]+/).filter(Boolean);
@@ -859,7 +748,7 @@ export function fieldName(columnName: string, taken: readonly string[] = []): st
 
 // ------------------------------------------------------------------ named queries
 
-/** Every query body inside `node` (an object with a `from`), nested ones (exists conditions, collections) included. */
+/** Every query body inside `node` (an object with a `from`), nested ones (exists conditions) included. */
 function bodiesIn(node: unknown, out: Subquery[] = []): Subquery[] {
   if (Array.isArray(node)) node.forEach((x) => bodiesIn(x, out));
   else if (node && typeof node === "object") {
@@ -871,7 +760,7 @@ function bodiesIn(node: unknown, out: Subquery[] = []): Subquery[] {
 }
 
 /**
- * Renames a named query and every source that reads it, in the query, its collections, its exists conditions and the other named
+ * Renames a named query and every source that reads it, in the query, its exists conditions and the other named
  * queries: a source without an alias read it under its name, so its alias and the column references through it follow. False
  * (nothing changed) when the new name is taken (ignoring case) or not an identifier.
  */
@@ -893,7 +782,7 @@ export function renameNamedQuery(doc: QueryDoc, from: string, to: string): boole
       s.alias ??= from;
       s.source = to;
     }
-    if (readers.some((s) => s.alias === from)) renameAlias(body as Subquery & { collections?: Collection[] }, from, to);
+    if (readers.some((s) => s.alias === from)) renameAlias(body, from, to);
   }
   for (const e of entries) if (e.name === from) e.name = to;
   return true;
@@ -918,7 +807,7 @@ export function renameNamedField(doc: QueryDoc, named: string, index: number, to
   entry.select[index].name = to;
   if (entry.recursive?.select[index]) entry.recursive.select[index].name = to;
   // A body's own sources decide what an alias means inside it: one that reads the named query adds its alias, any other source
-  // that reuses the alias shadows it (a nested query's alias hides the outer one). Collections and exists conditions are nested bodies.
+  // that reuses the alias shadows it (a nested query's alias hides the outer one). Exists conditions are nested bodies.
   const visit = (node: unknown, active: ReadonlySet<string>): void => {
     if (Array.isArray(node)) return node.forEach((x) => visit(x, active));
     if (!node || typeof node !== "object") return;

@@ -1,9 +1,8 @@
 // The query editor's model (model/queryTree.ts): forms, constructors, labels and checks of the trees, the edits across a query
-// (renames, the result entity), and what needs the database view (sources, columns, a join from a foreign key, the select list
-// filled from same-named columns), over the billing fixture's resolved database. Also New query…'s checks and document
+// (renames), and what needs the database view (sources, columns, a join from a foreign key), over the billing fixture's resolved
+// database. Also New query…'s checks and document
 // (explorer/databaseCreate.ts), the parameters grid's defaults, and the Database screen's and the preview's query targets.
 import { describe, expect, it } from "vitest";
-import type { ElementSummary } from "@/api/types";
 import {
   and,
   call,
@@ -17,7 +16,6 @@ import {
   expressionKind,
   expressionProblem,
   fieldName,
-  fillFromColumns,
   findSource,
   foreignKeyJoins,
   literal,
@@ -37,13 +35,8 @@ import {
   resolveColumn,
   rightShape,
   scopeOf,
-  hasResultEntity,
-  removeResultEntities,
-  setResultEntity,
   sourceOptions,
   sqlText,
-  tidy,
-  withAttributeField,
   withComparison,
   withExpressionKind,
   type QueryDoc,
@@ -56,8 +49,7 @@ import {
   SCHEMA_ELEMENT_KINDS,
   type DatabaseObjectInput,
 } from "@/explorer/databaseCreate";
-import { entityShapeOf, parameterDefault, tableFiles } from "@/editors/database/QueryParts";
-import { indexLookup } from "@/model/index";
+import { parameterDefault, tableFiles } from "@/editors/database/QueryParts";
 import { ddlPreviewCaption, ddlPreviewTarget } from "@/workspaces/database/ddlPreview";
 import { LIST_KINDS, OBJECT_LIST_MEMBERS } from "@/workspaces/database/tableList";
 import { unitScope } from "@/workspaces/generate/previewScope";
@@ -209,16 +201,14 @@ describe("edits across the query", () => {
     id: "Q",
     name: "Q",
     database: MAIN,
-    entity: INVOICE,
     parameters: [
       { name: "take", type: "int32" },
       { name: "who", type: "uuid" },
     ],
     from: { source: INVOICES_OVERLAY, alias: "i" },
-    select: [{ attribute: INVOICE_ID, expression: column("i", INVOICE_ID) }],
+    select: [{ name: "id", expression: column("i", INVOICE_ID) }],
     where: and(compare("eq", column("i", "x"), param("who")), compare("gt", param("take"), literal(0))),
     paging: { limit: "take" },
-    collections: [{ attribute: "E", query: { from: { source: "L", alias: "l" }, where: compare("eq", column("l", "inv"), column("i", INVOICE_ID)) } }],
   });
 
   it("renames a parameter everywhere it is used, and refuses a taken name", () => {
@@ -230,105 +220,12 @@ describe("edits across the query", () => {
     expect(renameParameter(d, "who", "limit")).toBe(false);
   });
 
-  it("renames an alias in the body and in the collections that correlate with it", () => {
+  it("renames an alias in the body", () => {
     const d = doc();
     renameAlias(d, "i", "inv");
     expect(d.from.alias).toBe("inv");
     expect(d.select[0].expression).toEqual({ column: `inv.${INVOICE_ID}` });
     expect(d.where!.and![0].left).toEqual({ column: "inv.x" });
-    expect(d.collections![0].query.where).toEqual(compare("eq", column("l", "inv"), column("inv", INVOICE_ID)));
-  });
-
-  it("turns the fields a new result entity lacks into named fields, keeping their expressions", () => {
-    const d = doc();
-    d.select = [
-      { attribute: INVOICE_ID, expression: column("i", INVOICE_ID) },
-      { attribute: "OLD", expression: column("i", "n") },
-      { attribute: "OLD2", name: "kept", expression: column("i", "k") },
-      { name: "number", expression: literal(1) },
-      { attribute: "NUM", expression: column("i", "x") },
-    ];
-    const names: Record<string, string> = { [INVOICE_ID]: "id", OLD: "total", NUM: "number" };
-    setResultEntity(
-      d,
-      CUSTOMER,
-      (id) => names[id],
-      (a) => a === INVOICE_ID,
-    );
-    expect(d.entity).toBe(CUSTOMER);
-    expect(d.select).toEqual([
-      { attribute: INVOICE_ID, expression: column("i", INVOICE_ID) },
-      { name: "total", expression: column("i", "n") },
-      { name: "kept", expression: column("i", "k") },
-      { name: "number", expression: literal(1) },
-      // Its attribute's name is taken by another field: numbered.
-      { name: "number2", expression: column("i", "x") },
-    ]);
-  });
-
-  it("removes an older query's result entities, its collections' too, keeping every value under a name", () => {
-    const d: QueryDoc = {
-      ...doc(),
-      entity: INVOICE,
-      select: [
-        { attribute: INVOICE_ID, expression: column("i", INVOICE_ID) },
-        { name: "extra", expression: literal(1) },
-      ],
-      collections: [
-        { attribute: "END", query: { from: { source: "L", alias: "l" }, select: [{ attribute: "QTY", expression: column("l", "q") }] } },
-        { attribute: "ATTR", entity: INVOICE_LINE, query: { from: { source: "L", alias: "m" }, select: [{ name: "n", expression: column("m", "n") }] } },
-      ],
-    };
-    expect(hasResultEntity(d)).toBe(true);
-    const names: Record<string, string> = { [INVOICE_ID]: "id", QTY: "quantity", END: "lines", ATTR: "lines" };
-    removeResultEntities(
-      d,
-      (id) => names[id],
-      (a) => names[a],
-      () => (id) => names[id],
-    );
-    expect(hasResultEntity(d)).toBe(false);
-    expect(d.select).toEqual([
-      { name: "id", expression: column("i", INVOICE_ID) },
-      { name: "extra", expression: literal(1) },
-    ]);
-    // Each collection is named after what it filled (unique), its fields named, its element entity gone.
-    expect(d.collections!.map((c) => c.attribute)).toEqual(["lines", "lines2"]);
-    expect(d.collections![0].query.select).toEqual([{ name: "quantity", expression: column("l", "q") }]);
-    expect(d.collections![1]).not.toHaveProperty("entity");
-    expect(d.collections![1].query.select).toEqual([{ name: "n", expression: column("m", "n") }]);
-  });
-
-  it("drops the entity for an ad hoc row, keeping the attributes' names", () => {
-    const d = doc();
-    setResultEntity(d, null, (id) => (id === INVOICE_ID ? "id" : undefined));
-    expect(d.entity).toBeUndefined();
-    expect(d.select).toEqual([{ name: "id", expression: column("i", INVOICE_ID) }]);
-    setResultEntity(d, CUSTOMER, () => undefined);
-    expect(d.entity).toBe(CUSTOMER);
-    const t: QueryDoc = { ...doc(), joins: [], groupBy: [], distinct: false };
-    tidy(t);
-    expect(["joins", "groupBy", "distinct"].filter((k) => k in t)).toEqual([]);
-  });
-
-  it("keeps the select list in the attributes' order", () => {
-    const attributes = [
-      { id: "a", name: "a" },
-      { id: "b", name: "b" },
-      { id: "c", name: "c" },
-    ];
-    const select = [
-      { attribute: "a", expression: literal(1) },
-      { attribute: "c", expression: literal(3) },
-      { name: "extra", expression: literal(4) },
-    ];
-    expect(withAttributeField(select, attributes, { attribute: "b", expression: literal(2) }).map((f) => f.attribute ?? f.name)).toEqual([
-      "a",
-      "b",
-      "c",
-      "extra",
-    ]);
-    expect(withAttributeField(select, attributes, { attribute: "c", expression: literal(9) })[1].expression).toEqual(literal(9));
   });
 
   it("names aliases and fields", () => {
@@ -386,154 +283,6 @@ describe("over the billing database", () => {
     expect(toCustomer[0].label).toMatch(/^i\.customer_id = c\.id/);
     expect(foreignKeyJoins(invoices, [])).toEqual([]);
   });
-
-  it("fills the select list from same-named columns, skipping attributes that have a field", () => {
-    const { view, files } = billing();
-    const alias = scopeOf({ from: { source: INVOICES_OVERLAY, alias: "i" } }, view, files)[0];
-    const attributes = [
-      { id: INVOICE_ID, name: "id" },
-      { id: INVOICE_NUMBER, name: "number" },
-      { id: INVOICE_ISSUED_ON, name: "issuedOn" },
-      { id: "01X", name: "deletedAt" },
-      { id: "02X", name: "nothingLikeIt" },
-    ];
-    const { select, filled } = fillFromColumns([{ attribute: INVOICE_ID, expression: literal(1) }], attributes, alias);
-    expect(filled).toEqual(["number", "issuedOn", "deletedAt"]);
-    expect(select.map((f) => f.expression)).toEqual([
-      literal(1),
-      column("i", INVOICE_NUMBER),
-      column("i", INVOICE_ISSUED_ON),
-      column("i", alias.columns.find((c) => c.name === "deleted_at")!.ref),
-    ]);
-    // A value object member and a foreign key fill from the column whose key they start.
-    const total = alias.columns.find((c) => c.name === "total_amount")!.ref;
-    const customer = alias.columns.find((c) => c.name === "customer_id")!.ref;
-    const more = fillFromColumns(
-      [],
-      [
-        { id: total, name: "total.amount" },
-        { id: customer.split(".")[0], name: "customer (foreign key to Customer)" },
-      ],
-      alias,
-    );
-    expect(more.select.map((f) => [f.attribute, f.expression])).toEqual([
-      [total, column("i", total)],
-      [customer.split(".")[0], column("i", customer)],
-    ]);
-  });
-
-  it("offers only named ends as collections and foreign keys, and a value object's members as fields", () => {
-    const rows = [
-      { id: "E", kind: "entity", name: "Order" },
-      { id: "L", kind: "entity", name: "Line" },
-      { id: "C", kind: "entity", name: "Client" },
-      { id: "M", kind: "value-object", name: "Money" },
-      {
-        id: "R1",
-        kind: "relation",
-        name: "has",
-        ends: [
-          { entity: "E", role: "order" },
-          { entity: "L", role: "lines" },
-        ],
-      },
-      {
-        id: "R2",
-        kind: "relation",
-        name: "notes",
-        ends: [
-          { entity: "E", role: "order" },
-          { entity: "L", role: "notes" },
-        ],
-      },
-      {
-        id: "R3",
-        kind: "relation",
-        name: "placedBy",
-        ends: [
-          { entity: "E", role: "orders" },
-          { entity: "C", role: "client" },
-        ],
-      },
-    ] as unknown as ElementSummary[];
-    const docs = new Map<string, { json: unknown }>([
-      [
-        "E",
-        {
-          json: {
-            kind: "entity",
-            id: "E",
-            name: "Order",
-            attributes: [
-              { id: "A1", name: "id", type: "uuid" },
-              { id: "A2", name: "total", type: { ref: "M" } },
-            ],
-          },
-        },
-      ],
-      [
-        "M",
-        {
-          json: {
-            kind: "value-object",
-            id: "M",
-            name: "Money",
-            attributes: [
-              { id: "M1", name: "amount", type: "decimal" },
-              { id: "M2", name: "currency", type: "string" },
-            ],
-          },
-        },
-      ],
-      [
-        "R1",
-        {
-          json: {
-            kind: "relation",
-            id: "R1",
-            ends: [
-              { id: "X1", entity: "E", role: "order", max: 1 },
-              { id: "Y1", entity: "L", role: "lines", navigation: "lines" },
-            ],
-          },
-        },
-      ],
-      // A to-many end without a navigation name is no navigation: the engine would report MQ4027 for it.
-      [
-        "R2",
-        {
-          json: {
-            kind: "relation",
-            id: "R2",
-            ends: [
-              { id: "X2", entity: "E", role: "order", max: 1 },
-              { id: "Y2", entity: "L", role: "notes" },
-            ],
-          },
-        },
-      ],
-      [
-        "R3",
-        {
-          json: {
-            kind: "relation",
-            id: "R3",
-            ends: [
-              { id: "X3", entity: "E", role: "orders" },
-              { id: "Y3", entity: "C", role: "client", navigation: "client", max: 1 },
-            ],
-          },
-        },
-      ],
-    ]);
-    const shape = entityShapeOf(["E"], ["R1", "R2", "R3"], docs, [], indexLookup(rows));
-    expect(shape.collections.map((c) => [c.value, c.label])).toEqual([["Y1", "lines (Line)"]]);
-    expect(shape.fills.map((f) => [f.id, f.name, f.fieldName])).toEqual([
-      ["A2.M1", "total.amount", "totalAmount"],
-      ["A2.M2", "total.currency", "totalCurrency"],
-      ["Y3", "client (foreign key to Client)", "clientId"],
-    ]);
-  });
 });
 
 describe("New query…", () => {
@@ -563,36 +312,30 @@ describe("New query…", () => {
     expect(SCHEMA_ELEMENT_KINDS).not.toContain("query");
   });
 
-  it("starts a valid query: the entity's key filled from its column, or the source's first column for an ad hoc row", () => {
+  it("starts a valid query: the source's first column as a field named after it", () => {
     const { view, files } = billing();
     const invoices = findSource(view, INVOICE, files);
     expect(queryAlias(invoices)).toBe("i");
-    const keyed = querySelect(invoices, "i", { id: INVOICE_ID, name: "id" });
-    expect(keyed).toEqual([{ attribute: INVOICE_ID, expression: column("i", INVOICE_ID) }]);
-    const adHoc = querySelect(invoices, "i", null);
-    expect(adHoc).toEqual([{ name: "id", expression: column("i", invoices!.table!.columns[0].key) }]);
-    expect(querySelect(null, "x", null)).toEqual([{ name: "value", expression: { value: 1 } }]);
+    const select = querySelect(invoices, "i");
+    expect(select).toEqual([{ name: "id", expression: column("i", invoices!.table!.columns[0].key) }]);
+    expect(querySelect(null, "x")).toEqual([{ name: "value", expression: { value: 1 } }]);
     let n = 0;
-    const json = buildDatabaseObject(input({ entity: INVOICE, select: keyed }), () => `ID${++n}`);
+    const json = buildDatabaseObject(input({ select }), () => `ID${++n}`);
     expect(json).toEqual({
       kind: "query",
       id: "ID1",
       name: "OpenInvoices",
       database: MAIN,
-      entity: INVOICE,
       from: { source: `${INVOICE}@${MAIN}`, alias: "i" },
-      select: keyed,
+      select,
     });
-    expect(buildDatabaseObject(input({ entity: null, alias: "", select: adHoc }), () => "ID")).not.toHaveProperty("entity");
+    expect(buildDatabaseObject(input({ alias: "", select }), () => "ID")).not.toHaveProperty("entity");
   });
 
   it("validates as a query document the mock accepts as one undo step", () => {
     const { backend, view, files } = billing();
     const invoices = findSource(view, INVOICE, files);
-    const json = buildDatabaseObject(
-      input({ entity: INVOICE, select: querySelect(invoices, "i", { id: INVOICE_ID, name: "id" }) }),
-      () => "01K6QRY0000000000000000099",
-    );
+    const json = buildDatabaseObject(input({ select: querySelect(invoices, "i") }), () => "01K6QRY0000000000000000099");
     const result = backend.model.create(json as never);
     expect(result.outcome).toBe("saved");
     expect(backend.model.get("01K6QRY0000000000000000099")?.path).toBe(".maquettiste/model/databases/main/queries/open-invoices.json");

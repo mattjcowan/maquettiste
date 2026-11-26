@@ -2076,13 +2076,12 @@ One resolved SQL object.
 
 ### queryView
 
-One resolved query: the trees as the file writes them, with what resolution adds (sources, field types, collection keys) and the SQL for the database's dialect.
+One resolved query: the trees as the file writes them, with what resolution adds (sources, field types) and the SQL for the database's dialect.
 
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
 | `id` | string | never | The query file's id. |
 | `name` | string | never | The query's name. |
-| `entityId` | string | can be null | The result entity's id, or null for an ad hoc row. |
 | `parameters` | list of [queryParameterView](#queryparameterview) | never | The parameters, in order. |
 | `from` | [querySourceView](#querysourceview) | left out when not set | The first source of a built query; null (left out) for a query written as SQL text. |
 | `joins` | list of [querySourceView](#querysourceview) | never | The joined sources. |
@@ -2093,8 +2092,7 @@ One resolved query: the trees as the file writes them, with what resolution adds
 | `orderBy` | list of any | never | The ordering terms as the file writes them (`expression`, `direction`, `nulls`). |
 | `distinct` | boolean | never | Whether duplicate rows are removed. |
 | `paging` | any | can be null | The paging as the file writes it, or null. |
-| `collections` | list of [queryCollectionView](#querycollectionview) | never | The collections. |
-| `sql` | string | can be null | The SQL for the database's dialect (`@name` placeholders), with the hidden key columns its collections need (for a query written as SQL text, its text as written with the white space at both ends removed, a final `;` kept), or null when it cannot be rendered there. |
+| `sql` | string | can be null | The SQL for the database's dialect (`@name` placeholders; for a query written as SQL text, its text as written with the white space at both ends removed, a final `;` kept), or null when it cannot be rendered there. |
 | `sqlParameters` | list of string | never | The parameters the SQL names, in first-appearance order. |
 | `uses` | list of string | never | The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order. |
 | `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
@@ -2152,42 +2150,12 @@ A field of a select list.
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
 | `name` | string | never | The field's name in the result row. |
-| `attributeId` | string | can be null | What it fills: an attribute's id, `attributeId.memberId` for a value object member, the relation end a to-one navigation leads to for its foreign key, or null. |
 | `expression` | any | left out when not set | The value as the file writes it (an expression tree); null (left out) for a declared column of a query written as SQL text. |
 | `type` | string | can be null | The built-in type keyword, or null when unknown. |
 | `nativeType` | string | can be null | The native type, or null when unknown. |
 | `codeType` | string | can be null | The keyword a code type map maps, or null. |
 | `nullable` | boolean | never | Whether the value may be null. |
 | `description` | string | left out when not set | A declared column's description; null (left out) for a select field or without one. |
-
-### queryCollectionView
-
-A collection of a query: its nested query and the statement that fills it for every parent row.
-
-| Field | Type | Null | Meaning |
-| --- | --- | --- | --- |
-| `name` | string | never | The collection's name. |
-| `attribute` | string | never | The file's `attribute`: an attribute id, a relation end id or an ad hoc name. |
-| `entityId` | string | can be null | The element entity's id, or null for an ad hoc element. |
-| `query` | any | never | The nested query as the file writes it. |
-| `select` | list of [queryFieldView](#queryfieldview) | never | The nested select list, resolved. |
-| `keys` | list of [queryKeyView](#querykeyview) | never | The correlation keys. |
-| `sql` | string | never | The collection's statement for the database's dialect. |
-| `sqlParameters` | list of string | never | The parameters it names, in first-appearance order. |
-
-### queryKeyView
-
-A correlation key of a collection.
-
-| Field | Type | Null | Meaning |
-| --- | --- | --- | --- |
-| `outer` | string | never | The parent's column (`alias.column`). |
-| `parentField` | string | never | The parent row's field that carries the value. |
-| `hidden` | boolean | never | Whether the parent's SQL adds the field as a hidden column. |
-| `childField` | string | never | The collection statement's column that carries the value. |
-| `parameter` | string | never | The list parameter of the collection's statement. |
-| `type` | string | can be null | The value's built-in type keyword, or null. |
-| `nativeType` | string | can be null | The value's native type, or null. |
 
 ### namedQueryView
 

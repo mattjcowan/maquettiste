@@ -48,7 +48,7 @@ internal sealed partial class DatabaseRun
 
                 (_withCurrent, _withVisible, _inWith) = (i, i, true);
                 var anchor = Part(entry.Name, entry);
-                ResolveBody(anchor, new Scope(anchor, null), entry.From, entry.Joins, entry.Select, entry.Where, entry.GroupBy, entry.Having, [], at, null);
+                ResolveBody(anchor, new Scope(anchor, null), entry.From, entry.Joins, entry.Select, entry.Where, entry.GroupBy, entry.Having, [], at);
                 anchor.Distinct = entry.Distinct;
                 var named = new RNamedQuery
                 {
@@ -81,7 +81,7 @@ internal sealed partial class DatabaseRun
             var part = Part(named.Name, recursive);
             (_self, _selfPart) = (named, part);
             _selfReads.Clear();
-            ResolveBody(part, new Scope(part, null), recursive.From, recursive.Joins, recursive.Select, recursive.Where, [], null, [], at, null);
+            ResolveBody(part, new Scope(part, null), recursive.From, recursive.Joins, recursive.Select, recursive.Where, [], null, [], at);
             (_self, _selfPart) = (null, null);
             named.Recursive = part;
             named.Union = recursive.Union == QueryUnion.Distinct ? "distinct" : "all";

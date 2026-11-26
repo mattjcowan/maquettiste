@@ -1,5 +1,5 @@
 // The mock's named queries (queries.ts and querySql.ts mirror DatabaseRun.NamedQueries.cs and Rendering/QuerySql.cs): resolution,
-// the WITH clause per dialect, a collection repeating the entries it reads, a binding over the query (WITH first), every MQ4099 case
+// the WITH clause per dialect, a binding over the query (WITH first), every MQ4099 case
 // at the engine's pointer and message, MQ3001/MQ4021/MQ4023 for named queries, and the editor's renames across the document.
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
@@ -145,33 +145,6 @@ describe("named queries: rendering", () => {
         "WHERE x.id <> $2",
       ].join("\n"),
     );
-  });
-
-  it("repeats in a collection's statement only the entries it reads, in list order", () => {
-    const other = { name: "unused", from: { source: INVOICES, alias: "u" }, select: [{ name: "id", expression: { column: "u.id" } }] };
-    const { found, result } = bind(
-      query({
-        with: [other, chain()],
-        from: { source: INVOICES, alias: "i" },
-        select: [{ name: "id", expression: { column: "i.id" } }],
-        collections: [
-          {
-            attribute: "parents",
-            query: {
-              from: { source: "chain", alias: "k" },
-              select: [{ name: "depth", expression: { column: "k.depth" } }],
-              where: { op: "eq", left: { column: "k.id" }, right: { column: "i.id" } },
-            },
-          },
-        ],
-      }),
-    );
-    expect(found).toEqual([]);
-    const view = result.queries.find((x) => x.id === QUERY)!;
-    expect(view.collections[0].sql.startsWith("WITH RECURSIVE chain (id, depth) AS (")).toBe(true);
-    expect(view.collections[0].sql).not.toContain("unused");
-    // The top statement keeps every entry.
-    expect(view.sql!.startsWith("WITH RECURSIVE unused (id) AS (")).toBe(true);
   });
 
   it("projects with, columns, recursive and union, and a source's namedQuery", () => {
@@ -448,18 +421,14 @@ describe("named queries: bindings and the editor", () => {
     expect(renameNamedField(d, "chain", 0, "level")).toBe(false);
   });
 
-  it("renames a field through the alias in collections, but not a column of another source that reuses the alias in an exists", () => {
+  it("renames a field through the alias in a nested query, but not a column of another source that reuses the alias in an exists", () => {
     const d = doc();
-    d.collections = [
-      {
-        attribute: "Lines",
-        query: {
-          from: { source: LINES, alias: "l" },
-          select: [{ name: "id", expression: { column: "l.id" } }],
-          where: { op: "eq", left: { column: "l.invoice" }, right: { column: "chain.depth" } },
-        },
+    d.having = {
+      exists: {
+        from: { source: LINES, alias: "l" },
+        where: { op: "eq", left: { column: "l.invoice" }, right: { column: "chain.depth" } },
       },
-    ] as never;
+    } as never;
     d.where = {
       exists: {
         from: { source: LINES, alias: "chain" },
@@ -470,7 +439,7 @@ describe("named queries: bindings and the editor", () => {
     expect(renameNamedField(d, "chain", 1, "level")).toBe(true);
     const text = JSON.stringify(d);
     expect(text).toContain('"right":{"column":"chain.level"}');
-    expect(JSON.stringify((d.collections as unknown as { query: unknown }[])[0])).toContain("chain.level");
+    expect(JSON.stringify(d.having)).toContain("chain.level");
     expect(JSON.stringify(d.where)).not.toContain("chain.level");
     expect(JSON.stringify(d.where)).toContain("chain.depth");
   });

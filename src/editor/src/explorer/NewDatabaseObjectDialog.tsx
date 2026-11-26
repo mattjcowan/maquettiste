@@ -181,7 +181,7 @@ function NewDatabaseObjectDialog({ request, onClose }: { request: NewDatabaseObj
     phase,
     source: shownSource,
     alias: shownAlias,
-    select: kind === "query" ? querySelect(sourceOption, shownAlias, null) : undefined,
+    select: kind === "query" ? querySelect(sourceOption, shownAlias) : undefined,
   };
   const problems = databaseObjectProblems(input, taken, schema || null, defaultName);
   const blocked = Object.keys(problems).length > 0 || busy || !dbDoc;

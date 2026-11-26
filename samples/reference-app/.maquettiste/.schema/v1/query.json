@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Query",
-  "description": "A query of a database (model/databases/<db>/queries/), in one of two forms. Built from parts: sources, joins, a select list, predicates, grouping, ordering, paging, collections and named queries (with), written as data; its result shape is an entity, or the select list when no entity is named. SQL text: the team's own statement per dialect (sql), with :name placeholders for its parameters, the columns each row has (columns) and the tables and other objects it reads and writes (reads, writes), declared rather than read from the text.",
+  "description": "A query of a database (model/databases/<db>/queries/), in one of two forms. Built from parts: sources, joins, a select list, predicates, grouping, ordering, paging and named queries (with), written as data; its rows have the shape of its select list. SQL text: the team's own statement per dialect (sql), with :name placeholders for its parameters, the columns each row has (columns) and the tables and other objects it reads and writes (reads, writes), declared rather than read from the text.",
   "type": "object",
   "x-order": [
     "$schema",
@@ -21,7 +21,6 @@
     "excludeStereotypes",
     "tags",
     "category",
-    "entity",
     "parameters",
     "with",
     "from",
@@ -33,7 +32,6 @@
     "orderBy",
     "distinct",
     "paging",
-    "collections",
     "sql",
     "columns",
     "reads",
@@ -105,10 +103,6 @@
     "category": {
       "$ref": "common.json#/$defs/id"
     },
-    "entity": {
-      "description": "Retired (MQ4127), removed in a later version: the entity whose shape each result row has; absent, the select list is the row shape (a name and a type per field). Bind the entity to the query instead (its binding's source names the query).",
-      "$ref": "common.json#/$defs/id"
-    },
     "parameters": {
       "description": "The values the caller passes, by name.",
       "type": "array",
@@ -171,14 +165,6 @@
     "paging": {
       "$ref": "#/$defs/paging"
     },
-    "collections": {
-      "description": "Retired (MQ4127), removed in a later version: collections filled per result row by a correlated query (a sub-select yielding a list per parent row). Read a record's parts through composition, each part with its own binding.",
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/collection"
-      },
-      "default": []
-    },
     "sql": {
       "description": "The statement as SQL text per dialect (or \"*\" for any): the text for the database's dialect is its own entry, else \"*\". Parameters are written :name in every dialect. Rendered as written, with only the white space at both ends removed (a final semicolon stays) and the placeholders rewritten; where a binding wraps it in a derived table, one final semicolon and the comments after it are left out. SQL text form only, and required there.",
       "$ref": "common.json#/$defs/dialectMap",
@@ -231,9 +217,8 @@
   "then": {
     "title": "SQL text",
     "description": "A query written as SQL text has none of the keys of a built query (an empty list or false is allowed, since the canonical writer drops it).",
-    "x-order": ["entity", "with", "from", "joins", "select", "where", "groupBy", "having", "orderBy", "distinct", "paging", "collections"],
+    "x-order": ["with", "from", "joins", "select", "where", "groupBy", "having", "orderBy", "distinct", "paging"],
     "properties": {
-      "entity": false,
       "with": {
         "maxItems": 0
       },
@@ -253,10 +238,7 @@
       "distinct": {
         "const": false
       },
-      "paging": false,
-      "collections": {
-        "maxItems": 0
-      }
+      "paging": false
     }
   },
   "else": {
@@ -486,19 +468,14 @@
     "field": {
       "title": "Select field",
       "type": "object",
-      "x-order": ["name", "attribute", "type", "nullable", "expression"],
+      "x-order": ["name", "type", "nullable", "expression"],
       "properties": {
         "name": {
-          "description": "The field's name in the result row; absent, the attribute's name.",
+          "description": "The field's name in the result row.",
           "$ref": "common.json#/$defs/identifier"
         },
-        "attribute": {
-          "description": "What the field fills on the query's entity (or a collection's entity): an attribute id, attributeId.memberId for a member of a value object attribute, or the id of the relation end a to-one navigation of the entity leads to (or the navigation's id), for its foreign key column.",
-          "type": "string",
-          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}(\\.[0-7][0-9A-HJKMNP-TV-Z]{25})?$"
-        },
         "type": {
-          "description": "The field's type in an ad hoc row; absent, inferred from the expression.",
+          "description": "The field's type; absent, inferred from the expression.",
           "$ref": "common.json#/$defs/builtinType"
         },
         "nullable": {
@@ -509,15 +486,7 @@
           "$ref": "#/$defs/expression"
         }
       },
-      "required": ["expression"],
-      "anyOf": [
-        {
-          "required": ["name"]
-        },
-        {
-          "required": ["attribute"]
-        }
-      ],
+      "required": ["name", "expression"],
       "additionalProperties": false
     },
     "order": {
@@ -571,31 +540,9 @@
       },
       "additionalProperties": false
     },
-    "collection": {
-      "title": "Collection",
-      "type": "object",
-      "x-order": ["attribute", "entity", "query"],
-      "properties": {
-        "attribute": {
-          "description": "The collection the rows fill: the id of a collection attribute of the query's entity or of the relation end its to-many navigation leads to, or a name for an ad hoc row.",
-          "type": "string",
-          "minLength": 1
-        },
-        "entity": {
-          "description": "Retired with collections (MQ4127): the entity each element has; absent, the nested select list is the element shape.",
-          "$ref": "common.json#/$defs/id"
-        },
-        "query": {
-          "description": "The nested query; its predicates may name the outer query's aliases (the correlation), only in equality conditions at the top of its where.",
-          "$ref": "#/$defs/subquery"
-        }
-      },
-      "required": ["attribute", "query"],
-      "additionalProperties": false
-    },
     "subquery": {
       "title": "Nested query",
-      "description": "A query inside a collection or an exists condition; it may name the aliases of the queries around it.",
+      "description": "A query inside an exists condition; it may name the aliases of the queries around it.",
       "type": "object",
       "x-order": ["from", "joins", "select", "where", "groupBy", "having", "orderBy", "distinct"],
       "properties": {
@@ -610,7 +557,7 @@
           "default": []
         },
         "select": {
-          "description": "The fields; required in a collection, ignored by exists (which selects 1).",
+          "description": "The fields; ignored by exists (which selects 1).",
           "type": "array",
           "items": {
             "$ref": "#/$defs/field"

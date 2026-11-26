@@ -142,7 +142,7 @@ test("New query… creates a query, the editor joins, fills, filters and orders 
     await chevron(tree.getByTestId("explorer-folder-Queries")).click();
   await tree.getByTestId("explorer-row-CustomerInvoices").click();
   await expect(page.getByTestId("inspector-title")).toHaveText("CustomerInvoices");
-  await expect(page.getByTestId("inspector").getByTestId("query-fields")).toContainText("Each row has 2 fields; 2 sources; 1 parameter; 0 collections");
+  await expect(page.getByTestId("inspector").getByTestId("query-fields")).toContainText("Each row has 2 fields; 2 sources; 1 parameter.");
   await page.getByRole("button", { name: "Delete CustomerInvoices" }).click();
   await expect(page.getByTestId("delete-plan-dialog")).toHaveCount(0);
   await expect(tree.getByTestId("explorer-row-CustomerInvoices")).toHaveCount(0);

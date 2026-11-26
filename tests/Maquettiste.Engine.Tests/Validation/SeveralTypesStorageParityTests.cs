@@ -13,14 +13,14 @@ namespace Maquettiste.Engine.Tests.Validation;
 /// <summary>
 /// The engine's answer for relations with several types, part 2 (storage in the team's tables), written where the editor's tests read it, so
 /// the mock is checked against the engine (several-types-design.md section 19.10). Two invented projects, since a whole-model validation
-/// drops the run's findings while any error exists: <c>several-types-storage-files</c> holds one misfit per MQ4009 file case, MQ4011,
-/// MQ4116's query case and MQ4115 with its new skip; <c>several-types-storage-run</c>, with no validation error, holds every way of
+/// drops the run's findings while any error exists: <c>several-types-storage-files</c> holds one misfit per MQ4009 file case, MQ4011
+/// and MQ4115 with its new skip; <c>several-types-storage-run</c>, with no validation error, holds every way of
 /// section 19.4, one misfit per MQ4117 case it covers, every MQ4118 gap, MQ4051 and MQ4120. Each writes its findings, sorted, to its
 /// <c>diagnostics.json</c> with <c>MAQUETTISTE_RECORD=1</c>; otherwise the test fails when the engine's answer differs.
 /// </summary>
 public sealed class SeveralTypesStorageParityTests
 {
-    private static readonly string[] FileRules = ["MQ4009", "MQ4011", "MQ4115", "MQ4116"];
+    private static readonly string[] FileRules = ["MQ4009", "MQ4011", "MQ4115"];
     private static readonly string[] RunRules = ["MQ4051", "MQ4117", "MQ4118", "MQ4120"];
 
     private static bool Recording => Environment.GetEnvironmentVariable("MAQUETTISTE_RECORD") == "1";
@@ -93,7 +93,6 @@ public sealed class SeveralTypesStorageParityTests
         Hit("MQ4009", "End entry 1 names no 'foreignKey'; junction table 'links' is designed");
         Hit("MQ4011", "Link table 'links' holds relation 'NoEntry', so end 'comment' needs an 'ends' entry");
         Hit("MQ4115", "Relation 'Unmapped' has an end with several types, so database 'main' stores nothing for it.");
-        Hit("MQ4116", "Field 1 of query 'Comments' names end 'target'");
         // MQ4115's skips: a mapping that sets ignore, or that stores the relation (decision 49); discriminatorValue on Comment is allowed.
         Assert.DoesNotContain(rows, r => r.Rule == "MQ4115" && (r.Message.Contains("'Ignored'", StringComparison.Ordinal) || r.Message.Contains("'Stored'", StringComparison.Ordinal)));
         Assert.DoesNotContain(rows, r => r.Rule == "MQ4009" && r.Message.Contains("discriminator", StringComparison.Ordinal));

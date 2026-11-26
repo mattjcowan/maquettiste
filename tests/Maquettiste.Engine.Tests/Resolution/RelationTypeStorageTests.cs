@@ -271,7 +271,7 @@ public sealed partial class RelationTypeStorageTests
     public async Task A_binding_maps_the_type_column_and_the_id_and_MQ4117_says_when_it_maps_another_column_than_the_mapping()
     {
         var (model, validation) = await ResolveAsync(h => h.Write("model/mappings/attached.json", RelationMapping(Attached, Way3)), bindComment: true);
-        Assert.DoesNotContain(validation, d => d.Rule is "MQ4116" or "MQ4045");
+        Assert.DoesNotContain(validation, d => d.Rule == "MQ4045");
         var binding = model.Entities.Single(e => e.Id == SComment).Bindings["main"];
         Assert.Equal([(null, (string?)null), ("type", null), ("id", null)], binding.Fields.Select(f => (f.Holds, f.KeyOf?.Name)));
         Assert.Equal(["id", "attachedToType", "attachedToId"], binding.Fields.Select(f => f.Name));

@@ -44,7 +44,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// lowering one would let the file vanish from generation without an error.
     /// </summary>
     private static readonly FrozenSet<string> FixedSeverityRules =
-        new[] { "MQ1001", "MQ1002", "MQ1004", "MQ1006", "MQ1007", "MQ1009", "MQ7012" }.ToFrozenSet(StringComparer.Ordinal);
+        new[] { "MQ1001", "MQ1002", "MQ1004", "MQ1006", "MQ1007", "MQ1009", "MQ4127", "MQ7012" }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>The walker of <see cref="TargetIds"/> (thread-safe; it caches metadata).</summary>
     private static readonly ReferenceWalker SelectionWalker = new();
@@ -2076,7 +2076,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
     /// <summary>
     /// Applies <c>validation.rules</c>: a severity override, or <c>off</c>. MQ1xxx ignore <c>off</c>; the MQ1xxx errors that leave a
-    /// file out of the snapshot (MQ1001, MQ1002, MQ1004, MQ1006, MQ1007, MQ1009, and MQ7012, a retired option refused at load) ignore every setting.
+    /// file out of the snapshot (MQ1001, MQ1002, MQ1004, MQ1006, MQ1007, MQ1009, MQ4127, a query key removed in 0.28.0, and MQ7012, a retired
+    /// option refused at load) ignore every setting.
     /// </summary>
     internal static List<Diagnostic> ApplySettings(ProjectSettings settings, List<Diagnostic> diagnostics)
     {

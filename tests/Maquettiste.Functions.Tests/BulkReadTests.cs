@@ -400,7 +400,7 @@ public sealed class BulkReadTests
         Contract.AssertResponse(sql, "/api/model/queries/{id}/sql");
         Assert.Equal("postgresql", sql.Json["preview"]!["dialect"]!.GetValue<string>());
         Assert.Contains("LIMIT @limit OFFSET @offset", sql.Json["preview"]!["sql"]!.GetValue<string>(), StringComparison.Ordinal);
-        Assert.Single(sql.Json["preview"]!["collections"]!.AsArray());
+        Assert.Null(sql.Json["preview"]!["collections"]);
 
         var oracle = await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql?dialect=oracle&placeholder=:");
         Contract.AssertResponse(oracle, "/api/model/queries/{id}/sql");

@@ -5,11 +5,13 @@ namespace Maquettiste.Engine.Model;
 
 /// <summary>
 /// A query of a database (<c>model/databases/&lt;db&gt;/queries/</c>, added 2026-10-02), in one of two forms (sql-queries-design.md
-/// decision 1). <b>Built from parts</b>: sources, joins, a select list, predicates, grouping, ordering, paging, collections and named
-/// queries (<see cref="With"/>), written as data; its result shape is <see cref="Entity"/>, or the select list when no entity is named.
+/// decision 1). <b>Built from parts</b>: sources, joins, a select list, predicates, grouping, ordering, paging and named queries
+/// (<see cref="With"/>), written as data; its rows have the shape of its select list.
 /// <b>SQL text</b> (<see cref="IsSqlText"/>): the team's statement per dialect (<see cref="Sql"/>) with <c>:name</c> placeholders, its
 /// declared <see cref="Columns"/>, and the objects it <see cref="Reads"/> and <see cref="Writes"/>. The schema keeps the forms apart.
-/// A query creates nothing in the database: packs turn it into a repository method.
+/// A query creates nothing in the database: packs turn it into a repository method. A query names no entity: an entity reads a query
+/// through its binding's <c>source</c>. The <c>entity</c> and <c>collections</c> keys (and a select field's <c>attribute</c>) were removed
+/// in 0.28.0; a file that still has them does not load (MQ4127).
 /// </summary>
 public sealed record Query : Element, IPackaged
 {
@@ -25,11 +27,6 @@ public sealed record Query : Element, IPackaged
     /// <summary>The id of the database.</summary>
     [ElementRef(ElementKind.Database)]
     public required string Database { get; init; }
-
-    /// <summary>The entity each result row has, or <see langword="null"/> for an ad hoc row (the select list). Retired (MQ4127), removed in
-    /// a later version: an entity reads a query through its binding's <c>source</c>.</summary>
-    [ElementRef(ElementKind.Entity)]
-    public string? Entity { get; init; }
 
     /// <summary>The parameters, in order.</summary>
     public IReadOnlyList<QueryParameter> Parameters { get; init; } = [];
@@ -63,10 +60,6 @@ public sealed record Query : Element, IPackaged
 
     /// <summary>The rows to skip and the most rows to return.</summary>
     public QueryPaging? Paging { get; init; }
-
-    /// <summary>The collections filled per result row. Retired (MQ4127), removed in a later version: a record's parts come through
-    /// composition (<c>entity.parts</c>), each part with its own binding.</summary>
-    public IReadOnlyList<QueryCollection> Collections { get; init; } = [];
 
     /// <summary>
     /// The statement as SQL text per dialect name or <c>"*"</c>, with <c>:name</c> placeholders (decisions 3 and 4); set only on a
@@ -255,18 +248,10 @@ public enum QueryJoinKind
 /// <summary>A field of a select list.</summary>
 public sealed record QueryField
 {
-    /// <summary>The field's name in the result row, or <see langword="null"/> for the attribute's name.</summary>
-    public string? Name { get; init; }
+    /// <summary>The field's name in the result row.</summary>
+    public required string Name { get; init; }
 
-    /// <summary>
-    /// What the field fills on the result entity: an attribute's id, <c>attributeId.memberId</c> for a member of a value object
-    /// attribute, or the relation end a to-one navigation leads to (its foreign key column). Keyed: each id segment is a reference,
-    /// and the resolver reports what does not resolve (MQ4025).
-    /// </summary>
-    [ElementRef(Keyed = true)]
-    public string? Attribute { get; init; }
-
-    /// <summary>The field's type in an ad hoc row, or <see langword="null"/> to infer it.</summary>
+    /// <summary>The field's type, or <see langword="null"/> to infer it from the expression.</summary>
     public string? Type { get; init; }
 
     /// <summary>Whether the field may be null, or <see langword="null"/> to infer it.</summary>
@@ -321,22 +306,7 @@ public sealed record QueryPaging
     public JsonElement? Limit { get; init; }
 }
 
-/// <summary>A collection filled per result row by a correlated nested query.</summary>
-public sealed record QueryCollection
-{
-    /// <summary>The id of a collection attribute or of the relation end a to-many navigation leads to, or a name for an ad hoc row.</summary>
-    [ElementRef(Keyed = true)]
-    public required string Attribute { get; init; }
-
-    /// <summary>The entity each element has, or <see langword="null"/> for an ad hoc element (the nested select list).</summary>
-    [ElementRef(ElementKind.Entity)]
-    public string? Entity { get; init; }
-
-    /// <summary>The nested query.</summary>
-    public required QuerySubquery Query { get; init; }
-}
-
-/// <summary>A query inside a collection or an <c>exists</c> condition; it may name the aliases of the queries around it.</summary>
+/// <summary>A query inside an <c>exists</c> condition; it may name the aliases of the queries around it.</summary>
 public sealed record QuerySubquery
 {
     /// <summary>The first source.</summary>

@@ -66,6 +66,10 @@ internal sealed class SchemaRegistry : ISchemaRegistry
             elementId = id.GetString();
 
         var diagnostics = new List<Diagnostic>();
+        // A query's keys that 0.28.0 removed are one MQ4127 naming the replacement, in place of the schema failures they cause.
+        var removed = string.Equals(fileName, RemovedQueryKeys.SchemaFile, StringComparison.Ordinal) ? RemovedQueryKeys.Find(document) : [];
+        if (removed.Count > 0)
+            diagnostics.Add(RemovedQueryKeys.Finding(document, removed, elementId, path));
         foreach (var detail in results.Details ?? [])
         {
             if (detail.Errors is null || InsideDiscardedBranch(detail))
@@ -75,6 +79,8 @@ internal sealed class SchemaRegistry : ISchemaRegistry
                 if (ApplicatorKeywords.Contains(keyword))
                     continue; // summarized by the failures of the subschemas it applies
                 var pointer = detail.InstanceLocation.ToString();
+                if (removed.Count > 0 && RemovedQueryKeys.Covers(pointer, removed))
+                    continue;
                 if (IsRetiredEnumLookup(document, pointer))
                 {
                     diagnostics.Add(RuleCatalog.Create("MQ7012", $"{pointer} The enum lookup-table storage option ('lookup') is retired: convert the enum to a " +

@@ -13,6 +13,28 @@ one.
   each field and each to-one link, and for each kind of part in the tree of parts (all, one chosen by a condition or a state and
   the latest by a field, or none), with entries from a base shown as such. Before, both were edited in the JSON tab only. No change
   to the files, the API or the generated output.
+- **A query's `entity` and `collections` are removed.** They were retired in 0.27.0. A query names no entity now: its
+  rows have the shape of its own select list, and an entity reads a query through its binding's `source`. A select
+  field's `attribute` goes too, since it only filled the query's entity. A query file that still has `entity`,
+  `collections` or a field `attribute` does not load: error MQ4127 names what the file has and what to do. No setting
+  turns it off.
+- **Rules that only judged those keys are gone:** MQ4025, MQ4026, MQ4027, MQ4032, MQ4033, MQ4041 and MQ4116. Their ids
+  are not used again, and a `validation.rules` entry that names one is ignored. MQ4028 and MQ4040 keep their other cases.
+- **Templates and the editor.** A resolved query has no `entity` or `collections`, and its fields no `attribute`,
+  `member`, `navigation` or `foreign_key_column`. The `query_collection_sql` helper is gone. The `csharp-dapper` pack's
+  query class always returns its own `<Name>Row`. The editor's query editor loses the retired result entity line and the
+  Collections tab, and the SQL preview shows one statement.
+
+**When you update:**
+
+- A query file with `entity`, `collections` or a field `attribute` stops validating (MQ4127). Rewrite it: give each select
+  field a `name` in place of its `attribute`, and remove `entity` and `collections`. If an entity should read the rows,
+  bind it to the query (its binding's `source` names the query, each field names a column). Read a record's parts through
+  composition (`entity.parts`).
+- A `validation.rules` entry naming one of the retired rules (MQ4025, MQ4026, MQ4027, MQ4032, MQ4033, MQ4041, MQ4116) is
+  ignored. A suppression naming one is now warning MQ5019, and a suppression naming MQ4127 is error MQ5018: remove them.
+- `validate --against` a baseline that still has such a query reports that the file did not load (MQ4109), as for any
+  file that does not load.
 
 ## 0.27.0 (2026-11-26)
 

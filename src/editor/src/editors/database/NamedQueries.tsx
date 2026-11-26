@@ -230,7 +230,7 @@ function NamedQueryCard({
         body={entry}
         update={anchorUpdate}
         q={anchorContext}
-        entity={null}
+
         label={label}
         renameField={(i, to) => update((d) => void renameNamedField(d, entry.name, i, to))}
       />
@@ -268,7 +268,7 @@ function NamedQueryCard({
           <SectionTitle>Sources</SectionTitle>
           <SourcesSection body={part as unknown as Subquery} update={partUpdate} q={partContext} label={`${label} repeating`} />
           <SectionTitle>Select</SectionTitle>
-          <SelectSection body={part as unknown as Subquery} update={partUpdate} q={partContext} entity={null} label={`${label} repeating`} />
+          <SelectSection body={part as unknown as Subquery} update={partUpdate} q={partContext} label={`${label} repeating`} />
           <SectionTitle>Filter</SectionTitle>
           <FilterSection body={part as unknown as Subquery} update={partUpdate} q={partContext} label={`${label} repeating where`} />
         </section>

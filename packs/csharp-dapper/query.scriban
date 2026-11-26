@@ -1,12 +1,8 @@
 {{-
 # A Dapper query class per query: an interface and a class with one ExecuteAsync that runs the query's SQL (query_sql) and
 # returns its rows as a generated <Name>Row record, the query's own shape. An entity reads a query through its binding instead
-# (repository.scriban). The template's own names start with mq_, which the engine reserves (MQ4040), so no parameter, field or
-# collection name collides with them; entity, enum and value object types are written global::-qualified.
-# Retired, rendered until removal (MQ4127): a query that names an entity returns its rows as that entity, and each collection
-# runs as a second statement (query_collection_sql) for the parent rows, at most MaxKeysPerStatement parent keys at a time,
-# matched to its parent by the correlation keys; a query with collections returns <Name>Result records (the row and one list
-# per collection).
+# (repository.scriban). The template's own names start with mq_, which the engine reserves (MQ4040), so no parameter or field
+# name collides with them; enum types are written global::-qualified.
 # Both forms of query come here. query.form is "structured" for a query built from parts and "sql" for one written as SQL text;
 # query_sql gives either one's statement with @name placeholders. query.select is the built query's select fields, or the SQL
 # text's declared columns (expression null: column_type_ref finds no table column, so each member takes the column's own type).
@@ -15,105 +11,16 @@ include "_csharp.scriban"
 include "_dapper.scriban"
 name = cs_class (pascal query.name)
 db = query.database
-numeric = ["int16", "int32", "int64", "decimal", "double", "float"]
 
-# The global::-qualified C# name of an entity, enum or value object.
+# The global::-qualified C# name of an enum.
 func qualified(element)
   ret "global::" + ns(element) + "." + type_name(element)
-end
-
-# The C# type of an attribute (nullable when optional), enums and value objects qualified.
-func attr_type(a)
-  if a.type.kind == "enum"
-    ret qualified(a.type.enum) + (a.required ? "" : "?")
-  end
-  if a.type.kind == "value-object"
-    ret qualified(a.type.value_object) + (a.required ? "" : "?")
-  end
-  ret type_of a "csharp"
 end
 
 # The C# type of a field's value in the private row class Dapper fills.
 func field_type(f)
   $t = f.code_type ? (type_of f.code_type "csharp") : "object"
   ret f.nullable ? $t + "?" : $t
-end
-
-# The C# expression that reads an entity attribute (or a value object member) from a row's field; null when the attribute
-# cannot be read from one field. A number of another type than the attribute's is cast to it.
-func read_field(a, f, src)
-  if a.type.kind == "value-object"
-    ret null
-  end
-  $full = attr_type(a)
-  if a.type.kind == "enum"
-    $en = qualified(a.type.enum)
-    if f.code_type == "string" || f.code_type == "text"
-      if f.nullable && !a.required
-        ret src + " is null ? null : " + $en + "Codes.Parse(" + src + ")"
-      end
-      ret $en + "Codes.Parse(" + src + (f.nullable ? "!" : "") + ")"
-    end
-    if f.nullable && !a.required
-      ret "(" + $en + "?)" + src
-    end
-    ret "(" + $en + ")" + src
-  end
-  if f.nullable && a.required
-    ret "(" + $full + ")" + src + "!"
-  end
-  if f.code_type && a.type.builtin && f.code_type != a.type.builtin && (numeric | array.contains f.code_type) && (numeric | array.contains a.type.builtin)
-    ret "(" + $full + ")" + src
-  end
-  ret src
-end
-
-# The C# expression that reads a foreign key property (a storage column of the entity's table) from a row's field.
-func read_foreign_key(f, src)
-  if f.nullable && !f.foreign_key_column.nullable
-    ret "(" + (row_type f.foreign_key_column) + ")" + src + "!"
-  end
-  ret src
-end
-
-# "Name = expression" for each field that fills an attribute, a value object member or a foreign key of the entity (read
-# inside the row class, so a field is a member). Members of one value object attribute build it together; an optional one is
-# null when all of its member fields are.
-func entity_assignments(e, fields)
-  $result = []
-  $objects = []
-  for f in fields
-    if f.member
-      if !($objects | array.contains f.attribute)
-        $objects[$objects.size] = f.attribute
-      end
-    else if f.foreign_key_column
-      $result[$result.size] = (row_prop(f.foreign_key_column) + " = " + read_foreign_key(f, cs_ident f.name))
-    else if f.attribute
-      $read = read_field(f.attribute, f, cs_ident f.name)
-      if $read
-        $result[$result.size] = (prop_name(f.attribute, type_name(e)) + " = " + $read)
-      end
-    end
-  end
-  for vo in $objects
-    $parts = []
-    $tests = []
-    for f in fields
-      if f.member && f.attribute == vo
-        $parts[$parts.size] = (prop_name(f.member, type_name(vo.type.value_object)) + " = " + read_field(f.member, f, cs_ident f.name))
-        if f.nullable
-          $tests[$tests.size] = ((cs_ident f.name) + " is null")
-        end
-      end
-    end
-    $created = "new " + qualified(vo.type.value_object) + " { " + ($parts | array.join ", ") + " }"
-    if !vo.required && $tests.size == $parts.size
-      $created = "(" + ($tests | array.join " && ") + " ? null : " + $created + ")"
-    end
-    $result[$result.size] = (prop_name(vo, type_name(e)) + " = " + $created)
-  end
-  ret $result
 end
 
 # The type the table column a field reads states as its typeRef (next-phase-2-design.md section 3.2), or null: a field that is
@@ -209,11 +116,8 @@ for p in query.parameters
   args[args.size] = ((cs_ident p.name) + " = " + (cs_ident p.name))
 end
 
-entity = query.entity
-item_type = entity ? qualified(entity) : name + "Row"
-has_collections = query.collections.size > 0
+item_type = name + "Row"
 is_command = query.select.size == 0
-result_type = has_collections ? name + "Result" : item_type
 
 # A JSON field is a JsonElement.
 uses_json = false
@@ -221,63 +125,6 @@ for f in query.select
   if f.code_type == "json"
     uses_json = true
   end
-end
-for c in query.collections
-  for f in c.query.select
-    if f.code_type == "json"
-      uses_json = true
-    end
-  end
-end
-
-# The parent row's hidden key fields (correlation columns no select field carries), once each.
-hidden_keys = []
-hidden_names = []
-for c in query.collections
-  for k in c.keys
-    if k.hidden && !(hidden_names | array.contains k.parent_field)
-      hidden_names[hidden_names.size] = k.parent_field
-      hidden_keys[hidden_keys.size] = k
-    end
-  end
-end
-
-# The C# type of the parent's value of a key: the select field's, or the hidden field's.
-func key_type(k)
-  for f in query.select
-    if f.name == k.parent_field
-      ret field_type(f)
-    end
-  end
-  $t = k.code_type ? (type_of k.code_type "csharp") : "object"
-  ret k.outer.nullable ? $t + "?" : $t
-end
-
-func element_type(c)
-  ret c.entity ? qualified(c.entity) : name + (pascal c.name) + "Item"
-end
-
-# A collection's key of a row variable: one value, or a tuple of the key values.
-func parent_key(c, row)
-  if c.keys.size == 1
-    ret row + "." + (cs_ident c.keys[0].parent_field)
-  end
-  $parts = []
-  for k in c.keys
-    $parts[$parts.size] = (row + "." + (cs_ident k.parent_field))
-  end
-  ret "(" + ($parts | array.join ", ") + ")"
-end
-
-func child_key(c, row)
-  if c.keys.size == 1
-    ret row + "." + c.keys[0].child_field
-  end
-  $parts = []
-  for k in c.keys
-    $parts[$parts.size] = (row + "." + k.child_field)
-  end
-  ret "(" + ($parts | array.join ", ") + ")"
 end
 -}}
 {{ header() }}
@@ -301,26 +148,14 @@ namespace {{ base_ns }}.Queries;
     /// <returns>The number of rows the statement changed, as the database counts them.</returns>
     Task<int> ExecuteAsync({{ signature }});
 {{- else }}
-    /// <summary>Runs the query{{ if has_collections }} and fills its collections{{ end }}.</summary>
-    Task<IReadOnlyList<{{ result_type }}>> ExecuteAsync({{ signature }});
+    /// <summary>Runs the query.</summary>
+    Task<IReadOnlyList<{{ item_type }}>> ExecuteAsync({{ signature }});
 {{- end }}
 }
-{{- if !entity && !is_command }}
+{{- if !is_command }}
 
 /// <summary>One row of query {{ query.name }}.{{ record_code_notes(query.select) }}</summary>
 public sealed partial record {{ name }}Row({{ for f in query.select }}{{ record_member_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
-{{- end }}
-{{- for c in query.collections }}
-{{- if !c.entity }}
-
-/// <summary>One element of collection {{ c.name }} of query {{ query.name }}.{{ record_code_notes(c.query.select) }}</summary>
-public sealed partial record {{ element_type(c) }}({{ for f in c.query.select }}{{ record_member_type(f) }} {{ cs_ident (pascal f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
-{{- end }}
-{{- end }}
-{{- if has_collections }}
-
-/// <summary>One row of query {{ query.name }} with its collections.</summary>
-public sealed partial record {{ result_type }}({{ item_type }} Item{{ for c in query.collections }}, IReadOnlyList<{{ element_type(c) }}> {{ cs_ident (pascal c.name) }}{{ end }});
 {{- end }}
 
 /// <summary>The Dapper implementation of <see cref="I{{ name }}Query"/> (database {{ db.name }}, {{ db.dialect }}).</summary>
@@ -328,8 +163,7 @@ public sealed partial record {{ result_type }}({{ item_type }} Item{{ for c in q
 /// <remarks>The statement changes data and returns no rows; it runs in the transaction given, if any.</remarks>
 {{- else }}
 /// <remarks>
-/// The results are read-only projections: {{ if entity }}each {{ type_name(entity) }} holds what the query selects and leaves its other
-/// properties at their defaults, so it is not a row to save back through a repository{{ else }}rows of the query's own shape{{ end }}.
+/// The results are read-only projections: rows of the query's own shape.
 /// </remarks>
 {{- end }}
 public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction? mq_transaction = null) : I{{ name }}Query
@@ -338,18 +172,6 @@ public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction
     private const string Sql = {{ raw_quotes mq_sql }}
 {{ indent mq_sql 8 }}
         {{ raw_quotes mq_sql }};
-{{- for c in query.collections }}
-{{- mq_sql = query_collection_sql c }}
-
-    private const string {{ pascal c.name }}Sql = {{ raw_quotes mq_sql }}
-{{ indent mq_sql 8 }}
-        {{ raw_quotes mq_sql }};
-{{- end }}
-{{- if has_collections }}
-
-    /// <summary>The most parent keys one collection statement takes: more parent rows run it once per this many keys.</summary>
-    private const int MaxKeysPerStatement = 1000;
-{{- end }}
 
     /// <inheritdoc/>
 {{- if is_command }}
@@ -357,50 +179,10 @@ public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction
         mq_connection.ExecuteAsync(new CommandDefinition(Sql, new { {{ args | array.join ", " }} }, mq_transaction, cancellationToken: mq_cancellationToken));
 }
 {{- else }}
-    public async Task<IReadOnlyList<{{ result_type }}>> ExecuteAsync({{ signature }})
+    public async Task<IReadOnlyList<{{ item_type }}>> ExecuteAsync({{ signature }})
     {
         var mq_rows = (await mq_connection.QueryAsync<Row>(new CommandDefinition(Sql, new { {{ args | array.join ", " }} }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false)).ToList();
-{{- if has_collections }}
-{{- for c in query.collections }}
-{{- cname = pascal c.name }}
-{{- v = "mq_c" + for.index }}
-
-        var {{ v }}Keys = mq_rows.Select(mq_r => {{ parent_key(c, "mq_r") }}).Distinct().ToArray();
-        var {{ v }}Found = new List<{{ cname }}Row>();
-        for (var mq_at = 0; mq_at < {{ v }}Keys.Length; mq_at += MaxKeysPerStatement)
-        {
-            var mq_chunk = {{ v }}Keys[mq_at..Math.Min(mq_at + MaxKeysPerStatement, {{ v }}Keys.Length)];
-{{- if c.keys.size > 1 }}
-            var mq_set = mq_chunk.ToHashSet();
-{{- end }}
-            var mq_found = await mq_connection.QueryAsync<{{ cname }}Row>(new CommandDefinition({{ cname }}Sql, new
-            {
-{{- if c.keys.size == 1 }}
-                {{ c.keys[0].parameter }} = mq_chunk,
-{{- else }}
-{{- for k in c.keys }}
-                {{ k.parameter }} = mq_chunk.Select(mq_k => mq_k.Item{{ for.index + 1 }}).Distinct().ToArray(),
-{{- end }}
-{{- end }}
-{{- for a in args }}
-                {{ a }},
-{{- end }}
-            }, mq_transaction, cancellationToken: mq_cancellationToken)).ConfigureAwait(false);
-{{- if c.keys.size == 1 }}
-            {{ v }}Found.AddRange(mq_found);
-{{- else }}
-            // Each key's list over-fetches: keep the rows whose whole key is one of this chunk's.
-            {{ v }}Found.AddRange(mq_found.Where(mq_x => mq_set.Contains({{ child_key(c, "mq_x") }})));
-{{- end }}
-        }
-
-        var {{ v }} = {{ v }}Found.ToLookup(mq_x => {{ child_key(c, "mq_x") }});
-{{- end }}
-
-        return mq_rows.Select(mq_r => new {{ result_type }}(mq_r.ToItem(){{ for c in query.collections }}, [.. mq_c{{ for.index }}[{{ parent_key(c, "mq_r") }}].Select(mq_x => mq_x.ToItem())]{{ end }})).ToList();
-{{- else }}
         return mq_rows.Select(mq_r => mq_r.ToItem()).ToList();
-{{- end }}
     }
 
     /// <summary>One row as Dapper reads it, field by field.</summary>
@@ -409,48 +191,8 @@ public partial class {{ name }}Query(IDbConnection mq_connection, IDbTransaction
 {{- for f in query.select }}
         public {{ field_type(f) }} {{ cs_ident f.name }} { get; set; }{{ if !f.nullable && f.code_type && !(cs_value_type (type_of f.code_type "csharp")) }} = default!;{{ end }}
 {{- end }}
-{{- for k in hidden_keys }}
-        public {{ key_type(k) }} {{ cs_ident k.parent_field }} { get; set; }{{ if !k.outer.nullable && k.code_type && !(cs_value_type (type_of k.code_type "csharp")) }} = default!;{{ end }}
-{{- end }}
-
-{{- if entity }}
-
-        public {{ item_type }} ToItem() => new()
-        {
-{{- for line in entity_assignments(entity, query.select) }}
-            {{ line }},
-{{- end }}
-        };
-{{- else }}
 
         public {{ item_type }} ToItem() => new({{ for f in query.select }}{{ record_member_value(f, cs_ident f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
-{{- end }}
     }
-{{- for c in query.collections }}
-
-    /// <summary>One element of collection {{ c.name }} with its parent's key, as Dapper reads it.</summary>
-    private sealed class {{ pascal c.name }}Row
-    {
-{{- for f in c.query.select }}
-        public {{ field_type(f) }} {{ cs_ident f.name }} { get; set; }{{ if !f.nullable && f.code_type && !(cs_value_type (type_of f.code_type "csharp")) }} = default!;{{ end }}
-{{- end }}
-{{- for k in c.keys }}
-        public {{ key_type(k) }} {{ k.child_field }} { get; set; }{{ if !(cs_value_type (key_type(k))) && !(key_type(k) | string.ends_with "?") }} = default!;{{ end }}
-{{- end }}
-
-{{- if c.entity }}
-
-        public {{ element_type(c) }} ToItem() => new()
-        {
-{{- for line in entity_assignments(c.entity, c.query.select) }}
-            {{ line }},
-{{- end }}
-        };
-{{- else }}
-
-        public {{ element_type(c) }} ToItem() => new({{ for f in c.query.select }}{{ record_member_value(f, cs_ident f.name) }}{{ if !for.last }}, {{ end }}{{ end }});
-{{- end }}
-    }
-{{- end }}
 }
 {{- end }}

@@ -1,6 +1,7 @@
 // The mock's validator: a deterministic subset of the engine's built-in rules (engine-design.md 6),
 // enough for the editor's problems panel, inline save diagnostics and the invalid-save path. The
 // rule ids, severities and messages follow RuleCatalog; line and column are left null.
+import { coveredByRemovedKeys, failurePointer, REMOVED_QUERY_KEYS_RULE, removedQueryKeys, removedQueryKeysMessage } from "./removedQueryKeys";
 import { actorDiagnostics } from "./actorRules";
 import { setDiagnostics } from "./effectRules";
 import { operationLinkDiagnostics, processLinkDiagnostics, type LinkLookup } from "./operationRules";
@@ -19,15 +20,7 @@ import { rightDiagnostics, severalLinkDiagnostics } from "./rightRules";
 import { assumeKindDiagnostics, namedTriggerDiagnostics, triggerDiagnostics } from "./triggerRules";
 import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
-import {
-  endTypeDiagnostics,
-  fieldDiagnostics,
-  guardDiagnostics,
-  mappingDiagnostics,
-  relationHasSeveralTypes,
-  seedDiagnostics,
-  storageDiagnostics,
-} from "./endRules";
+import { endTypeDiagnostics, guardDiagnostics, mappingDiagnostics, relationHasSeveralTypes, seedDiagnostics, storageDiagnostics } from "./endRules";
 
 type Json = Record<string, unknown>;
 export interface ModelEntry {
@@ -61,9 +54,13 @@ export function schemaDiagnostics(entry: ModelEntry): Diagnostic[] {
   if (validate(entry.json)) return [];
   const seen = new Set<string>();
   const out: Diagnostic[] = [];
+  // A query's keys that 0.28.0 removed are one MQ4127 naming the replacement, in place of the schema failures they cause.
+  const removed = kind === "query" ? removedQueryKeys(entry.json) : [];
+  if (removed.length) out.push(diag(REMOVED_QUERY_KEYS_RULE, "error", removedQueryKeysMessage(entry.json, removed), entry, removed[0]));
   for (const e of validate.errors ?? []) {
     if (e.keyword === "oneOf" || e.keyword === "anyOf" || e.keyword === "if") continue;
     const pointer = e.instancePath;
+    if (removed.length && coveredByRemovedKeys(failurePointer(e), removed)) continue;
     const message = `${pointer || "/"} ${e.keyword}: ${e.message ?? "is not valid"}`;
     if (seen.has(message)) continue;
     seen.add(message);
@@ -84,7 +81,7 @@ export interface ValidationContext extends ModelGlobals {
   lookup?(id: string): ModelEntry | undefined;
   /** Every entry (the lifecycle rules read the other lifecycles, the types' users and a reference type's rows). */
   all?(): Iterable<ModelEntry>;
-  /** The entry that owns an id, an element's own or a sub-element's (MQ4116 reads the end a field names). */
+  /** The entry that owns an id, an element's own or a sub-element's. */
   ownerOf?(id: string): ModelEntry | undefined;
 }
 
@@ -378,9 +375,6 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
     seedDiagnostics(json, ctx, emitSeveral);
     guardDiagnostics(json, ctx, emitSeveral);
   }
-  // MQ4116: a binding field, a query field or a collection that names an end with several types.
-  if ((kind === "entity" && Array.isArray(json.bindings) && json.bindings.length) || kind === "query")
-    fieldDiagnostics(json, ctx, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ4057 a column facet its type does not have; MQ4056 a DDL feature the database's dialect lacks (PhysicalRules.cs).
   if (kind === "table") out.push(...tableFacetDiagnostics(json, entry, ctx.lookup));
   if (kind === "view") out.push(...viewDialectDiagnostics(json, entry, ctx.lookup));
@@ -538,13 +532,16 @@ function collapseUndeclaredTags(diagnostics: Diagnostic[], byId: ReadonlyMap<str
   return out;
 }
 
-/** validation.rules: a rule set to error, warning or info changes its severity; off drops it (MQ1 rules always stay). */
+/** Rules no setting changes: MQ1xxx, and MQ4127, a query key removed in 0.28.0 (the file does not load). */
+const fixed = (rule: string) => rule.startsWith("MQ1") || rule === REMOVED_QUERY_KEYS_RULE;
+
+/** validation.rules: a rule set to error, warning or info changes its severity; off drops it (MQ1 rules and MQ4127 always stay). */
 export function applyRules(out: Diagnostic[], rules: Record<string, string> = {}): Diagnostic[] {
   // MQ9024 is off unless validation.rules gives it a severity (as MQ7205 is).
   if (!["error", "warning", "info"].includes(rules.MQ9024 ?? "")) out = out.filter((d) => d.rule !== "MQ9024");
   return out
-    .map((d) => (rules[d.rule] && rules[d.rule] !== "off" && !d.rule.startsWith("MQ1") ? { ...d, severity: rules[d.rule] as Diagnostic["severity"] } : d))
-    .filter((d) => rules[d.rule] !== "off" || d.rule.startsWith("MQ1"));
+    .map((d) => (rules[d.rule] && rules[d.rule] !== "off" && !fixed(d.rule) ? { ...d, severity: rules[d.rule] as Diagnostic["severity"] } : d))
+    .filter((d) => rules[d.rule] !== "off" || fixed(d.rule));
 }
 
 export function diagnosticKey(d: Diagnostic): string {

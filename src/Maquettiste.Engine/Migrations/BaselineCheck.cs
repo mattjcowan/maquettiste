@@ -98,8 +98,8 @@ internal static class BaselineCheck
     }
 
     /// <summary>
-    /// The baseline's files that did not load: a load error (MQ1xxx) on a file that gave no element, so whatever it holds is missing
-    /// from the baseline's captures and its changes cannot be checked (MQ4109). Ordinal.
+    /// The baseline's files that did not load: a load error on a file that gave no element (MQ1xxx, or a removed key such as MQ4127),
+    /// so whatever it holds is missing from the baseline's captures and its changes cannot be checked (MQ4109). Ordinal.
     /// </summary>
     /// <param name="baseline">The baseline model.</param>
     /// <returns>The files' paths, as the baseline's load diagnostics name them.</returns>
@@ -108,7 +108,7 @@ internal static class BaselineCheck
         ArgumentNullException.ThrowIfNull(baseline);
         var loaded = baseline.Documents.Select(d => d.Path).ToHashSet(StringComparer.Ordinal);
         return [.. baseline.LoadDiagnostics
-            .Where(d => d.Severity == DiagnosticSeverity.Error && d.Rule.StartsWith("MQ1", StringComparison.Ordinal))
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => d.FilePath).OfType<string>().Where(p => !loaded.Contains(p))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
     }

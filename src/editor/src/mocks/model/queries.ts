@@ -1,9 +1,9 @@
 // The mock's query binding: a port of the engine's DatabaseRun.Queries.cs (engine-design.md 7, "Queries") over a resolved
 // DatabaseView (the mock's own resolveDatabase output, or the engine's recorded view) and the model's documents. Each query file
 // of the database binds its sources to the view's tables and views, its column references to their columns (by physical name,
-// column key or attribute id, then loosely), its parameters to native types, its trees to RExpression and RPredicate, and its
-// collections to correlated statements with their keys; what a file gets wrong is reported with the engine's rule, message and
-// JSON pointer (MQ3001, MQ4018, MQ4021 to MQ4043). The queries project to the API's QueryView as QueryViews.cs does, and
+// column key or attribute id, then loosely), its parameters to native types, its trees to RExpression and RPredicate; what a file
+// gets wrong is reported with the engine's rule, message and JSON pointer (MQ3001, MQ4018, MQ4021 to MQ4043). A query names no
+// entity: its rows have the shape of its select list. The queries project to the API's QueryView as QueryViews.cs does, and
 // `preview` answers GET /api/model/queries/{id}/sql's statements (QueryViews.Preview).
 import type { components } from "@/api/schema";
 import type { DatabaseView, Diagnostic } from "@/api/types";
@@ -16,15 +16,11 @@ import {
   mysqlCastType,
   sqlTextMissing,
   parseDialect,
-  renderCollection,
   renderQuery,
-  rootOf,
   sqlFor,
   type QuerySqlOptions,
-  type RCollection,
   type RExpression,
   type RField,
-  type RKey,
   type RNamedQuery,
   type RParameter,
   type RPredicate,
@@ -33,13 +29,13 @@ import {
   type RWhen,
 } from "./querySql";
 import validationRules from "../recorded/validation-rules.json";
+import { removedQueryKeys } from "./removedQueryKeys";
 
 type Json = Record<string, unknown>;
 type S = components["schemas"];
 export type QueryView = S["QueryView"];
 export type QuerySqlPreview = S["QuerySqlPreview"];
 type QueryFieldView = S["QueryFieldView"];
-type QueryKeyView = S["QueryKeyView"];
 type TableView = DatabaseView["tables"][number];
 type ColumnView = TableView["columns"][number];
 type ViewView = DatabaseView["views"][number];
@@ -54,7 +50,7 @@ const isId = (value: string) => ID.test(value);
 const INTEGER_TYPES = ["int16", "int32", "int64"];
 const SEVERITY = new Map((validationRules as { id: string; defaultSeverity: string }[]).map((r) => [r.id, r.defaultSeverity as Diagnostic["severity"]]));
 /** The findings that leave a query renderable; every other one leaves a node unresolved or the SQL wrong, so the query has no SQL. */
-const RENDERABLE = new Set(["MQ3001", "MQ4025", "MQ4026", "MQ4027", "MQ4030", "MQ4033", "MQ4037", "MQ4040", "MQ4041", "MQ4096", "MQ4097", "MQ4098"]);
+const RENDERABLE = new Set(["MQ3001", "MQ4030", "MQ4037", "MQ4040", "MQ4096", "MQ4097", "MQ4098"]);
 /** The verbs that change data, and the ones that return rows (MQ4098; sql-queries-design.md decision 6). */
 const WRITE_VERBS = new Set(["INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE", "TRUNCATE"]);
 const ROW_VERBS = new Set(["SELECT", "VALUES", "TABLE"]);
@@ -62,8 +58,6 @@ const ROW_VERBS = new Set(["SELECT", "VALUES", "TABLE"]);
 const FUNCTION_NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
 /** The text of a typed decimal literal (MQ4043). */
 const DECIMAL = /^-?[0-9]+(\.[0-9]+)?$/;
-const NUMERIC = ["int16", "int32", "int64", "decimal", "double", "float"];
-const TEXTS = ["string", "text", "ulid"];
 
 /** Casing.Words: split on non-alphanumerics and at lower→upper, digit→upper and acronym→word boundaries; lowercase words. */
 function casingWords(name: string): string[] {
@@ -97,11 +91,6 @@ function casingWords(name: string): string[] {
 const capitalize = (w: string) => (w ? w.slice(0, 1).toUpperCase() + w.slice(1) : w);
 /** Casing.Pascal. */
 export const enginePascal = (name: string) => casingWords(name).map(capitalize).join("");
-/** Casing.Camel. */
-const engineCamel = (name: string) =>
-  casingWords(name)
-    .map((w, i) => (i === 0 ? w : capitalize(w)))
-    .join("");
 
 /** DatabaseRun.QueryClassName: Pascal-cased, with Q in front when it would start with a digit or be empty. */
 export function queryClassName(name: string): string {
@@ -135,31 +124,6 @@ const sqlTextHasNoColumns = (key: string, query: string, verb: string, afterWith
   `The ${key} text of query '${query}' is ${article(verb)} ${verb} statement${afterWith ? " (after its WITH)" : ""}, but the query declares no columns, so it would be generated as a command that returns the number of rows changed: declare its columns.`;
 
 const isReservedName = (name: string) => name.toLowerCase().startsWith("mq_");
-
-interface Attribute {
-  id: string;
-  name: string;
-  required: boolean;
-  collection: boolean;
-  derived: boolean;
-  valueObject: boolean;
-  /** The value object's id, when the type is one. */
-  valueObjectId: string | null;
-  /** The effective built-in keyword (a scalar type's base), null for an enum or value object. */
-  builtin: string | null;
-  enumType: boolean;
-  typeName: string;
-}
-
-interface Navigation {
-  name: string;
-  /** The navigation's id: `<relation id>.<from end id>.<to end id>`. */
-  id: string;
-  /** The end the navigation leads to. */
-  toId: string;
-  targetId: string;
-  isCollection: boolean;
-}
 
 /** The sources, by alias, a query (or nested query) declares, with the scope around it. */
 interface Scope {
@@ -212,7 +176,8 @@ export function resolveQueries(view: DatabaseView, docs: ReadonlyMap<string, Jso
 
   const diagnostics: Diagnostic[] = [];
   const resolved = new Map<string, RQuery>();
-  const files = all.filter((d) => d.kind === "query" && d.database === db).sort((a, b) => cmp(String(a.id), String(b.id)));
+  // A file with a key 0.28.0 removed does not load (MQ4127, reported with the schema findings).
+  const files = all.filter((d) => d.kind === "query" && d.database === db && removedQueryKeys(d).length === 0).sort((a, b) => cmp(String(a.id), String(b.id)));
   for (const file of files) {
     const query = new Binder(file, view, docs, sources, routines, types, database, (d) =>
       diagnostics.push({ ...d, filePath: paths.get(String(file.id)) ?? null }),
@@ -252,16 +217,11 @@ export function resolveQueries(view: DatabaseView, docs: ReadonlyMap<string, Jso
       if (!query) return null;
       const main = renderQuery(query, dialect, options);
       const found = [...main.diagnostics];
-      const collections = query.collections.map((c) => {
-        const text = renderCollection(c, dialect, options);
-        found.push(...text.diagnostics);
-        return { name: c.name, sql: text.sql, parameters: text.parameters, keys: c.keys.map(keyView) };
-      });
       const name = (dialect ? parseDialect(dialect) : null) ?? (query.database.dialect as QuerySqlPreview["dialect"]);
       const seen = new Set<string>();
       const distinct = found.filter((d) => !seen.has(`${d.rule}|${d.message}`) && !!seen.add(`${d.rule}|${d.message}`));
       return {
-        preview: { id: query.id, name: query.name, database: query.database.id, dialect: name, sql: main.sql, parameters: main.parameters, collections },
+        preview: { id: query.id, name: query.name, database: query.database.id, dialect: name, sql: main.sql, parameters: main.parameters },
         diagnostics: distinct,
       };
     },
@@ -292,22 +252,11 @@ export function sortDiagnostics(diagnostics: readonly Diagnostic[]): Diagnostic[
 
 // ------------------------------------------------------------------ projection (QueryViews.cs)
 
-const keyView = (key: RKey): QueryKeyView => ({
-  outer: key.outer.column ?? `${key.outer.alias}.${key.outer.columnName}`,
-  parentField: key.parentField,
-  hidden: key.hidden,
-  childField: key.childField,
-  parameter: key.parameter,
-  type: key.type,
-  nativeType: key.nativeType,
-});
-
 const tree = <T>(value: unknown): T | null => (value === undefined || value === null ? null : (structuredClone(value) as T));
 
 function fields(select: readonly RField[], file: Json[]): QueryFieldView[] {
   return select.map((f, i) => ({
     name: f.name,
-    attributeId: f.memberId ? `${f.attributeId}.${f.memberId}` : (f.endId ?? f.attributeId),
     expression: (i < file.length ? tree(file[i].expression) : null) ?? {},
     type: f.type,
     nativeType: f.nativeType,
@@ -322,7 +271,6 @@ function declaredColumns(select: readonly RField[], file: Json[]): QueryFieldVie
     const description = i < file.length ? file[i].description : undefined;
     return {
       name: f.name,
-      attributeId: null,
       type: f.type,
       nativeType: f.nativeType,
       codeType: f.codeType,
@@ -355,7 +303,6 @@ function project(query: RQuery, file: Json, stereotypes: ReadonlyMap<string, Jso
   return {
     id: query.id,
     name: query.name,
-    entityId: query.entityId,
     parameters: query.parameters.map((p) => ({
       name: p.name,
       type: p.type,
@@ -395,19 +342,6 @@ function project(query: RQuery, file: Json, stereotypes: ReadonlyMap<string, Jso
     orderBy: arr(file.orderBy).map((o) => tree(o)!) as QueryView["orderBy"],
     distinct: query.distinct,
     paging: tree(file.paging),
-    collections: query.collections.map((c) => {
-      const statement = rootOf(c.query).sql.length === 0 ? null : renderCollection(c);
-      return {
-        name: c.name,
-        attribute: String(c.definition.attribute ?? c.name),
-        entityId: c.entityId,
-        query: (tree(c.definition.query) ?? {}) as QueryView["collections"][number]["query"],
-        select: fields(c.query.select, arr((c.definition.query as Json | undefined)?.select)),
-        keys: c.keys.map(keyView),
-        sql: statement?.sql ?? "",
-        sqlParameters: statement?.parameters ?? [],
-      };
-    }),
     sql: rendered?.sql ?? null,
     sqlParameters: rendered?.parameters ?? [],
     uses: [...query.uses],
@@ -481,10 +415,6 @@ class Binder {
   private readonly parameters = new Map<string, RParameter>();
   private readonly uses: string[] = [];
   private failed = false;
-  /** The column references that reach past the current collection's query into its parent (a correlation), with their pointers. */
-  private parentReferences: { expression: RExpression; pointer: string }[] | null = null;
-  /** The scope a collection's nested query starts at: references to scopes outside it are correlations. */
-  private barrier: Scope | null = null;
   /** The one expression a list parameter may be: the whole right side of the in or notIn being resolved. */
   private listOperand: Json | null = null;
   private query!: RQuery;
@@ -505,12 +435,10 @@ class Binder {
 
   build(): RQuery {
     const file = this.file;
-    const entityId = typeof file.entity === "string" && this.entity(file.entity) ? file.entity : null;
     this.query = {
       id: String(file.id),
       name: this.fileName,
       database: this.database,
-      entityId,
       parameters: [],
       from: null as unknown as RSource,
       joins: [],
@@ -521,39 +449,21 @@ class Binder {
       orderBy: [],
       distinct: false,
       paging: null,
-      collections: [],
       parent: null,
       sql: "",
       uses: [],
     };
     const query = this.query;
-    if (entityId && this.entity(entityId)?.abstract === true)
-      this.add(
-        "MQ4041",
-        `Query '${this.fileName}' returns entity '${this.nameOfEntity(entityId)}', which is abstract: name a concrete entity, or none for an ad hoc row.`,
-        "/entity",
-      );
     if (file.from === undefined && file.sql !== null && typeof file.sql === "object") return this.buildSqlText();
     query.parameters = this.resolveParameters();
     const scope: Scope = { query, outer: null, aliases: new Map(), sources: [] };
     this.resolveWith();
-    this.resolveBody(query, scope, file, "", entityId);
+    this.resolveBody(query, scope, file, "");
     query.distinct = file.distinct === true;
     query.paging = this.resolvePaging();
-    query.collections = arr(file.collections).map((c, i) => this.resolveCollection(c, i, scope));
-    this.checkCollectionNames();
-    this.checkDistinctKeys();
     this.checkWithNames();
     query.uses = [...this.uses];
-    if (!this.failed) {
-      this.checkDistinctOrder(query, "", []);
-      for (const c of query.collections)
-        this.checkDistinctOrder(
-          c.query,
-          `/collections/${c.index}/query`,
-          c.keys.map((k) => k.inner),
-        );
-    }
+    if (!this.failed) this.checkDistinctOrder(query);
     // A query with errors has none: they are reported, and generation stops on them before any template reads it.
     query.sql = this.failed ? "" : renderQuery(query).sql;
     return query;
@@ -604,9 +514,6 @@ class Binder {
       if (dbType) this.use(dbType.id);
       this.query.select.push({
         name,
-        attributeId: null,
-        memberId: null,
-        endId: null,
         expression: nullExpression(),
         type: keyword,
         nativeType: native,
@@ -730,46 +637,12 @@ class Binder {
     }
   }
 
-  /** MQ4040 for the collections: each becomes a property of the result record, beside its Item, named after it Pascal-cased. */
-  private checkCollectionNames(): void {
-    const seen = new Map<string, string>([["Item", "the result row"]]);
-    for (const c of this.query.collections) {
-      const pointer = `/collections/${c.index}/attribute`;
-      const property = enginePascal(c.name);
-      if (isReservedName(c.name))
-        this.add("MQ4040", `Collection '${c.name}' of query '${this.fileName}' starts with mq_, which generated code reserves for its own names.`, pointer);
-      else if (seen.has(property)) {
-        const other = seen.get(property)!;
-        this.add(
-          "MQ4040",
-          `Collection '${c.name}' of query '${this.fileName}' becomes property '${property}', as ${other === "the result row" ? "the result row's item does" : `collection '${other}' does`}: give it another name.`,
-          pointer,
-        );
-      } else seen.set(property, c.name);
-    }
-  }
-
-  /** MQ4032: a distinct parent cannot carry a hidden key column, which DISTINCT would then compare too. */
-  private checkDistinctKeys(): void {
-    const query = this.query;
-    if (!query.distinct) return;
-    for (const c of query.collections)
-      for (const key of c.keys.filter((k) => k.hidden)) {
-        if (query.groupBy.some((g) => g.node === "column" && g.source === key.outer.source && g.columnName === key.outer.columnName)) continue;
-        this.add(
-          "MQ4032",
-          `Collection '${c.name}' of query '${this.fileName}' is keyed by its parent's column '${key.outer.column}', which the parent neither selects nor groups by, and the parent is distinct: select the column as a field.`,
-          `/collections/${c.index}/query/where`,
-        );
-      }
-  }
-
   /** MQ4038: a distinct query orders only by selected expressions, and not by nulls first or last where the dialect emulates them. */
-  private checkDistinctOrder(target: RQuery, at: string, keys: readonly RExpression[]): void {
+  private checkDistinctOrder(target: RQuery): void {
     if (!target.distinct || target.orderBy.length === 0) return;
-    const selected = new Set([...target.select.map((f) => f.expression), ...keys].map((e) => expressionText(target, e)));
+    const selected = new Set(target.select.map((f) => expressionText(target, f.expression)));
     target.orderBy.forEach((order, i) => {
-      const pointer = `${at}/orderBy/${i}`;
+      const pointer = `/orderBy/${i}`;
       if (!selected.has(expressionText(target, order.expression)))
         this.add(
           "MQ4038",
@@ -789,7 +662,7 @@ class Binder {
     if (!RENDERABLE.has(rule)) this.failed = true;
     this.report({
       rule,
-      severity: SEVERITY.get(rule) ?? (rule === "MQ4026" ? "warning" : "error"),
+      severity: SEVERITY.get(rule) ?? "error",
       message,
       elementId: String(this.file.id),
       filePath: null,
@@ -801,79 +674,6 @@ class Binder {
 
   private use(id: string): void {
     if (!this.uses.includes(id)) this.uses.push(id);
-  }
-
-  private entity(id: string): Json | undefined {
-    const doc = this.docs.get(id);
-    return doc?.kind === "entity" ? doc : undefined;
-  }
-
-  /** The entity's attributes: its base chain's (root first), each entity's own and then its stereotypes'. */
-  private attributes(entityId: string): Attribute[] {
-    const chain: Json[] = [];
-    const seen = new Set<string>();
-    for (let e = this.entity(entityId); e && !seen.has(String(e.id)); e = typeof e.base === "string" ? this.entity(e.base) : undefined) {
-      seen.add(String(e.id));
-      chain.unshift(e);
-    }
-    const out: Attribute[] = [];
-    for (const e of chain) {
-      const stereotyped = ((e.stereotypes as string[] | undefined) ?? []).flatMap((key) =>
-        arr([...this.docs.values()].find((d) => d.kind === "stereotype" && d.key === key)?.attributes),
-      );
-      for (const a of [...arr(e.attributes), ...stereotyped]) out.push(this.attributeOf(a));
-    }
-    return out;
-  }
-
-  /** An attribute (of an entity or a value object) with what the binder needs of its type. */
-  private attributeOf(a: Json): Attribute {
-    const type = a.type as string | { ref?: string } | undefined;
-    const ref = typeof type === "object" && type ? this.docs.get(String(type.ref)) : undefined;
-    const keyword = typeof type === "string" ? type : null;
-    return {
-      id: String(a.id),
-      name: String(a.name ?? ""),
-      required: a.required === true,
-      collection: a.collection === true,
-      derived: a.derived !== undefined && a.derived !== null,
-      valueObject: ref?.kind === "value-object",
-      valueObjectId: ref?.kind === "value-object" ? String(ref.id) : null,
-      builtin: keyword ?? (ref && typeof ref.base === "string" && ref.kind !== "enum" ? ref.base : null),
-      enumType: ref?.kind === "enum",
-      typeName: keyword ?? String(ref?.name ?? ""),
-    };
-  }
-
-  /** The navigations of an entity and its bases: each relation end it holds leads to the other end. */
-  private navigations(entityId: string): Navigation[] {
-    const lineage = new Set<string>();
-    for (let e = this.entity(entityId); e && !lineage.has(String(e.id)); e = typeof e.base === "string" ? this.entity(e.base) : undefined)
-      lineage.add(String(e.id));
-    const out: Navigation[] = [];
-    for (const relation of [...this.docs.values()].filter((d) => d.kind === "relation")) {
-      const ends = arr(relation.ends);
-      if (ends.length !== 2) continue;
-      ends.forEach((from, i) => {
-        if (!lineage.has(String(from.entity))) return;
-        const to = ends[1 - i];
-        // Only an end with a navigation name has a navigation (ResolveRun.BuildNavigations), as a collection target or a field.
-        const name = typeof to.navigation === "string" && to.navigation.length > 0 ? to.navigation : null;
-        if (!name || out.some((n) => n.name === name)) return;
-        out.push({
-          name,
-          id: `${String(relation.id)}.${String(from.id)}.${String(to.id)}`,
-          toId: String(to.id),
-          targetId: String(to.entity),
-          isCollection: (to.max ?? "*") === "*" || (typeof to.max === "number" && to.max > 1),
-        });
-      });
-    }
-    return out;
-  }
-
-  private nameOfEntity(id: string | null): string {
-    return id ? String(this.entity(id)?.name ?? id) : "";
   }
 
   /** A type slot (`type` with facets): a built-in keyword, or a database type of the database, with its native type. */
@@ -981,7 +781,7 @@ class Binder {
   }
 
   /** The sources, select list, conditions, grouping and ordering of a query or nested query (`body` as the file writes it). */
-  private resolveBody(target: RQuery, scope: Scope, body: Json, at: string, entityId: string | null, withSelect = true): void {
+  private resolveBody(target: RQuery, scope: Scope, body: Json, at: string, withSelect = true): void {
     const from = (body.from as Json | undefined) ?? {};
     target.from = this.addSource(scope, String(from.source ?? ""), typeof from.alias === "string" ? from.alias : null, "from", at + "/from");
     const joined: RSource[] = [];
@@ -1020,7 +820,7 @@ class Binder {
       joined.push(source);
     });
     target.joins = joined;
-    target.select = withSelect ? this.resolveFields(arr(body.select), scope, at, entityId) : [];
+    target.select = withSelect ? this.resolveFields(arr(body.select), scope, at) : [];
     target.where = body.where && typeof body.where === "object" ? this.predicate(body.where as Json, scope, at + "/where") : null;
     target.groupBy = arr(body.groupBy).map((g, i) => this.expression(g, scope, `${at}/groupBy/${i}`));
     target.having = body.having && typeof body.having === "object" ? this.predicate(body.having as Json, scope, at + "/having") : null;
@@ -1094,7 +894,6 @@ class Binder {
     return {
       ...this.query,
       name,
-      entityId: null,
       parent: this.query,
       from: null as unknown as RSource,
       joins: [],
@@ -1105,7 +904,6 @@ class Binder {
       orderBy: [],
       distinct: false,
       paging: null,
-      collections: [],
       sql: "",
       uses: [],
       with: undefined,
@@ -1126,7 +924,7 @@ class Binder {
         this.add("MQ3001", `Named query name '${name}' is already used in query '${this.fileName}'${first === name ? "" : " (ignoring case)"}.`, at + "/name");
       [this.withCurrent, this.withVisible, this.inWith] = [i, i, true];
       const anchor = this.part(name);
-      this.resolveBody(anchor, { query: anchor, outer: null, aliases: new Map(), sources: [] }, entry, at, null);
+      this.resolveBody(anchor, { query: anchor, outer: null, aliases: new Map(), sources: [] }, entry, at);
       anchor.distinct = entry.distinct === true;
       const named: RNamedQuery = {
         name,
@@ -1148,7 +946,7 @@ class Binder {
     const part = this.part(named.name);
     [this.self, this.selfPart] = [named, part];
     this.selfReads = [];
-    this.resolveBody(part, { query: part, outer: null, aliases: new Map(), sources: [] }, { ...recursive, groupBy: [], having: null }, at, null);
+    this.resolveBody(part, { query: part, outer: null, aliases: new Map(), sources: [] }, { ...recursive, groupBy: [], having: null }, at);
     [this.self, this.selfPart] = [null, null];
     named.recursive = part;
     named.union = recursive.union === "distinct" ? "distinct" : "all";
@@ -1257,49 +1055,24 @@ class Binder {
     }
   }
 
-  private resolveFields(select: Json[], scope: Scope, at: string, entityId: string | null): RField[] {
+  private resolveFields(select: Json[], scope: Scope, at: string): RField[] {
     const fields: RField[] = [];
     const names = new Map<string, number>();
     const properties = new Map<string, string>();
-    const attributes = entityId ? this.attributes(entityId) : [];
     select.forEach((f, i) => {
       const pointer = `${at}/select/${i}`;
-      let attribute: Attribute | undefined;
-      let member: Attribute | undefined;
-      let end: { navigation: Navigation; column: ColumnView } | undefined;
-      if (typeof f.attribute === "string") {
-        if (!entityId)
-          this.add(
-            "MQ4025",
-            `Field ${i} of query '${this.fileName}' names an attribute, but the query${at.length > 0 ? " collection" : ""} names no entity.`,
-            pointer + "/attribute",
-          );
-        else ({ attribute, member, end } = this.fieldTarget(entityId, attributes, f.attribute, i, pointer + "/attribute"));
-      }
       const expression = this.expression((f.expression as Json | undefined) ?? {}, scope, pointer + "/expression");
       const declared = typeof f.type === "string" ? f.type : null;
       const field: RField = {
-        name:
-          typeof f.name === "string"
-            ? f.name
-            : member
-              ? attribute!.name + enginePascal(member.name)
-              : end
-                ? engineCamel(end.column.name)
-                : (attribute?.name ?? (typeof f.attribute === "string" ? f.attribute : "")),
-        attributeId: attribute?.id ?? null,
-        memberId: member?.id ?? null,
-        endId: end?.navigation.toId ?? null,
+        name: typeof f.name === "string" ? f.name : "",
         expression,
         type: declared ?? expression.type,
         nativeType: declared ? this.keywordNativeType(declared) : expression.nativeType,
         codeType: declared ?? expression.codeType,
         nullable: typeof f.nullable === "boolean" ? f.nullable : expression.nullable,
       };
-      const target = member ?? attribute;
-      if (!declared && target && !target.collection && !target.valueObject) this.typeFromAttribute(field, target, i, pointer);
       const key = field.name.toLowerCase();
-      const at2 = pointer + (typeof f.name === "string" ? "/name" : "/attribute");
+      const at2 = pointer + "/name";
       if (names.has(key))
         this.add("MQ3001", `Field name '${field.name}' is already used at index ${names.get(key)} of the select list of query '${this.fileName}'.`, at2);
       else {
@@ -1307,250 +1080,18 @@ class Binder {
         const property = enginePascal(field.name);
         if (isReservedName(field.name))
           this.add("MQ4040", `Field '${field.name}' of query '${this.fileName}' starts with mq_, which generated code reserves for its own names.`, at2);
-        else if (!entityId && !this.inWith && properties.has(property))
-          // An ad hoc row is a record whose properties are the fields' names Pascal-cased.
+        else if (!this.inWith && properties.has(property))
+          // A row is a record whose properties are the fields' names Pascal-cased.
           this.add(
             "MQ4040",
             `Field '${field.name}' of query '${this.fileName}' becomes property '${property}', as field '${properties.get(property)}' does: give it another name.`,
             pointer + "/name",
           );
-        else if (!entityId && !this.inWith) properties.set(property, field.name);
+        else if (!this.inWith) properties.set(property, field.name);
       }
       fields.push(field);
     });
-    // A value object attribute spans several columns, which one field cannot fill, so it is not asked for.
-    if (entityId) {
-      const selected = new Set(
-        fields
-          .filter((f) => !f.memberId)
-          .map((f) => f.attributeId)
-          .filter((x): x is string => !!x),
-      );
-      const missing = attributes.filter((a) => a.required && !a.collection && !a.derived && !a.valueObject && !selected.has(a.id)).map((a) => a.name);
-      if (missing.length)
-        this.add(
-          "MQ4026",
-          `Query '${this.fileName}' selects no field for the required ${missing.length === 1 ? "attribute" : "attributes"} ${missing.map((m) => `'${m}'`).join(", ")} of entity '${this.nameOfEntity(entityId)}'.`,
-          at + "/select",
-        );
-    }
     return fields;
-  }
-
-  /**
-   * What a field's attribute names on the entity (DatabaseRun.FieldTarget): an attribute, a member of a value object attribute
-   * (attributeId.memberId), or the relation end a to-one navigation leads to (or the navigation's id), whose foreign key column of the
-   * entity's table the field fills. MQ4025 when it is none of these.
-   */
-  private fieldTarget(
-    entityId: string,
-    attributes: readonly Attribute[],
-    reference: string,
-    index: number,
-    pointer: string,
-  ): { attribute?: Attribute; member?: Attribute; end?: { navigation: Navigation; column: ColumnView } } {
-    const entityName = this.nameOfEntity(entityId);
-    const attribute = attributes.find((a) => a.id === reference);
-    if (attribute) return { attribute };
-    const dot = reference.indexOf(".");
-    const owner = dot > 0 ? attributes.find((a) => a.id === reference.slice(0, dot)) : undefined;
-    if (owner) {
-      const memberId = reference.slice(dot + 1);
-      const vo = owner.valueObjectId && !owner.collection ? this.docs.get(owner.valueObjectId) : undefined;
-      const raw = arr(vo?.attributes).find((m) => m.id === memberId);
-      const member = raw ? this.attributeOf(raw) : undefined;
-      if (!member || member.collection || member.valueObject) {
-        this.add(
-          "MQ4025",
-          `Field ${index} of query '${this.fileName}' names '${reference}', which is not a member of value object attribute '${owner.name}' of entity '${entityName}' that one field can fill.`,
-          pointer,
-        );
-        return {};
-      }
-      return { attribute: owner, member };
-    }
-    const navigation = this.navigations(entityId).find((n) => n.toId === reference || n.id === reference);
-    if (navigation) {
-      if (navigation.isCollection) {
-        this.add(
-          "MQ4025",
-          `Field ${index} of query '${this.fileName}' names navigation '${navigation.name}' of entity '${entityName}', which leads to many rows: fill it as a collection.`,
-          pointer,
-        );
-        return {};
-      }
-      const columns = this.entityTable(entityId)?.columns.filter((c) => c.key.startsWith(navigation.toId + ".")) ?? [];
-      if (columns.length !== 1) {
-        this.add(
-          "MQ4025",
-          `Field ${index} of query '${this.fileName}' names navigation '${navigation.name}' of entity '${entityName}', whose foreign key is ${columns.length === 0 ? "not a column of the entity's table" : "several columns"} in database '${this.view.name}': one field fills one foreign key column.`,
-          pointer,
-        );
-        return {};
-      }
-      return { end: { navigation, column: columns[0] } };
-    }
-    this.add("MQ4025", `Field ${index} of query '${this.fileName}' names attribute '${reference}', which entity '${entityName}' does not have.`, pointer);
-    return {};
-  }
-
-  /** The table of an entity (or of its nearest base that has one) in the view's database. */
-  private entityTable(entityId: string): TableView | undefined {
-    const seen = new Set<string>();
-    for (let e = this.entity(entityId); e && !seen.has(String(e.id)); e = typeof e.base === "string" ? this.entity(e.base) : undefined) {
-      seen.add(String(e.id));
-      const table = this.view.tables.find((t) => t.key === `${String(e!.id)}@${this.view.id}`);
-      if (table) return table;
-    }
-    return undefined;
-  }
-
-  /**
-   * A field that fills an attribute (or a value object member) holds the attribute's type in generated code: a value of unknown type
-   * takes it; a value of another type converts when both are numbers or both texts, and is MQ4033 otherwise.
-   */
-  private typeFromAttribute(field: RField, target: Attribute, index: number, pointer: string): void {
-    const keyword = target.builtin;
-    const from = field.codeType;
-    if (from === null) {
-      if (keyword === null) return;
-      field.type = keyword;
-      field.codeType = keyword;
-      field.nativeType = this.keywordNativeType(keyword);
-      return;
-    }
-    const fits = target.enumType
-      ? TEXTS.includes(from) || ["int16", "int32", "int64"].includes(from)
-      : keyword === null || from === keyword || (NUMERIC.includes(from) && NUMERIC.includes(keyword)) || (TEXTS.includes(from) && TEXTS.includes(keyword));
-    if (!fits)
-      this.add(
-        "MQ4033",
-        `Field ${index} of query '${this.fileName}' is of type '${from}', which does not convert to the type '${keyword ?? target.typeName}' of attribute '${target.name}'.`,
-        pointer + "/expression",
-      );
-  }
-
-  private resolveCollection(c: Json, index: number, parent: Scope): RCollection {
-    const pointer = `/collections/${index}`;
-    const query = this.query;
-    const attributeRef = String(c.attribute ?? "");
-    const entityId = query.entityId;
-    let name = attributeRef;
-    let navigation: Navigation | undefined;
-    const attribute = entityId ? this.attributes(entityId).find((a) => a.id === attributeRef) : undefined;
-    if (entityId && attribute) {
-      name = attribute.name;
-      if (!attribute.collection)
-        this.add(
-          "MQ4027",
-          `Collection ${index} of query '${this.fileName}' names attribute '${attribute.name}' of entity '${this.nameOfEntity(entityId)}', which is not a collection.`,
-          pointer + "/attribute",
-        );
-    } else if (entityId && (navigation = this.navigations(entityId).find((n) => n.toId === attributeRef || n.id === attributeRef))) {
-      name = navigation.name;
-      if (!navigation.isCollection)
-        this.add(
-          "MQ4027",
-          `Collection ${index} of query '${this.fileName}' names navigation '${navigation.name}' of entity '${this.nameOfEntity(entityId)}', which leads to one row, not a collection.`,
-          pointer + "/attribute",
-        );
-    } else if (isId(attributeRef)) {
-      this.add(
-        "MQ4027",
-        entityId === null
-          ? `Collection ${index} of query '${this.fileName}' names '${attributeRef}', but the query names no entity: give an ad hoc collection a name.`
-          : `Collection ${index} of query '${this.fileName}' names '${attributeRef}', which is neither a collection attribute nor a to-many navigation of entity '${this.nameOfEntity(entityId)}'.`,
-        pointer + "/attribute",
-      );
-    }
-    const elementId = typeof c.entity === "string" ? (this.entity(c.entity) ? c.entity : null) : (navigation?.targetId ?? null);
-    if (elementId && this.entity(elementId)?.abstract === true)
-      this.add(
-        "MQ4041",
-        `Collection '${name}' of query '${this.fileName}' fills entity '${this.nameOfEntity(elementId)}', which is abstract: name a concrete entity, or none for an ad hoc element.`,
-        pointer + (typeof c.entity === "string" ? "/entity" : "/attribute"),
-      );
-
-    const nested: RQuery = {
-      ...query,
-      name,
-      entityId: elementId,
-      parent: query,
-      from: null as unknown as RSource,
-      joins: [],
-      select: [],
-      where: null,
-      groupBy: [],
-      having: null,
-      orderBy: [],
-      distinct: false,
-      paging: null,
-      collections: [],
-      sql: "",
-      uses: [],
-    };
-    const scope: Scope = { query: nested, outer: parent, aliases: new Map(), sources: [] };
-    const [savedBarrier, savedReferences] = [this.barrier, this.parentReferences];
-    this.barrier = scope;
-    this.parentReferences = [];
-    const body = (c.query as Json | undefined) ?? {};
-    this.resolveBody(nested, scope, body, pointer + "/query", elementId);
-    nested.distinct = body.distinct === true;
-    const references = this.parentReferences;
-    [this.barrier, this.parentReferences] = [savedBarrier, savedReferences];
-    const result: RCollection = { name, attribute: attributeRef, entityId: elementId, query: nested, keys: [], index, keyConjuncts: new Set(), definition: c };
-    if (nested.select.length === 0) this.add("MQ4027", `Collection '${name}' of query '${this.fileName}' selects nothing.`, pointer + "/query");
-
-    // The correlation: equalities between a column of the parent and a value of the nested query, at the top of its where.
-    const keys: RKey[] = [];
-    const keyed = new Set<RExpression>();
-    const isParentColumn = (e: RExpression) => e.node === "column" && references.some((r) => r.expression === e);
-    const hasParentReference = (e: RExpression): boolean =>
-      references.some((r) => r.expression === e) || e.args.some(hasParentReference) || (!!e.cast && hasParentReference(e.cast));
-    if (nested.where) {
-      for (const conjunct of nested.where.node === "and" ? nested.where.and : [nested.where]) {
-        if (conjunct.node !== "compare" || conjunct.op !== "eq" || !conjunct.left || !conjunct.right) continue;
-        const { left, right } = conjunct;
-        const [outer, inner] =
-          isParentColumn(left) && !hasParentReference(right)
-            ? [left, right]
-            : isParentColumn(right) && !hasParentReference(left)
-              ? [right, left]
-              : [null, null];
-        if (!outer || !inner) continue;
-        const k = keys.length;
-        const parentField = query.select.find(
-          (f) => f.expression.node === "column" && f.expression.source === outer.source && f.expression.columnName === outer.columnName,
-        );
-        keys.push({
-          outer,
-          inner,
-          parentField: parentField?.name ?? `mq_key${index}_${k}`,
-          hidden: !parentField,
-          childField: `mq_key${k}`,
-          parameter: `mq_keys${k}`,
-          type: outer.type,
-          nativeType: outer.nativeType,
-          codeType: outer.codeType,
-        });
-        keyed.add(outer);
-        result.keyConjuncts.add(conjunct);
-      }
-    }
-    for (const { expression, pointer: at } of references.filter((r) => !keyed.has(r.expression)))
-      this.add(
-        "MQ4028",
-        `Collection '${name}' of query '${this.fileName}' names its parent's column '${expression.column}' outside an equality at the top of its where, so it cannot run once for every parent row.`,
-        at,
-      );
-    if (keys.length === 0 && nested.select.length > 0)
-      this.add(
-        "MQ4028",
-        `Collection '${name}' of query '${this.fileName}' does not name its parent: add an equality between one of its columns and a parent column at the top of its where.`,
-        pointer + "/query",
-      );
-    result.keys = keys;
-    return result;
   }
 
   private predicate(p: Json, scope: Scope, pointer: string): RPredicate {
@@ -1562,7 +1103,6 @@ class Binder {
       const nested: RQuery = {
         ...query,
         name: "exists",
-        entityId: null,
         parent: scope.query,
         from: null as unknown as RSource,
         joins: [],
@@ -1573,12 +1113,11 @@ class Binder {
         orderBy: [],
         distinct: false,
         paging: null,
-        collections: [],
         sql: "",
         uses: [],
       };
       const inner: Scope = { query: nested, outer: scope, aliases: new Map(), sources: [] };
-      this.resolveBody(nested, inner, p.exists as Json, pointer + "/exists", null, false);
+      this.resolveBody(nested, inner, p.exists as Json, pointer + "/exists", false);
       return pred("exists", { exists: nested });
     }
     const op = typeof p.op === "string" ? p.op : "eq";
@@ -1891,7 +1430,6 @@ class Binder {
       result.codeType = found.named.codeType;
       result.nullable = found.named.nullable || source.optional;
     }
-    if (this.barrier && owner && !isWithin(owner, this.barrier)) this.parentReferences?.push({ expression: result, pointer });
     return result;
   }
 }
@@ -1920,12 +1458,6 @@ function find(scope: Scope, alias: string): [RSource, Scope] | null {
     if (source) return [source, s];
   }
   return null;
-}
-
-/** Whether `scope` is `barrier` or nested inside it. */
-function isWithin(scope: Scope, barrier: Scope): boolean {
-  for (let s: Scope | null = scope; s; s = s.outer) if (s === barrier) return true;
-  return false;
 }
 
 /**

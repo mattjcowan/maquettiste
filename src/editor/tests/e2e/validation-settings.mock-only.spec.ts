@@ -13,8 +13,7 @@ test("a rule severity saved in Settings › Validation changes what Problems lis
   await page.getByTestId("rail-settings").click();
   await page.getByRole("tab", { name: "Validation" }).click();
   const tab = page.getByTestId("validation-settings");
-  // The billing settings the mock copies already turn MQ4127 off (its two older queries keep the retired form).
-  await expect(tab.getByTestId("validation-override-count")).toHaveText("1 override");
+  await expect(tab.getByTestId("validation-override-count")).toHaveText("0 overrides");
   // An MQ1 rule cannot be turned off.
   await expect(tab.getByLabel("Severity of MQ1001").locator("option")).toHaveText(["Default", "error", "warning", "info"]);
 
@@ -23,7 +22,7 @@ test("a rule severity saved in Settings › Validation changes what Problems lis
   await expect(tab.getByRole("columnheader", { name: /Localization/ })).toBeVisible();
   await tab.getByLabel("Severity of MQ7204").selectOption("off");
   await expect(tab.getByTestId("rule-row-MQ7204").getByTestId("rule-changed")).toBeVisible();
-  await expect(tab.getByTestId("validation-override-count")).toHaveText("2 overrides");
+  await expect(tab.getByTestId("validation-override-count")).toHaveText("1 override");
   await tab.getByTestId("save-validation").click();
   await expect(tab.getByTestId("rule-changed")).toHaveCount(0);
   await expect(problems.getByTestId("problem-MQ7204")).toHaveCount(0);
@@ -42,7 +41,7 @@ test("a rule severity saved in Settings › Validation changes what Problems lis
   await expect(tab.getByLabel("Severity of MQ7205")).toBeFocused();
   await tab.getByLabel("Severity of MQ7205").selectOption("warning");
   await tab.getByTestId("save-validation").click();
-  await expect(tab.getByTestId("validation-override-count")).toHaveText("3 overrides");
+  await expect(tab.getByTestId("validation-override-count")).toHaveText("2 overrides");
   await expect(problems.getByTestId("problem-MQ7205").first()).toBeVisible();
   await expect(problems.getByTestId("problem-MQ7204")).toHaveCount(0);
 
@@ -50,5 +49,5 @@ test("a rule severity saved in Settings › Validation changes what Problems lis
   await tab.getByRole("button", { name: "Reset all" }).click();
   await expect(tab.getByTestId("validation-override-count")).toHaveText("0 overrides");
   await tab.getByRole("button", { name: "Discard" }).click();
-  await expect(tab.getByTestId("validation-override-count")).toHaveText("3 overrides");
+  await expect(tab.getByTestId("validation-override-count")).toHaveText("2 overrides");
 });

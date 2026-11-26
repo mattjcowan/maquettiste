@@ -141,9 +141,7 @@ export interface DatabaseObjectInput {
   /** SQL object: what it is (free text) and when it runs. The statements are `dialect` and `body`. */
   objectKind?: string;
   phase?: ObjectPhase;
-  /** Query: the result entity (none: an ad hoc row), the from source (a table key or a view id), its alias and the first fields
-   * (querySelect). A query has no schema. */
-  entity?: string | null;
+  /** Query: the from source (a table key or a view id), its alias and the first fields (querySelect). A query has no schema. */
   /** Written as: built from parts (the default) or SQL text. SQL text needs no source and starts with a SELECT in `body` for `dialect`. */
   form?: QueryForm;
   source?: string;
@@ -258,7 +256,6 @@ export function buildDatabaseObject(input: DatabaseObjectInput, newId: () => str
       id,
       name: input.name.trim(),
       database: input.database,
-      ...(input.entity ? { entity: input.entity } : {}),
       from: { source: input.source ?? "", ...(alias ? { alias } : {}) },
       select: input.select ?? [],
     };
@@ -311,18 +308,12 @@ export function buildDatabaseObject(input: DatabaseObjectInput, newId: () => str
 }
 
 /**
- * The fields a new query starts with, so it is valid as created (a select list has at least one field): with a result entity,
- * its key attribute filled from the column that stores it (by attribute id, else by name); without one, the source's first
- * column as a field named after it; a view without declared columns, the value 1 as `value`.
+ * The fields a new query starts with, so it is valid as created (a select list has at least one field): the source's first column
+ * as a field named after it; a view without declared columns, the value 1 as `value`.
  */
-export function querySelect(source: SourceOption | null, alias: string, key: { id: string; name: string } | null): Field[] {
+export function querySelect(source: SourceOption | null, alias: string): Field[] {
   const columns = columnOptions(source);
   const a = alias || source?.name || "";
-  if (key) {
-    const fold = (s: string) => s.replace(/_/g, "").toLowerCase();
-    const c = columns.find((x) => x.column?.attributeId === key.id) ?? columns.find((x) => fold(x.name) === fold(key.name)) ?? columns[0];
-    return [{ attribute: key.id, expression: c ? { column: columnRef(a, c) } : { null: true } }];
-  }
   const first = columns[0];
   return first ? [{ name: fieldName(first.name), expression: { column: columnRef(a, first) } }] : [{ name: "value", expression: { value: 1 } }];
 }

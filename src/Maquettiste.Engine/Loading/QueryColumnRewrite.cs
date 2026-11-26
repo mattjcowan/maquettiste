@@ -137,12 +137,6 @@ internal static class QueryColumnRewrite
             yield return from;
         foreach (var join in query.Joins)
             yield return join;
-        foreach (var collection in query.Collections)
-        {
-            foreach (var source in Sources(collection.Query))
-                yield return source;
-        }
-
         foreach (var nested in Predicates(query).Where(p => p.Exists is not null).Select(p => p.Exists!))
         {
             foreach (var source in Sources(nested))
@@ -202,7 +196,7 @@ internal static class QueryColumnRewrite
                 yield return e;
         }
 
-        foreach (var nested in query.Collections.Select(c => c.Query).Concat(Predicates(query).Where(p => p.Exists is not null).Select(p => p.Exists!)))
+        foreach (var nested in Predicates(query).Where(p => p.Exists is not null).Select(p => p.Exists!))
         {
             foreach (var e in Expressions(nested))
                 yield return e;

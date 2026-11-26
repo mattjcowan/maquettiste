@@ -192,8 +192,8 @@ Task<IReadOnlyList<RevenueByMonthRow>> ExecuteAsync(DateOnly from, DateOnly to, 
 Its parameters are the query's, typed through `types/csharp.json` (a list parameter is an `IEnumerable<T>`), the ones with a
 constant default last (a string, bool, integer, double, `decimal` with `m` or `float` with `f`). The class's own names, its
 constructor's `mq_connection` and `mq_transaction`, the method's `mq_cancellationToken` and its locals, start with `mq_`,
-which the engine reserves (MQ4040), so a parameter, a field or a collection may take any other name. Entity, enum and value
-object types are written `global::`-qualified, so no type of the `Queries` namespace hides them, and `System.Text.Json` is
+which the engine reserves (MQ4040), so a parameter or a field may take any other name. Enum types are written
+`global::`-qualified, so no type of the `Queries` namespace hides them, and `System.Text.Json` is
 imported when a field is `json` (a `JsonElement`). The SQL is what the engine renders for the query's database (`query_sql`), with `@name` placeholders and
 `IN @name` for a list, which Dapper expands. A private `Row` class has one property per select field, named as the field (Dapper
 matches column aliases without regard to case), and converts to the result:
@@ -211,23 +211,8 @@ matches column aliases without regard to case), and converts to the result:
   other parts are compositions: each part reads through its own repository, and a template that loads or writes a whole
   record reads `entity.parts` for the parts and their foreign keys.
 
-**Retired: a query's `entity` and `collections`.** A query that names an `entity` or fills `collections` is warning MQ4127
-and goes away in a later version. Until then the pack still renders it:
-
-- With an `entity`, each row becomes that entity: a field that names an attribute fills its property (an enum stored as text goes
-  through `<Enum>Codes.Parse`, an enum stored as a number is cast, a number of another number type than the attribute's is
-  cast to it); a field that names a value object member (`<attribute id>.<member id>`) fills it, the members of one attribute
-  building the value together (an optional one is null when all of its fields are); a field that names the relation end of a
-  to-one navigation fills the entity's foreign key property (`CustomerId`); a field without an attribute is read but not
-  copied. The rows are read-only projections, as the class's remarks say: an entity holds what the query selects and leaves
-  its other properties at their defaults, so it is not a row to save back through the entity's repository.
-- With collections, the method returns `<Name>Result(Item, <Collection>…)`: after the parent rows, each collection's statement
-  (`query_collection_sql`) runs with the parent rows' distinct key values (`mq_keys0`), at most `MaxKeysPerStatement` (1000)
-  of them per run, so a large parent set stays under the databases' parameter limits; the runs go in the parents' order and
-  their rows are merged, grouped by their `mq_key0` and attached to the parent whose key matches. With several keys each run
-  keeps only the rows whose whole key is one of its own (the `IN` lists over-fetch). An element is the collection's `entity`,
-  or a generated `<Name><Collection>Item` record, typed as a `<Name>Row` is. The collections are on the result record, never
-  on the entity. The billing sample's `InvoicesByCustomer` still has this form, so the pack's tests cover it until removal.
+A query's `entity` and `collections` were removed in 0.28.0: a file that still has them does not load (MQ4127), so a query
+class always returns its own `<Name>Row`.
 
 A query written as SQL text (`query.form` is `"sql"`) takes the same path. Its `query.select` holds its declared columns, so
 `<Name>Row` has one property per column, typed by the column's type and nullability (a column is nullable unless it says
@@ -239,7 +224,7 @@ columns and gets the usual list. A repository bound to a query written as SQL te
 text as a derived table, the query's parameters first.
 
 A template that binds parameters by position (`$1`, `$2`...) gets their names in placeholder order from
-`query_sql_parameters query` (or a collection), with the same dialect and options arguments as `query_sql`.
+`query_sql_parameters query`, with the same dialect and options arguments as `query_sql`.
 
 `QueryRegistrations.All` lists the `(Service, Implementation)` pairs of every query class, as the repositories' registration
 files do.

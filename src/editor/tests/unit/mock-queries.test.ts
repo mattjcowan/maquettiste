@@ -20,14 +20,12 @@ const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
 const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
 const INVOICE = "01J92P0V0FJ23CGSNKM7P1W5V7";
 const INVOICES_TABLE = `${INVOICE}@${MAIN}`;
-const INVOICE_NUMBER = "01J92P0V0R3VSP7D5238DTNZX1";
-const CUSTOMER_EMAIL = "01J92P0V0NRX99014KNVAZGPEW";
 const OUTSTANDING_INVOICES = "01J92P0V1YZ4YP352KD1A50FXS";
 const BY_CUSTOMER = "01K6QRY0000000000000000001";
 const REVENUE = "01K6QRY0000000000000000002";
 const FIND_CUSTOMERS = "01K6QRY0000000000000000003";
 
-// The engine's SQL for the billing queries (the csharp-dapper goldens' Sql and LinesSql constants).
+// The engine's SQL for the billing queries (the csharp-dapper goldens' Sql constants).
 const GOLDEN = {
   FindCustomersWithIssuedInvoices: [
     "SELECT c.id AS id, c.name AS name, c.email AS email, c.created_at AS createdAt",
@@ -43,12 +41,6 @@ const GOLDEN = {
     "WHERE i.customer_id = @customerId AND i.status IN @statuses AND i.deleted_at IS NULL",
     "ORDER BY i.issued_on DESC, i.number ASC",
     "LIMIT @limit OFFSET @offset",
-  ].join("\n"),
-  lines: [
-    "SELECT l.id AS id, l.quantity AS quantity, l.description AS description, l.invoice_id AS mq_key0",
-    "FROM billing.invoice_lines l",
-    "WHERE l.invoice_id IN @mq_keys0",
-    "ORDER BY l.id ASC",
   ].join("\n"),
   RevenueByMonth: [
     "SELECT CAST(date_trunc('month', i.issued_on) AS date) AS month, COUNT(*) AS invoiceCount, COALESCE(SUM(i.total_amount), 0) AS revenue",
@@ -67,9 +59,6 @@ function expectGolden(view: DatabaseView) {
   for (const q of queries) expect(q.sql).toBe(GOLDEN[q.name as keyof typeof GOLDEN]);
   const byCustomer = queries.find((q) => q.name === "InvoicesByCustomer")!;
   expect(byCustomer.sqlParameters).toEqual(["customerId", "statuses", "offset", "limit"]);
-  expect(byCustomer.collections).toHaveLength(1);
-  expect(byCustomer.collections[0].sql).toBe(GOLDEN.lines);
-  expect(byCustomer.collections[0].sqlParameters).toEqual(["mq_keys0"]);
 }
 
 /** Saves a query into the mock model; returns its id. */
@@ -87,13 +76,8 @@ describe("the billing queries", () => {
     const view = resolvedView(backend);
     expectGolden(view);
     const byCustomer = view.queries!.find((q) => q.id === BY_CUSTOMER)!;
-    // The projection follows QueryViews.cs: the trees as written, the resolved sources, fields and keys.
-    expect([byCustomer.entityId, byCustomer.from!.source, byCustomer.from!.tableKey, byCustomer.from!.kind]).toEqual([
-      INVOICE,
-      "01J92P0V1T0J6RH4MY9H81NYB4",
-      INVOICES_TABLE,
-      "from",
-    ]);
+    // The projection follows QueryViews.cs: the trees as written, the resolved sources and fields.
+    expect([byCustomer.from!.source, byCustomer.from!.tableKey, byCustomer.from!.kind]).toEqual(["01J92P0V1T0J6RH4MY9H81NYB4", INVOICES_TABLE, "from"]);
     expect(Object.keys(byCustomer.where as Json)).toEqual(["and"]);
     expect((byCustomer.orderBy[0] as Json).direction).toBe("desc");
     expect(byCustomer.paging).toEqual({ offset: "offset", limit: "limit" });
@@ -104,22 +88,8 @@ describe("the billing queries", () => {
       ["offset", "integer", false, 0],
       ["limit", "integer", false, 50],
     ]);
-    const lines = byCustomer.collections[0];
-    expect([lines.name, lines.attribute, lines.entityId]).toEqual(["lines", "01J92P0V1H4D2M1HCK82ASJEWT", "01J92P0V0GWFR78HZH0P8Z3GY7"]);
-    expect(lines.keys).toEqual([
-      {
-        outer: "i.01J92P0V0Q9EK961M5HAQ3C5MY",
-        parentField: "id",
-        hidden: false,
-        childField: "mq_key0",
-        parameter: "mq_keys0",
-        type: "uuid",
-        nativeType: "uuid",
-      },
-    ]);
-    expect(byCustomer.uses).toEqual([INVOICES_TABLE, `01J92P0V0GWFR78HZH0P8Z3GY7@${MAIN}`]);
+    expect(byCustomer.uses).toEqual([INVOICES_TABLE]);
     const revenue = view.queries!.find((q) => q.id === REVENUE)!;
-    expect(revenue.entityId).toBeNull();
     expect(revenue.select.map((f) => [f.name, f.type, f.nullable])).toEqual([
       ["month", "date", false],
       ["invoiceCount", "int64", false],
@@ -174,7 +144,6 @@ describe("the billing queries", () => {
     expect(positional.parameters).toEqual(["customerId", "statuses", "offset", "limit"]);
     expect(positional.sql).toContain("i.customer_id = $1 AND i.status = ANY($2)");
     expect(positional.sql.endsWith("LIMIT $4 OFFSET $3")).toBe(true);
-    expect(positional.collections[0].sql).toContain("WHERE l.invoice_id = ANY($1)");
     // RevenueByMonth has no text for mysql: NULL and MQ4029 with the renderer's message.
     const mysql = queries.preview(REVENUE, "mysql")!;
     expect(mysql.preview.sql.startsWith("SELECT NULL AS month")).toBe(true);
@@ -196,7 +165,7 @@ describe("the billing queries", () => {
     ]).toEqual(["'it''s'", "'a\\\\b'", "1", "false", "1.5"]);
   });
 
-  it("render joins, functions, operations, case, cast, nulls, routines and hidden collection keys", () => {
+  it("render joins, functions, operations, case, cast, nulls and routines", () => {
     const backend = new MockBackend();
     const id = addQuery(backend, {
       id: "01K6QRY0000000000000000010",
@@ -223,23 +192,13 @@ describe("the billing queries", () => {
       groupBy: [{ column: "c.name" }, { column: "c.email" }, { column: "c.id" }, { column: "order.id" }, { column: "order.notes" }],
       orderBy: [{ expression: { column: "c.name" }, direction: "desc", nulls: "last" }],
       paging: { offset: 10, limit: "take" },
-      collections: [
-        {
-          attribute: "invoiceNumbers",
-          query: {
-            from: { source: INVOICES_TABLE, alias: "i" },
-            select: [{ name: "number", expression: { column: "i.number" } }],
-            where: { op: "eq", left: { column: "i.customer_id" }, right: { column: "c.id" } },
-          },
-        },
-      ],
     });
     expect(backend.model.validate().diagnostics.filter((d) => d.elementId === id)).toEqual([]);
     const queries = resolveQueries(resolvedView(backend), backend.model.docs());
     const query = queries.queries.find((q) => q.id === id)!;
     expect(query.sql).toBe(
       [
-        "SELECT (c.name || ' <' || c.email || '>') AS label, LENGTH(c.name) AS nameLength, MAX(\"order\".number) AS lastNumber, billing.invoice_total(\"order\".id) AS due, CASE WHEN \"order\".notes IS NULL THEN 'none' ELSE 'some' END AS flag, CAST(c.id AS varchar(255)) AS asText, NULL AS nothing, c.id AS mq_key0_0",
+        "SELECT (c.name || ' <' || c.email || '>') AS label, LENGTH(c.name) AS nameLength, MAX(\"order\".number) AS lastNumber, billing.invoice_total(\"order\".id) AS due, CASE WHEN \"order\".notes IS NULL THEN 'none' ELSE 'some' END AS flag, CAST(c.id AS varchar(255)) AS asText, NULL AS nothing",
         "FROM billing.customers c",
         'LEFT JOIN billing.invoices "order" ON "order".customer_id = c.id',
         'GROUP BY c.name, c.email, c.id, "order".id, "order".notes',
@@ -250,10 +209,6 @@ describe("the billing queries", () => {
     expect(query.select.find((f) => f.name === "lastNumber")).toMatchObject({ type: "string", nullable: true });
     expect(query.select.find((f) => f.name === "due")).toMatchObject({ type: "decimal" });
     expect(query.uses).toContain(INVOICE_TOTAL);
-    expect(query.collections[0].keys[0]).toMatchObject({ parentField: "mq_key0_0", hidden: true, childField: "mq_key0" });
-    expect(query.collections[0].sql).toBe(
-      ["SELECT i.number AS number, i.customer_id AS mq_key0", "FROM billing.invoices i", "WHERE i.customer_id IN @mq_keys0"].join("\n"),
-    );
     const sqlserver = queries.preview(id, "sqlserver")!.preview.sql;
     expect(sqlserver).toContain("CONCAT(c.name, N' <', c.email, N'>') AS label, LEN(c.name) AS nameLength, MAX([order].number)");
     expect(sqlserver).toContain("CAST(c.id AS nvarchar(255))");
@@ -269,7 +224,6 @@ describe("the query rules", () => {
     const id = addQuery(backend, {
       id: "01K6QRY0000000000000000011",
       name: "Broken",
-      entity: CUSTOMER,
       parameters: [
         { name: "word", type: "string" },
         { name: "word", type: "int32" },
@@ -282,7 +236,7 @@ describe("the query rules", () => {
         { source: "nowhere", alias: "n" },
       ],
       select: [
-        { attribute: INVOICE_NUMBER, expression: { column: "c.nope" } },
+        { name: "a", expression: { column: "c.nope" } },
         { name: "b", expression: { column: "z.id" } },
         { name: "c", expression: { param: "missing" } },
         { name: "d", expression: { sql: { sqlserver: "GETDATE()" } } },
@@ -290,21 +244,7 @@ describe("the query rules", () => {
       ],
       where: { op: "between", left: { column: "c.name" }, right: { value: 1 } },
       paging: { offset: "gone", limit: "word" },
-      collections: [
-        {
-          attribute: CUSTOMER_EMAIL,
-          query: {
-            from: { source: INVOICES_TABLE, alias: "i" },
-            select: [{ name: "n", expression: { column: "i.number" } }],
-            where: {
-              or: [
-                { op: "eq", left: { column: "i.customer_id" }, right: { column: "c.id" } },
-                { op: "eq", left: { column: "q.id" }, right: { value: 1 } },
-              ],
-            },
-          },
-        },
-      ],
+      having: { exists: { from: { source: INVOICES_TABLE, alias: "i" }, where: { op: "eq", left: { column: "q.id" }, right: { column: "c.id" } } } },
     });
     const findings = backend.model
       .validate()
@@ -316,20 +256,15 @@ describe("the query rules", () => {
       ["MQ4021", "/joins/0/source"],
       ["MQ4022", "/joins/1/alias"],
       ["MQ4021", "/joins/2/source"],
-      ["MQ4025", "/select/0/attribute"],
       ["MQ4023", "/select/0/expression/column"],
       ["MQ4022", "/select/1/expression/column"],
       ["MQ4024", "/select/2/expression/param"],
       ["MQ4029", "/select/3/expression/sql"],
       ["MQ3001", "/select/4/name"],
-      ["MQ4026", "/select"],
       ["MQ4031", "/where/right"],
       ["MQ4024", "/paging/offset"],
       ["MQ4030", "/paging/limit"],
-      ["MQ4027", "/collections/0/attribute"],
-      ["MQ4028", "/collections/0/query/where/or/1/left/column"],
-      ["MQ4028", "/collections/0/query/where/or/0/right/column"],
-      ["MQ4028", "/collections/0/query"],
+      ["MQ4028", "/having/exists/where/left/column"],
     ])
       expect(findings).toContainEqual(expected);
     const diagnostics = backend.model.validate().diagnostics.filter((d) => d.elementId === id);
@@ -343,10 +278,9 @@ describe("the query rules", () => {
       "Query 'Broken' pages by parameter 'word', whose type 'string' is not an integer type (int16, int32 or int64).",
     );
     expect(message("MQ3001", "/select/4/name")).toBe("Field name 'B' is already used at index 1 of the select list of query 'Broken'.");
-    expect(message("MQ4027", "/collections/0/attribute")).toBe(
-      "Collection 0 of query 'Broken' names attribute 'email' of entity 'Customer', which is not a collection.",
+    expect(message("MQ4028", "/having/exists/where/left/column")).toBe(
+      "A nested query of query 'Broken' names column 'q.id', but neither it nor an enclosing query has the alias 'q'.",
     );
-    expect(diagnostics.find((d) => d.rule === "MQ4026")?.severity).toBe("warning");
     expect(diagnostics.find((d) => d.rule === "MQ4023")?.filePath).toBe(backend.model.get(id)!.path);
 
     // A model with a query error resolves no view, and the query has no SQL.
@@ -378,6 +312,42 @@ describe("the query rules", () => {
   });
 });
 
+describe("keys removed in 0.28.0 (MQ4127), as the engine reports them", () => {
+  const MESSAGE =
+    "/entity Query 'InvoicesByCustomer' still has an entity as the shape of its rows (entity), collections and a select field that fills an attribute (attribute), which were removed in 0.28.0: a query names no entity. " +
+    "Give each select field a name of its own and bind the entity to the query (its binding's source names the query, each binding field a column); " +
+    "read a record with its parts through composition (entity.parts), each part with its own binding.";
+  const old = (json: Json) => {
+    json.entity = INVOICE;
+    json.collections = [{ attribute: "lines", query: { from: { source: INVOICES_TABLE, alias: "l" } } }];
+    const first = (json.select as Json[])[0];
+    delete first.name;
+    first.attribute = "01J92P0V0Q9EK961M5HAQ3C5MY";
+  };
+
+  it("refuses a save with one MQ4127 at the first removed key, in place of the schema violations", () => {
+    const backend = new MockBackend();
+    const entry = backend.model.get(BY_CUSTOMER)!;
+    const json = structuredClone(entry.json) as Json;
+    old(json);
+    const saved = backend.model.save(BY_CUSTOMER, json, entry.hash);
+    expect(saved.outcome).toBe("invalid");
+    expect(saved.diagnostics.map((d) => [d.rule, d.severity, d.jsonPointer, d.message])).toEqual([["MQ4127", "error", "/entity", MESSAGE]]);
+  });
+
+  it("reports an outside edit once per file, whatever validation.rules says, and leaves the query out", () => {
+    const backend = new MockBackend();
+    backend.model.externalEdit(BY_CUSTOMER, old);
+    const found = () => backend.model.validate().diagnostics.filter((d) => d.elementId === BY_CUSTOMER);
+    expect(found().map((d) => [d.rule, d.severity, d.jsonPointer])).toEqual([["MQ4127", "error", "/entity"]]);
+    const settings = backend.model.settingsDocument();
+    expect(backend.model.saveSettings({ ...settings.json, validation: { rules: { MQ4127: "off" } } }, settings.hash).status).toBe(200);
+    expect(found().map((d) => [d.rule, d.severity])).toEqual([["MQ4127", "error"]]);
+    const { queries: _engine, ...tables } = (recorded as unknown as { view: DatabaseView }).view;
+    expect(resolveQueries(tables as DatabaseView, backend.model.docs()).queries.map((q) => q.id)).not.toContain(BY_CUSTOMER);
+  });
+});
+
 describe("GET /api/model/queries/{id}/sql", () => {
   it("answers the statements per dialect, the problems, and the errors of a bad request", async () => {
     const base = "http://queries.test";
@@ -399,7 +369,7 @@ describe("GET /api/model/queries/{id}/sql", () => {
         "postgresql",
         GOLDEN.InvoicesByCustomer,
       ]);
-      expect((preview.collections as Json[]).map((c) => [c.name, c.sql, c.parameters])).toEqual([["lines", GOLDEN.lines, ["mq_keys0"]]]);
+      expect(preview).not.toHaveProperty("collections");
       const sqlserver = await get(`/api/model/queries/${BY_CUSTOMER}/sql?dialect=mssql&placeholder=:`);
       expect((sqlserver.body.preview as Json).dialect).toBe("sqlserver");
       expect((sqlserver.body.preview as Json).sql).toContain("OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY");
@@ -427,15 +397,10 @@ describe("GET /api/model/queries/{id}/sql", () => {
   });
 });
 
-describe("the rules the review added (MQ4032 to MQ4043), as the engine reports them", () => {
+describe("the rules the review added (MQ4034 to MQ4043), as the engine reports them", () => {
   const CUSTOMERS = `${CUSTOMER}@${MAIN}`;
   const CUSTOMER_ID = "01J92P0V0KGPC29TQQG8R57EBM";
-  const CUSTOMER_NAME = "01J92P0V0MS09YFZHX07JQ3KMN";
   const CUSTOMER_END = "01J92P0V1EHF7PB28CZJG9C5SN";
-  const INVOICE_ID = "01J92P0V0Q9EK961M5HAQ3C5MY";
-  const TOTAL = "01J92P0V0T6EA0XM025XQX8GBW";
-  const AMOUNT = "01J92P0V08P9BVJAPQ793XYNTQ";
-  const CURRENCY = "01J92P0V093A7BE6Q8AS477H7D";
   const QUERY = "01K6QRY0000000000000000077";
 
   /** Binds one query (and any extra documents) against the mock's resolved view, with the view's dialect overridden. */
@@ -453,70 +418,7 @@ describe("the rules the review added (MQ4032 to MQ4043), as the engine reports t
     return { result, findings, query: result.resolved.get(QUERY)!, diagnostics: result.diagnostics.filter((d) => d.elementId === QUERY) };
   }
 
-  const keyed = (attribute: string, select: Json[], extra: Json = {}) => ({
-    attribute,
-    query: {
-      from: { source: INVOICES_TABLE, alias: "i" },
-      select,
-      where: { op: "eq", left: { column: "i.customer_id" }, right: { column: "c.id" } },
-      ...extra,
-    },
-  });
-
-  it("groups a grouped collection by its keys and a grouped parent by its hidden keys, in every dialect", () => {
-    const { findings, query, result } = bind({
-      name: "CustomerTotals",
-      from: { source: CUSTOMERS, alias: "c" },
-      select: [
-        { name: "name", expression: { column: "c.name" } },
-        { name: "customers", expression: { call: "count" } },
-      ],
-      groupBy: [{ column: "c.name" }],
-      collections: [
-        keyed(
-          "byNumber",
-          [
-            { name: "number", expression: { column: "i.number" } },
-            { name: "total", expression: { call: "sum", args: [{ column: "i.total_amount" }] } },
-          ],
-          {
-            groupBy: [{ column: "i.number" }],
-          },
-        ),
-        keyed("invoiceCount", [{ name: "count", expression: { call: "COUNT" } }]),
-      ],
-    });
-    expect(findings).toEqual([]);
-    expect(query.sql).toBe(
-      ["SELECT c.name AS name, COUNT(*) AS customers, c.id AS mq_key0_0, c.id AS mq_key1_0", "FROM billing.customers c", "GROUP BY c.name, c.id"].join("\n"),
-    );
-    const preview = result.preview(QUERY)!.preview;
-    expect(preview.collections[0].sql).toBe(
-      [
-        "SELECT i.number AS number, SUM(i.total_amount) AS total, i.customer_id AS mq_key0",
-        "FROM billing.invoices i",
-        "WHERE i.customer_id IN @mq_keys0",
-        "GROUP BY i.number, i.customer_id",
-      ].join("\n"),
-    );
-    expect(preview.collections[1].sql.endsWith("\nGROUP BY i.customer_id")).toBe(true);
-    for (const dialect of ["sqlserver", "mysql", "sqlite", "oracle"]) {
-      const sql = result.preview(QUERY, dialect)!.preview;
-      expect(sql.sql.replace(/["`[\]]/g, "").endsWith("GROUP BY c.name, c.id")).toBe(true);
-      expect(sql.collections[0].sql.replace(/["`[\]]/g, "").endsWith("GROUP BY i.number, i.customer_id")).toBe(true);
-    }
-  });
-
-  it("reports a distinct parent's hidden key (MQ4032) and a distinct order outside the select list (MQ4038)", () => {
-    const hidden = bind({
-      name: "Hidden",
-      distinct: true,
-      from: { source: CUSTOMERS, alias: "c" },
-      select: [{ name: "name", expression: { column: "c.name" } }],
-      collections: [keyed("numbers", [{ name: "number", expression: { column: "i.number" } }])],
-    });
-    expect(hidden.findings).toEqual([["MQ4032", "/collections/0/query/where"]]);
-    expect(hidden.query.sql).toBe("");
+  it("reports a distinct order outside the select list (MQ4038)", () => {
     const order = bind({
       name: "Distinct",
       distinct: true,
@@ -558,41 +460,6 @@ describe("the rules the review added (MQ4032 to MQ4043), as the engine reports t
       { dialect: "mysql" },
     );
     expect(mysql.query.select[0].nativeType).toBe("SIGNED");
-  });
-
-  it("types a field from its attribute (MQ4033) and fills a foreign key by its end and a value object by its members", () => {
-    const typed = bind({
-      name: "Typed",
-      entity: CUSTOMER,
-      from: { source: CUSTOMERS, alias: "c" },
-      select: [
-        { attribute: CUSTOMER_ID, expression: { column: "c.id" } },
-        { attribute: CUSTOMER_NAME, expression: { call: "initcap", args: [{ column: "c.name" }] } },
-        { attribute: CUSTOMER_EMAIL, expression: { call: "count" } },
-      ],
-    });
-    expect(typed.findings.filter(([rule]) => rule !== "MQ4026")).toEqual([["MQ4033", "/select/2/expression"]]);
-    expect(typed.diagnostics.find((d) => d.rule === "MQ4033")!.severity).toBe("warning");
-    expect([typed.query.select[1].type, typed.query.select[1].codeType]).toEqual(["string", "string"]);
-    expect(typed.query.sql).not.toBe("");
-
-    const filled = bind({
-      name: "Filled",
-      entity: INVOICE,
-      from: { source: INVOICES_TABLE, alias: "i" },
-      select: [
-        { attribute: INVOICE_ID, expression: { column: "i.id" } },
-        { attribute: INVOICE_NUMBER, expression: { column: "i.number" } },
-        { attribute: CUSTOMER_END, expression: { column: `i.${CUSTOMER_END}.${CUSTOMER_ID}` } },
-        { attribute: `${TOTAL}.${AMOUNT}`, expression: { column: `i.${TOTAL}.${AMOUNT}` } },
-        { attribute: `${TOTAL}.${CURRENCY}`, expression: { column: "i.total_currency" } },
-        { attribute: `${INVOICE_NUMBER}.${AMOUNT}`, expression: { column: "i.number" } },
-      ],
-    });
-    expect(filled.findings.filter(([rule]) => rule !== "MQ4026")).toEqual([["MQ4025", "/select/5/attribute"]]);
-    expect(filled.query.select.map((f) => f.name)).toEqual(["id", "number", "customerId", "totalAmount", "totalCurrency", `${INVOICE_NUMBER}.${AMOUNT}`]);
-    const view = filled.result.queries.find((q) => q.id === QUERY)!;
-    expect(view.select.map((f) => f.attributeId)).toEqual([INVOICE_ID, INVOICE_NUMBER, CUSTOMER_END, `${TOTAL}.${AMOUNT}`, `${TOTAL}.${CURRENCY}`, null]);
   });
 
   it("refuses unsafe function names (MQ4034), joins that do not fit (MQ4035 to MQ4037) and misused list parameters (MQ4039)", () => {
@@ -648,49 +515,25 @@ describe("the rules the review added (MQ4032 to MQ4043), as the engine reports t
     ]);
   });
 
-  it("reports names that collide in generated code (MQ4040), abstract entities (MQ4041), operations (MQ4042) and literals (MQ4043)", () => {
+  it("reports names that collide in generated code (MQ4040), operations (MQ4042) and literals (MQ4043)", () => {
     const names = bind({
       name: "Names",
       parameters: [
         { name: "word", type: "string" },
         { name: "Word", type: "string" },
-        { name: "mq_keys0", type: "string" },
+        { name: "mq_cancellationToken", type: "string" },
       ],
       from: { source: CUSTOMERS, alias: "c" },
       select: [
         { name: "issued_on", expression: { column: "c.name" } },
         { name: "issuedOn", expression: { column: "c.email" } },
       ],
-      collections: [
-        keyed("item", [{ name: "n", expression: { column: "i.number" } }]),
-        keyed("lines", [{ name: "n", expression: { column: "i.number" } }]),
-        keyed("Lines", [{ name: "n", expression: { column: "i.number" } }]),
-      ],
     });
     expect(names.findings).toEqual([
       ["MQ3001", "/parameters/1/name"],
-      ["MQ4040", "/collections/0/attribute"],
-      ["MQ4040", "/collections/2/attribute"],
       ["MQ4040", "/parameters/2/name"],
       ["MQ4040", "/select/1/name"],
     ]);
-    const party = {
-      kind: "entity",
-      id: "01K6QRY0000000000000000078",
-      name: "Party",
-      abstract: true,
-      attributes: [{ id: "01K6QRY0000000000000000079", name: "id", type: "uuid" }],
-    };
-    const abstract = bind(
-      {
-        name: "Parties",
-        entity: party.id,
-        from: { source: CUSTOMERS, alias: "c" },
-        select: [{ attribute: "01K6QRY0000000000000000079", expression: { column: "c.id" } }],
-      },
-      { extra: [party] },
-    );
-    expect(abstract.findings).toEqual([["MQ4041", "/entity"]]);
     const values = bind({
       name: "Values",
       parameters: [

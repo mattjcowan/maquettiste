@@ -5,7 +5,6 @@
   "name": "FindCustomersWithIssuedInvoices",
   "database": "01J92P0V1QRN2181XM2ZWE02W4",
   "description": "Customers whose name matches a pattern, ignoring case, who have at least one issued invoice.",
-  "entity": "01J92P0V0ETQKXXP951CMMNHH3",
   "parameters": [
     {
       "name": "namePattern",
@@ -19,25 +18,25 @@
   },
   "select": [
     {
-      "attribute": "01J92P0V0KGPC29TQQG8R57EBM",
+      "name": "id",
       "expression": {
         "column": "c.01J92P0V0KGPC29TQQG8R57EBM"
       }
     },
     {
-      "attribute": "01J92P0V0MS09YFZHX07JQ3KMN",
+      "name": "name",
       "expression": {
         "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
       }
     },
     {
-      "attribute": "01J92P0V0NRX99014KNVAZGPEW",
+      "name": "email",
       "expression": {
         "column": "c.01J92P0V0NRX99014KNVAZGPEW"
       }
     },
     {
-      "attribute": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+      "name": "createdAt",
       "expression": {
         "column": "c.01J92P0V26XYZRDQ8FJ6KZXT6S"
       }

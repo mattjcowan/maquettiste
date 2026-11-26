@@ -696,12 +696,7 @@ function DatabaseCanvas() {
                 </EmptyState>
               ) : target.scope === "query" ? (
                 querySql.data?.preview ? (
-                  <CodeView
-                    language="sql"
-                    readOnly
-                    label="Query SQL"
-                    value={[querySql.data.preview.sql, ...querySql.data.preview.collections.map((c) => `-- collection ${c.name}\n${c.sql}`)].join("\n\n")}
-                  />
+                  <CodeView language="sql" readOnly label="Query SQL" value={querySql.data.preview.sql} />
                 ) : querySql.data ? (
                   <ul className="p-2 text-12 text-danger" data-testid="query-preview-problems">
                     {querySql.data.diagnostics

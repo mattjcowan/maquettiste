@@ -567,7 +567,7 @@ export function compile(domain) {
   }
 
   // Queries (written as data): source names become ids; trees are copied as written. A query's rows have the shape of its own
-  // select list: naming an entity (entity) or filling collections is retired, and an entity reads a query through its binding.
+  // select list: a query names no entity and fills no collections (both removed in 0.28.0); an entity reads a query through its binding.
   const sourceRef = (name, where) => {
     if (name.startsWith("view:")) {
       const view = name.slice(5);
@@ -580,7 +580,7 @@ export function compile(domain) {
   for (const [name, q] of Object.entries(db.queries ?? {})) {
     const where = `query ${name}`;
     if (!q.description) throw new Error(`${where}: missing description`);
-    if (q.entity || q.collections) throw new Error(`${where}: entity and collections are retired; bind an entity to the query instead`);
+    if (q.entity || q.collections) throw new Error(`${where}: entity and collections were removed in 0.28.0; bind an entity to the query instead`);
     for (const f of q.select ?? []) if (!f.name) throw new Error(`${where}: every select field needs a name`);
     emit("queries", `model/databases/${kebab(db.name)}/queries/${kebab(name)}.json`, "query.json", {
       kind: "query", id: id(`query:${name}`), name, database: dbId, description: q.description, tags: q.tags, parameters: q.parameters,
