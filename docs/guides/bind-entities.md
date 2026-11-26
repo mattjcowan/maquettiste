@@ -171,7 +171,8 @@ While only one end is bound, the section says "Bind both ends to a table to name
 ## 9. Check the SQL
 
 Open the **SQL** section of the `Rental` binding. Each statement is the text a repository runs: parameters named after the
-fields, constants as literals, and the columns the database fills left out of inserts and updates. Switch the dialect to
+fields, constants as literals (a field on a constant's column is read, never written), and the columns the database fills
+left out of inserts and updates. Switch the dialect to
 see another database's form. Generation uses the same statements (the `csharp-dapper` pack builds a bound entity's
 repository from them).
 

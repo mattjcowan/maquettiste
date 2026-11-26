@@ -21,8 +21,9 @@ public sealed class BindingTests
     private sealed class Shop
     {
         public Shop(Dialect dialect = Dialect.PostgreSql, Func<Shop, string, EntityBinding, EntityBinding>? edit = null, bool mapInvoiceNote = false,
-            Func<Table, Table>? changeNotes = null)
+            Func<Table, Table>? changeNotes = null, bool invoiceNoteShowsType = false, string queryParameter = "since")
         {
+            _invoiceNoteShowsType = invoiceNoteShowsType;
             Builder = new ModelBuilder(seed: 43);
             var db = Builder.Database("main", dialect);
             Main = db.Id;
@@ -60,14 +61,14 @@ public sealed class BindingTests
             Builder.Add(new Query
             {
                 Id = Query, Name = "NotesPerType", Database = Main,
-                Parameters = [new QueryParameter { Name = "since", Type = "datetimeoffset" }],
+                Parameters = [new QueryParameter { Name = queryParameter, Type = "datetimeoffset" }],
                 From = new QuerySource { Source = Notes, Alias = "n" },
                 Select =
                 [
                     new QueryField { Name = "entityType", Expression = new QueryExpression { Column = "n.entity_type" } },
                     new QueryField { Name = "total", Expression = new QueryExpression { Call = "count" } },
                 ],
-                Where = new QueryPredicate { Op = "ge", Left = new QueryExpression { Column = "n.created_at" }, Right = [new QueryExpression { Param = "since" }] },
+                Where = new QueryPredicate { Op = "ge", Left = new QueryExpression { Column = "n.created_at" }, Right = [new QueryExpression { Param = queryParameter }] },
                 GroupBy = [new QueryExpression { Column = "n.entity_type" }],
                 OrderBy = [new QueryOrder { Expression = new QueryExpression { Column = "n.entity_type" } }],
             });
@@ -95,15 +96,21 @@ public sealed class BindingTests
         {
             var entity = Builder.Entity(name).Key("id", "uuid", IdentityStrategy.UuidV7).Attr(reference, "uuid", a => a.Required()).Attr("body", "text", a => a.Required())
                 .Attr("createdAt", "datetimeoffset", a => a.ReadOnly());
+            var showsType = _invoiceNoteShowsType && name == "InvoiceNote";
+            if (showsType)
+                entity.Attr("entityType", "string", a => a.Length(32));
             entity.Bind(Edit(edit, name, new EntityBinding
             {
                 Id = "", Database = Main, Source = Notes,
                 Constants = [new BindingConstant { Column = NoteType, Value = Json("\"" + type + "\"") }],
-                Fields = [Field(entity, "id", NoteId), Field(entity, reference, NoteEntity), Field(entity, "body", NoteBody), Field(entity, "createdAt", NoteCreated)],
+                Fields = [Field(entity, "id", NoteId), Field(entity, reference, NoteEntity), Field(entity, "body", NoteBody), Field(entity, "createdAt", NoteCreated),
+                    .. (showsType ? new[] { Field(entity, "entityType", NoteType) } : Array.Empty<BindingField>())],
                 Columns = [new BindingColumn { Column = NoteCreated, Status = BindingColumnStatus.Database }],
             }));
             return entity;
         }
+
+        private readonly bool _invoiceNoteShowsType;
 
         private EntityBinding Edit(Func<Shop, string, EntityBinding, EntityBinding>? edit, string entity, EntityBinding binding) => edit is null ? binding : edit(this, entity, binding);
 
@@ -293,6 +300,45 @@ public sealed class BindingTests
         Assert.EndsWith("n.created_at >= $1\nGROUP BY n.entity_type\n) q\nWHERE q.entityType = $2", numbered.Sql, StringComparison.Ordinal);
         Assert.Equal(["since", "entityType"], numbered.Parameters);
         Assert.Throws<ArgumentException>(() => BindingSql.Render(binding, "upsert"));
+    }
+
+    [Fact]
+    public void A_field_on_a_column_a_constant_writes_is_read_but_never_written_twice()
+    {
+        // InvoiceNote also shows its type code: a field and the constant both name entity_type.
+        var model = new Shop(invoiceNoteShowsType: true).Resolve();
+        var resolved = BindingOf(model, "InvoiceNote");
+
+        Assert.DoesNotContain(model.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        var field = Assert.Single(resolved.Fields, f => f.Name == "entityType");
+        Assert.Equal((false, false), (field.InInsert, field.InUpdate));
+        Assert.Equal(
+            "SELECT t.id AS id, t.entity_id AS invoiceId, t.body AS body, t.created_at AS createdAt, t.entity_type AS entityType\nFROM public.notes t\nWHERE t.entity_type = 'invoice' AND t.id = @id",
+            BindingSql.Render(resolved, "select-by-key").Sql);
+        Assert.Equal("INSERT INTO public.notes (id, entity_id, body, entity_type)\nVALUES (@id, @invoiceId, @body, 'invoice')", BindingSql.Render(resolved, "insert").Sql);
+        Assert.Equal("UPDATE public.notes SET entity_id = @invoiceId, body = @body\nWHERE id = @id AND entity_type = 'invoice'", BindingSql.Render(resolved, "update").Sql);
+        Assert.Equal(["id", "invoiceId", "body"], BindingSql.Parameters(resolved, "insert"));
+    }
+
+    [Theory]
+    [InlineData("since", false)]
+    [InlineData("entityType", true)]
+    [InlineData("TOTAL", true)]
+    public void MQ4121_refuses_a_query_parameter_named_like_a_field(string parameter, bool refused)
+    {
+        var shop = new Shop(queryParameter: parameter);
+        var model = shop.Resolve();
+
+        var found = model.Diagnostics.Where(d => d.Rule == "MQ4121").ToList();
+        if (!refused)
+        {
+            Assert.Empty(found);
+            return;
+        }
+
+        var diagnostic = Assert.Single(found);
+        Assert.Equal((DiagnosticSeverity.Error, shop.NoteCount.Id, "/bindings/0/source"), (diagnostic.Severity, diagnostic.ElementId, diagnostic.JsonPointer));
+        Assert.Contains("'" + parameter + "'", diagnostic.Message, StringComparison.Ordinal);
     }
 
     public static TheoryData<string, string, string> Rules() => new()

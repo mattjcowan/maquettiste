@@ -1738,8 +1738,10 @@ query that returns rows."
 ### What the statements look like
 
 The engine renders each binding's five statements for any dialect: `select`, `select-by-key`, `insert`, `update` and
-`delete`. Parameters are named after the fields; constants are literals; the columns the database fills are never written,
-and a generated key comes back from the insert (`RETURNING`, `OUTPUT INSERTED`, or `SELECT LAST_INSERT_ID()` on MySQL):
+`delete`. Parameters are named after the fields, and a query source keeps its own parameters' names, so none may share a
+field's name (MQ4121). Constants are literals, and a field on a column a constant writes is read but never written: the
+constant's value goes in once. The columns the database fills are never written, and a generated key comes back from
+the insert (`RETURNING`, `OUTPUT INSERTED`, or `SELECT LAST_INSERT_ID()` on MySQL):
 
 ```sh
 curl -s -H "Authorization: Bearer $TOKEN" \
@@ -1923,6 +1925,7 @@ writes no description, so the text stays in one place.
 | --- | --- | --- |
 | MQ4044 | error | the source is not a table, view or query of the binding's database, or is a query written as SQL text that writes tables or declares no columns, or the write table is not a table of it |
 | MQ4097 | warning | a SQL Server binding reads a query written as SQL text that cannot be a derived table there (it starts with `WITH`, or has an `ORDER BY` outside parentheses with no `OFFSET`, `FETCH` or `TOP`) |
+| MQ4121 | error | the source query has a parameter with the name of one of the binding's fields (ignoring case); rename the query's parameter, since the statements name their parameters after the fields |
 | MQ4045 | error | a field names nothing of the entity, a column the source does not have, a listed column of no table the binding uses, or maps an attribute or a column twice |
 | MQ4046 | error | a binding that writes maps no field for a key attribute |
 | MQ4047 | warning | a column of the source or write table is accounted for by nothing |

@@ -1641,6 +1641,14 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4121",
+    "defaultSeverity": "error",
+    "description": "A binding reads a query with a parameter that has the name of one of the binding's fields (ignoring case): the statements name their parameters after the fields, so one name would carry two values.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",

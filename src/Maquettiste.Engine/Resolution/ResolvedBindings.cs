@@ -152,10 +152,10 @@ public sealed class RBindingField
     /// <summary>Whether the database fills the column (identity, a key sequence, computed, or marked <c>database</c> or <c>computed</c>).</summary>
     public bool IsGenerated { get; internal set; }
 
-    /// <summary>Whether the insert statement writes the field.</summary>
+    /// <summary>Whether the insert statement writes the field (never when a constant writes its column: the constant's value goes in).</summary>
     public bool InInsert { get; internal set; }
 
-    /// <summary>Whether the update statement sets the field (written, not a key, not read-only or immutable).</summary>
+    /// <summary>Whether the update statement sets the field (written, not a key, not read-only or immutable, and no constant writes its column).</summary>
     public bool InUpdate { get; internal set; }
 
     /// <summary>The built-in type keyword of the column, or <see langword="null"/> when unknown.</summary>
