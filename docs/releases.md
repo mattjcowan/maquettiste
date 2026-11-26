@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.26.1 (not released yet)
+## 0.26.1 (2026-11-26)
 
 Two fixes to the SQL the engine writes for an entity's binding. The file format does not change.
 
