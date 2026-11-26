@@ -9693,6 +9693,18 @@ components:
               replacing a base's entry for the same lifecycle, attribute or end. Absent when neither the entity nor a base has a
               revisions block.
             $ref: '#/components/schemas/RevisionsRecord'
+          parts:
+            type: array
+            description: |
+              The parts of a whole record of the entity at every level down (parts-and-copy-design.md), in an order safe for foreign
+              keys: owners before their parts, a part after the parts its to-one links point at. Absent for an entity without parts.
+            items:
+              $ref: '#/components/schemas/PartRecord'
+          copy:
+            description: |
+              What a copy of a whole record carries over (parts-and-copy-design.md), merged through the bases. Absent when neither the
+              entity nor a base has a copy block.
+            $ref: '#/components/schemas/CopyRecord'
     RevisionsRecord:
       x-engine-record: Maquettiste.Engine.RevisionsRecord
       description: An entity's revisions, merged through its bases (revisions-design.md section 8); other elements by id.
@@ -9732,6 +9744,172 @@ components:
           description: Each relation end with a rule for its links on a revise; an end not listed is the team's.
           items:
             $ref: '#/components/schemas/RevisionLinkRecord'
+    PartRecord:
+      x-engine-record: Maquettiste.Engine.PartRecord
+      description: One part of a whole record (parts-and-copy-design.md), owned through a composition; other elements by id.
+      type: object
+      required: [id, relation, ownerEnd, end, entity, owner, parent, depth, isRecursive, inCycle, foreignKeys]
+      properties:
+        id:
+          type: string
+          description: The part's path from the record, the ids of the part ends on the way down joined by `/`.
+        relation:
+          type: string
+          description: The composition's id.
+        ownerEnd:
+          type: string
+          description: The id of the composition's owner end, at the owner.
+        end:
+          type: string
+          description: The id of the composition's part end, at the part.
+        entity:
+          type: string
+          description: The part entity's id.
+        owner:
+          type: string
+          description: The id of the entity that owns the part here, the record's or the parent part's.
+        parent:
+          type: [string, 'null']
+          description: The parent part's id; null for a part of the record itself.
+        depth:
+          type: integer
+          minimum: 1
+          description: 1 for a part of the record itself, 2 for a part of a part, and so on.
+        isRecursive:
+          type: boolean
+          description: Whether the part's entity is already on the way down, so its own parts are not listed again.
+        inCycle:
+          type: boolean
+          description: Whether the part's to-one links go round in a circle with other parts or the record.
+        foreignKeys:
+          type: array
+          description: Per database where the composition is stored with a foreign key, the key that links the part's rows to their owner's.
+          items:
+            $ref: '#/components/schemas/PartForeignKeyRecord'
+    PartForeignKeyRecord:
+      x-engine-record: Maquettiste.Engine.PartForeignKeyRecord
+      description: The foreign key that links a part's rows to their owner's in one database (parts-and-copy-design.md).
+      type: object
+      required: [database, name, end, columns, referencedTable, referencedColumns]
+      properties:
+        database:
+          type: string
+          description: The database's id.
+        name:
+          type: string
+          description: The foreign key's name.
+        end:
+          type: [string, 'null']
+          description: The id of the relation end whose table holds the key; the part end, except for a one-to-one composition stored with the key in the owner's table.
+        columns:
+          type: array
+          description: The keys of the key's columns in the table that holds it.
+          items:
+            type: string
+        referencedTable:
+          type: string
+          description: The key of the table the key refers to.
+        referencedColumns:
+          type: array
+          description: The keys of the columns the key refers to.
+          items:
+            type: string
+    CopyRecord:
+      x-engine-record: Maquettiste.Engine.CopyRecord
+      description: What a copy of a whole record carries over, merged through the entity's bases (parts-and-copy-design.md); other elements by id.
+      type: object
+      required: [attributes, links, parts]
+      properties:
+        attributes:
+          type: array
+          description: Each attribute the copy doesn't take as it is.
+          items:
+            $ref: '#/components/schemas/CopyAttributeRecord'
+        links:
+          type: array
+          description: Each to-one link the copy doesn't take as it is.
+          items:
+            $ref: '#/components/schemas/CopyLinkRecord'
+        parts:
+          type: array
+          description: Each part the copy carries over, in the order of the entity's parts; a kind with no entry is filled in with `all` and `from` null.
+          items:
+            $ref: '#/components/schemas/CopyPartRecord'
+    CopyAttributeRecord:
+      x-engine-record: Maquettiste.Engine.CopyAttributeRecord
+      description: What a copy's value of one attribute is (parts-and-copy-design.md).
+      type: object
+      required: [attribute, onCopy, from]
+      properties:
+        attribute:
+          type: string
+          description: The attribute's id.
+        onCopy:
+          type: string
+          description: '`reset`: the attribute''s default, else empty; `clear`: empty; `original`: the id of the record copied from.'
+          enum: [reset, clear, original]
+        from:
+          type: string
+          description: The id of the entity whose block says it.
+    CopyLinkRecord:
+      x-engine-record: Maquettiste.Engine.CopyLinkRecord
+      description: What a copy's link through one to-one relation end is (parts-and-copy-design.md).
+      type: object
+      required: [end, onCopy, from]
+      properties:
+        end:
+          type: string
+          description: The relation end's id.
+        onCopy:
+          type: string
+          description: '`original`: the copy links to the record it was copied from.'
+          enum: [original]
+        from:
+          type: string
+          description: The id of the entity whose block says it.
+    CopyPartRecord:
+      x-engine-record: Maquettiste.Engine.CopyPartRecord
+      description: Which parts of one kind a copy carries over (parts-and-copy-design.md).
+      type: object
+      required: [part, onCopy, choose, attributes, from]
+      properties:
+        part:
+          type: string
+          description: The part's id, as in the entity's parts.
+        onCopy:
+          type: string
+          description: '`all`: every part under each copied owner; `one`: one part, as `choose` says.'
+          enum: [all, one]
+        choose:
+          oneOf:
+          - $ref: '#/components/schemas/CopyChoiceRecord'
+          - type: 'null'
+          description: With `one`, how the part is chosen; else null.
+        attributes:
+          type: array
+          description: Each attribute of the part the copy doesn't take as it is.
+          items:
+            $ref: '#/components/schemas/CopyAttributeRecord'
+        from:
+          type: [string, 'null']
+          description: The id of the entity whose block says it; null for a kind with no entry.
+    CopyChoiceRecord:
+      x-engine-record: Maquettiste.Engine.CopyChoiceRecord
+      description: How a copy chooses one part under each copied owner (parts-and-copy-design.md).
+      type: object
+      required: [condition, state, latestBy]
+      properties:
+        condition:
+          oneOf:
+          - $ref: '#/components/schemas/ExpressionRecord'
+          - type: 'null'
+          description: The condition on the part's attributes, or null.
+        state:
+          type: [string, 'null']
+          description: The id of the state the part is in, or null.
+        latestBy:
+          type: [string, 'null']
+          description: The id of the attribute whose greatest value is the latest, or null.
     RevisionLevelRecord:
       x-engine-record: Maquettiste.Engine.RevisionLevelRecord
       description: One level of an entity's revision sequence (revisions-design.md section 8).

@@ -120,6 +120,19 @@ public sealed class REntity : RElement
     /// revisions filters <c>model.entities</c> by it.
     /// </summary>
     public RRevisions? Revisions { get; internal set; }
+
+    /// <summary>
+    /// The parts of a whole record of the entity at every level down (parts-and-copy-design.md): the compositions whose owner end covers it, then
+    /// theirs, in an order safe for foreign keys (owners first, then a part after the parts its to-one links point at). Deleting deepest first is
+    /// the order reversed. Empty for an entity without parts. It keys on the files of the entities on the way down and of the relations at them.
+    /// </summary>
+    public IReadOnlyList<RPart> Parts { get; internal set; } = [];
+
+    /// <summary>
+    /// What a copy of a whole record of the entity carries over (parts-and-copy-design.md), merged through its bases; <see langword="null"/> when
+    /// neither the entity nor a base has a <c>copy</c> block, so the model says nothing about it.
+    /// </summary>
+    public RCopy? Copy { get; internal set; }
 }
 
 /// <summary>A resolved primary key.</summary>

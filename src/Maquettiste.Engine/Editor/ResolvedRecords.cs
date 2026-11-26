@@ -107,6 +107,10 @@ public sealed record PackageRecord(string Id, string Kind, string Name, string? 
 /// <see langword="null"/>, and left out of the JSON, unless one of them lists its subjects in <c>subjects</c>.</param>
 /// <param name="Revisions">The entity's revisions merged through its bases (revisions-design.md section 8); <see langword="null"/>, and left out
 /// of the JSON, when neither the entity nor a base has a revisions block.</param>
+/// <param name="Parts">The parts of a whole record of the entity at every level down, in an order safe for foreign keys (parts-and-copy-design.md);
+/// <see langword="null"/>, and left out of the JSON, for an entity without parts.</param>
+/// <param name="Copy">What a copy of a whole record carries over, merged through the bases (parts-and-copy-design.md); <see langword="null"/>,
+/// and left out of the JSON, when neither the entity nor a base has a copy block.</param>
 public sealed record EntityRecord(string Id, string Kind, string Name, string? Package, bool IsAbstract, string? Base, IReadOnlyList<string> Derived,
     IReadOnlyList<AttributeRecord> Attributes, KeyRecord? Key, IReadOnlyList<AlternateKeyRecord> AlternateKeys, IReadOnlyList<NavigationRecord> Navigations,
     IReadOnlyList<string> Relations, IReadOnlyList<EntityMappingRecord> Mappings, bool IsPromoted, string? PromotedFrom, IReadOnlyList<string> Seeds,
@@ -115,7 +119,71 @@ public sealed record EntityRecord(string Id, string Kind, string Name, string? P
     IReadOnlyList<EntityBindingRecord> Bindings,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<EntityCheckRecord>? Checks = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Lifecycles = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevisionsRecord? Revisions = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RevisionsRecord? Revisions = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PartRecord>? Parts = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CopyRecord? Copy = null);
+
+/// <summary>
+/// One part of a whole record (parts-and-copy-design.md): records of an entity owned through a composition, at a depth under a parent part;
+/// other elements by id.
+/// </summary>
+/// <param name="Id">The part's path from the record: the ids of the part ends on the way down, joined by <c>/</c>.</param>
+/// <param name="Relation">The composition's id.</param>
+/// <param name="OwnerEnd">The id of the composition's owner end, at the owner.</param>
+/// <param name="End">The id of the composition's part end, at the part.</param>
+/// <param name="Entity">The part entity's id.</param>
+/// <param name="Owner">The id of the entity that owns the part here: the record's entity, or the parent part's.</param>
+/// <param name="Parent">The parent part's <see cref="Id"/>; <see langword="null"/> for a part of the record itself.</param>
+/// <param name="Depth">1 for a part of the record itself, 2 for a part of a part, and so on.</param>
+/// <param name="IsRecursive">Whether the part's entity is already on the way down, so its own parts are not listed again.</param>
+/// <param name="InCycle">Whether the part's to-one links go round in a circle with other parts or the record.</param>
+/// <param name="ForeignKeys">Per database where the composition is stored with a foreign key, by database name, the key that links the part's
+/// rows to their owner's.</param>
+public sealed record PartRecord(string Id, string Relation, string OwnerEnd, string End, string Entity, string Owner, string? Parent, int Depth,
+    bool IsRecursive, bool InCycle, IReadOnlyList<PartForeignKeyRecord> ForeignKeys);
+
+/// <summary>The foreign key that links a part's rows to their owner's in one database (parts-and-copy-design.md).</summary>
+/// <param name="Database">The database's id.</param>
+/// <param name="Name">The foreign key's name.</param>
+/// <param name="End">The id of the relation end whose table holds the key: the part end, except for a one-to-one composition stored with the key
+/// in the owner's table; <see langword="null"/> when the key records none.</param>
+/// <param name="Columns">The keys of the key's columns in the table that holds it.</param>
+/// <param name="ReferencedTable">The key of the table the key refers to.</param>
+/// <param name="ReferencedColumns">The keys of the columns the key refers to.</param>
+public sealed record PartForeignKeyRecord(string Database, string Name, string? End, IReadOnlyList<string> Columns, string ReferencedTable,
+    IReadOnlyList<string> ReferencedColumns);
+
+/// <summary>What a copy of a whole record carries over, merged through the entity's bases (parts-and-copy-design.md); other elements by id.</summary>
+/// <param name="Attributes">Each attribute the copy doesn't take as it is.</param>
+/// <param name="Links">Each to-one link the copy doesn't take as it is.</param>
+/// <param name="Parts">Each part the copy carries over, in the order of the entity's parts; a kind with no entry is filled in with <c>all</c>.</param>
+public sealed record CopyRecord(IReadOnlyList<CopyAttributeRecord> Attributes, IReadOnlyList<CopyLinkRecord> Links, IReadOnlyList<CopyPartRecord> Parts);
+
+/// <summary>What a copy's value of one attribute is (parts-and-copy-design.md).</summary>
+/// <param name="Attribute">The attribute's id.</param>
+/// <param name="OnCopy"><c>reset</c>, <c>clear</c> or <c>original</c>.</param>
+/// <param name="From">The id of the entity whose block says it.</param>
+public sealed record CopyAttributeRecord(string Attribute, string OnCopy, string From);
+
+/// <summary>What a copy's link through one to-one relation end is (parts-and-copy-design.md).</summary>
+/// <param name="End">The relation end's id.</param>
+/// <param name="OnCopy"><c>original</c>.</param>
+/// <param name="From">The id of the entity whose block says it.</param>
+public sealed record CopyLinkRecord(string End, string OnCopy, string From);
+
+/// <summary>Which parts of one kind a copy carries over (parts-and-copy-design.md).</summary>
+/// <param name="Part">The part's id, as in the entity's parts.</param>
+/// <param name="OnCopy"><c>all</c> or <c>one</c>.</param>
+/// <param name="Choose">With <c>one</c>, how the part is chosen; else <see langword="null"/>.</param>
+/// <param name="Attributes">Each attribute of the part the copy doesn't take as it is.</param>
+/// <param name="From">The id of the entity whose block says it; <see langword="null"/> for a kind with no entry.</param>
+public sealed record CopyPartRecord(string Part, string OnCopy, CopyChoiceRecord? Choose, IReadOnlyList<CopyAttributeRecord> Attributes, string? From);
+
+/// <summary>How a copy chooses one part under each copied owner (parts-and-copy-design.md).</summary>
+/// <param name="Condition">The condition on the part's attributes, or <see langword="null"/>.</param>
+/// <param name="State">The id of the state the part is in, or <see langword="null"/>.</param>
+/// <param name="LatestBy">The id of the attribute whose greatest value is the latest, or <see langword="null"/>.</param>
+public sealed record CopyChoiceRecord(ExpressionRecord? Condition, string? State, string? LatestBy);
 
 /// <summary>An entity's revisions, merged through its bases (revisions-design.md section 8); other elements by id.</summary>
 /// <param name="Levels">The levels, from the most significant.</param>
@@ -1837,8 +1905,24 @@ public static class ResolvedRecords
                     c.IsInherited, Ids(c.Bindings), c.DisplayName!, c.PluralName!, c.Description, c.Tags, c.Category?.Id, Keys(c.Stereotypes), Plain(c.Properties),
                     c.Generation))],
                 e.Lifecycles.Any(l => l.ListsSubjects) ? Ids(e.Lifecycles) : null,
-                e.Revisions is { } revisions ? Revisions(revisions) : null);
+                e.Revisions is { } revisions ? Revisions(revisions) : null,
+                e.Parts.Count == 0 ? null : [.. e.Parts.Select(Part)],
+                e.Copy is { } copy ? Copy(copy) : null);
         }
+
+        private PartRecord Part(RPart p) => new(p.Id, p.Relation.Id, p.OwnerEnd.Id, p.End.Id, p.Entity.Id, p.Owner.Id, p.Parent?.Id, p.Depth,
+            p.IsRecursive, p.InCycle,
+            [.. p.ForeignKeys.OrderBy(k => k.Key, StringComparer.Ordinal).Select(k => new PartForeignKeyRecord(DatabaseId(k.Key), k.Value.Name, k.Value.End?.Id,
+                [.. k.Value.Columns.Select(c => c.Key)], k.Value.ReferencedTable.Key, [.. k.Value.ReferencedColumns.Select(c => c.Key)]))]);
+
+        private static CopyRecord Copy(RCopy c) => new(
+            [.. c.Attributes.Select(CopyAttribute)],
+            [.. c.Links.Select(l => new CopyLinkRecord(l.End.Id, l.OnCopy, l.From.Id))],
+            [.. c.Parts.Select(p => new CopyPartRecord(p.Part.Id, p.OnCopy,
+                p.Choose is { } choose ? new CopyChoiceRecord(Expression(choose.Condition), choose.State?.Id, choose.LatestBy?.Id) : null,
+                [.. p.Attributes.Select(CopyAttribute)], p.From?.Id))]);
+
+        private static CopyAttributeRecord CopyAttribute(RCopyAttribute a) => new(a.Attribute.Id, a.OnCopy, a.From.Id);
 
         private static RevisionsRecord Revisions(RRevisions r) => new(
             [.. r.Levels.Select(l => new RevisionLevelRecord(l.Number, l.Name, l.Format, l.Values, l.First, l.Skip, l.Width, l.StartEmpty, l.Examples))],

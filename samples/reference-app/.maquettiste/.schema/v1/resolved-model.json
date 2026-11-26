@@ -1635,6 +1635,198 @@
       ],
       "additionalProperties": false
     },
+    "copyAttributeRecord": {
+      "description": "What a copy's value of one attribute is.",
+      "type": "object",
+      "x-order": [
+        "attribute",
+        "onCopy",
+        "from"
+      ],
+      "properties": {
+        "attribute": {
+          "description": "The attribute's id.",
+          "type": "string"
+        },
+        "onCopy": {
+          "description": "`reset`, `clear` or `original`.",
+          "type": "string"
+        },
+        "from": {
+          "description": "The id of the entity whose block says it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attribute",
+        "onCopy",
+        "from"
+      ],
+      "additionalProperties": false
+    },
+    "copyChoiceRecord": {
+      "description": "How a copy chooses one part under each copied owner.",
+      "type": "object",
+      "x-order": [
+        "condition",
+        "state",
+        "latestBy"
+      ],
+      "properties": {
+        "condition": {
+          "description": "The condition on the part's attributes, or null.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/expressionRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "description": "The id of the state the part is in, or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latestBy": {
+          "description": "The id of the attribute whose greatest value is the latest, or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "condition",
+        "state",
+        "latestBy"
+      ],
+      "additionalProperties": false
+    },
+    "copyLinkRecord": {
+      "description": "What a copy's link through one to-one relation end is.",
+      "type": "object",
+      "x-order": [
+        "end",
+        "onCopy",
+        "from"
+      ],
+      "properties": {
+        "end": {
+          "description": "The relation end's id.",
+          "type": "string"
+        },
+        "onCopy": {
+          "description": "`original`.",
+          "type": "string"
+        },
+        "from": {
+          "description": "The id of the entity whose block says it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "end",
+        "onCopy",
+        "from"
+      ],
+      "additionalProperties": false
+    },
+    "copyPartRecord": {
+      "description": "Which parts of one kind a copy carries over.",
+      "type": "object",
+      "x-order": [
+        "part",
+        "onCopy",
+        "choose",
+        "attributes",
+        "from"
+      ],
+      "properties": {
+        "part": {
+          "description": "The part's id, as in the entity's parts.",
+          "type": "string"
+        },
+        "onCopy": {
+          "description": "`all` or `one`.",
+          "type": "string"
+        },
+        "choose": {
+          "description": "With `one`, how the part is chosen; else null.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/copyChoiceRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attributes": {
+          "description": "Each attribute of the part the copy doesn't take as it is.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/copyAttributeRecord"
+          }
+        },
+        "from": {
+          "description": "The id of the entity whose block says it; null for a kind with no entry.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "part",
+        "onCopy",
+        "choose",
+        "attributes",
+        "from"
+      ],
+      "additionalProperties": false
+    },
+    "copyRecord": {
+      "description": "What a copy of a whole record carries over, merged through the entity's bases; other elements by id.",
+      "type": "object",
+      "x-order": [
+        "attributes",
+        "links",
+        "parts"
+      ],
+      "properties": {
+        "attributes": {
+          "description": "Each attribute the copy doesn't take as it is.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/copyAttributeRecord"
+          }
+        },
+        "links": {
+          "description": "Each to-one link the copy doesn't take as it is.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/copyLinkRecord"
+          }
+        },
+        "parts": {
+          "description": "Each part the copy carries over, in the order of the entity's parts; a kind with no entry is filled in with `all`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/copyPartRecord"
+          }
+        }
+      },
+      "required": [
+        "attributes",
+        "links",
+        "parts"
+      ],
+      "additionalProperties": false
+    },
     "customRecord": {
       "description": "A resolved custom element.",
       "type": "object",
@@ -2896,7 +3088,9 @@
         "bindings",
         "checks",
         "lifecycles",
-        "revisions"
+        "revisions",
+        "parts",
+        "copy"
       ],
       "properties": {
         "id": {
@@ -3080,6 +3274,17 @@
         "revisions": {
           "description": "The entity's revisions merged through its bases; null, and left out of the JSON, when neither the entity nor a base has a revisions block.",
           "$ref": "#/$defs/revisionsRecord"
+        },
+        "parts": {
+          "description": "The parts of a whole record of the entity at every level down, in an order safe for foreign keys; null, and left out of the JSON, for an entity without parts.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/partRecord"
+          }
+        },
+        "copy": {
+          "description": "What a copy of a whole record carries over, merged through the bases; null, and left out of the JSON, when neither the entity nor a base has a copy block.",
+          "$ref": "#/$defs/copyRecord"
         }
       },
       "required": [
@@ -5980,6 +6185,145 @@
         "stereotypes",
         "properties",
         "generation"
+      ],
+      "additionalProperties": false
+    },
+    "partForeignKeyRecord": {
+      "description": "The foreign key that links a part's rows to their owner's in one database.",
+      "type": "object",
+      "x-order": [
+        "database",
+        "name",
+        "end",
+        "columns",
+        "referencedTable",
+        "referencedColumns"
+      ],
+      "properties": {
+        "database": {
+          "description": "The database's id.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The foreign key's name.",
+          "type": "string"
+        },
+        "end": {
+          "description": "The id of the relation end whose table holds the key: the part end, except for a one-to-one composition stored with the key in the owner's table; null when the key records none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "columns": {
+          "description": "The keys of the key's columns in the table that holds it.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "referencedTable": {
+          "description": "The key of the table the key refers to.",
+          "type": "string"
+        },
+        "referencedColumns": {
+          "description": "The keys of the columns the key refers to.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "database",
+        "name",
+        "end",
+        "columns",
+        "referencedTable",
+        "referencedColumns"
+      ],
+      "additionalProperties": false
+    },
+    "partRecord": {
+      "description": "One part of a whole record: records of an entity owned through a composition, at a depth under a parent part; other elements by id.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "relation",
+        "ownerEnd",
+        "end",
+        "entity",
+        "owner",
+        "parent",
+        "depth",
+        "isRecursive",
+        "inCycle",
+        "foreignKeys"
+      ],
+      "properties": {
+        "id": {
+          "description": "The part's path from the record: the ids of the part ends on the way down, joined by `/`.",
+          "type": "string"
+        },
+        "relation": {
+          "description": "The composition's id.",
+          "type": "string"
+        },
+        "ownerEnd": {
+          "description": "The id of the composition's owner end, at the owner.",
+          "type": "string"
+        },
+        "end": {
+          "description": "The id of the composition's part end, at the part.",
+          "type": "string"
+        },
+        "entity": {
+          "description": "The part entity's id.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "The id of the entity that owns the part here: the record's entity, or the parent part's.",
+          "type": "string"
+        },
+        "parent": {
+          "description": "The parent part's `partRecord.id`; null for a part of the record itself.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "depth": {
+          "description": "1 for a part of the record itself, 2 for a part of a part, and so on.",
+          "type": "integer"
+        },
+        "isRecursive": {
+          "description": "Whether the part's entity is already on the way down, so its own parts are not listed again.",
+          "type": "boolean"
+        },
+        "inCycle": {
+          "description": "Whether the part's to-one links go round in a circle with other parts or the record.",
+          "type": "boolean"
+        },
+        "foreignKeys": {
+          "description": "Per database where the composition is stored with a foreign key, by database name, the key that links the part's rows to their owner's.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/partForeignKeyRecord"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "relation",
+        "ownerEnd",
+        "end",
+        "entity",
+        "owner",
+        "parent",
+        "depth",
+        "isRecursive",
+        "inCycle",
+        "foreignKeys"
       ],
       "additionalProperties": false
     },

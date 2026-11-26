@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Store;
 
@@ -40,9 +41,30 @@ public sealed class RelationTypesUnchangedTests
         }
 
         foreach (var scope in new[] { "entities", "relations" })
-            text.Append(JsonSerializer.Serialize(Engine.ResolvedRecords.Entries(model, scope, null).Select(e => e.Project()).ToList(), Web)).Append('\n');
+            text.Append(WithoutParts(Engine.ResolvedRecords.Entries(model, scope, null).Select(e => e.Project()).ToList())).Append('\n');
 
         Assert.Contains("\"navigations\":[{", text.ToString(), StringComparison.Ordinal);
         Assert.Equal("176f7be708e50e4713c4101f534140d6", Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())))[..32]);
+    }
+
+    /// <summary>
+    /// Records as JSON without the members added after the hashes were pinned that no relation storage changes: an entity's <c>parts</c> and
+    /// <c>copy</c> (parts-and-copy-design.md), which the billing fixture's composition fills in.
+    /// </summary>
+    /// <param name="records">The records.</param>
+    /// <returns>The JSON.</returns>
+    internal static string WithoutParts(List<object> records)
+    {
+        var node = JsonSerializer.SerializeToNode(records, Web)!.AsArray();
+        foreach (var item in node)
+        {
+            if (item is JsonObject record)
+            {
+                record.Remove("parts");
+                record.Remove("copy");
+            }
+        }
+
+        return node.ToJsonString(Web);
     }
 }

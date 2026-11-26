@@ -3821,6 +3821,16 @@ export interface components {
              *     revisions block.
              */
             revisions?: components["schemas"]["RevisionsRecord"];
+            /**
+             * @description The parts of a whole record of the entity at every level down (parts-and-copy-design.md), in an order safe for foreign
+             *     keys: owners before their parts, a part after the parts its to-one links point at. Absent for an entity without parts.
+             */
+            parts?: components["schemas"]["PartRecord"][];
+            /**
+             * @description What a copy of a whole record carries over (parts-and-copy-design.md), merged through the bases. Absent when neither the
+             *     entity nor a base has a copy block.
+             */
+            copy?: components["schemas"]["CopyRecord"];
         };
         /** @description An entity's revisions, merged through its bases (revisions-design.md section 8); other elements by id. */
         RevisionsRecord: {
@@ -3841,6 +3851,104 @@ export interface components {
             attributes: components["schemas"]["RevisionAttributeRecord"][];
             /** @description Each relation end with a rule for its links on a revise; an end not listed is the team's. */
             links: components["schemas"]["RevisionLinkRecord"][];
+        };
+        /** @description One part of a whole record (parts-and-copy-design.md), owned through a composition; other elements by id. */
+        PartRecord: {
+            /** @description The part's path from the record, the ids of the part ends on the way down joined by `/`. */
+            id: string;
+            /** @description The composition's id. */
+            relation: string;
+            /** @description The id of the composition's owner end, at the owner. */
+            ownerEnd: string;
+            /** @description The id of the composition's part end, at the part. */
+            end: string;
+            /** @description The part entity's id. */
+            entity: string;
+            /** @description The id of the entity that owns the part here, the record's or the parent part's. */
+            owner: string;
+            /** @description The parent part's id; null for a part of the record itself. */
+            parent: string | null;
+            /** @description 1 for a part of the record itself, 2 for a part of a part, and so on. */
+            depth: number;
+            /** @description Whether the part's entity is already on the way down, so its own parts are not listed again. */
+            isRecursive: boolean;
+            /** @description Whether the part's to-one links go round in a circle with other parts or the record. */
+            inCycle: boolean;
+            /** @description Per database where the composition is stored with a foreign key, the key that links the part's rows to their owner's. */
+            foreignKeys: components["schemas"]["PartForeignKeyRecord"][];
+        };
+        /** @description The foreign key that links a part's rows to their owner's in one database (parts-and-copy-design.md). */
+        PartForeignKeyRecord: {
+            /** @description The database's id. */
+            database: string;
+            /** @description The foreign key's name. */
+            name: string;
+            /** @description The id of the relation end whose table holds the key; the part end, except for a one-to-one composition stored with the key in the owner's table. */
+            end: string | null;
+            /** @description The keys of the key's columns in the table that holds it. */
+            columns: string[];
+            /** @description The key of the table the key refers to. */
+            referencedTable: string;
+            /** @description The keys of the columns the key refers to. */
+            referencedColumns: string[];
+        };
+        /** @description What a copy of a whole record carries over, merged through the entity's bases (parts-and-copy-design.md); other elements by id. */
+        CopyRecord: {
+            /** @description Each attribute the copy doesn't take as it is. */
+            attributes: components["schemas"]["CopyAttributeRecord"][];
+            /** @description Each to-one link the copy doesn't take as it is. */
+            links: components["schemas"]["CopyLinkRecord"][];
+            /** @description Each part the copy carries over, in the order of the entity's parts; a kind with no entry is filled in with `all` and `from` null. */
+            parts: components["schemas"]["CopyPartRecord"][];
+        };
+        /** @description What a copy's value of one attribute is (parts-and-copy-design.md). */
+        CopyAttributeRecord: {
+            /** @description The attribute's id. */
+            attribute: string;
+            /**
+             * @description `reset`: the attribute's default, else empty; `clear`: empty; `original`: the id of the record copied from.
+             * @enum {string}
+             */
+            onCopy: "reset" | "clear" | "original";
+            /** @description The id of the entity whose block says it. */
+            from: string;
+        };
+        /** @description What a copy's link through one to-one relation end is (parts-and-copy-design.md). */
+        CopyLinkRecord: {
+            /** @description The relation end's id. */
+            end: string;
+            /**
+             * @description `original`: the copy links to the record it was copied from.
+             * @enum {string}
+             */
+            onCopy: "original";
+            /** @description The id of the entity whose block says it. */
+            from: string;
+        };
+        /** @description Which parts of one kind a copy carries over (parts-and-copy-design.md). */
+        CopyPartRecord: {
+            /** @description The part's id, as in the entity's parts. */
+            part: string;
+            /**
+             * @description `all`: every part under each copied owner; `one`: one part, as `choose` says.
+             * @enum {string}
+             */
+            onCopy: "all" | "one";
+            /** @description With `one`, how the part is chosen; else null. */
+            choose: components["schemas"]["CopyChoiceRecord"] | null;
+            /** @description Each attribute of the part the copy doesn't take as it is. */
+            attributes: components["schemas"]["CopyAttributeRecord"][];
+            /** @description The id of the entity whose block says it; null for a kind with no entry. */
+            from: string | null;
+        };
+        /** @description How a copy chooses one part under each copied owner (parts-and-copy-design.md). */
+        CopyChoiceRecord: {
+            /** @description The condition on the part's attributes, or null. */
+            condition: components["schemas"]["ExpressionRecord"] | null;
+            /** @description The id of the state the part is in, or null. */
+            state: string | null;
+            /** @description The id of the attribute whose greatest value is the latest, or null. */
+            latestBy: string | null;
         };
         /** @description One level of an entity's revision sequence (revisions-design.md section 8). */
         RevisionLevelRecord: {
@@ -9046,6 +9154,19 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * Copy attribute entry
+         * @description What a copy's value of one attribute is.
+         */
+        copyAttribute: {
+            /** @description The id of an attribute the record holds: its own, an inherited one or one from a stereotype it carries; never a key or derived attribute (MQ3045). */
+            attribute: components["schemas"]["id"];
+            /**
+             * @description reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty, never on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.
+             * @enum {unknown}
+             */
+            onCopy: "copy" | "reset" | "clear" | "original";
+        };
+        /**
          * Entity
          * @description A business object with identity.
          */
@@ -9158,6 +9279,48 @@ export interface components {
                 }[];
             };
             /**
+             * Copy
+             * @description What a copy of a whole record of this entity carries over (parts-and-copy-design.md): a copy is a new record made from an existing one, with copies of its composition parts. Per attribute and to-one link, and per kind of part, what the copy gets; anything not listed is copied as it is. Links inside the copy point at the copies; links out of the copy stay as they were. A derived entity inherits its bases' block, a nearer entry replacing a farther one for the same attribute or end.
+             */
+            copy?: {
+                /** @description What the copy's value of each listed attribute is. An attribute not listed is copied as it is. */
+                attributes?: components["schemas"]["copyAttribute"][];
+                /** @description What the copy's link through each listed to-one relation end is. An end not listed keeps the original's link. */
+                links?: {
+                    /** @description The id of a to-one end the entity navigates to, of a two-ended relation that is not a composition (MQ3045). */
+                    end: components["schemas"]["id"];
+                    /**
+                     * @description original: the copy links to the record it was copied from (MQ3046, the end's type must cover the entity); copy: the original's link, so a derived entity can undo a base's entry.
+                     * @enum {unknown}
+                     */
+                    onCopy: "copy" | "original";
+                }[];
+                /** @description Which parts of each listed kind the copy carries over. A kind not listed is copied whole. A part the copy leaves out leaves its own parts out too. */
+                parts?: {
+                    /** @description The id of the part end of a composition among the entity's parts, at any level (MQ3047). */
+                    end: components["schemas"]["id"];
+                    /**
+                     * @description all: every part; one: one part under each copied owner, chosen as choose says; none: no part of the kind.
+                     * @enum {unknown}
+                     */
+                    onCopy: "all" | "one" | "none";
+                    /**
+                     * Copy choice
+                     * @description With one only (MQ3047): the part that meets the condition or is in the state, the latest by latestBy among several; when none does, the latest of all by latestBy. At least one key, and not both condition and state.
+                     */
+                    choose?: {
+                        /** @description A condition on the part's own attributes: the part for which it is true. */
+                        condition?: components["schemas"]["expr"];
+                        /** @description The id of a state of a lifecycle that governs the part's entity: the part in that state (MQ3048). */
+                        state?: components["schemas"]["id"];
+                        /** @description The id of an attribute of the part with an order (a number, a text, a date or a time): the latest is the one with the greatest value (MQ3048). */
+                        latestBy?: components["schemas"]["id"];
+                    };
+                    /** @description What the copied parts' value of each listed attribute is. An attribute not listed is copied as it is. */
+                    attributes?: components["schemas"]["copyAttribute"][];
+                }[];
+            };
+            /**
              * @description How the entity reads from and writes to databases, one binding per database (erratum E43). A binding wins over any projection of the entity into its database.
              * @default []
              */
@@ -9241,6 +9404,21 @@ export interface components {
             /** @default {} */
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
+            $defs: {
+                /**
+                 * Copy attribute entry
+                 * @description What a copy's value of one attribute is.
+                 */
+                copyAttribute: {
+                    /** @description The id of an attribute the record holds: its own, an inherited one or one from a stereotype it carries; never a key or derived attribute (MQ3045). */
+                    attribute: components["schemas"]["id"];
+                    /**
+                     * @description reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty, never on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.
+                     * @enum {unknown}
+                     */
+                    onCopy: "copy" | "reset" | "clear" | "original";
+                };
+            };
         };
         /**
          * Value object

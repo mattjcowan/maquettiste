@@ -359,6 +359,19 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        // An entity's copy block (parts-and-copy-design.md), in either resolution, as for revisions: an attribute or end an entry names, or a
+        // part entry's chosen state or latest-by attribute, takes the entry, so that item is copied as it is again. A list goes with its last
+        // entry, and the block with its last key.
+        if (referrer.Element is Entity && CopyPart(reference.JsonPointer) is { } copyPart)
+        {
+            var next = CopyOps(referrer.Json, copyPart, reference, index, ops);
+            if (TryOps(referrer, next, narrow, out _) is null)
+            {
+                Commit(referrerId, next);
+                return;
+            }
+        }
+
         // An entity or a stereotype a process lists in subjects (lifecycle-design.md decision 5, stereotype-sets-design.md decision 11): its
         // entry goes in either resolution, the way an entity's binding does, and a list left empty goes whole, so a lifecycle is left with no
         // subject (MQ9201), as when its one subject goes.
@@ -1176,6 +1189,60 @@ internal sealed partial class ChangePlanner
         return next;
     }
 
+    /// <summary>The pointer of an entity's copy block.</summary>
+    private const string CopyBlock = "/copy";
+
+    /// <summary>
+    /// Where a reference sits in an entity's copy block (parts-and-copy-design.md): the list and the entry that go with it. An entry's
+    /// <c>attribute</c> or <c>end</c>, and a part entry's <c>choose</c> state or latest-by attribute, take the entry; a part's own attribute
+    /// entry takes that entry from the part's list. <see langword="null"/> for any other pointer, a choice's condition included.
+    /// </summary>
+    private static (string List, string Entry)? CopyPart(string pointer)
+    {
+        if (!pointer.StartsWith(CopyBlock + "/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var segments))
+            return null;
+        return segments switch
+        {
+            ["copy", "attributes" or "links", var at, "attribute" or "end"] when JsonPointer.TryIndex(at, out _) => (JsonPointer.Build(segments[..2]), JsonPointer.Build(segments[..3])),
+            ["copy", "parts", var at, "end"] when JsonPointer.TryIndex(at, out _) => (JsonPointer.Build(segments[..2]), JsonPointer.Build(segments[..3])),
+            ["copy", "parts", var at, "choose", "state" or "latestBy"] when JsonPointer.TryIndex(at, out _) => (JsonPointer.Build(segments[..2]), JsonPointer.Build(segments[..3])),
+            ["copy", "parts", var at, "attributes", var item, "attribute"] when JsonPointer.TryIndex(at, out _) && JsonPointer.TryIndex(item, out _) =>
+                (JsonPointer.Build(segments[..4]), JsonPointer.Build(segments[..5])),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// The edits a reference's loss makes to a copy block, on top of those planned: the entry goes, or its list with its last entry; and when no
+    /// key of the block is left, the block goes instead.
+    /// </summary>
+    private static List<CascadeOp> CopyOps(JsonElement json, (string List, string Entry) part, ReferenceInfo reference, int index, List<CascadeOp> ops)
+    {
+        var pointer = Remaining(json, part.List, ops) <= 1 ? part.List : part.Entry;
+        List<CascadeOp> next = [.. ops.Where(o => o.Pointer != pointer && !IsUnder(o.Pointer, pointer)), new CascadeOp(pointer, true, reference, index)];
+        if (Remaining(json, CopyBlock, next) <= 0)
+            next = [.. next.Where(o => o.Pointer != CopyBlock && !IsUnder(o.Pointer, CopyBlock)), new CascadeOp(CopyBlock, true, reference, index)];
+        return next;
+    }
+
+    /// <summary>
+    /// How a delete plan words a removed part of an entity's copy block: the block, a list, or an entry by what it names; <see langword="null"/>
+    /// for any other pointer.
+    /// </summary>
+    private string? CopyWhat(JsonElement json, string pointer)
+    {
+        if (pointer == CopyBlock)
+            return "copy block";
+        if (!pointer.StartsWith(CopyBlock + "/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var segments))
+            return null;
+        if (segments.Length is 2 or 4)
+            return "copy " + segments[^1];
+        var key = segments[^2] switch { "attributes" => "attribute", "links" or "parts" => "end", _ => null };
+        return key is not null && JsonPointer.TryGet(json, pointer + "/" + key, out var named) && named.ValueKind == JsonValueKind.String
+            ? $"copy entry for {key} {ShortName(named.GetString()!)}"
+            : null;
+    }
+
     /// <summary>
     /// How a delete plan words a removed part of an entity's revisions block: the block, a list, or an entry by what it names (the lifecycle,
     /// attribute or end); <see langword="null"/> for any other pointer.
@@ -1688,8 +1755,11 @@ internal sealed partial class ChangePlanner
                         : document.Element.Kind == ElementKind.Entity && (op.Pointer == RevisionsBlock
                             || (op.Pointer.StartsWith(RevisionsBlock + "/", StringComparison.Ordinal) && op.Pointer.Count(c => c == '/') == 2))
                             ? "is left empty without " + Label(op.Reference.ToId)
+                        // So is a copy block or list (parts-and-copy-design.md).
+                        : document.Element.Kind == ElementKind.Entity && CopyPart(op.Reference.JsonPointer) is { } copied && (op.Pointer == CopyBlock || op.Pointer == copied.List)
+                            ? "is left empty without " + Label(op.Reference.ToId)
                             : "needs " + Label(op.Reference.ToId);
-                    var what = document.Element.Kind == ElementKind.Entity ? RevisionsWhat(document.Json, op.Pointer) : null;
+                    var what = document.Element.Kind == ElementKind.Entity ? RevisionsWhat(document.Json, op.Pointer) ?? CopyWhat(document.Json, op.Pointer) : null;
                     removes.Add(new DeletePlanRemove(referrerId, document.Element.KindName, NameOf(document.Element), op.Pointer,
                         what ?? Part(document.Json, op.Pointer, subKind, ShortName(op.Reference.ToId)), sub, subKind, because));
                 }

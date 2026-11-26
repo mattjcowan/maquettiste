@@ -231,6 +231,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
                     RevisionRules.Validate(context, report);
+                    CopyRules.Validate(context, report);
                     OperationRules.Validate(context, report);
                     ExpressionRules.Validate(context, report);
                     CustomRules.Validate(context, report);
@@ -662,6 +663,17 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         {
             if (model.GetDocument(id) is { } peer)
                 yield return peer;
+        }
+
+        // A copy block's part entries depend on the compositions and bases on the way down to the part, which it doesn't reference
+        // (parts-and-copy-design.md): a relation or entity change checks every copy block again. Few entities write one.
+        if (element is Relation or Entity)
+        {
+            foreach (var writer in CopyRules.Writers(model))
+            {
+                if (!ReferenceEquals(writer, element) && model.GetDocument(writer.Id) is { } peer)
+                    yield return peer;
+            }
         }
 
         // The files a default list reaches are judged on the effective set it gives (MQ2004, MQ2013 to MQ2015, MQ2018 and every rule

@@ -87,6 +87,14 @@ public sealed record Entity : Element, IPackaged
     public EntityRevisions? Revisions { get; init; }
 
     /// <summary>
+    /// What a copy of a whole record of the entity carries over: its fields, its "copied from" link and which of its composition parts
+    /// (parts-and-copy-design.md), as written on this entity; <see langword="null"/>, and left out of the file, when it says nothing. A derived
+    /// entity inherits its bases' block.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EntityCopy? Copy { get; init; }
+
+    /// <summary>
     /// How the entity reads from and writes to databases, one binding per database (erratum E43). An entity with a binding to a
     /// database is never projected into it, whatever the database's convention or a mapping element says.
     /// </summary>
