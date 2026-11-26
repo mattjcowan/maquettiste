@@ -5359,8 +5359,8 @@ sh docker/dev-billing.sh          # starts the sample project from tmp/billing o
 # If port 8080 is taken on your machine: MAQUETTISTE_PORT=8090 sh docker/dev-billing.sh, then use :8090 below.
 ```
 
-Open http://maquettiste.localhost:8080. There is no login in local mode: the container trusts requests from the
-machine it runs on. Saves write the JSON files in the mounted `.maquettiste/` folder, and Apply writes generated
+Open http://maquettiste.localhost:8080 or http://localhost:8080. There is no login unless `MAQUETTISTE_EDITOR_TOKEN` is
+set; with a token, everyone signs in. Saves write the JSON files in the mounted `.maquettiste/` folder, and Apply writes generated
 files into the mounted repository. Stop it with:
 
 ```
