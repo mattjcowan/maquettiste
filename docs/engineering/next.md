@@ -123,7 +123,7 @@ it. 0.12.0 was released on 2026-11-04.
 
 | Item | Requested | Status | Notes |
 | --- | --- | --- | --- |
-| Editor screens for the items above | yes | Later | Screens for operations and project-defined kinds come first, since the JSON form handles their nested members worst. For custom kinds, in this order: an explorer section per kind, one form built from a kind's schema with a link picker, then custom properties on process nodes. Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". |
+| Editor screens for the items above | yes | Later | Screens for operations and project-defined kinds come first, since the JSON form handles their nested members worst. For custom kinds, in this order: an explorer section per kind, one form built from a kind's schema with a link picker, then custom properties on process nodes. Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". Built in 0.28.0: the type column on a binding and the entity's Copy tab. |
 | Sign-off part 2: the simulation panel's Start row clips one select, and the Verbs tab doesn't count `delegate`'s uses | no | Later | Found in 0.20.0's browser passes. The owner said on 2026-11-08 they can wait; neither changes a name. |
 | The provided packs as examples: cut `csharp-dapper`'s lifecycle runtime (step runners, trigger point pipelines, sign-off and delegation) back to examples of reading the model, and have gate 3 check that the generated code builds rather than run every scenario through it | no (proposed) | Proposed, waits for the owner's word | The owner, 2026-11-09: the packs are "an example of how you access the variety of settings", to make it easier to author custom packs; Maquettiste "doesn't just take a model and generate a working system". New designs follow this from revisions on. Cutting the runtime already released changes pack output, so it needs a note in the release notes. |
 | Sealing facts into a revision, and squashing (6.2) | yes | Later | Built with the live planner (6.1): squashing must check each environment's ledger, which only 6.1 reads. Facts stay open until then. |
@@ -258,6 +258,11 @@ Built since:
   kind of part `all`, `one` (by a condition or a state, else the latest by a field) or `none`; links inside the copy
   pointed at the copies, links out kept. `entity.copy` resolves it for templates; MQ3045 to MQ3048. Scenarios don't run
   copies yet. Covers "Revisions, the rest: what a copy carries over". [The design](parts-and-copy-design.md). Requested.
+- **Editor screens for the type column and the copy block (0.28.0).** The Storage tab's binding card has a Type column
+  section (a base picks the column and code; a derived entity sees the column from its base, sets its code and sees the
+  codes its reads keep), and the entity editor has a Copy tab for the `copy` block (fields, links, and the tree of parts with
+  all, one or none, a condition or state choice and latest by). The parts tree and the codes are worked out in the editor
+  from the documents; no API change. Part of "Editor screens for the items above".
 - **Queries stop naming entities (0.27.0).** A query that names an `entity` as its rows' shape or has `collections` is
   warning MQ4127, once per file (at `/entity`, else `/collections`); teams may change its severity or turn it off in
   `validation.rules`. Such a query still resolves and renders as before; removal comes in a later version. The way now:

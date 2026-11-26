@@ -1,5 +1,5 @@
 // The entity editor (explorer-redesign.md 3.6): name, domain, key, base entity, Is abstract and the mark chips on
-// top; the tabs Attributes, Relationships, Indexes, Storage (its bindings, editors/storage/), Inheritance, Revisions, Seed data and
+// top; the tabs Attributes, Relationships, Indexes, Storage (its bindings, editors/storage/), Inheritance, Revisions, Copy, Seed data and
 // References (and Code generation when an extension schema applies). Every edit goes through the element's draft (state/drafts.ts).
 import { useMemo, useState } from "react";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
@@ -24,6 +24,7 @@ import { References } from "@/inspector/Inspector";
 import { setOptional, useVocabularies } from "@/inspector/fields";
 import { domIdOf, EditorLayout, MarkChips, NameAndDomain, useCodeGenerationTab, useEditorContext, type EditorContext } from "./EditorFrame";
 import { baseChain, relatedOf } from "./related";
+import { EntityCopyTab } from "./EntityCopyTab";
 import { EntityRevisionsTab } from "./EntityRevisionsTab";
 import { SeedDataTab } from "./SeedDataTab";
 import { StorageTab } from "./storage/StorageTab";
@@ -122,6 +123,7 @@ function EntityBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<type
           title: hierarchy ? undefined : "This entity has no base entity and no entity derives from it.",
         },
         { value: "revisions", label: EDITOR_TAB_LABELS.revisions, content: <EntityRevisionsTab {...ctx} />, compact: true },
+        { value: "copy", label: EDITOR_TAB_LABELS.copy, content: <EntityCopyTab {...ctx} /> },
         { value: "seed-data", label: EDITOR_TAB_LABELS.seedData, content: <SeedDataTab id={ctx.id} />, fill: true },
         { value: "references", label: EDITOR_TAB_LABELS.references, content: <References id={ctx.id} /> },
         codeGeneration,

@@ -256,6 +256,7 @@ export const EDITOR_TAB_LABELS = {
   storage: GROUP_LABELS.storage,
   inheritance: "Inheritance",
   revisions: "Revisions",
+  copy: "Copy",
   seedData: "Seed data",
   codeGeneration: "Code generation",
   references: "References",

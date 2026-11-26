@@ -139,7 +139,7 @@ enum member in a condition) is a reference, so its holder's save checks the bloc
 ## 6. Deferred
 
 - Scenarios and simulation of `copy` (a copy step making new objects in a run), with "Scenarios across objects".
-- The editor: no screen yet; the JSON tab edits the block.
+- The editor: built in 0.28.0 (the entity editor's Copy tab).
 - Parts of a part end with several types; parts that only a derived entity of a part has.
 - `clear` on a link; a "copied from" link on a part kind (`links` inside a part entry).
 

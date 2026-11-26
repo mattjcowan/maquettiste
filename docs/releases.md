@@ -5,6 +5,15 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.28.0 (not released yet)
+
+- **Editor screens for subtypes in one table and for what a copy carries over.** On an entity's Storage tab, each binding of an
+  entity in a hierarchy has a Type column section: a base picks the column and its code, a derived entity sees the column read only,
+  from its base, sets its own code and sees the codes its reads keep. A new Copy tab edits the entity's `copy` block: a choice for
+  each field and each to-one link, and for each kind of part in the tree of parts (all, one chosen by a condition or a state and
+  the latest by a field, or none), with entries from a base shown as such. Before, both were edited in the JSON tab only. No change
+  to the files, the API or the generated output.
+
 ## 0.27.0 (2026-11-26)
 
 A base entity and its subtypes can share one table through their bindings, templates can read the parts of a whole
