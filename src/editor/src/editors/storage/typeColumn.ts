@@ -17,7 +17,7 @@ export type TypeColumnRole =
    * The column is a base's, kept in the same table: read only, with the base's name. `redundant` when the binding names one as well (the
    * engine refuses it, MQ4126), so the card offers to remove it.
    */
-  | { role: "derived"; column: string; base: string; redundant: boolean };
+  | { role: "derived"; column: string; base: string; redundant: boolean; canName: boolean };
 
 const baseOf = (docs: ReadonlyMap<string, Json>, id: string): string | undefined => {
   const base = docs.get(id)?.base;
@@ -27,10 +27,14 @@ const baseOf = (docs: ReadonlyMap<string, Json>, id: string): string | undefined
 const bindingOf = (docs: ReadonlyMap<string, Json>, id: string, database: string): Binding | undefined =>
   ((docs.get(id)?.bindings as Binding[] | undefined) ?? []).find((b) => b.database === database);
 
-/** Where a binding's rows are kept: the table it writes, else (writing nowhere or writing its source) its source. */
+/**
+ * Where a binding's rows are kept: the table it writes, else (writing nowhere or writing its source) its source. A projected table's key
+ * `key@database` is the same table as `key`, as the engine finds it.
+ */
 export function hostOf(binding: Binding): string {
-  if (binding.write === "none") return binding.source;
-  return typeof binding.write === "object" && binding.write ? binding.write.table : binding.source;
+  const key = binding.write === "none" ? binding.source : typeof binding.write === "object" && binding.write ? binding.write.table : binding.source;
+  const suffix = "@" + binding.database;
+  return key.endsWith(suffix) ? key.slice(0, -suffix.length) : key;
 }
 
 /**
@@ -59,25 +63,34 @@ function namesInheritedColumn(entityId: string, binding: Binding, docs: Readonly
   return false;
 }
 
-/** The nearest base whose binding to the database names a type column in the same table as the binding: its name and the column. */
-export function inheritedTypeColumn(entityId: string, binding: Binding, docs: ReadonlyMap<string, Json>): { column: string; base: string } | undefined {
-  const host = hostOf(binding);
-  const seen = new Set([entityId]);
-  for (let e = baseOf(docs, entityId); e && !seen.has(e); e = baseOf(docs, e)) {
-    seen.add(e);
-    const b = bindingOf(docs, e, binding.database);
-    if (b?.discriminatorColumn && hostOf(b) === host) return { column: b.discriminatorColumn, base: String(docs.get(e)?.name ?? e) };
-  }
-  return undefined;
+/**
+ * The type column an entity reads from a base, by the engine's owner rule (typeColumnOwner): the owner's name and the column its binding
+ * names. Undefined when the entity names its own or no entity does. A base in another table is inherited from too, when the entity names none.
+ */
+export function inheritedTypeColumn(
+  entityId: string,
+  binding: Binding,
+  docs: ReadonlyMap<string, Json>,
+): { column: string; base: string; sameTable: boolean } | undefined {
+  const owner = typeColumnOwner(entityId, binding.database, docs, binding);
+  if (!owner || owner === entityId) return undefined;
+  const ownerBinding = bindingOf(docs, owner, binding.database);
+  return ownerBinding?.discriminatorColumn
+    ? { column: ownerBinding.discriminatorColumn, base: String(docs.get(owner)?.name ?? owner), sameTable: hostOf(ownerBinding) === hostOf(binding) }
+    : undefined;
 }
 
 /**
- * Which type column control a binding card shows. `hasDerived`: some entity derives from this one. An entity outside a hierarchy has
- * none; one whose bases name a column in the same table reads it; any other entity in a hierarchy may name its own.
+ * Which type column control a binding card shows, from the same owner rule as the engine. An entity outside a hierarchy has none. When a
+ * base owns the column, the card reads it from there (and offers a column of its own unless the binding names one already, which the
+ * engine refuses when the base keeps its rows in the same table: `redundant`). Otherwise the entity names its own.
+ * `hasDerived`: some entity derives from this one.
  */
 export function typeColumnRole(entityId: string, binding: Binding, docs: ReadonlyMap<string, Json>, hasDerived: boolean): TypeColumnRole {
   const inherited = inheritedTypeColumn(entityId, binding, docs);
-  if (inherited) return { role: "derived", ...inherited, redundant: !!binding.discriminatorColumn };
+  // Naming a column of its own is refused when the base that owns the column keeps its rows in the same table (MQ4126).
+  if (inherited)
+    return { role: "derived", column: inherited.column, base: inherited.base, redundant: !!binding.discriminatorColumn, canName: !inherited.sameTable };
   return hasDerived || baseOf(docs, entityId) ? { role: "base" } : { role: "none" };
 }
 
@@ -88,22 +101,37 @@ export function setTypeColumn(b: Binding, column: SourceColumn | null): Binding 
   return b;
 }
 
-/** Whether a source column's type holds whole numbers (a built-in integer keyword or a native integer type). */
+/** Whether a source column's type, a model type keyword, holds whole numbers (int16, int32 or int64). */
 export function isIntegerColumn(type: string | null | undefined): boolean {
-  return !!type && /^(u?int(8|16|32|64)?|u?(tiny|small|medium|big)?int(eger)?(\(\d+\))?|serial|smallserial|bigserial)(?![a-z0-9_])/i.test(type.trim());
+  return type === "int16" || type === "int32" || type === "int64";
 }
 
 /**
- * Sets or clears the entity's type code. The engine reads a JSON number as an integer code and refuses a text code on an integer
- * column (MQ4125), so a numeric text is written as a number when the column holds integers (or when the code already is one), and as
- * text otherwise.
+ * A type code's value for its text. The engine reads a JSON number as an integer code and refuses a text code on an integer column (and the
+ * other way round), so the value follows the column: a number for an integer column (when the text is a whole number), else text.
+ * `integer` null: the column is not known, so the code keeps the kind it has.
  */
-export function setTypeCode(b: Binding, text: string, integerColumn = false): Binding {
+export function codeValue(text: string, integer: boolean | null, existing?: string | number): string | number | undefined {
   const t = text.trim();
-  if (!t) delete b.discriminatorValue;
-  else if (/^-?\d+$/.test(t) && Number.isSafeInteger(Number(t)) && (integerColumn || typeof b.discriminatorValue === "number"))
-    b.discriminatorValue = Number(t);
-  else b.discriminatorValue = t;
+  if (!t) return undefined;
+  const whole = /^-?\d+$/.test(t) && Number.isSafeInteger(Number(t));
+  return whole && (integer === true || (integer === null && typeof existing === "number")) ? Number(t) : t;
+}
+
+/** Whether two codes are the same value of the same JSON type (1 and "1" are different codes to the engine). */
+export const sameCode = (a: string | number | undefined, b: string | number | undefined): boolean => typeof a === typeof b && a === b;
+
+/** Sets or clears the entity's type code, typed as the column is. */
+export function setTypeCode(b: Binding, text: string, integer: boolean | null = null): Binding {
+  const value = codeValue(text, integer, b.discriminatorValue);
+  if (value === undefined) delete b.discriminatorValue;
+  else b.discriminatorValue = value;
+  return b;
+}
+
+/** Gives the code the JSON type of the column it is written for, after the column or the code was changed. */
+export function retypeCode(b: Binding, integer: boolean | null): Binding {
+  if (b.discriminatorValue !== undefined) setTypeCode(b, String(b.discriminatorValue), integer);
   return b;
 }
 
@@ -112,17 +140,17 @@ export function setTypeCode(b: Binding, text: string, integerColumn = false): Bi
  * binding to the database keeps its rows in the same table and shares the entity's type column owner. Each code once. `docs` holds the
  * entity, its bases and the derived entities' documents.
  */
-export function readCodes(entityId: string, binding: Binding, derivedIds: readonly string[], docs: ReadonlyMap<string, Json>): string[] {
+export function readCodes(entityId: string, binding: Binding, derivedIds: readonly string[], docs: ReadonlyMap<string, Json>): (string | number)[] {
   const owner = typeColumnOwner(entityId, binding.database, docs, binding);
-  if (!owner) return [String(binding.discriminatorValue ?? docs.get(entityId)?.name ?? "")];
+  if (!owner) return [binding.discriminatorValue ?? String(docs.get(entityId)?.name ?? "")];
   const host = hostOf(binding);
-  const codeOf = (id: string, b: Binding) => String(b.discriminatorValue ?? docs.get(id)?.name ?? "");
-  const out = [codeOf(entityId, binding)];
+  const codeOf = (id: string, b: Binding): string | number => b.discriminatorValue ?? String(docs.get(id)?.name ?? "");
+  const out: (string | number)[] = [codeOf(entityId, binding)];
   for (const id of derivedIds) {
     const b = bindingOf(docs, id, binding.database);
     if (!b || hostOf(b) !== host || typeColumnOwner(id, binding.database, docs) !== owner) continue;
     const code = codeOf(id, b);
-    if (!out.includes(code)) out.push(code);
+    if (!out.some((c) => sameCode(c, code))) out.push(code);
   }
   return out;
 }

@@ -20,10 +20,13 @@ import {
   type Json,
 } from "@/editors/copyEdit";
 import {
+  codeValue,
   hostOf,
   inheritedTypeColumn,
   isIntegerColumn,
   readCodes,
+  retypeCode,
+  sameCode,
   setTypeCode,
   setTypeColumn,
   typeColumnOwner,
@@ -226,6 +229,17 @@ describe("parts", () => {
     expect(entity.copy).toEqual({ parts: [{ end: "p", onCopy: "none" }] });
   });
 
+  it("copies a base's choice into the entity's own entry when One is picked again over an own `all`", () => {
+    const base = { end: "p", onCopy: "one", choose: { latestBy: "version" } };
+    const derived: Json = { id: "D" };
+    setPartWord(derived, "p", "all", base);
+    expect(derived.copy).toEqual({ parts: [{ end: "p", onCopy: "all" }] });
+    setPartWord(derived, "p", "one", base);
+    expect(derived.copy).toEqual({ parts: [{ end: "p", onCopy: "one", choose: { latestBy: "version" } }] });
+    // Not the same object: editing the own choice never edits the base's.
+    expect(((derived.copy as { parts: Json[] }).parts[0].choose as Json) === base.choose).toBe(false);
+  });
+
   it("keeps a part's field choices, drops them with `none`, and keeps an `all` entry that undoes a base's", () => {
     const entity: Json = { id: "E" };
     setPartAttributeWord(entity, "p", undefined, "description", "clear");
@@ -306,21 +320,49 @@ describe("parts", () => {
 });
 
 describe("a condition as text", () => {
-  const names = { name: (id: string) => ({ a: "quantity", b: "status", c: "current", draft: "Draft" })[id] };
+  const names = {
+    name: (id: string) => ({ q: "quantity", s: "status", f: "flag", t: "total", c: "from", o: "order date", d: "dueOn" })[id],
+    member: (id: string) => ({ draft: "Status.Draft" })[id],
+  };
   const op = (o: string, ...args: unknown[]) => ({ op: o, args });
   const path = (id: string) => ({ path: [id] });
 
-  it("keeps precedence with parentheses", () => {
-    expect(printCondition(op("and", op("or", op("gt", path("a"), { value: 1 }), path("c")), path("c")), names)).toBe("(quantity > 1 or current) and current");
-    expect(printCondition(op("or", op("and", path("c"), path("c")), path("c")), names)).toBe("current and current or current");
-    expect(printCondition(op("sub", path("a"), op("sub", path("a"), { value: 1 })), names)).toBe("quantity - (quantity - 1)");
-    expect(printCondition(op("not", op("eq", path("a"), { value: 1 })), names)).toBe("not (quantity = 1)");
-    expect(printCondition(op("eq", path("b"), { ref: "draft" }), names)).toBe("status = Draft");
+  // The cases are the engine's printer tests (ExprPrinterTests.cs) that fall in the subset the box prints.
+  it("prints what the engine prints for its own round-trip cases", () => {
+    expect(printCondition(op("and", op("eq", path("t"), { value: 1 }), op("ne", path("q"), { value: 2 })), names)).toBe("total = 1 and quantity <> 2");
+    expect(printCondition(op("or", path("f"), op("and", path("f"), path("f"))), names)).toBe("flag or flag and flag");
+    expect(printCondition(op("and", op("or", path("f"), path("f")), path("f")), names)).toBe("(flag or flag) and flag");
+    expect(printCondition(op("not", op("lt", path("t"), { value: 1 })), names)).toBe("not total < 1");
+    expect(printCondition(op("not", op("and", path("f"), path("f"))), names)).toBe("not (flag and flag)");
+    expect(printCondition(op("eq", path("s"), { ref: "draft" }), names)).toBe("status = Status.Draft");
+    expect(printCondition(op("and", op("gt", path("q"), { value: "1.5", type: "double" }), op("gt", path("t"), { value: "7", type: "decimal" })), names)).toBe(
+      "quantity > double '1.5' and total > decimal '7'",
+    );
+    expect(printCondition(op("and", op("gt", path("t"), { value: 3000000000 }), op("eq", path("f"), { value: true })), names)).toBe(
+      "total > 3000000000 and flag = true",
+    );
+    expect(printCondition(op("le", path("d"), { value: "2026-01-31", type: "date" }), names)).toBe("dueOn <= date '2026-01-31'");
+    expect(printCondition(op("eq", path("t"), { value: "1.50", type: "decimal" }), names)).toBe("total = 1.50");
+    expect(printCondition(op("eq", path("t"), { value: "it's" }), names)).toBe("total = 'it''s'");
   });
 
-  it("says no to a tree it can't write instead of rewriting it", () => {
+  it("quotes names the way the engine does", () => {
+    expect(printCondition(op("lt", path("o"), path("c")), names)).toBe('"order date" < "from"');
+    expect(printCondition(op("eq", path("f"), { value: true }), { ...names, name: () => 'say "x"' })).toBe('"say ""x""" = true');
+  });
+
+  it("refuses what it can't print exactly, so the text never reads back as something else", () => {
+    // Arithmetic, concat, calls, null, a negative number, a double negation, navigation, a case: all read only.
+    expect(printCondition(op("gt", op("add", path("t"), { value: 1 }), path("q")), names)).toBeNull();
+    expect(printCondition(op("eq", op("concat", path("t"), path("q")), path("q")), names)).toBeNull();
+    expect(printCondition(op("lt", op("neg", op("neg", path("t"))), { value: 1 }), names)).toBeNull();
+    expect(printCondition(op("lt", path("t"), { value: -1 }), names)).toBeNull();
+    expect(printCondition(op("ne", path("d"), { null: true }), names)).toBeNull();
+    expect(printCondition({ call: "now", args: [] }, names)).toBeNull();
+    expect(printCondition({ path: ["t", "q"] }, names)).toBeNull();
     expect(printCondition({ case: [] }, names)).toBeNull();
     expect(printCondition(op("eq", path("missing"), { value: 1 }), names)).toBeNull();
+    expect(printCondition(op("eq", { ref: "unknown" }, { value: 1 }), names)).toBeNull();
     expect(printCondition({ text: "current = true" }, names)).toBe("current = true");
   });
 });
@@ -345,7 +387,7 @@ describe("the type column", () => {
     doc("Solo", [binding()]),
   ]);
 
-  it("writes the column by its key, and the code as text, or as a number on an integer column", () => {
+  it("writes the column by its key, and the code typed as the column is", () => {
     const b = binding();
     setTypeColumn(b, column("k1", "kind"));
     setTypeCode(b, " note ");
@@ -354,22 +396,39 @@ describe("the type column", () => {
     expect(b.discriminatorValue).toBe("1");
     setTypeCode(b, "2", true);
     expect(b.discriminatorValue).toBe(2);
-    // A number stays a number; text that isn't a whole number stays text.
+    // With the column unknown, a number stays a number; text that isn't a whole number stays text.
     setTypeCode(b, "3");
     expect(b.discriminatorValue).toBe(3);
     setTypeCode(b, "x", true);
     expect(b.discriminatorValue).toBe("x");
+    // The column decides: an integer column makes the code a number, any other makes it text, and an unknown column keeps the kind.
+    setTypeCode(b, "7", false);
+    expect(b.discriminatorValue).toBe("7");
+    expect(retypeCode(b, true).discriminatorValue).toBe(7);
+    expect(retypeCode(b, false).discriminatorValue).toBe("7");
+    expect(retypeCode(b, null).discriminatorValue).toBe("7");
+    expect(sameCode(codeValue("7", true, "7"), "7")).toBe(false);
+    expect(sameCode(codeValue("7", true, "7"), 7)).toBe(true);
     setTypeColumn(b, null);
     setTypeCode(b, "");
     expect(b).toEqual({ id: "b", database: "db", source: "t" });
-    expect(["int", "int32", "integer", "bigint", "smallint", "int4", "tinyint(1)"].map(isIntegerColumn)).toEqual([true, true, true, true, true, false, true]);
-    expect(["string", "varchar(20)", "uuid", null].map((t) => isIntegerColumn(t))).toEqual([false, false, false, false]);
+    // Only the model's integer keywords count.
+    expect(["int16", "int32", "int64"].map(isIntegerColumn)).toEqual([true, true, true]);
+    expect(["int", "integer", "bigint", "int32[]", "string", "decimal", null].map((t) => isIntegerColumn(t))).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
   });
 
   it("hides the controls outside a hierarchy, lets a base name the column, and shows a derived entity the column from its base", () => {
     expect(typeColumnRole("Solo", binding(), docs, false)).toEqual({ role: "none" });
     expect(typeColumnRole("Note", binding(), docs, true)).toEqual({ role: "base" });
-    expect(typeColumnRole("Urgent", binding(), docs, false)).toEqual({ role: "derived", column: "kind", base: "Note", redundant: false });
+    expect(typeColumnRole("Urgent", binding(), docs, false)).toEqual({ role: "derived", column: "kind", base: "Note", redundant: false, canName: false });
     expect(inheritedTypeColumn("Urgent", binding({ database: "other-db" }), docs)).toBeUndefined();
     // Another database: the base's binding there is none, so the derived entity may name its own.
     expect(typeColumnRole("Urgent", binding({ database: "other-db" }), docs, false)).toEqual({ role: "base" });
@@ -383,7 +442,13 @@ describe("the type column", () => {
       doc("Leaf", [binding({ source: "t2" })], "Mid"),
     ]);
     expect(typeColumnRole("Mid", own(a, "Mid"), a, true)).toEqual({ role: "base" });
-    expect(typeColumnRole("Leaf", binding({ source: "t2" }), a, false)).toEqual({ role: "derived", column: "kind", base: "Mid", redundant: false });
+    expect(typeColumnRole("Leaf", binding({ source: "t2" }), a, false)).toEqual({
+      role: "derived",
+      column: "kind",
+      base: "Mid",
+      redundant: false,
+      canName: false,
+    });
     expect(typeColumnOwner("Leaf", "db", a)).toBe("Mid");
     // Sub keeps its rows in another table than its base: the base's column isn't inherited, and Sub may name its own.
     const b = new Map<string, Json>([
@@ -394,14 +459,36 @@ describe("the type column", () => {
     expect(typeColumnOwner("Sub", "db", b)).toBe("Sub");
     // The same table: naming a column too is refused, and the card says the base's applies.
     const c = new Map<string, Json>([doc("Base", [binding({ discriminatorColumn: "k" })]), doc("Sub", [binding({ discriminatorColumn: "own" })], "Base")]);
-    expect(typeColumnRole("Sub", own(c, "Sub"), c, false)).toEqual({ role: "derived", column: "k", base: "Base", redundant: true });
+    expect(typeColumnRole("Sub", own(c, "Sub"), c, false)).toEqual({ role: "derived", column: "k", base: "Base", redundant: true, canName: false });
     expect(typeColumnOwner("Sub", "db", c)).toBe("Base");
   });
 
-  it("keeps a binding's rows in the table it writes, else its source", () => {
+  it("follows the engine's owner rule across tables: a base's column in another table is inherited when the entity names none", () => {
+    // A(T, a), B extends A (U, b), C extends B (T, none): C reads `b` from B.
+    const x = new Map<string, Json>([
+      doc("A", [binding({ source: "T", discriminatorColumn: "a" })]),
+      doc("B", [binding({ source: "U", discriminatorColumn: "b" })], "A"),
+      doc("C", [binding({ source: "T" })], "B"),
+    ]);
+    expect(typeColumnRole("C", own(x, "C"), x, false)).toEqual({ role: "derived", column: "b", base: "B", redundant: false, canName: true });
+    // A(T, a), Z extends A (T, z: refused, MQ4126), Z2 extends Z (T): Z2 reads `a` from A.
+    const y = new Map<string, Json>([
+      doc("A", [binding({ source: "T", discriminatorColumn: "a" })]),
+      doc("Z", [binding({ source: "T", discriminatorColumn: "z" })], "A"),
+      doc("Z2", [binding({ source: "T" })], "Z"),
+    ]);
+    expect(typeColumnRole("Z2", own(y, "Z2"), y, false)).toEqual({ role: "derived", column: "a", base: "A", redundant: false, canName: false });
+    expect(typeColumnRole("Z", own(y, "Z"), y, true)).toMatchObject({ role: "derived", column: "a", redundant: true });
+    // A(T, a), B2 extends A (U, none): B2 inherits `a`, and may name its own: "Type column a, from A" with a picker.
+    const z = new Map<string, Json>([doc("A", [binding({ source: "T", discriminatorColumn: "a" })]), doc("B2", [binding({ source: "U" })], "A")]);
+    expect(typeColumnRole("B2", own(z, "B2"), z, false)).toEqual({ role: "derived", column: "a", base: "A", redundant: false, canName: true });
+  });
+
+  it("keeps a binding's rows in the table it writes, else its source, a projected key as its table", () => {
     expect(hostOf(binding({ source: "t" }))).toBe("t");
     expect(hostOf(binding({ source: "t", write: { table: "w" } }))).toBe("w");
     expect(hostOf(binding({ source: "v", write: "none" }))).toBe("v");
+    expect(hostOf(binding({ source: "k@db" }))).toBe(hostOf(binding({ source: "k" })));
   });
 
   it("lists each code once: its own and those of the entities derived from it in the same table with the same column owner", () => {
@@ -414,6 +501,12 @@ describe("the type column", () => {
     ]);
     const derived = ["Urgent", "Deep", "Dup", "Elsewhere", "Written"];
     expect(readCodes("Note", own(docs, "Note"), derived, all)).toEqual(["note", "urgent", "Deep", "Written"]);
+    // A code is told apart by value and type: 1 and "1" are two codes.
+    const typed = new Map<string, Json>([
+      doc("N", [binding({ discriminatorColumn: "k", discriminatorValue: 1 })]),
+      doc("M", [binding({ discriminatorValue: "1" })], "N"),
+    ]);
+    expect(readCodes("N", own(typed, "N"), ["M"], typed)).toEqual([1, "1"]);
     expect(readCodes("Urgent", binding({ discriminatorValue: "urgent" }), ["Deep"], all)).toEqual(["urgent", "Deep"]);
     // No column anywhere: no other entity's rows are shared.
     expect(readCodes("Solo", binding(), ["Deep"], all)).toEqual(["Solo"]);

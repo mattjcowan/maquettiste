@@ -50,7 +50,7 @@ import {
 import { commitMaterialize, databasesOf, useBindingSources, useMaterializeStatuses, useStorageAttributes } from "./useStorage";
 import { STORAGE_LABELS } from "./labels";
 import { derivedOf } from "@/editors/refWalk";
-import { isIntegerColumn, readCodes, setTypeCode, setTypeColumn, typeColumnRole, type TypeColumnRole } from "./typeColumn";
+import { codeValue, isIntegerColumn, readCodes, retypeCode, sameCode, setTypeCode, setTypeColumn, typeColumnRole, type TypeColumnRole } from "./typeColumn";
 
 type Rec = Record<string, unknown>;
 
@@ -861,15 +861,19 @@ function TypeColumnSection({
   binding: Binding;
   role: TypeColumnRole;
   columns: BindingSource["columns"];
-  codes: string[];
+  codes: (string | number)[];
   /** The walk down the derived entities stopped at its limit, so the list of codes may be short. */
   walkCut: boolean;
   onEdit: (change: (b: Binding) => void) => void;
 }) {
   if (role.role === "none") return null;
-  // A numeric code is written as a number when the type column holds integers (the engine refuses a text code there, MQ4125).
-  const columnName = role.role === "derived" ? role.column : (binding.discriminatorColumn ?? "");
-  const integer = isIntegerColumn(findColumn(columns, columnName)?.type);
+  // The code's JSON type follows the column's: a number for an integer column, text otherwise (the engine refuses the other, MQ4125).
+  const columnName = binding.discriminatorColumn ?? (role.role === "derived" ? role.column : "");
+  const typeOf = (name: string): boolean | null => {
+    const found = findColumn(columns, name);
+    return found ? isIntegerColumn(found.type) : null;
+  };
+  const integer = typeOf(columnName);
   const code = (
     <Field label="Type code" htmlFor={`${dom}-type-code`} className="w-40">
       <Input
@@ -880,7 +884,9 @@ function TypeColumnSection({
         key={String(binding.discriminatorValue ?? "")}
         defaultValue={binding.discriminatorValue === undefined ? "" : String(binding.discriminatorValue)}
         onBlur={(e) => {
-          if (e.target.value.trim() !== String(binding.discriminatorValue ?? "")) onEdit((b) => setTypeCode(b, e.target.value, integer));
+          // Compared by value and type, so retyping a code that has the wrong JSON type fixes it.
+          if (!sameCode(codeValue(e.target.value, integer, binding.discriminatorValue), binding.discriminatorValue))
+            onEdit((b) => setTypeCode(b, e.target.value, integer));
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -890,7 +896,7 @@ function TypeColumnSection({
   );
   const keeps = (
     <span className="pb-1 text-12 text-secondary" data-testid="binding-type-codes">
-      Reads keep: {codes.join(", ")}
+      Reads keep: {codes.map(String).join(", ")}
       {walkCut ? " (and more: the list of derived entities was cut)" : ""}
     </span>
   );
@@ -906,7 +912,7 @@ function TypeColumnSection({
               value={findColumn(columns, binding.discriminatorColumn ?? "")?.key ?? binding.discriminatorColumn ?? ""}
               onChange={(e) => {
                 const column = columns.find((c) => c.key === e.target.value) ?? null;
-                onEdit((b) => setTypeColumn(b, column));
+                onEdit((b) => retypeCode(setTypeColumn(b, column), column ? isIntegerColumn(column.type) : null));
               }}
             >
               <option value="">None</option>
@@ -928,6 +934,26 @@ function TypeColumnSection({
           <p className="pb-1 text-12" data-testid="binding-type-column-inherited">
             Type column <span className="font-mono">{findColumn(columns, role.column)?.name ?? role.column}</span>, from {role.base}
           </p>
+          {role.redundant || !role.canName ? null : (
+            <Field label="Own column" htmlFor={`${dom}-type-column`} className="w-48">
+              <Select
+                id={`${dom}-type-column`}
+                data-testid="binding-type-column-select"
+                value={binding.discriminatorColumn ? (findColumn(columns, binding.discriminatorColumn)?.key ?? binding.discriminatorColumn) : ""}
+                onChange={(e) => {
+                  const column = columns.find((c) => c.key === e.target.value) ?? null;
+                  onEdit((b) => retypeCode(setTypeColumn(b, column), column ? isIntegerColumn(column.type) : typeOf(role.column)));
+                }}
+              >
+                <option value="">{`Use ${role.base}'s`}</option>
+                {columns.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           {code}
           {keeps}
           {role.redundant ? (

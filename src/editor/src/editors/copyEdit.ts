@@ -283,9 +283,12 @@ function dropPlainPart(json: Json, end: string, inherited: Json | undefined): vo
 /** Says which parts of a kind a copy carries: all, one (chosen as `choose` says), or none. */
 export function setPartWord(json: Json, end: string, word: PartWord, inherited: Json | undefined): void {
   // `one` needs a choice (MQ3047): without one already written, it is set by setPartChoice, not here.
-  const current = arr((json.copy as Json | undefined)?.parts).find((e) => e.end === end) ?? inherited;
-  if (word === "one" && !current?.choose) return;
+  const own = arr((json.copy as Json | undefined)?.parts).find((e) => e.end === end);
+  // An own entry without a choice (`all` over a base's `one`) takes the base's choice back.
+  const choose = own?.choose ?? inherited?.choose;
+  if (word === "one" && !choose) return;
   const entry = ownPart(json, end, inherited);
+  if (word === "one" && !entry.choose) entry.choose = JSON.parse(JSON.stringify(choose));
   entry.onCopy = word;
   if (word !== "one") delete entry.choose;
   if (word === "none") delete entry.attributes;
@@ -353,86 +356,91 @@ export function removeOwnPart(json: Json, end: string): void {
 
 // ------------------------------------------------------------------ a condition as text
 
-const PRECEDENCE: Record<string, number> = {
-  or: 1,
-  and: 2,
-  not: 3,
-  eq: 4,
-  ne: 4,
-  lt: 4,
-  le: 4,
-  gt: 4,
-  ge: 4,
-  add: 5,
-  sub: 5,
-  concat: 5,
-  mul: 6,
-  div: 6,
-  neg: 7,
-};
-const SYMBOL: Record<string, string> = { eq: "=", ne: "<>", lt: "<", le: "<=", gt: ">", ge: ">=", add: "+", sub: "-", mul: "*", div: "/", concat: "||" };
+// The engine's text grammar (ExprText.cs, ExprFunctions.cs): precedence or 2, and 3, not 4, comparison 5, a primary 11; a name is written bare
+// only when it is plain and not reserved, else in double quotes.
+const RESERVED = new Set([
+  "and",
+  "or",
+  "not",
+  "implies",
+  "is",
+  "null",
+  "true",
+  "false",
+  "between",
+  "in",
+  "distinct",
+  "from",
+  "case",
+  "when",
+  "then",
+  "else",
+  "end",
+  "satisfies",
+]);
+const PREC: Record<string, number> = { or: 2, and: 3, not: 4, eq: 5, ne: 5, lt: 5, le: 5, gt: 5, ge: 5 };
+const SYMBOL: Record<string, string> = { eq: "=", ne: "<>", lt: "<", le: "<=", gt: ">", ge: ">=" };
+const TYPED = new Set(["decimal", "double", "date", "time", "datetime", "datetimeoffset", "uuid"]);
+
+/** A name as the engine writes it: bare when plain and not reserved, else double-quoted. */
+export function quoteName(name: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !RESERVED.has(name.toLowerCase()) ? name : '"' + name.replace(/"/g, '""') + '"';
+}
 
 export interface ConditionNames {
-  /** The name of an attribute, enum member or code by id. */
+  /** The name of an attribute by id. */
   name(id: string): string | undefined;
+  /** An enum member as written, `Enum.Member` with each part quoted as needed, by the member's id. */
+  member(id: string): string | undefined;
 }
 
 /**
- * A stored condition tree as text that reads back the same: operands of a lower precedence are put in parentheses ((a or b) and c), and
- * a comparison or `not` operand that is itself an operation is too. Null for a tree this printer can't write (a case, an unknown node):
- * the box then shows it read only instead of rewriting it as something else.
+ * A stored condition tree as text, for the part of the engine's grammar printed exactly as the engine prints it, so the text reads back as
+ * the same tree: and, or, not, the comparisons, attribute names, plain numbers, strings and booleans, typed literals (`1.50`, `date '2024-01-01'`)
+ * and enum members (`Status.Draft`). Anything else (arithmetic, calls, null, navigation, cases, a negative number) returns null: the box then
+ * shows it read only, with a note to edit it on the JSON tab, instead of printing something that reads back differently.
  */
 export function printCondition(tree: unknown, names: ConditionNames): string | null {
   if (!tree || typeof tree !== "object") return null;
-  const t = tree as Json;
-  if (typeof t.text === "string") return t.text;
-  const print = (node: unknown, parent: number, right = false): string | null => {
-    const n = node as Json;
-    if (!n || typeof n !== "object") return null;
-    if (typeof n.text === "string") return "(" + n.text + ")";
-    const args = Array.isArray(n.args) ? (n.args as unknown[]) : [];
-    if (typeof n.op === "string" && PRECEDENCE[n.op]) {
-      const own = PRECEDENCE[n.op];
-      const out = printOp(n.op, args);
-      if (out === null) return null;
-      return own < parent || (right && own === parent) || (own === 4 && parent >= 3) ? "(" + out + ")" : out;
+  if (typeof (tree as Json).text === "string") return (tree as Json).text as string;
+  const str = (v: string) => "'" + v.replace(/'/g, "''") + "'";
+  const leaf = (n: Json): string | null => {
+    if (n.type !== undefined) {
+      if (typeof n.type !== "string" || !TYPED.has(n.type) || typeof n.value !== "string") return null;
+      return n.type === "decimal" && /^-?\d+\.\d+$/.test(n.value) ? n.value : n.type + " " + str(n.value);
     }
-    return printLeaf(n);
-  };
-  const printOp = (op: string, args: unknown[]): string | null => {
-    const own = PRECEDENCE[op];
-    if ((op === "and" || op === "or") && args.length) {
-      const parts = args.map((a) => print(a, own));
-      return parts.every((x) => x !== null) ? parts.join(" " + op + " ") : null;
-    }
-    if (op === "not" && args.length === 1) {
-      const x = print(args[0], own);
-      return x === null ? null : "not " + x;
-    }
-    if (op === "neg" && args.length === 1) {
-      const x = print(args[0], own);
-      return x === null ? null : "-" + x;
-    }
-    if (SYMBOL[op] && args.length === 2) {
-      const l = print(args[0], own);
-      const r = print(args[1], own, true);
-      return l === null || r === null ? null : l + " " + SYMBOL[op] + " " + r;
-    }
-    return null;
-  };
-  const printLeaf = (n: Json): string | null => {
-    if ("null" in n) return "null";
-    if ("value" in n) return typeof n.value === "string" ? "'" + n.value.replace(/'/g, "''") + "'" : String(n.value);
+    if (typeof n.value === "boolean") return String(n.value);
+    if (typeof n.value === "number") return Number.isFinite(n.value) && /^\d+(\.\d+)?$/.test(String(n.value)) ? String(n.value) : null;
+    if (typeof n.value === "string") return str(n.value);
     if (Array.isArray(n.path)) {
-      const parts = (n.path as string[]).map((id) => names.name(id));
-      return parts.every((x) => x !== undefined) ? parts.join(".") : null;
+      const id = n.path.length === 1 && n.old !== true ? names.name(String(n.path[0])) : undefined;
+      return id === undefined ? null : quoteName(id);
     }
-    if (typeof n.ref === "string") return names.name(n.ref) ?? null;
-    if (typeof n.call === "string") {
-      const args = (Array.isArray(n.args) ? n.args : []).map((a) => print(a, 0));
-      return args.every((x) => x !== null) ? n.call + "(" + args.join(", ") + ")" : null;
-    }
+    if (typeof n.ref === "string") return names.member(n.ref) ?? null;
     return null;
   };
-  return print(t, 0);
+  // Prints a node that is written where an operand of at least `min` precedence stands, in parentheses when it binds looser.
+  const write = (node: unknown, min: number): string | null => {
+    const n = node as Json;
+    if (!n || typeof n !== "object" || typeof n.text === "string") return null;
+    const args = Array.isArray(n.args) ? (n.args as unknown[]) : [];
+    if (typeof n.op !== "string") return leaf(n);
+    const own = PREC[n.op];
+    if (!own) return null;
+    let out: string | null = null;
+    if ((n.op === "and" || n.op === "or") && args.length >= 2) {
+      const parts = args.map((a) => write(a, own));
+      out = parts.every((x) => x !== null) ? parts.join(" " + n.op + " ") : null;
+    } else if (n.op === "not" && args.length === 1) {
+      const x = write(args[0], own);
+      out = x === null ? null : "not " + x;
+    } else if (SYMBOL[n.op] && args.length === 2) {
+      // Comparisons do not chain: both sides bind tighter.
+      const l = write(args[0], own + 1);
+      const r = write(args[1], own + 1);
+      out = l === null || r === null ? null : l + " " + SYMBOL[n.op] + " " + r;
+    }
+    return out === null ? null : own < min ? "(" + out + ")" : out;
+  };
+  return write(tree, 1);
 }

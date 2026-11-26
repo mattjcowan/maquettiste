@@ -32,6 +32,7 @@ import {
   partTree,
   PART_WORDS,
   printCondition,
+  quoteName,
   removeOwnCopyEntry,
   removeOwnPart,
   setCopyWord,
@@ -49,6 +50,8 @@ const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 
 /** What the walk down the compositions found: the relations that touch each entity on the way, and their documents. */
 interface RelationWalk {
+  /** The entity the walk starts from: a kept previous result may be another entity's. */
+  root: string;
   docs: Map<string, Json>;
   relatedIds: Map<string, string[]>;
   /** Whether WALK_LIMITS cut the walk. */
@@ -124,11 +127,11 @@ export function EntityCopyTab(ctx: EditorContext) {
         }
         for (const doc of await Promise.all(wanted.map((r) => loadElement(r)))) docs.set(String(doc.json.id), doc.json as Json);
       }
-      return { docs, relatedIds, truncated };
+      return { root: id, docs, relatedIds, truncated };
     },
     enabled: !index.isPending && lookup.byId.has(id),
   });
-  const walk = relations.data;
+  const walk = relations.data?.root === id ? relations.data : undefined;
   const relationDocs = walk?.docs ?? new Map<string, Json>();
   const related = (at: string): ElementSummary[] => (walk?.relatedIds.get(at) ?? []).flatMap((r) => (lookup.byId.get(r) ? [lookup.byId.get(r)!] : []));
   const parts = useMemo(() => partTree(id, related, relationDocs, baseOf), [walk, index.data, id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -179,11 +182,15 @@ export function EntityCopyTab(ctx: EditorContext) {
   // The names an enum's members go by in a condition.
   const memberNames = useMemo(() => {
     const out = new Map<string, string>();
-    for (const d of typeDocs.byId.values()) for (const m of arr((d.json as Json).members)) out.set(String(m.id), String(m.name));
+    for (const d of typeDocs.byId.values())
+      for (const m of arr((d.json as Json).members)) out.set(String(m.id), `${quoteName(String((d.json as Json).name))}.${quoteName(String(m.name))}`);
     return out;
   }, [typeDocs.byId]);
 
-  const commit = (update: (j: Json) => void) => {
+  // An edit that changes nothing (a choice with nothing to write) is not saved.
+  const commit = (update: (j: Json) => boolean | void) => {
+    const probe = JSON.parse(JSON.stringify(json)) as Json;
+    if (update(probe) === false || JSON.stringify(probe) === JSON.stringify(json)) return;
     ctx.edit((j) => void update(j as Json));
     ctx.flush();
   };
@@ -217,8 +224,8 @@ export function EntityCopyTab(ctx: EditorContext) {
     <div className="flex max-w-3xl flex-col gap-3" data-testid="editor-copy">
       <p className="text-12 text-secondary">
         What a copy of {entity.name} carries over. Anything not listed is copied as it is; a new copy always gets a new key and starts every lifecycle at its
-        initial state. Parts reached through an owner end that names a stereotype or any entity, and attributes a stereotype adds, are not listed here: edit
-        them on the JSON tab.
+        initial state. Parts reached through an owner end that names a stereotype or any entity, attributes a stereotype adds, and lifecycles that govern a part
+        only through a stereotype are not listed here: edit them on the JSON tab.
       </p>
 
       <section className="flex flex-col gap-1" data-testid="copy-fields">
@@ -393,7 +400,7 @@ function PartRow({
   scalarBase: (typeId: string) => unknown;
   memberNames: ReadonlyMap<string, string>;
   lifecycles: ProcessDoc[];
-  commit: (update: (j: Json) => void) => void;
+  commit: (update: (j: Json) => boolean | void) => void;
 }) {
   const [open, setOpen] = useState(false);
   // One chosen part waits here until its choice is picked: `one` without a choice is refused (MQ3047), so it is not written before.
@@ -477,7 +484,7 @@ function PartRow({
           memberNames={memberNames}
           lifecycles={lifecycles}
           onChange={(c) => {
-            commit((j) => void setPartChoice(j, part.end, base, c));
+            commit((j) => setPartChoice(j, part.end, base, c));
             if (c.condition || c.state || c.latestBy) setPendingOne(false);
           }}
         />
@@ -540,8 +547,8 @@ function PartChoice({
   const groups = stateChoices(lifecycles);
   const partAttributes = [...partChain].reverse().flatMap((d) => arr(d.attributes) as unknown as AttributeLike[]);
   const ordered = partAttributes.filter((a) => !a.collection && isOrderable(a.type, scalarBase));
-  const names = new Map<string, string>([...memberNames, ...partAttributes.map((a) => [a.id, a.name] as const)]);
-  const conditionText = choice.condition ? printCondition(choice.condition, { name: (x) => names.get(x) }) : "";
+  const names = new Map<string, string>(partAttributes.map((a) => [a.id, a.name] as const));
+  const conditionText = choice.condition ? printCondition(choice.condition, { name: (x) => names.get(x), member: (x) => memberNames.get(x) }) : "";
   const dom = `copy-choice-${part.id.replace(/[^a-zA-Z0-9]/g, "")}`;
   const hint = pending
     ? "Pick how the one part is chosen."
@@ -565,7 +572,7 @@ function PartChoice({
             const next = e.target.value as "condition" | "state" | "latest";
             setPicked(next);
             // Choosing by the latest alone writes it when there is a latest-by attribute; the others wait for their value.
-            if (next === "latest") onChange({ latestBy: choice.latestBy });
+            if (next === "latest" && choice.latestBy) onChange({ latestBy: choice.latestBy });
           }}
         >
           <option value="condition">a condition</option>
@@ -624,7 +631,14 @@ function PartChoice({
           className="h-6 w-40"
           value={choice.latestBy ?? ""}
           disabled={locked}
-          onChange={(e) => onChange({ condition: choice.condition, state: choice.state, latestBy: e.target.value || undefined })}
+          // Only what the way of choosing uses is kept: nothing else drops an old condition or state.
+          onChange={(e) =>
+            onChange({
+              ...(mode === "condition" ? { condition: choice.condition } : {}),
+              ...(mode === "state" ? { state: choice.state } : {}),
+              latestBy: e.target.value || undefined,
+            })
+          }
         >
           <option value="">Not set</option>
           {ordered.map((a) => (
