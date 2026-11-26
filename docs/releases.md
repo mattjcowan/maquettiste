@@ -5,6 +5,33 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.26.0 (2026-11-25)
+
+How the editor container signs people in and which names it answers at. The engine, the file format and generated output
+do not change, so the model needs no work when you update.
+
+- **Sign-in depends only on the token.** With no `MAQUETTISTE_EDITOR_TOKEN`, nobody signs in, from any address. Docker
+  Desktop on the Mac and Windows no longer shows a sign-in page. With a token set, everyone signs in, you included: the
+  browser on the sign-in page, scripts with `Authorization: Bearer <token>`.
+- **The editor opens at `http://localhost:<port>`.** It still answers at `maquettiste.localhost`. To run several
+  repositories on one machine, give each container its own port.
+- **Host names are settings.** `MAQUETTISTE_EDITOR_HOST` lists the names the editor answers at (default
+  `localhost,127.0.0.1`). A name that is not local, such as a public name behind a reverse proxy, needs a token, or the
+  container refuses to start. `MAQUETTISTE_TRUST_PROXY=true` lets the proxy's forwarded headers through, so saves work over
+  HTTPS. Any other name gets a 404 and never reaches the editor. See
+  [Host names](https://github.com/mattjcowan/maquettiste/blob/main/docker/README.md#host-names).
+- **The admin app has its own name.** The host's admin app, where the assistant's AI provider is set up, moves from
+  `http://localhost:<port>` to `http://maquettiste-admin.localhost:<port>` (`MAQUETTISTE_ADMIN_HOST`). The link in
+  **Settings › Assistant** follows it.
+- **The image runs static-site-hosting 0.10.2**, up from 0.4.0. The first start no longer stops the host to write its key
+  file. An existing volume keeps working.
+
+**When you update:**
+
+- If you had a token set only for Docker Desktop, remove it: there is no sign-in without one.
+- `MAQUETTISTE_LOCAL_PEERS` and `MAQUETTISTE_LOCAL_TRUST` are gone and ignored. Remove them from your compose file.
+- If you copied the compose file from the README, you can add the three new settings from it. They are optional.
+
 ## 0.25.1 (2026-11-21)
 
 Editor fixes. The engine, the file format and generated output do not change.

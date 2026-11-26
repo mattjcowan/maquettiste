@@ -312,7 +312,7 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 - **Other lifecycle capabilities that may come after the items above.** Per-state access, required fields on entry and
   exit (partly 4.4), a reject path, observers and acknowledgers. Listed as directions to confirm in
   [lifecycle-capabilities.md](lifecycle-capabilities.md#what-this-changes-for-item-41).
-- **No sign-in without a token, and host names (the owner, 2026-11-25).** Built, not released yet. In local mode with
+- **No sign-in without a token, and host names (the owner, 2026-11-25).** Built, 0.26.0 (#86). In local mode with
   no `MAQUETTISTE_EDITOR_TOKEN`, nobody signs in, from any address; with a token, everyone does. The address and
   host-name rules, `MAQUETTISTE_LOCAL_PEERS` and `MAQUETTISTE_LOCAL_TRUST` are gone, so Docker Desktop no longer shows
   a sign-in page. The image moves to static-site-hosting 0.10.2: the editor also answers at `localhost` and `127.0.0.1`

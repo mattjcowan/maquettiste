@@ -5359,8 +5359,8 @@ sh docker/dev-billing.sh          # starts the sample project from tmp/billing o
 # If port 8080 is taken on your machine: MAQUETTISTE_PORT=8090 sh docker/dev-billing.sh, then use :8090 below.
 ```
 
-Open http://maquettiste.localhost:8080. There is no login in local mode: the container trusts requests from the
-machine it runs on. Saves write the JSON files in the mounted `.maquettiste/` folder, and Apply writes generated
+Open http://maquettiste.localhost:8080 or http://localhost:8080. There is no login unless `MAQUETTISTE_EDITOR_TOKEN` is
+set; with a token, everyone signs in. Saves write the JSON files in the mounted `.maquettiste/` folder, and Apply writes generated
 files into the mounted repository. Stop it with:
 
 ```
@@ -5488,7 +5488,7 @@ maquettiste model stats
 maquettiste model export --kind entity --fields name,attributes --format ndjson > entities.ndjson
 maquettiste model export --resolved --scope tables --database main --format ndjson > tables.ndjson
 # a first line with the contract version, then one line per table, each with the table's columns, keys, foreign keys and indexes:
-# {"contract":"0.25.1","schema":"resolved-model.json"}
+# {"contract":"0.26.0","schema":"resolved-model.json"}
 # {"id":"01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4","kind":"table","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","table":{...}}
 ```
 
