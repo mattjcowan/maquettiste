@@ -91,8 +91,7 @@ public static class DatabaseEndpoints
     });
 
     /// <summary>
-    /// The SQL of one query for a dialect (the database's when none is given): the query's statement and one per collection, with the
-    /// parameters each names; <c>preview</c> is null (with the errors) when the model has errors.
+    /// The SQL of one query for a dialect (the database's when none is given): the query's statement, with the parameters it names; <c>preview</c> is null (with the errors) when the model has errors.
     /// </summary>
     /// <param name="context">The request.</param>
     /// <param name="id">The query element's id.</param>

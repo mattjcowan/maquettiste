@@ -31,6 +31,10 @@ one.
   field a `name` in place of its `attribute`, and remove `entity` and `collections`. If an entity should read the rows,
   bind it to the query (its binding's `source` names the query, each field names a column). Read a record's parts through
   composition (`entity.parts`).
+- A `validation.rules` entry naming one of the retired rules (MQ4025, MQ4026, MQ4027, MQ4032, MQ4033, MQ4041, MQ4116) is
+  ignored. A suppression naming one is now warning MQ5019, and a suppression naming MQ4127 is error MQ5018: remove them.
+- `validate --against` a baseline that still has such a query reports that the file did not load (MQ4109), as for any
+  file that does not load.
 
 ## 0.27.0 (2026-11-26)
 
