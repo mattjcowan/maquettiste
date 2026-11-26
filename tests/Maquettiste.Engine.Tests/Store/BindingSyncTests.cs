@@ -47,7 +47,7 @@ public sealed class BindingSyncTests
     // ---- setup ------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// Table <c>ledger_entries</c> (entry_id, Posted_On, amount_due, memo, status typed by InvoiceStatus) and entity <c>LedgerEntry</c>
+    /// Table <c>ledger_entries</c> (entry_id, Posted_On, amount_due, memo, status) and entity <c>LedgerEntry</c>
     /// with the attributes <paramref name="attributes"/> (JSON items) bound to it with <paramref name="fields"/> (JSON items).
     /// </summary>
     private static async Task LedgerAsync(EditorRepo r, string attributes, string fields = "", string extraColumns = "")
@@ -59,7 +59,7 @@ public sealed class BindingSyncTests
                 { "id": "{{PostedOnColumn}}", "name": "Posted_On", "type": "date", "nullable": false },
                 { "id": "{{AmountDueColumn}}", "name": "amount_due", "type": "decimal", "precision": 12, "scale": 2, "nullable": false },
                 { "id": "{{MemoColumn}}", "name": "memo", "type": "text" },
-                { "id": "{{StatusColumn}}", "name": "status", "type": "string", "length": 1, "typeRef": { "ref": "{{InvoiceStatus}}" } }
+                { "id": "{{StatusColumn}}", "name": "status", "type": "string", "length": 1 }
                 {{extraColumns}}
               ],
               "primaryKey": { "columns": ["{{EntryIdColumn}}"] } }
@@ -357,16 +357,21 @@ public sealed class BindingSyncTests
                 $$"""{ "id": "{{Flag}}", "name": "flag", "type": { "ref": "{{InvoiceStatus}}" } }"""),
             extraColumns: $$""", { "id": "{{FlagColumn}}", "name": "flag", "type": "string", "length": 1 }""");
         AssertSaved(await ApplyAsync(r, MapByName(LedgerEntry)));
-        await SaveAsync(r, Ledger, t =>
+        // status widens and becomes NOT NULL: InvoiceStatus's codes still fit; flag becomes a bool, which cannot hold them; amount_due widens.
+        // The table changes behind the store's back, as an import does: a save would be refused, since flag is bound to an attribute of
+        // InvoiceStatus (MQ4083) until the re-sync retypes it.
+        await EditLedgerOnDiskAsync(r, columns =>
         {
-            // status widens and becomes NOT NULL: InvoiceStatus's codes still fit; flag becomes a bool, which cannot hold them; amount_due widens.
-            Column(t, StatusColumn)["length"] = 4;
-            Column(t, StatusColumn)["nullable"] = false;
-            Column(t, FlagColumn)["type"] = "bool";
-            Column(t, FlagColumn).Remove("length");
-            Column(t, AmountDueColumn)["precision"] = 14;
+            JsonObject Of(string id) => columns.OfType<JsonObject>().Single(c => c["id"]!.GetValue<string>() == id);
+            Of(StatusColumn)["length"] = 4;
+            Of(StatusColumn)["nullable"] = false;
+            Of(FlagColumn)["type"] = "bool";
+            Of(FlagColumn).Remove("length");
+            Of(AmountDueColumn)["precision"] = 14;
         });
-        Assert.Contains(await DriftAsync(r, LedgerEntry), d => d.Rule == "MQ4087" && d.Message.Contains("'status' retyped", StringComparison.Ordinal));
+        // Until the re-sync, flag cannot hold the values of the attribute its binding maps to it.
+        Assert.Contains((await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics,
+            d => d.Rule == "MQ4083" && d.Message.Contains("Column 'flag' holds values of enum 'InvoiceStatus'", StringComparison.Ordinal));
 
         AssertSaved(await ApplyAsync(r, Resync(LedgerEntry)));
 

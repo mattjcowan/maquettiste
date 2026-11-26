@@ -287,8 +287,8 @@ public sealed class TemplateCacheAndHelperTests
     }
 
     /// <summary>
-    /// A designed table whose columns a reference type (stored as a lookup table), an enum and a scalar type type (next-phase-2-design.md
-    /// section 3.2), and a C# map with entries for the three.
+    /// A designed table whose columns an entity's binding maps to attributes of a reference type (stored as a lookup table), an enum and a
+    /// scalar type, so they have those bound types (next-phase-2-design.md section 3.2, 0.28.0), and a C# map with entries for the three.
     /// </summary>
     private static (Maquettiste.Engine.Resolution.ResolvedModel Model, string TableId, Dictionary<string, string> Files) TypedColumns()
     {
@@ -303,48 +303,40 @@ public sealed class TemplateCacheAndHelperTests
         b.Add(state);
         var status = b.Enum("InvoiceStatus").Member("Draft", 0, "D").Member("Issued", 1, "I");
         var money = b.ScalarType("Money", "decimal").Decimal(12, 2);
-        var table = b.Table("invoice_events", db).Column("state", "string", nullable: false).Column("status", "string").Column("amount", "decimal", nullable: false)
-            .Column("note", "text")
-            .Edit(t => t with
-            {
-                Columns =
-                [
-                    t.Columns[0] with { TypeRef = new TypeRef { Ref = state.Id } },
-                    t.Columns[1] with { TypeRef = new TypeRef { Ref = status.Id } },
-                    t.Columns[2] with { TypeRef = new TypeRef { Ref = money.Id } },
-                    t.Columns[3],
-                ],
-            });
+        var table = b.Table("invoice_events", db).Column("state", "string", nullable: false, length: 1).Column("status", "string", length: 1)
+            .Column("amount", "decimal", nullable: false).Column("note", "text").Column("id", "uuid", nullable: false).PrimaryKey("id")
+            .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "amount" ? c with { Precision = 12, Scale = 2 } : c)] });
+        table.BindTyped("InvoiceEvent", ("state", state.Id), ("status", status.Id), ("amount", money.Id));
         var files = new Dictionary<string, string>
         {
-            ["types/cs.json"] = "{ \"string\": \"string\", \"text\": \"string\", \"decimal\": \"decimal\", \"InvoiceStatus\": \"InvoiceStatus\", \"Money\": \"Money\", "
+            ["types/cs.json"] = "{ \"string\": \"string\", \"text\": \"string\", \"decimal\": \"decimal\", \"uuid\": \"Guid\", \"InvoiceStatus\": \"InvoiceStatus\", \"Money\": \"Money\", "
                 + "\"reference:*\": \"Code<{name}>\", \"reference:lookup-table\": \"Lookup<{name}>\", \"nullable\": \"{type}?\" }",
         };
         return (Resolution.ResolutionKit.Resolve(b), table.Id, files);
     }
 
     [Fact]
-    public async Task Type_of_a_typed_column_keeps_its_physical_type()
+    public async Task Type_of_a_bound_column_keeps_its_physical_type()
     {
         // Section 3.2 (D21), decision 7: type_of maps a column's physical type, so row classes filled from the database keep their types;
-        // column.type stays the physical keyword and column.reference_type says the column holds codes.
+        // column.type stays the physical keyword, and a bound column has no reference_type: binding never changes storage.
         var (model, tableId, files) = TypedColumns();
         var unit = await Adhoc.RenderAsync(
             $"{{{{ for c in (lookup '{tableId}').columns }}}}{{{{ c.name }}}}:{{{{ c.type }}}}:{{{{ type_of c 'cs' }}}}:{{{{ type_of c 'postgresql' }}}}:{{{{ c.reference_type?.name }}}};{{{{ end }}}}",
             files: files, model: model);
-        Assert.Equal("state:string:string:varchar(1):InvoiceState;status:string:string?:varchar(1):;amount:decimal:decimal:numeric(12,2):;note:text:string?:text:;", unit.Text());
+        Assert.Equal("state:string:string:varchar(1):;status:string:string?:varchar(1):;amount:decimal:decimal:numeric(12,2):;note:text:string?:text:;id:uuid:Guid:uuid:;", unit.Text());
     }
 
     [Fact]
-    public async Task Type_of_a_column_type_ref_maps_through_the_type()
+    public async Task Type_of_a_column_bound_type_maps_through_the_type()
     {
-        // Section 3.2 (D21), decision 7: a pack that wants the logical type passes column.type_ref, an RType, which type_of maps as an
-        // attribute's type; a column whose entry names none has no type_ref.
+        // Section 3.2 (D21), decision 7: a pack that wants the logical type passes column.bound_type, an RType, which type_of maps as an
+        // attribute's type; a column no binding maps to such an attribute has no bound_type.
         var (model, tableId, files) = TypedColumns();
         var unit = await Adhoc.RenderAsync(
-            $"{{{{ for c in (lookup '{tableId}').columns }}}}{{{{ c.name }}}}:{{{{ if c.type_ref }}}}{{{{ c.type_ref.kind }}}}/{{{{ type_of c.type_ref 'cs' }}}}{{{{ else }}}}-{{{{ end }}}};{{{{ end }}}}",
+            $"{{{{ for c in (lookup '{tableId}').columns }}}}{{{{ c.name }}}}:{{{{ if c.bound_type }}}}{{{{ c.bound_type.kind }}}}/{{{{ type_of c.bound_type 'cs' }}}}{{{{ else }}}}-{{{{ end }}}};{{{{ end }}}}",
             files: files, model: model);
-        Assert.Equal("state:reference/Code<InvoiceState>;status:enum/InvoiceStatus;amount:scalar/Money;note:-;", unit.Text());
+        Assert.Equal("state:reference/Code<InvoiceState>;status:enum/InvoiceStatus;amount:scalar/Money;note:-;id:-;", unit.Text());
     }
 
     /// <summary><c>custom_named</c> (next-phase-2-design.md section 4.2): by name or package path; a name two elements share fails the

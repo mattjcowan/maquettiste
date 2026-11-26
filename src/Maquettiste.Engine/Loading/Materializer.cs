@@ -550,8 +550,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
     /// <summary>
     /// A designed table's column with the shape a projected column has (materialize-tables, materialize-columns): its type and facets,
-    /// the logical type (<c>typeRef</c>) of the one attribute or member it stores when an enum, a reference type or a scalar type types
-    /// it, the native type when it is not the one the dialect map renders nor the one that scalar type gives, nullability, defaults,
+    /// the native type when it is not the one the dialect map renders (a scalar type's native type included: a table states its own
+    /// shape, and the entity's binding says which attribute the column stores), nullability, defaults,
     /// identity or a key sequence (written as a sequence file when it is synthesized), computed, collation, comment and the overlay
     /// entry's own sensitivity; an overlay entry's native type and SQL defaults win. The attribute's sensitivity is not written: the
     /// attribute keeps saying it, and the bound column shows it (next-phase-2-design.md section 3.2, decision 12).
@@ -563,9 +563,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         var c = new JsonObject { ["id"] = columnId, ["name"] = column.Name };
         var type = column.Type == "reference" ? column.CodeType ?? "string" : column.Type;
         c["type"] = type;
-        var logical = LogicalType(column, type);
-        if (logical.Id is { } typeId)
-            c["typeRef"] = new JsonObject { ["ref"] = typeId };
         if (column.Length is { } length)
             c["length"] = length;
         if (column.Precision is { } precision)
@@ -580,9 +577,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             c["fixedLength"] = true;
         if (entry?.NativeType is { } native)
             c["nativeType"] = native;
-        else if (column.NativeType is { } computedNative && !string.Equals(computedNative, rendered, StringComparison.Ordinal)
-            && !(logical.Scalar is { } scalar && scalar.NativeTypes.ContainsKey(dialect)))
-            c["nativeType"] = computedNative; // a scalar type's own native type applies again through typeRef
+        else if (column.NativeType is { } computedNative && !string.Equals(computedNative, rendered, StringComparison.Ordinal))
+            c["nativeType"] = computedNative;
         if (!column.Nullable)
             c["nullable"] = false;
         if (column.Default is { } value)
@@ -630,24 +626,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         if (entry?.Sensitive is { } sensitive)
             c["sensitive"] = JsonSerializer.SerializeToNode(sensitive);
         return c;
-    }
-
-    /// <summary>
-    /// The enum, reference type or scalar type of the one attribute or member a projected column stores (a single value, or a
-    /// collection's value in its child table), for its <c>typeRef</c>; a scalar type only when the column's physical type is its base,
-    /// the case where its facets and native type reach the column. A column's own <c>typeRef</c> wins.
-    /// </summary>
-    private static (string? Id, RScalarType? Scalar) LogicalType(RColumn column, string physicalType)
-    {
-        var type = column.TypeRef
-            ?? (column.Attribute is { } a && (!a.Collection || ReferenceEquals(column.Table.Attribute, a)) ? a.Type : null);
-        return type switch
-        {
-            { Enum: { } e } => (e.Id, null),
-            { ReferenceType: { } reference } => (reference.Id, null),
-            { Scalar: { } scalar } when string.Equals(physicalType, scalar.Base, StringComparison.Ordinal) => (scalar.Id, scalar),
-            _ => (null, null),
-        };
     }
 
     /// <summary>A sequence file for a key sequence the projection synthesized, which a bound entity no longer gets.</summary>
@@ -913,21 +891,13 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             Put(entityId, null, entity, BatchOp.Create, $"an entity for {element.KindName} {element.Name}, bound to it");
         }
 
-        // Foreign keys between the selected tables, or towards a table an entity is already bound to, become many-to-one relations. A
-        // key into the rows of a reference type's bound table makes none: its column's attribute is typed by the type (decision 11).
+        // Foreign keys between the selected tables, or towards a table an entity is already bound to, become many-to-one relations.
         foreach (var element in selected.OfType<Table>())
         {
             var table = rdb.Tables.First(t => t.Key == element.Id);
             var dependent = made[element.Id];
             foreach (var fk in table.ForeignKeys.Where(f => f.Id is not null))
             {
-                if (IntoBoundRows(fk) is var (type, at))
-                {
-                    var typed = dependent.Attributes.TryGetValue(fk.Columns[at].Key, out var a) ? a.Name : fk.Columns[at].Name;
-                    _notes.Add($"Foreign key '{fk.Name}' of table '{table.Name}' points at the rows of reference type '{type.Name}' in table '{fk.ReferencedTable.Name}': attribute '{typed}' of entity '{dependent.Name}' is typed by '{type.Name}' instead, so no relation is made for it.");
-                    continue;
-                }
-
                 string principalId, principalName;
                 if (made.TryGetValue(fk.ReferencedTable.Key, out var principal))
                 {
@@ -1116,8 +1086,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
     /// <summary>
     /// A column as materialize reads it. <paramref name="TypeRef"/> is the id of the enum, reference type or scalar type the column
-    /// holds (next-phase-2-design.md section 3.3, decision 11): its own <c>typeRef</c>, or the reference type of a projected reference
-    /// column; <see langword="null"/> when its physical type is all it says.
+    /// holds (next-phase-2-design.md section 3.3, decision 11): the reference type of a projected reference column; <see langword="null"/>
+    /// when its physical type is all it says, as for every column of a table file.
     /// </summary>
     private sealed record SourceColumn(string Key, string Name, string? Type, string? NativeType, int? Length, int? Precision, int? Scale, bool Nullable,
         bool IsKey, bool Identity, string? TypeRef = null);
@@ -1130,12 +1100,12 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
     /// <summary>
     /// A column of a table file as materialize reads it, from the file alone (the binding operations never resolve the model): its own
-    /// type and facets, nullable when it does not say, its <c>typeRef</c>; <paramref name="key"/> is its id or an inherited column's
-    /// keyed id.
+    /// type and facets, nullable when it does not say; <paramref name="key"/> is its id or an inherited column's keyed id. A table file
+    /// names no type of the model, so the column holds none here.
     /// </summary>
     private static SourceColumn Source(Column column, string key) =>
         new(key, column.Name, column.Type, column.NativeType, column.Length, column.Precision, column.Scale, column.Nullable ?? true, IsKey: false,
-            column.Generated == ColumnGeneration.Identity, column.TypeRef?.Ref);
+            column.Generated == ColumnGeneration.Identity);
 
     // ---- provenance (next-phase-2-design.md section 3.3, decision 4) --------------------------------------------------------------
 
@@ -1203,30 +1173,11 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         binding["provenance"] = new JsonObject { ["columns"] = node };
     }
 
-    /// <summary>The id of the type a column holds: its own <c>typeRef</c>'s, or a projected reference column's reference type.</summary>
-    private static string? TypeRefOf(RColumn c) =>
-        c.TypeRef is { } typeRef ? typeRef.Enum?.Id ?? typeRef.ReferenceType?.Id ?? typeRef.Scalar?.Id
-        : c.Type == "reference" ? c.ReferenceType?.Id
-        : null;
-
     /// <summary>
-    /// The reference type a foreign key points at the rows of (next-phase-2-design.md section 3.3, decision 11): the key pairs a column
-    /// typed by a reference type with the code column of the table that type is bound to in the column's database; else
-    /// <see langword="null"/>. The column's index in the key comes with it.
+    /// The id of the type a column holds: a projected reference column's reference type. A column of a table file names no type of the
+    /// model (0.28.0), and a table materialize-entities reads is bound by no entity yet, so it holds none.
     /// </summary>
-    private static (RReferenceType Type, int Index)? IntoBoundRows(RForeignKey fk)
-    {
-        for (var i = 0; i < fk.Columns.Count && i < fk.ReferencedColumns.Count; i++)
-        {
-            var column = fk.Columns[i];
-            if (column.TypeRef?.ReferenceType is { } type && column.ReferenceBinding is { CodeColumn: { } code } binding
-                && string.Equals(binding.Table.Key, fk.ReferencedTable.Key, StringComparison.Ordinal)
-                && string.Equals(fk.ReferencedColumns[i].Key, code.Key, StringComparison.Ordinal))
-                return (type, i);
-        }
-
-        return null;
-    }
+    private static string? TypeRefOf(RColumn c) => c.Type == "reference" ? c.ReferenceType?.Id : null;
 
     /// <summary>
     /// The attribute a column becomes (materialize-entities, materialize-attributes): its name the column's camel-cased (made unique

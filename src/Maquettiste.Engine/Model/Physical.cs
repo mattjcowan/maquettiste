@@ -445,12 +445,6 @@ public sealed record Column : ElementBase
     public string? Type { get; init; }
 
     /// <summary>
-    /// The enum, reference type or scalar type whose values the column holds (designed, imported, extra and contributed columns);
-    /// <see langword="null"/> when its physical type is all it says. Only <see cref="Model.TypeRef.Ref"/> is set.
-    /// </summary>
-    public TypeRef? TypeRef { get; init; }
-
-    /// <summary>
     /// The bound type of a range or multirange column (<see cref="BuiltinTypes.RangeSubtypes"/>), and only of one (MQ4057).
     /// </summary>
     public string? Subtype { get; init; }

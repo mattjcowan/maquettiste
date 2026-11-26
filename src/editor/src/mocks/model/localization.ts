@@ -643,18 +643,46 @@ export class MockLocalization {
           });
       }
     }
-    // Columns of table files whose own typeRef names the type (next-phase-2-design.md 3.2); the mock resolves no stereotype
-    // members, so inherited columns are left out.
+    // Columns of table files whose bound type is the type (0.28.0): the entities' bindings map them to attributes of the type, and
+    // every binding field that maps the column agrees. The mock reads own attributes and own columns by id or name only (no base
+    // entity, stereotype member or loose name).
     // Like the server, a row always carries domain, storage and boundTable, null when missing.
     const refType = docs.get(id)!;
     const storage = (refType.storage ?? {}) as Record<string, Json>;
     const bindings = (Array.isArray(refType.bindings) ? refType.bindings : []) as Json[];
+    const held = new Map<string, Set<string | null>>();
+    for (const [, entity] of docs) {
+      if (entity.kind !== "entity" || !Array.isArray(entity.bindings)) continue;
+      const attributes = (Array.isArray(entity.attributes) ? entity.attributes : []) as Json[];
+      const seen = new Set<string>();
+      for (const binding of entity.bindings as Json[]) {
+        if (seen.has(binding.database as string)) continue;
+        seen.add(binding.database as string);
+        const write = binding.write as Json | undefined;
+        const keys = [binding.source as string, write?.none === true ? undefined : (write?.table as string | undefined)];
+        for (const key of new Set(keys.filter((k): k is string => !!k))) {
+          const table = docs.get(key);
+          if (table?.kind !== "table" || table.origin === "synthesized" || table.database !== binding.database) continue;
+          for (const field of (Array.isArray(binding.fields) ? binding.fields : []) as Json[]) {
+            const attribute = attributes.find((a) => a.id === field.attribute);
+            if (!attribute) continue;
+            const column = ((table.columns ?? []) as Json[]).find((c) => c.id === field.column || c.name === field.column);
+            if (!column) continue;
+            const type = attribute.type as Json | string | undefined;
+            const typeId = typeof type === "object" && attribute.collection !== true ? ((type?.ref as string | undefined) ?? null) : null;
+            const slot = `${key}\u0000${column.id as string}`;
+            held.set(slot, (held.get(slot) ?? new Set()).add(typeId));
+          }
+        }
+      }
+    }
     const columns: Json[] = [];
     for (const [table, json] of docs) {
       if (json.kind !== "table") continue;
       const database = json.database as string;
       for (const c of (Array.isArray(json.columns) ? json.columns : []) as Json[]) {
-        if ((c.typeRef as Json | undefined)?.ref !== id) continue;
+        const types = held.get(`${table}\u0000${c.id as string}`);
+        if (!types || types.size !== 1 || !types.has(id)) continue;
         columns.push({
           table,
           column: c.id,

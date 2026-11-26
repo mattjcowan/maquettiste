@@ -94,7 +94,7 @@ internal static class ExprSites
                 AddChecks(sites, table.Checks, s => TableColumns(s, model, table));
                 break;
             case Stereotype stereotype:
-                AddChecks(sites, stereotype.Checks, s => Columns(s, model, stereotype.Columns));
+                AddChecks(sites, stereotype.Checks, s => Columns(s, model, null, stereotype.Columns));
                 break;
             case Entity entity:
                 for (var i = 0; i < entity.Checks.Count; i++)
@@ -314,7 +314,7 @@ internal static class ExprSites
     public static ExprSite? Free(ModelSnapshot model, Element element, ExprSiteKind kind) => (element, kind) switch
     {
         (Table table, ExprSiteKind.Check) => new ExprSite("", null, false, table.Id, kind, s => TableColumns(s, model, table)),
-        (Stereotype stereotype, ExprSiteKind.Check) => new ExprSite("", null, false, stereotype.Id, kind, s => Columns(s, model, stereotype.Columns)),
+        (Stereotype stereotype, ExprSiteKind.Check) => new ExprSite("", null, false, stereotype.Id, kind, s => Columns(s, model, null, stereotype.Columns)),
         (Entity entity, ExprSiteKind.Check or ExprSiteKind.Value) => new ExprSite("", null, false, entity.Id, kind, s => Attributes(s, model, entity)),
         (Operation operation, ExprSiteKind.Guard) => new ExprSite("", null, false, operation.Id, kind, s => Operation(s, model, operation))
         {
@@ -753,8 +753,8 @@ internal static class ExprSites
             }
         }
 
-        Columns(scope, model, table.Columns);
-        Columns(scope, model, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
+        Columns(scope, model, table.Id, table.Columns);
+        Columns(scope, model, table.Id, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
         if (entity is null)
             return;
         foreach (var column in table.Columns)
@@ -767,8 +767,7 @@ internal static class ExprSites
     /// <summary>
     /// An attribute or value object member as an override entry makes its column: of the entry's <c>type</c> when it sets one (an enum
     /// or a code keeps its type, since the entry sets only how its column stores it), nullable as the entry says, fixed-length when the
-    /// entry makes it so, with the entry's scale; as the resolver applies the entry. A <c>typeRef</c> on such an entry is MQ4082, and the
-    /// resolver ignores it.
+    /// entry makes it so, with the entry's scale; as the resolver applies the entry.
     /// </summary>
     private static ExprMember Overridden(ExprMember member, Column entry) => member with
     {
@@ -1222,12 +1221,17 @@ internal static class ExprSites
         scope.AddReferenceType(type.Id, type.Name, codes);
     }
 
-    /// <summary>A table's or stereotype's columns; one that states no type and whose attribute gives none is unknown (MQ3103 where read).</summary>
-    private static void Columns(ExprScope scope, ModelSnapshot model, IReadOnlyList<Column> columns)
+    /// <summary>
+    /// A table's or stereotype's columns: a column of a table file whose bound type (the type of the attribute the bindings map to it,
+    /// <see cref="BoundColumnTypes"/>) is an enum, a reference type or a scalar type has that type, else its own; one that states no type
+    /// and whose attribute gives none is unknown (MQ3103 where read).
+    /// </summary>
+    private static void Columns(ExprScope scope, ModelSnapshot model, string? tableId, IReadOnlyList<Column> columns)
     {
+        var bound = tableId is null ? null : BoundColumnTypes.Of(model);
         foreach (var column in columns)
         {
-            var type = column.TypeRef is { } typeRef ? TypeOf(model, typeRef)
+            var type = bound?.TypeOf(tableId!, column.Id) is { } typeId ? TypeOf(model, new TypeRef { Ref = typeId })
                 : column.Type is { } keyword ? ExprType.FromBuiltin(keyword)
                 : column.Attribute is { } attribute && AttributeOf(model, attribute) is { } a ? TypeOf(model, a.Type)
                 : new ExprType("unknown", null);

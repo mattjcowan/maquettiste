@@ -24,6 +24,25 @@ one.
   `member`, `navigation` or `foreign_key_column`. The `query_collection_sql` helper is gone. The `csharp-dapper` pack's
   query class always returns its own `<Name>Row`. The editor's query editor loses the retired result entity line and the
   Collections tab, and the SQL preview shows one statement.
+- **A column's `typeRef` is removed.** Storage never names the model: a table states its columns' physical types, and
+  entities point down at storage through their bindings. A column's type of values now comes from the entity side. When
+  a binding maps a column to an attribute typed by an enum, a reference type or a scalar type, that type is the column's
+  **bound type**. Every binding that maps the column must agree, or it has none. A column no binding maps has only its
+  physical type. Templates read `column.bound_type` (in the resolved model and the database view, `boundType`) in place
+  of `column.type_ref`.
+- **Binding never changes storage.** A table carries its own definition. The bound type adds no key, no CHECK and no
+  facet to the table, changes no migration snapshot and records no migration fact. sql-ddl renders a table's columns
+  only from what the table declares; the key or CHECK a column's `typeRef` used to get is gone. Declare a foreign key into
+  the type's bound table if the database should check the codes.
+- **The checks stay, on the bound type.** MQ4083 (the column's type or facets cannot hold the type's values), MQ4084 (a
+  foreign key the table declares from the column does not point at the type's bound table), MQ7014 and MQ7019 (table seed
+  cells, the column's default and binding constants must be codes or stored values), table checks that read the column,
+  `reference_type_usage` and the model data code refactors rewrite (defaults and seed cells) all read the bound type.
+- **MQ4082 now means the removed key.** A table or stereotype file whose column still has `typeRef` fails to load with
+  MQ4082, which says how to type the column instead. `materialize-tables` and `materialize-columns` write no `typeRef`
+  (a scalar type's native type is written out as `nativeType`), and `materialize-entities` types each attribute by its
+  column's physical type. A projected column of a reference type that `materialize-tables` stores becomes a plain column:
+  the key or CHECK the pack gave it goes, so the write records a change-type that asks how values convert.
 
 **When you update:**
 
@@ -35,6 +54,13 @@ one.
   ignored. A suppression naming one is now warning MQ5019, and a suppression naming MQ4127 is error MQ5018: remove them.
 - `validate --against` a baseline that still has such a query reports that the file did not load (MQ4109), as for any
   file that does not load.
+- Remove `typeRef` from every table and stereotype column, then bind the column to an attribute of that type if no binding
+  does yet. Validate afterwards: a column bound to an attribute of a reference type, an enum or a scalar type is now
+  checked against it (MQ4083, MQ4084, MQ7014).
+- Adding or changing a binding never changes DDL or migrations. A column that had `typeRef` loses the key or CHECK sql-ddl
+  gave it, and the next migration drops it; declare a foreign key on the table if you want the database to keep checking
+  the codes. A column that left a facet out and took it from its type now takes the conventions' default: state the
+  length, precision or `nativeType` on the column if you relied on the type's.
 
 ## 0.27.0 (2026-11-26)
 

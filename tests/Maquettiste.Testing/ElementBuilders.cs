@@ -709,6 +709,28 @@ public sealed class TableBuilder : ElementBuilder<TableBuilder>
         return this;
     }
 
+    /// <summary>
+    /// Types columns the binding way (0.28.0: a table names no type of the model): adds an entity bound to the table whose key maps the
+    /// table's first primary key column (else its first column) and whose attributes, one per typed column and named like it, are typed
+    /// by the given enums, reference types or scalar types and mapped to those columns.
+    /// </summary>
+    /// <param name="entityName">The entity's name.</param>
+    /// <param name="columns">The column names and the ids of the types their values have.</param>
+    /// <returns>The entity's builder.</returns>
+    public EntityBuilder BindTyped(string entityName, params (string Column, string TypeId)[] columns)
+    {
+        var key = _primaryKey is { Columns.Count: > 0 } pk ? _columns.First(c => c.Id == pk.Columns[0]) : _columns[0];
+        var entity = Model.Entity(entityName).Key(key.Name, key.Type ?? "string");
+        foreach (var (column, typeId) in columns)
+            entity.Attr(column, new TypeId(typeId));
+        var fields = new List<BindingField> { new() { Attribute = entity.AttrId(key.Name), Column = key.Name } };
+        fields.AddRange(columns.Select(c => new BindingField { Attribute = entity.AttrId(c.Column), Column = c.Column }));
+        entity.Bind(new EntityBinding { Id = "", Database = _database.Id, Source = Id, Fields = fields });
+        return entity;
+    }
+
+    private sealed record TypeId(string Id) : ITypeSource;
+
     /// <summary>Changes the table the builder creates (columns, constraints, any property), after everything else.</summary>
     /// <param name="edit">The change.</param>
     /// <returns>This builder.</returns>

@@ -5,17 +5,18 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// Columns typed by an enum, a reference type or a scalar type, and the sensitivity a column states (next-phase-2-design.md section 3.2,
-/// D22). On a table file: MQ4082 for a <c>typeRef</c> that names no enum, reference type or scalar type or sits on an overlay entry of a
-/// projected column; MQ4083 for a typed column whose type or stated facets cannot hold its type's values; MQ4084 for a declared foreign
-/// key from a column typed by a reference type that does not point at the type's bound table and its code column; MQ7014 for a literal
-/// default that is not one of the type's stored values or codes, or MQ7019 when it is a former code of its reference type (section 3.5,
-/// <see cref="FormerCodeProblem"/>, which table seed cells use too); MQ4085 for an overlay entry whose sensitivity differs from the
-/// attribute it stores. The columns a designed or imported table inherits from its stereotypes are judged too, with findings where 3.1
-/// places member findings (<see cref="MemberRules.PointerOf"/>). On an entity (<see cref="CheckEntity"/>): MQ4085 for a binding field
-/// whose attribute and column state different sensitivities, and MQ7014 for a binding constant written into a typed column. Table seed
-/// cells (<see cref="TableSeedRules"/>) and a reference type binding's constants (<see cref="ReferenceBindingRules"/>) use
-/// <see cref="ValueProblem"/>. Pure functions of the context.
+/// Columns whose bound type is an enum, a reference type or a scalar type, and the sensitivity a column states (next-phase-2-design.md
+/// section 3.2, D22). A column's bound type comes from the entity side (0.28.0, <see cref="BoundColumnTypes"/>): the type of the attribute
+/// the bindings map to it, when they all agree; a table file names no type of the model (MQ4082 refuses the removed <c>typeRef</c> key
+/// when the file is read). On a table file: MQ4083 for a column whose type or stated facets cannot hold its bound type's values; MQ4084
+/// for a declared foreign key from a column whose bound type is a reference type that does not point at the type's bound table and its
+/// code column; MQ7014 for a literal default that is not one of the type's stored values or codes, or MQ7019 when it is a former code of
+/// its reference type (section 3.5, <see cref="FormerCodeProblem"/>, which table seed cells use too); MQ4085 for an overlay entry whose
+/// sensitivity differs from the attribute it stores. The columns a designed or imported table inherits from its stereotypes are judged
+/// too, with findings where 3.1 places member findings (<see cref="MemberRules.PointerOf"/>). On an entity (<see cref="CheckEntity"/>):
+/// MQ4085 for a binding field whose attribute and column state different sensitivities, and MQ7014 for a binding constant written into a
+/// column with a bound type. Table seed cells (<see cref="TableSeedRules"/>) and a reference type binding's constants
+/// (<see cref="ReferenceBindingRules"/>) use <see cref="ValueProblem"/>. Pure functions of the context.
 /// </summary>
 internal static class ColumnTypeRules
 {
@@ -24,7 +25,7 @@ internal static class ColumnTypeRules
 
     private static string Str(long i) => i.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Judges the typed columns, the declared foreign keys from them and the overlay entries' sensitivity of one table file.</summary>
+    /// <summary>Judges the columns with a bound type, the declared foreign keys from them and the overlay entries' sensitivity of one table file.</summary>
     /// <param name="context">The validation context.</param>
     /// <param name="table">The table file.</param>
     /// <param name="report">The report.</param>
@@ -37,70 +38,68 @@ internal static class ColumnTypeRules
             var pointer = Ptr.At("/columns", i);
             if (column.Attribute is { } key)
             {
-                if (column.TypeRef is not null)
-                    report.Add("MQ4082", $"Column entry '{Label(column, key)}' overrides a projected column, which its attribute types: remove typeRef, or type the attribute.", pointer + "/typeRef", column.Id);
                 CheckOverlaySensitivity(model, column, key, pointer, report);
                 continue;
             }
 
-            CheckColumn(context, column, pointer, null, column.Id, report);
+            CheckColumn(context, table, column, pointer, null, column.Id, report);
         }
 
         // The columns the table inherits are judged on the table; an overlay's candidate set may hold members its synthesized table skips.
         if (table.Origin != TableOrigin.Synthesized)
         {
             foreach (var member in TableMembers.Of(model, table).Columns)
-                CheckColumn(context, member.Member, null, MemberRules.PointerOf(table, member.MemberId, member.From), table.Id, report);
+                CheckColumn(context, table, member.Member, null, MemberRules.PointerOf(table, member.MemberId, member.From), table.Id, report);
         }
 
         CheckForeignKeys(context, table, report);
     }
 
     /// <summary>
-    /// MQ4082 (a <c>typeRef</c> naming neither an enum, a reference type nor a scalar type), MQ4083 and MQ7014 (its default) on one designed,
-    /// imported, extra or inherited column. An own column's findings go on the key at fault under <paramref name="pointer"/>; an inherited
-    /// column's all go at <paramref name="memberPointer"/>.
+    /// MQ4083 and MQ7014 or MQ7019 (its default) on one designed, imported or inherited column whose bound type is an enum, a reference type
+    /// or a scalar type. An own column's findings go on the key at fault under <paramref name="pointer"/>; an inherited column's all go at
+    /// <paramref name="memberPointer"/>.
     /// </summary>
-    private static void CheckColumn(ValidationContext context, Column column, string? pointer, string? memberPointer, string elementId, Report report)
+    private static void CheckColumn(ValidationContext context, Table table, Column column, string? pointer, string? memberPointer, string elementId, Report report)
     {
-        if (column.TypeRef is not { } typeRef)
+        if (BoundTypeOf(context, table, column) is not { } type)
             return;
         string At(string key) => memberPointer ?? pointer + "/" + key;
         var name = column.Name;
-        if (typeRef.Ref is not { } id)
+        switch (type)
         {
-            report.Add("MQ4082", $"Column '{name}' has typeRef '{typeRef.Builtin}', which names no enum, reference type or scalar type: typeRef is {{ \"ref\": id }}, and type holds the built-in keyword.", At("typeRef"), elementId);
-            return;
-        }
-
-        switch (context.Model.GetDocument(id)?.Element)
-        {
-            case ValueObject valueObject:
-                report.Add("MQ4082", $"Column '{name}' has typeRef naming value object '{valueObject.Name}': a column holds the values of an enum, a reference type or a scalar type. Remove typeRef, or type the attribute.", memberPointer ?? pointer + "/typeRef/ref", elementId);
-                return;
-            case ReferenceType type:
-                if (column.Type is not null && ReferenceBindingRules.CodeFit(type, column) is { } misfit)
-                    report.Add("MQ4083", $"Column '{name}' holds codes of reference type '{type.Name}' and cannot hold them: {misfit.Problem}.", At(misfit.Length ? "length" : "type"), elementId);
+            case ReferenceType reference:
+                if (column.Type is not null && ReferenceBindingRules.CodeFit(reference, column) is { } misfit)
+                    report.Add("MQ4083", $"Column '{name}' holds codes of reference type '{reference.Name}' (a binding maps it to an attribute of that type) and cannot hold them: {misfit.Problem}.", At(misfit.Length ? "length" : "type"), elementId);
                 break;
             case EnumType enumType:
                 if (EnumMisfit(enumType, column) is { } enumMisfit)
-                    report.Add("MQ4083", $"Column '{name}' holds values of enum '{enumType.Name}' and cannot hold them: {enumMisfit.Problem}.", At(enumMisfit.Facet), elementId);
+                    report.Add("MQ4083", $"Column '{name}' holds values of enum '{enumType.Name}' (a binding maps it to an attribute of that type) and cannot hold them: {enumMisfit.Problem}.", At(enumMisfit.Facet), elementId);
                 break;
             case ScalarType scalar:
                 if (ScalarMisfit(scalar, column) is { } scalarMisfit)
-                    report.Add("MQ4083", $"Column '{name}' holds values of scalar type '{scalar.Name}' and cannot hold them: {scalarMisfit.Problem}.", At(scalarMisfit.Facet), elementId);
+                    report.Add("MQ4083", $"Column '{name}' holds values of scalar type '{scalar.Name}' (a binding maps it to an attribute of that type) and cannot hold them: {scalarMisfit.Problem}.", At(scalarMisfit.Facet), elementId);
                 return;
-            default:
-                return; // MQ2001 or MQ2002
         }
 
         if (column.Default is not { } literal)
             return;
-        if (FormerCodeProblem(context, column, literal, null) is { } former)
+        if (FormerCodeProblem(context, table, column, literal, null) is { } former)
             report.Add("MQ7019", $"The default of column '{name}' names a former code: {former}.", At("default"), elementId);
-        else if (ValueProblem(context, column, literal, null) is { } problem)
+        else if (ValueProblem(context, table, column, literal, null) is { } problem)
             report.Add("MQ7014", $"The default of column '{name}' is not one of the values the column's type holds: {problem}.", At("default"), elementId);
     }
+
+    /// <summary>
+    /// The enum, reference type or scalar type a column of a table file holds by its bindings (<see cref="BoundColumnTypes"/>), or
+    /// <see langword="null"/>: a column no binding maps, one whose bindings disagree, or a column of an overlay.
+    /// </summary>
+    /// <param name="context">The validation context.</param>
+    /// <param name="table">The table file.</param>
+    /// <param name="column">The column (an inherited column with its keyed id).</param>
+    /// <returns>The type.</returns>
+    internal static Element? BoundTypeOf(ValidationContext context, Table table, Column column) =>
+        BoundColumnTypes.Of(context.Model).TypeOf(table.Id, column.Id) is { } id ? context.Model.Get<Element>(id) : null;
 
     /// <summary>
     /// Whether a column can hold the values of an enum, a reference type or a scalar type, as MQ4083 judges it (a reference type by
@@ -169,25 +168,26 @@ internal static class ColumnTypeRules
     }
 
     /// <summary>
-    /// Why a value written into a column is not one of the stored values or codes of the enum or reference type its <c>typeRef</c> names
+    /// Why a value written into a column is not one of the stored values or codes of the enum or reference type that is its bound type
     /// (MQ7014), or <see langword="null"/>: a column without one, a NULL, or a column of another type takes any. An enum's stored value is a
     /// member's value (else its position), or for a flags enum a combination of them, in an integer column, its code (else its name) in a
     /// text column. A reference type's value is a code of its rows; for a table seed's cell (<paramref name="seed"/>) a row of the type's
     /// seeds must hold it in every environment the seed loads in, and a number or boolean read into a text column stands for its text.
     /// </summary>
     /// <param name="context">The validation context.</param>
+    /// <param name="table">The table file the column belongs to.</param>
     /// <param name="column">The column written.</param>
     /// <param name="value">The value.</param>
     /// <param name="seed">The table seed whose cell the value is, or <see langword="null"/> for a default or a binding constant.</param>
     /// <returns>The problem, in words.</returns>
-    internal static string? ValueProblem(ValidationContext context, Column column, JsonElement value, Seed? seed)
+    internal static string? ValueProblem(ValidationContext context, Table table, Column column, JsonElement value, Seed? seed)
     {
         if (seed is not null)
             value = SeedValue(column, value);
-        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null || column.TypeRef?.Ref is not { } id)
+        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null || BoundTypeOf(context, table, column) is not { } bound)
             return null;
         var text = column.Type is { } type && Texts.Contains(type);
-        switch (context.Model.GetDocument(id)?.Element)
+        switch (bound)
         {
             case ReferenceType referenceType:
                 if (ReferenceDataRules.CodeProblem(context, referenceType, value) is { } problem)
@@ -222,19 +222,19 @@ internal static class ColumnTypeRules
     }
 
     /// <summary>
-    /// Why a value written into a column typed by a reference type is a former code of the type rather than one of its codes (MQ7019,
+    /// Why a value written into a column whose bound type is a reference type is a former code of the type rather than one of its codes (MQ7019,
     /// next-phase-2-design.md section 3.5), naming the code to write; <see langword="null"/> for any other value or column. It replaces
     /// MQ7014 for a column's default and a table seed's cell (<paramref name="seed"/>, read as <see cref="ValueProblem"/> reads it).
     /// </summary>
     /// <param name="context">The validation context.</param>
+    /// <param name="table">The table file the column belongs to.</param>
     /// <param name="column">The column written.</param>
     /// <param name="value">The value.</param>
     /// <param name="seed">The table seed whose cell the value is, or <see langword="null"/> for a default.</param>
     /// <returns>The problem, in words.</returns>
-    internal static string? FormerCodeProblem(ValidationContext context, Column column, JsonElement value, Seed? seed)
+    internal static string? FormerCodeProblem(ValidationContext context, Table table, Column column, JsonElement value, Seed? seed)
     {
-        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null || column.TypeRef?.Ref is not { } id
-            || context.Model.GetDocument(id)?.Element is not ReferenceType type)
+        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null || BoundTypeOf(context, table, column) is not ReferenceType type)
         {
             return null;
         }
@@ -274,7 +274,7 @@ internal static class ColumnTypeRules
     }
 
     /// <summary>
-    /// MQ4084: a declared foreign key that includes a column typed by a reference type points at the table the type's binding names in the
+    /// MQ4084: a declared foreign key that includes a column whose bound type is a reference type points at the table the type's binding names in the
     /// table's database and pairs the column with the binding's code column. A type without a binding there has no table file of rows to
     /// point at, so the key is refused. The table's own keys are judged, and the inherited ones that name a table.
     /// </summary>
@@ -306,8 +306,8 @@ internal static class ColumnTypeRules
         var model = context.Model;
         for (var k = 0; k < columns.Count; k++)
         {
-            if (withMembers.Columns.FirstOrDefault(c => string.Equals(c.Id, columns[k], StringComparison.Ordinal)) is not { TypeRef.Ref: { } typeId } column
-                || model.Get<ReferenceType>(typeId) is not { } type)
+            if (withMembers.Columns.FirstOrDefault(c => string.Equals(c.Id, columns[k], StringComparison.Ordinal)) is not { } column
+                || BoundTypeOf(context, table, column) is not ReferenceType type)
                 continue;
             var database = model.Get<Database>(table.Database)?.Name ?? table.Database;
             if (type.Bindings.FirstOrDefault(b => string.Equals(b.Database, table.Database, StringComparison.Ordinal)) is not { } binding)
@@ -367,8 +367,8 @@ internal static class ColumnTypeRules
 
     /// <summary>
     /// The rules on an entity's bindings to table files: MQ4085 for a field whose attribute (or value object member) and the column it maps
-    /// state different sensitivities, at <c>/bindings/&lt;i&gt;/fields/&lt;j&gt;</c>, and MQ7014 for a constant written into a column typed
-    /// by an enum or a reference type, at <c>/bindings/&lt;i&gt;/constants/&lt;j&gt;</c>. The column is looked up in the source table and
+    /// state different sensitivities, at <c>/bindings/&lt;i&gt;/fields/&lt;j&gt;</c>, and MQ7014 for a constant written into a column whose
+    /// bound type is an enum or a reference type, at <c>/bindings/&lt;i&gt;/constants/&lt;j&gt;</c>. The column is looked up in the source table and
     /// in the write table, by id, keyed id or name.
     /// </summary>
     /// <param name="context">The validation context.</param>
@@ -388,7 +388,7 @@ internal static class ColumnTypeRules
                 var field = binding.Fields[j];
                 if (FieldAttribute(context, entity, field.Attribute) is not { Sensitive: { } own } attribute)
                     continue;
-                foreach (var column in Columns(tables, field.Column))
+                foreach (var (_, column) in Columns(tables, field.Column))
                 {
                     if (column.Sensitive is not { } theirs || theirs == own)
                         continue;
@@ -402,9 +402,9 @@ internal static class ColumnTypeRules
                 var constant = binding.Constants[j];
                 if (constant.Value is not { } value)
                     continue;
-                foreach (var column in Columns(tables, constant.Column))
+                foreach (var (table, column) in Columns(tables, constant.Column))
                 {
-                    if (ValueProblem(context, column, value, null) is not { } problem)
+                    if (ValueProblem(context, table, column, value, null) is not { } problem)
                         continue;
                     report.Add("MQ7014", $"The constant the binding of entity '{entity.Name}' writes into column '{column.Name}' is not one of the values the column's type holds: {problem}.", Ptr.At(pointer + "/constants", j), binding.Id);
                     break;
@@ -427,7 +427,7 @@ internal static class ColumnTypeRules
     }
 
     /// <summary>The column a binding names in each of its tables (by id, keyed id or name; in a write table also by the source column's name).</summary>
-    private static IEnumerable<Column> Columns(List<Table> tables, string reference)
+    private static IEnumerable<(Table Table, Column Column)> Columns(List<Table> tables, string reference)
     {
         var name = reference;
         foreach (var table in tables)
@@ -435,7 +435,7 @@ internal static class ColumnTypeRules
             if ((ReferenceBindingRules.ColumnOf(table, reference) ?? ReferenceBindingRules.ColumnOf(table, name)) is { } column)
             {
                 name = column.Name;
-                yield return column;
+                yield return (table, column);
             }
         }
     }

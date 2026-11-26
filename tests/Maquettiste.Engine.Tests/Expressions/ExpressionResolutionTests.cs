@@ -357,14 +357,14 @@ public sealed class ExpressionResolutionTests
     [Fact]
     public async Task A_code_its_column_cannot_store_leaves_the_check_out_and_the_model_resolves()
     {
-        // Unit's codes are text. The binding maps unit to an int32 column, and a table check meets an int32 column typed by Unit: neither
-        // check can hold kg, so each is reported where validation reports it and left out, and the rest of the model resolves.
+        // Unit's codes are text. The binding maps unit to an int32 column, and a table check meets an int32 column bound to an attribute
+        // of Unit: neither check can hold kg, so each is reported where validation reports it and left out, and the rest of the model
+        // resolves.
         using var repo = Repo();
-        IntegerUnitColumn(repo, typeRef: false);
+        IntegerUnitColumn(repo);
         KgOnly(repo);
-        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""
-            { "id": "01K9EXR0000000000000000R08", "name": "pack_unit", "type": "int32", "typeRef": { "ref": "01K9EXR0000000000000000R01" } }
-            """)));
+        BoundColumn(repo, new JsonObject { ["id"] = "01K9EXR0000000000000000R08", ["name"] = "pack_unit", ["type"] = "int32" }, "01K9EXR0000000000000000R10",
+            "01K9EXR0000000000000000R01");
         TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["01K9EXR0000000000000000R08"] }, { "ref": "{{KgId}}" }] }""");
         var model = await ResolveAsync(repo);
 
@@ -378,12 +378,11 @@ public sealed class ExpressionResolutionTests
     [Fact]
     public async Task A_table_check_lowers_a_code_to_the_text_its_column_stores()
     {
-        // The seed holds Unit's codes in its code column; a string column typed by Unit stores them as they are.
+        // The seed holds Unit's codes in its code column; a string column bound to an attribute of Unit stores them as they are.
         using var repo = Repo();
-        IntegerUnitColumn(repo, typeRef: true);
-        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""
-            { "id": "01K9EXR0000000000000000R09", "name": "unit_code", "type": "string", "length": 8, "typeRef": { "ref": "01K9EXR0000000000000000R01" } }
-            """)));
+        IntegerUnitColumn(repo);
+        BoundColumn(repo, new JsonObject { ["id"] = "01K9EXR0000000000000000R09", ["name"] = "unit_code", ["type"] = "string", ["length"] = 8 },
+            "01K9EXR0000000000000000R11", "01K9EXR0000000000000000R01");
         TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["01K9EXR0000000000000000R09"] }, { "ref": "{{KgId}}" }] }""");
         Assert.DoesNotContain(await ValidateAsync(repo), d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal));
         var check = Assert.Single(Products(await ResolveAsync(repo)).Checks);

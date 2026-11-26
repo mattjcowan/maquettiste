@@ -11,7 +11,7 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// per fixture model over the relation mapping records, the entity mapping and binding records, each database view's JSON, the join paths of
 /// navigations and entity mappings as templates see them, and the dependency keys of relations, navigations and bindings, pinned at the commit
 /// before part 2's resolver changes, and pinned again in 0.28.0, when a query's view lost its entity, its collections and its fields'
-/// attributes (the database views hold the queries). The showcase holds a designed junction (<c>uses-in-main.json</c>), the bindings
+/// attributes (the database views hold the queries), and when a column view's <c>typeRef</c> became <c>boundType</c>. The showcase holds a designed junction (<c>uses-in-main.json</c>), the bindings
 /// fixture entity bindings.
 /// </summary>
 public sealed class RelationStorageUnchangedTests

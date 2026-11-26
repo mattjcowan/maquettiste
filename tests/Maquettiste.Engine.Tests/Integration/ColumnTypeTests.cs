@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -10,10 +9,11 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Integration;
 
 /// <summary>
-/// The acceptance tests of columns typed by reference types, enums and scalar types (next-phase-2-design.md section 3.2, task D27),
-/// each on a copy of the billing fixture with the sql-ddl and csharp-dapper packs. "The first copy" adds the reference type
-/// <c>InvoiceState</c> (one-letter codes D, I, P and V), the designed table <c>invoice_events</c> whose <c>status</c> column is typed
-/// by it, and the query <c>events-by-status</c>. The shared fixture does not change.
+/// The acceptance tests of columns whose bound type is a reference type, an enum or a scalar type (next-phase-2-design.md section 3.2,
+/// task D27; since 0.28.0 the type comes from the attribute a binding maps to the column), each on a copy of the billing fixture with the
+/// sql-ddl and csharp-dapper packs. "The first copy" adds the reference type <c>InvoiceState</c> (one-letter codes D, I, P and V), the
+/// designed table <c>invoice_events</c>, the entity <c>InvoiceEvent</c> bound to it whose <c>status</c> attribute, typed by the reference
+/// type, the binding maps to the <c>status</c> column, and the query <c>events-by-status</c>. The shared fixture does not change.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
 public sealed class ColumnTypeTests
@@ -31,6 +31,8 @@ public sealed class ColumnTypeTests
     private const string NotesId = "01K6BND0000000000000000002";
     private const string NotesBody = "01K6BND0000000000000000005";
     private const string InvoiceNote = "01K6BND0000000000000000010";
+    private const string InvoiceEvent = "01K9X3E0000000000000000001";
+    private const string InvoiceEventStatus = "01K9X3E0000000000000000004";
     private const string TablesFolder = ".maquettiste/model/databases/main/tables/";
     private const string EventsPath = TablesFolder + "invoice-events.json";
     private const string StatePath = ".maquettiste/model/reference-types/invoice-state.json";
@@ -85,9 +87,23 @@ public sealed class ColumnTypeTests
              "schema":"{{BillingSchema}}","columns":[
               {"id":"01K9X3C0000000000000000002","name":"id","type":"uuid","nullable":false},
               {"id":"01K9X3C0000000000000000003","name":"invoice_id","type":"uuid","nullable":false},
-              {"id":"{{EventsStatus}}","name":"status","type":"string","typeRef":{"ref":"{{InvoiceState}}"},"length":1,"nullable":false},
+              {"id":"{{EventsStatus}}","name":"status","type":"string","length":1,"nullable":false},
               {"id":"01K9X3C0000000000000000005","name":"occurred_at","type":"datetimeoffset","nullable":false}],
              "primaryKey":{"columns":["01K9X3C0000000000000000002"]},"foreignKeys":{{foreignKeys}} }
+            """);
+        Write(repo, ".maquettiste/model/entities/invoice-event.json", "entity.json", $$"""
+            {"$schema":"../../.schema/v1/entity.json","kind":"entity","id":"{{InvoiceEvent}}","name":"InvoiceEvent","package":"{{Billing}}",
+             "key":{"attributes":["01K9X3E0000000000000000002"]},
+             "attributes":[
+              {"id":"01K9X3E0000000000000000002","name":"id","type":"uuid","required":true},
+              {"id":"01K9X3E0000000000000000003","name":"invoiceId","type":"uuid","required":true},
+              {"id":"{{InvoiceEventStatus}}","name":"status","type":{"ref":"{{InvoiceState}}"},"required":true},
+              {"id":"01K9X3E0000000000000000005","name":"occurredAt","type":"datetimeoffset","required":true}],
+             "bindings":[{"id":"01K9X3E0000000000000000006","database":"{{Main}}","source":"{{Events}}","fields":[
+              {"attribute":"01K9X3E0000000000000000002","column":"01K9X3C0000000000000000002"},
+              {"attribute":"01K9X3E0000000000000000003","column":"01K9X3C0000000000000000003"},
+              {"attribute":"{{InvoiceEventStatus}}","column":"{{EventsStatus}}"},
+              {"attribute":"01K9X3E0000000000000000005","column":"01K9X3C0000000000000000005"}]}] }
             """);
         Write(repo, ".maquettiste/model/databases/main/queries/events-by-status.json", "query.json", $$"""
             {"$schema":"../../../../.schema/v1/query.json","kind":"query","id":"01K9X3F0000000000000000001","name":"events-by-status","database":"{{Main}}",
@@ -143,17 +159,18 @@ public sealed class ColumnTypeTests
     // ---- the acceptance lines ----
 
     [Fact]
-    public async Task An_invoice_event_status_typed_by_a_reference_type_is_in_its_usage_and_typed_in_csharp()
+    public async Task An_invoice_event_status_bound_to_a_reference_type_attribute_is_in_its_usage_and_typed_in_csharp()
     {
         await using var repo = FirstCopy();
 
         await ValidateCleanAsync(repo);
         var status = Column(await ResolveAsync(repo), "invoice_events", "status");
-        Assert.Equal(("string", "reference", InvoiceState), (status.Type, status.TypeRef?.Kind, status.ReferenceType?.Id));
+        Assert.Equal(("string", "reference", InvoiceState), (status.Type, status.BoundType?.Kind, status.BoundType?.ReferenceType?.Id));
+        Assert.Null(status.ReferenceType); // binding never changes storage: the column holds no codes for the packs
 
-        // The usage lists no attribute and the one column, required, stored as the templates decide, in no bound table.
+        // The usage lists the attribute and the one column it is bound to, required, stored as the templates decide, in no bound table.
         var usage = (await repo.Store.GetReferenceTypeUsageAsync(InvoiceState, Ct))!;
-        Assert.Empty(usage.Usages);
+        Assert.Equal(InvoiceEventStatus, Assert.Single(usage.Usages).Attribute);
         var column = Assert.Single(usage.Columns);
         Assert.Equal((Events, EventsStatus, Main, true, (StorageChoice?)null, (string?)null),
             (column.Table, column.Column, column.Database, column.Required, column.Storage, column.BoundTable));
@@ -166,33 +183,25 @@ public sealed class ColumnTypeTests
         Assert.Matches(@"/// <summary>One row of query events-by-status\. Status holds a code of <see cref=""global::[\w.]+\.InvoiceState""/>\.</summary>", query);
         Assert.Contains("public sealed partial record EventsByStatusRow(Guid Id, string Status);", query, StringComparison.Ordinal);
 
-        // sql-ddl's default realization is a lookup table, and the typed column gets its key into the lookup table's code.
-        var seed = repo.Repo.ReadFile("db/main/seed.sql");
-        var link = Regex.Match(seed, @"ADD CONSTRAINT fk_invoice_events_status_ref FOREIGN KEY \(status\) REFERENCES (?<table>[\w.]+) \(code\);");
-        Assert.True(link.Success, seed);
-        Assert.Equal("billing.invoice_states", link.Groups["table"].Value);
-        Assert.Matches(@"CREATE TABLE (IF NOT EXISTS )?" + Regex.Escape(link.Groups["table"].Value) + @" \(", seed);
+        // sql-ddl renders invoice_events from what the table declares: the binding adds no key into the lookup table.
+        Assert.DoesNotContain("fk_invoice_events_status_ref", repo.Repo.ReadFile("db/main/seed.sql"), StringComparison.Ordinal);
+        Assert.DoesNotContain("fk_invoice_events_status_ref", repo.Repo.ReadFile("db/main/schema.sql"), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task A_typed_column_points_at_the_bound_table_once()
+    public async Task A_bound_column_gets_only_the_key_its_table_declares()
     {
-        // Bound: no lookup table, and the typed column's key points at invoice_states (code), after the type's rows.
+        // Bound: the binding adds no key; the table's own declaration is its DDL.
         await using (var repo = FirstCopy(bound: true))
         {
             await ValidateCleanAsync(repo);
             await GenerateAsync(repo, "sql-ddl");
-            var seed = repo.Repo.ReadFile("db/main/seed.sql");
-            Assert.DoesNotContain("invoice_states_ref", seed, StringComparison.Ordinal);
-            Assert.DoesNotContain("CREATE TABLE", seed, StringComparison.Ordinal);
-            var key = seed.IndexOf("ADD CONSTRAINT fk_invoice_events_status_ref FOREIGN KEY (status) REFERENCES billing.invoice_states (code);", StringComparison.Ordinal);
-            var rows = seed.IndexOf("INSERT INTO billing.invoice_states", StringComparison.Ordinal);
-            Assert.True(rows >= 0 && key > rows, seed);
+            Assert.DoesNotContain("fk_invoice_events_status_ref", repo.Repo.ReadFile("db/main/seed.sql"), StringComparison.Ordinal);
             var usage = Assert.Single((await repo.Store.GetReferenceTypeUsageAsync(InvoiceState, Ct))!.Columns);
             Assert.Equal(States, usage.BoundTable);
         }
 
-        // A declared key from status into the bound table is the link: schema.sql holds it and seed.sql writes no key of its own.
+        // A declared key from status into the bound table is the link: schema.sql holds it.
         var declared = $$"""[{"id":"01K9X3C0000000000000000006","name":"fk_event_state","columns":["{{EventsStatus}}"],"referencesTable":"{{States}}"}]""";
         await using (var repo = FirstCopy(bound: true, foreignKeys: declared))
         {
@@ -219,10 +228,11 @@ public sealed class ColumnTypeTests
         var finding = Assert.Single(await ValidateAsync(repo), d => d.Rule == "MQ4083");
         Assert.Equal((DiagnosticSeverity.Error, EventsPath, "/columns/2/length"), (finding.Severity, finding.FilePath, finding.JsonPointer));
 
-        // Without its own length the column takes the code's.
+        // Without its own length the column is not judged on it, and takes the conventions' default length, never the code's: a table
+        // states its own shape.
         await repo.EditAsync(Events, t => t["columns"]![2]!.AsObject().Remove("length"));
         Assert.DoesNotContain(await ValidateCleanAsync(repo), d => d.Rule == "MQ4083");
-        Assert.Equal(2, Column(await ResolveAsync(repo), "invoice_events", "status").Length);
+        Assert.Equal(255, Column(await ResolveAsync(repo), "invoice_events", "status").Length);
     }
 
     [Fact]
@@ -246,7 +256,7 @@ public sealed class ColumnTypeTests
     }
 
     [Fact]
-    public async Task Materializing_invoice_keeps_status_typed_by_its_enum()
+    public async Task Materializing_invoice_keeps_status_typed_by_its_enum_through_the_binding()
     {
         await using var repo = Copy();
         var parsed = repo.Store.ParseBatch(Encoding.UTF8.GetBytes($$"""
@@ -259,7 +269,9 @@ public sealed class ColumnTypeTests
         var snapshot = await repo.Store.GetSnapshotAsync(Ct);
         var invoices = snapshot.All<Table>().Single(t => t.Name == "invoices" && t.Database == Main);
         var status = invoices.Columns.Single(c => c.Name == "status");
-        Assert.Equal(("string", 1, "\"D\"", InvoiceStatus), (status.Type, status.Length, status.Default?.GetRawText(), status.TypeRef?.Ref));
+        Assert.Equal(("string", 1, "\"D\""), (status.Type, status.Length, status.Default?.GetRawText()));
+        // The table names no type; the column's bound type comes from Invoice's binding, which maps status to the enum attribute.
+        Assert.Equal(InvoiceStatus, Column(await ResolveAsync(repo), "invoices", "status").BoundType?.Enum?.Id);
         await ValidateCleanAsync(repo);
     }
 }

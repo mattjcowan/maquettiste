@@ -511,10 +511,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// section 4.3). Default stereotypes (next-phase-2-design.md section 3.1, <see cref="DefaultPeers"/>): a package, while the model
     /// declares any default, brings the files whose holder's package chain holds it (its members, its descendants' members and the
     /// members that fall back to its package); a database whose schema entries declare defaults brings the files those schemas reach;
-    /// a stereotype brings the files that carry it, or a stereotype implying it, through a schema or package default. Typed columns
-    /// (next-phase-2-design.md section 3.2, <see cref="TypedColumnPeers"/>): an enum, a reference type or a seed of a reference type brings
-    /// the tables whose columns the type types, the table seeds of those tables and the entities and reference types whose bindings give
-    /// those tables' columns constants (MQ7014, MQ4083 and MQ4084 read the type's values, codes and bindings, which no reference reaches).
+    /// a stereotype brings the files that carry it, or a stereotype implying it, through a schema or package default. Bound column types
+    /// (next-phase-2-design.md section 3.2, <see cref="TypedColumnPeers"/>): an enum, a reference type, a scalar type or a seed of a reference
+    /// type brings the tables with a column whose bound type is the type, and an entity the tables its bindings (and its derived entities')
+    /// read and write; with the table seeds of those tables and the entities and reference types whose bindings give those tables' columns
+    /// constants (MQ7014, MQ4083 and MQ4084 read the bound type, its values, codes and bindings, which no reference reaches).
     /// Relations with an end of several types (several-types-design.md decision 12, <see cref="SeveralTypesPeers"/>): an entity, package or
     /// stereotype brings those whose ends name a stereotype (an entity also those with an <c>anyEntity</c> end or an end covering it), with
     /// their children's other compositions and the scenarios linking through them; a mapping or database brings all of them (MQ4115).
@@ -1021,50 +1022,47 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     }
 
     /// <summary>
-    /// For an enum, a reference type or a seed of a reference type: the table files with a column whose <c>typeRef</c> names the type (own,
-    /// or through a stereotype the table lists or a stereotype it lists implies), their table seeds, and the entities and reference types bound to them, whose constants
-    /// fill their columns (next-phase-2-design.md section 3.2). Nothing for any other document.
+    /// The table files whose columns' bound types a document decides or reads (<see cref="BoundColumnTypes"/>, 0.28.0), their table seeds,
+    /// and the entities and reference types bound to them, whose constants fill their columns (next-phase-2-design.md section 3.2): for an
+    /// enum, a reference type, a scalar type or a seed of a reference type, the tables with a column whose bound type is the type; for an
+    /// entity, the table files its bindings, and those of the entities deriving from it, read and write (a binding's field decides its
+    /// column's bound type). A table the candidate model no longer binds is left to the next validate. Nothing for any other document.
     /// </summary>
     private static IEnumerable<ElementDocument> TypedColumnPeers(ValidationContext context, Element element)
     {
         var model = context.Model;
+        var tables = new SortedSet<string>(StringComparer.Ordinal);
         var typeId = element switch
         {
-            EnumType or ReferenceType => element.Id,
+            EnumType or ReferenceType or ScalarType => element.Id,
             Seed seed when model.Get<ReferenceType>(seed.Target) is not null => seed.Target,
             _ => null,
         };
-        if (typeId is null)
-            yield break;
-        var tables = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var reference in model.ReferencesTo(typeId))
+        if (typeId is not null)
         {
-            switch (model.GetDocument(reference.FromElementId)?.Element)
+            foreach (var (tableId, _) in BoundColumnTypes.Of(model).ColumnsOf(typeId))
+                tables.Add(tableId);
+        }
+        else if (element is Entity entity)
+        {
+            var pending = new Stack<string>([entity.Id]);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            while (pending.Count > 0)
             {
-                case Table table when table.Columns.Any(c => string.Equals(c.TypeRef?.Ref, typeId, StringComparison.Ordinal)):
-                    tables.Add(table.Id);
-                    break;
-                case Stereotype stereotype when stereotype.Columns.Any(c => string.Equals(c.TypeRef?.Ref, typeId, StringComparison.Ordinal)):
+                var id = pending.Pop();
+                if (!seen.Add(id) || model.Get<Entity>(id) is not { } bound)
+                    continue;
+                foreach (var binding in bound.Bindings)
                 {
-                    // A table carries the stereotype by listing it or a stereotype that implies it (as DefaultPeers follows implies).
-                    var carried = new List<string> { stereotype.Id };
-                    foreach (var implying in model.ReferencesTo(stereotype.Id))
+                    foreach (var key in new[] { binding.Source, binding.Write?.Table })
                     {
-                        if (implying.Field == "implies" && model.GetDocument(implying.FromElementId)?.Element is Stereotype)
-                            carried.Add(implying.FromElementId);
+                        if (key is not null && model.Get<Table>(key) is { Origin: not TableOrigin.Synthesized })
+                            tables.Add(key);
                     }
-
-                    foreach (var key in carried)
-                    {
-                        foreach (var carrier in model.ReferencesTo(key))
-                        {
-                            if (carrier.Field == "stereotypes" && model.Get<Table>(carrier.FromElementId) is not null)
-                                tables.Add(carrier.FromElementId);
-                        }
-                    }
-
-                    break;
                 }
+
+                foreach (var derived in context.DerivedOf(id))
+                    pending.Push(derived);
             }
         }
 

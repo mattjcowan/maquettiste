@@ -336,8 +336,7 @@ end
 
 # The SQL type of a column: the enum type for a projected reference column (type "reference") realized as "native" on
 # PostgreSQL (unless its type is bound to a table of the database, whose code column it then holds), else type_of (for a projected
-# reference column, the code's type). A column of a table file typed by a reference type (column.type_ref) keeps the type it
-# states, and gets a CHECK instead of the enum type (column_realization in _reference.scriban).
+# reference column, the code's type). A column of a table file keeps the type it states, whatever the bindings map to it.
 func column_type(c)
   $d = c.table.database.dialect
   if c.type == "reference" && c.reference_type && $d == "postgresql" && !c.reference_binding && ref_realization(c.strategy) == "native"

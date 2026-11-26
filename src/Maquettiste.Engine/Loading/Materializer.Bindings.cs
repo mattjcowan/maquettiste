@@ -320,12 +320,11 @@ internal sealed partial class Materializer
     }
 
     /// <summary>
-    /// Whether an attribute typed by <paramref name="typeId"/> keeps its type over a retyped column: the column holds no other type
-    /// (<c>typeRef</c>) and can hold the type's values (MQ4083's fit).
+    /// Whether an attribute typed by <paramref name="typeId"/> keeps its type over a retyped column: the column can hold the type's values
+    /// (MQ4083's fit).
     /// </summary>
     private bool Keeps(string typeId, Column column) =>
-        (column.TypeRef?.Ref is not { } held || string.Equals(held, typeId, StringComparison.Ordinal))
-        && snapshot.Get<Element>(typeId) is { } type && ColumnTypeRules.Holds(type, column);
+        snapshot.Get<Element>(typeId) is { } type && ColumnTypeRules.Holds(type, column);
 
     // ---- shared -----------------------------------------------------------------------------------------------------------------
 

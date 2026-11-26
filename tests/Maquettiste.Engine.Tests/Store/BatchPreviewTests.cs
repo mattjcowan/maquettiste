@@ -266,8 +266,8 @@ public sealed class BatchPreviewTests
     [Fact]
     public async Task A_refactor_preview_carries_usage_and_facts()
     {
-        // next-phase-2-design.md section 3.5: a code rename's dry run lists what it rewrites (a typed column's default and a table seed's
-        // cell, found through the index) on the type's item; a second database keeps the change's reach to some databases, so the dry
+        // next-phase-2-design.md section 3.5: a code rename's dry run lists what it rewrites (the default and a table seed's cell of a column
+        // InvoiceNote's binding maps to its attribute of the type: model data, never DDL) on the type's item; a second database keeps the change's reach to some databases, so the dry
         // run computes the facts the write would record.
         await using var s = await BillingStore.OpenAsync(validate: true);
         var archive = await s.Store.CreateAsync("""
@@ -278,14 +278,21 @@ public sealed class BatchPreviewTests
         const string Notes = "01K6BND0000000000000000001";
         var notes = s.Model.GetDocument(Notes)!;
         var term = Edited(notes, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""
-            { "name": "term", "type": "string", "length": 8, "typeRef": { "ref": "$term" }, "default": "net30" }
+            { "name": "term", "type": "string", "length": 8, "default": "net30" }
             """)));
+        var invoiceNote = s.Model.GetDocument("01K6BND0000000000000000010")!;
+        var bound = Edited(invoiceNote, e =>
+        {
+            e["attributes"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01K6BND00000000000000000T1", "name": "term", "type": { "ref": "$term" } }"""));
+            e["bindings"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "attribute": "01K6BND00000000000000000T1", "column": "term" }"""));
+        });
         var setup = await s.Store.ApplyBatchAsync(Parse(s, $$"""
             { "operations": [
               { "op": "create", "as": "$term", "element": { "kind": "reference-type", "name": "PaymentTerm", "code": { "length": 8 }, "label": { "length": 64 } } },
               { "op": "create", "element": { "kind": "seed", "name": "PaymentTerms", "target": "$term", "columns": ["code", "label"],
                   "rows": [ { "values": ["net30", "Net 30"] }, { "values": ["net60", "Net 60"] } ] } },
               { "op": "update", "id": "{{Notes}}", "expectedHash": "{{notes.Hash}}", "element": {{term}} },
+              { "op": "update", "id": "{{invoiceNote.Element.Id}}", "expectedHash": "{{invoiceNote.Hash}}", "element": {{bound}} },
               { "op": "create", "element": { "kind": "seed", "name": "WelcomeNotes", "target": "{{Notes}}", "columns": ["id", "entity_type", "entity_id", "body", "term"],
                   "rows": [ { "values": ["0193a4b2-0000-7000-8000-000000000001", "invoice", "0193a4b2-0000-7000-8000-000000000002", "Welcome", "net30"] } ] } }
             ] }
@@ -308,10 +315,9 @@ public sealed class BatchPreviewTests
             usage.Usage!.Uses.Select(u => (u.FromElementId, u.JsonPointer)));
         Assert.Equal(2, usage.Usage.UseCount);
         Assert.Contains("\"net-30\"", Assert.Single(preview.Files, f => f.Id == Notes).After, StringComparison.Ordinal);
-        // The write's code map becomes one value map in main, where notes.term holds the codes; archive holds none.
-        var fact = Assert.Single(preview.Facts!);
-        Assert.Equal(("value-map", "maps PaymentTerm codes net30 -> net-30 in 1 column"), (fact.Fact, fact.Summary));
-        Assert.Contains(preview.Files, f => f.Path == fact.Path);
+        // No database holds the codes: notes.term is bound to an attribute of the type, and binding never changes storage, so the write
+        // records no value map.
+        Assert.Empty(preview.Facts!);
         Assert.Empty(preview.DiagnosticsAdded);
     }
 }

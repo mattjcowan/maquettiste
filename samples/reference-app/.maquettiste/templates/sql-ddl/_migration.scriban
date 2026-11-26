@@ -815,7 +815,7 @@ func column_change_statements(tc, cc, out)
   # migration covering it, gets its strategy objects dropped here and created again for the new type at the end; a column of an enum
   # type is retyped to the new type's enum type through text, which no plain cast between two enum types allows.
   $ref_change = $d == "postgresql" && has_change(cc.changes, ["referenceType"]) && !value_map_covers(tc.key, cc.key)
-  $ref_objects = $ref_change && !($c.type_ref && $c.is_foreign_key)
+  $ref_objects = $ref_change
   if $ref_change
     $rt = $c.reference_type
     if $rt
@@ -2333,7 +2333,7 @@ func value_map_column(db, diff, f, rt, o, out)
   $tq = qt($pt)
   $col = q($name, db)
   $crt = $c.reference_type
-  $objects = $crt && !($c.type_ref && $c.is_foreign_key)
+  $objects = $crt
   $after = $crt ? column_realization($c, db) : null
   $before = value_map_before(diff, o, $c, $after)
   $enum_before = $before == "native" ? (f.from_reference_type ? (snake f.from.name) + "_t" : native_type_name(rt)) : null

@@ -469,8 +469,9 @@ public sealed record SqlObjectView(
 /// <param name="Category">As <see cref="TableView.Category"/>, from the column's own entry.</param>
 /// <param name="Properties">As <see cref="TableView.Properties"/>, from the column's own entry.</param>
 /// <param name="Generation">As <see cref="TableView.Generation"/>, from the column's own entry.</param>
-/// <param name="TypeRef">The enum, reference type or scalar type the column's own entry names (its <c>typeRef</c>, next-phase-2-design.md
-/// section 3.2), or <see langword="null"/>; a projected column has none, its attribute (<paramref name="AttributeId"/>) types it.</param>
+/// <param name="BoundType">Derived from bindings, like a table's bound-by list: the enum, reference type or scalar type of the attribute
+/// the entities' bindings map to the column, when they all agree, or <see langword="null"/>; a projected column has none, its attribute
+/// (<paramref name="AttributeId"/>) types it.</param>
 /// <param name="Sensitive"><c>pii</c> or <c>secret</c>: the column's own; else a projected column's attribute's own; else the strongest own
 /// value of the attributes bindings map to it; <see langword="null"/> when none says (next-phase-2-design.md section 3.2).</param>
 public sealed record ColumnView(
@@ -505,7 +506,7 @@ public sealed record ColumnView(
     string? Category,
     IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation,
-    TypeRecord? TypeRef,
+    TypeRecord? BoundType,
     string? Sensitive)
 {
     /// <summary>Where an inherited column comes from (next-phase-2-design.md section 3.1); <see langword="null"/> for the table's own.</summary>
@@ -799,7 +800,7 @@ internal static class DatabaseViews
         column.Category?.Id,
         column.Properties,
         column.Generation,
-        column.TypeRef is { } type ? TypeView(type) : null,
+        column.BoundType is { } type ? TypeView(type) : null,
         column.Sensitive)
     { MemberOrigin = Origin(column.MemberOrigin) };
 

@@ -3654,9 +3654,10 @@ paths:
       summary: The attributes and columns that use a reference type, with their effective storage
       description: |
         reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage
-        choice per database. `columns` lists the designed, imported, extra and inherited columns whose own `typeRef` names the
-        type (next-phase-2-design.md 3.2), with their table, database, domain, required, the effective storage choice in that
-        database and the bound table; projected columns are covered by their attributes.
+        choice per database. `columns` lists the own and inherited columns of designed and imported tables that bindings map to
+        attributes of the type (their bound type, next-phase-2-design.md 3.2, from bindings since 0.28.0), with their table,
+        database, domain, required, the effective storage choice in that database and the bound table; projected columns are
+        covered by their attributes.
       x-maquettiste-role: viewer
       responses:
         '200':
@@ -8071,24 +8072,23 @@ components:
         columns:
           type: array
           description: |
-            The designed, imported, extra and inherited columns whose own `typeRef` names the type (next-phase-2-design.md 3.2),
-            ordinal by table id then column id. Projected columns are covered by their attributes in `usages`.
+            The own and inherited columns of designed and imported tables whose bound type is the type (bindings map them to
+            attributes of the type), ordinal by table id then column id. Projected columns are covered by their attributes in
+            `usages`.
           items:
             type: object
             required: [table, column, database, required]
             properties:
               table:
                 type: string
-                description: |
-                  The table id: the table file's id, or a synthesized table's key (`<entityId>@<databaseId>`) for an overlay's
-                  extra column or a column a synthesized table inherits.
+                description: The table file's id.
               column:
                 type: string
                 description: The column id; a keyed id (`<tableKey>.<memberId>`) for an inherited column.
               database:
                 $ref: '#/components/schemas/Ulid'
               domain:
-                description: The table's package (a synthesized table without one, its entity's or relation's); null at the root.
+                description: The table's package; null at the root.
                 oneOf:
                   - $ref: '#/components/schemas/Ulid'
                   - type: 'null'
@@ -10081,7 +10081,7 @@ components:
               first commented column its entity's bindings map it to, bindings in database name order.
     TypeRecord:
       x-engine-record: Maquettiste.Engine.TypeRecord
-      description: An attribute's resolved type, or a column's `typeRef`; the named type by id.
+      description: An attribute's resolved type, or a column's bound type; the named type by id.
       type: object
       required: [kind, name, builtin, enum, valueObject, scalar, referenceType]
       properties:
@@ -14531,11 +14531,12 @@ components:
           oneOf:
             - $ref: '#/components/schemas/MemberOriginView'
             - type: 'null'
-        typeRef:
+        boundType:
           description: |
-            The enum, reference type or scalar type the column's own entry names (its `typeRef`), or null. A projected column has
-            none: its attribute (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in
-            recordings made before.
+            Derived from bindings, like a table's bound-by list (0.28.0): the enum, reference type or scalar type of the attribute
+            the bindings map to the column, when they all agree; else null. A projected column has none: its attribute
+            (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in recordings made
+            before.
           oneOf:
             - $ref: '#/components/schemas/TypeRecord'
             - type: 'null'

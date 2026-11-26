@@ -30,9 +30,9 @@ func type_realization(rt, db)
   ret $r
 end
 
-# The realization of a column holding a type's codes: the type's (type_realization), except that a column of a table file typed by
-# the type (column.type_ref, next-phase-2-design.md section 3.2) reads "native" as "check": an enum type would replace the type the
-# column states, so it keeps that type and gets the CHECK the other dialects get.
+# The realization of a column holding a type's codes: the type's (type_realization). Only a projected reference column (type
+# "reference") holds codes for the pack; a column of a table file never does, whatever the bindings map to it, since binding an
+# entity never changes storage. Any other column reads "native" as "check", so an enum type never replaces a type a table states.
 func column_realization(c, db)
   $r = type_realization(c.reference_type, db)
   if $r == "native" && c.type != "reference"
@@ -641,12 +641,12 @@ end
 # The strategy objects of the reference-typed columns and the collections of a database: of the types bound to a table there
 # (bound true), or of the others. A bound type's objects come after the table rows (bound_reference_statements), since a foreign
 # key added to a column that already holds codes needs the bound table's rows. Every column with a reference_type is one: a
-# projected reference column, or a column of a table file typed by the type (column.type_ref). A typed column that is part of a
-# foreign key its table declares gets nothing: that key, which MQ4084 has made point at the bound table, holds its codes.
+# projected reference column. A column of a table file gets nothing here, whatever the bindings map to it (column.bound_type is
+# information only): its table's own declaration, its declared foreign keys and checks, is all its DDL.
 func reference_column_statements(db, bound, out)
   for t in db.tables
     for c in t.columns
-      if !c.reference_type || (c.type_ref && c.is_foreign_key)
+      if !c.reference_type
         continue
       end
       $r = column_realization(c, db)

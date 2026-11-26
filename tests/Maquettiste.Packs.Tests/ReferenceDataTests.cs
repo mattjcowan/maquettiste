@@ -182,16 +182,24 @@ public sealed class ReferenceDataTests
     }
 
     /// <summary>
-    /// A designed table pantry_items in main whose unit column (string(8), not null) is typed by UnitOfMeasure, with one row that
-    /// holds the code kg (next-phase-2-design.md section 3.2).
+    /// A designed table pantry_items in main whose unit column (string(8), not null) the entity PantryItem's binding maps to its attribute
+    /// of UnitOfMeasure, with one row that holds the code kg (next-phase-2-design.md section 3.2).
     /// </summary>
     private static void PantryItems(PackRepo repo)
     {
         repo.Write(".maquettiste/model/databases/main/tables/pantry-items.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"01K9X3E0000000000000000001","name":"pantry_items","database":"{{PackRepo.MainDatabaseId}}","columns":[
               {"id":"01K9X3E0000000000000000002","name":"id","type":"int32","nullable":false},
-              {"id":"01K9X3E0000000000000000003","name":"unit","type":"string","typeRef":{"ref":"01JBM9S346Q3D25VT4F5V37E3S"},"length":8,"nullable":false}],
+              {"id":"01K9X3E0000000000000000003","name":"unit","type":"string","length":8,"nullable":false}],
              "primaryKey":{"columns":["01K9X3E0000000000000000002"]} }
+            """);
+        repo.Write(".maquettiste/model/entities/pantry-item.json", $$"""
+            {"$schema":"../../.schema/v1/entity.json","kind":"entity","id":"01K9X3E0000000000000000020","name":"PantryItem",
+             "key":{"attributes":["01K9X3E0000000000000000021"]},
+             "attributes":[{"id":"01K9X3E0000000000000000021","name":"id","type":"int32","required":true},
+               {"id":"01K9X3E0000000000000000022","name":"unit","type":{"ref":"01JBM9S346Q3D25VT4F5V37E3S"},"required":true}],
+             "bindings":[{"id":"01K9X3E0000000000000000023","database":"{{PackRepo.MainDatabaseId}}","source":"01K9X3E0000000000000000001",
+               "fields":[{"attribute":"01K9X3E0000000000000000021","column":"01K9X3E0000000000000000002"},{"attribute":"01K9X3E0000000000000000022","column":"01K9X3E0000000000000000003"}]}]}
             """);
         repo.Write(".maquettiste/model/seeds/pantry-items/pantry-items.json", """
             {"$schema":"../../../.schema/v1/seed.json","kind":"seed","id":"01K9X3E0000000000000000010","name":"pantryItems","target":"01K9X3E0000000000000000001",
@@ -199,62 +207,23 @@ public sealed class ReferenceDataTests
             """);
     }
 
-    /// <summary>
-    /// Runs schema.sql, then seed.sql twice, on PostgreSQL, then shows that pantry_items.unit refuses a value that is not a code;
-    /// skips the run (after the caller's text checks) without a PostgreSQL container.
-    /// </summary>
-    private static async Task RunPantryItemsOnPostgresAsync(PackRepo repo, string constraint)
+    [Theory]
+    [InlineData("lookup-table")]
+    [InlineData("native")]
+    public async Task A_designed_column_bound_to_a_reference_type_attribute_gets_nothing_from_the_binding(string strategy)
     {
-        var container = Environment.GetEnvironmentVariable("MAQUETTISTE_TEST_POSTGRES_CONTAINER");
-        var docker = ProcessRunner.FindOnPath("docker");
-        if (string.IsNullOrEmpty(container) || docker is null)
-        {
-            Assert.Skip("Set MAQUETTISTE_TEST_POSTGRES_CONTAINER to run the typed column's scripts on PostgreSQL.");
-            return;
-        }
-
-        var (schema, seed) = (repo.Read("db/main/schema.sql"), repo.Read("db/main/seed.sql"));
-        var (code, output) = await PsqlAsync(docker, container, schema + seed + seed + "\nSELECT 'pantry=' || count(*) FROM pantry_items WHERE unit = 'kg';\n");
-        Assert.True(code == 0, output);
-        Assert.Contains("pantry=1", output, StringComparison.Ordinal);
-        (code, output) = await PsqlAsync(docker, container, schema + seed + "\nUPDATE pantry_items SET unit = 'nope' WHERE id = 1;\n");
-        Assert.NotEqual(0, code);
-        Assert.Contains(constraint, output, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task A_typed_designed_column_on_a_lookup_type_gets_its_key()
-    {
-        // A column of a table file typed by a reference type stored as a lookup table gets the key a projected column gets, into the
-        // lookup table's code, and PostgreSQL refuses a value that is not a code.
-        using var repo = PackRepo.ReferenceData("lookup-table");
-        PantryItems(repo);
-        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
-
-        Assert.Contains("unit varchar(8) NOT NULL", repo.Read("db/main/schema.sql"), StringComparison.Ordinal);
-        var seed = repo.Read("db/main/seed.sql");
-        Assert.Contains("-- pantry_items.unit (UnitOfMeasure, lookup-table).", seed, StringComparison.Ordinal);
-        Assert.Contains("ALTER TABLE public.pantry_items ADD CONSTRAINT fk_pantry_items_unit_ref FOREIGN KEY (unit) REFERENCES public.units_of_measure (code);", seed, StringComparison.Ordinal);
-        await RunPantryItemsOnPostgresAsync(repo, "fk_pantry_items_unit_ref");
-    }
-
-    [Fact]
-    public async Task A_typed_designed_column_on_a_native_type_keeps_its_type_and_gets_a_check()
-    {
-        // On PostgreSQL a type stored as "native" types projected columns by its enum type; a column of a table file states its own
-        // type, so it keeps varchar(8) and gets the CHECK the other dialects get, while the enum type still serves the projected columns.
-        using var repo = PackRepo.ReferenceData("native");
+        // 0.28.0: binding an entity never changes storage. Whatever the type's storage, pantry_items keeps the type its column states and
+        // gets no key, CHECK or enum type the table does not declare; the projected column of Ingredient still gets its objects.
+        using var repo = PackRepo.ReferenceData(strategy);
         PantryItems(repo);
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
 
         var schema = repo.Read("db/main/schema.sql");
         Assert.Contains("unit varchar(8) NOT NULL", schema, StringComparison.Ordinal);
-        Assert.Contains("default_unit unit_of_measure_t", schema, StringComparison.Ordinal);
         var seed = repo.Read("db/main/seed.sql");
-        Assert.Contains("-- UnitOfMeasure is stored as \"native\"; pantry_items.unit states its own type, so it gets a CHECK.", seed, StringComparison.Ordinal);
-        Assert.Contains("ALTER TABLE public.pantry_items ADD CONSTRAINT ck_pantry_items_unit_ref CHECK (unit IN ('kg', 'g', 'pinch'));", seed, StringComparison.Ordinal);
-        Assert.DoesNotContain("fk_pantry_items_unit_ref FOREIGN KEY", seed, StringComparison.Ordinal);
-        await RunPantryItemsOnPostgresAsync(repo, "ck_pantry_items_unit_ref");
+        Assert.DoesNotContain("pantry_items_unit_ref", seed, StringComparison.Ordinal);
+        Assert.DoesNotContain("pantry_items.unit", seed, StringComparison.Ordinal);
+        Assert.Contains("ingredients_default_unit_ref", schema + seed, StringComparison.Ordinal);
     }
 
     // ---------------------------------------------------------------- reference-type refactors (next-phase-2-design.md section 3.5)
@@ -744,20 +713,27 @@ public sealed class ReferenceDataTests
     [Fact]
     public async Task Two_columns_moved_to_one_type_write_each_type_s_rows_once()
     {
-        // Customer.creditTerm and the notes' term move to SettlementTerm, whose rows name the category std: the first column step creates
-        // both lookup tables and upserts their rows, the second finds them written.
+        // Customer.creditTerm and Customer.backupTerm move to SettlementTerm, whose rows name the category std: the first column step
+        // creates both lookup tables and upserts their rows, the second finds them written. (The notes' term, bound to an attribute of
+        // CreditTerm, holds no codes for the database: binding never changes storage.)
+        const string BackupTerm = "01KACT00000000000000000031";
         using var repo = PaymentTerms.Create("lookup-table");
-        var refactor = await RefactorAsync(repo, null, edit: async r =>
-        {
-            await AddSettlementTermsAsync(r, categories: true);
-            await MoveCreditTermAsync(r, SettlementTerm);
-            await PaymentTerms.EditAsync(r, PaymentTerms.NotesTable, e =>
-                e["columns"]!.AsArray().Single(c => (string?)c!["name"] == "term")!["typeRef"] = JsonNode.Parse($$"""{ "ref": "{{SettlementTerm}}" }"""));
-        });
+        var refactor = await RefactorAsync(repo, null,
+            setup: r => PaymentTerms.EditAsync(r, PaymentTerms.CustomerId, e => e["attributes"]!.AsArray().Add(JsonNode.Parse($$"""
+                { "id": "{{BackupTerm}}", "name": "backupTerm", "type": { "ref": "{{PaymentTerms.CreditTerm}}" } }
+                """))),
+            edit: async r =>
+            {
+                await AddSettlementTermsAsync(r, categories: true);
+                await MoveCreditTermAsync(r, SettlementTerm);
+                await PaymentTerms.EditAsync(r, PaymentTerms.CustomerId, e =>
+                    e["attributes"]!.AsArray().Single(a => (string?)a!["id"] == BackupTerm)!["type"] = JsonNode.Parse($$"""{ "ref": "{{SettlementTerm}}" }"""));
+            });
 
         var migration = refactor.Migration;
         Assert.Contains("-- customers.credit_term now holds codes of SettlementTerm", migration, StringComparison.Ordinal);
-        Assert.Contains("-- notes.term now holds codes of SettlementTerm", migration, StringComparison.Ordinal);
+        Assert.Contains("-- customers.backup_term now holds codes of SettlementTerm", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("notes.term", migration, StringComparison.Ordinal);
         foreach (var once in new[] { "CREATE TABLE IF NOT EXISTS billing.term_categories ", "CREATE TABLE IF NOT EXISTS billing.settlement_terms ",
             "INSERT INTO billing.term_categories ", "INSERT INTO billing.settlement_terms " })
             Assert.Single(System.Text.RegularExpressions.Regex.Matches(migration, System.Text.RegularExpressions.Regex.Escape(once)));

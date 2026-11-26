@@ -85,10 +85,9 @@ public sealed class FormerCodeRuleTests
             B.Table("invoice_notes", main).Column("id", "uuid", nullable: false).Column("term", "string", length: 8).PrimaryKey("id")
                 .Edit(t => t with
                 {
-                    Columns = [.. t.Columns.Select(c => c.Name == "term"
-                        ? c with { TypeRef = new TypeRef { Ref = TermId }, Default = columnDefault is null ? null : J(columnDefault) }
-                        : c)],
-                });
+                    Columns = [.. t.Columns.Select(c => c.Name == "term" ? c with { Default = columnDefault is null ? null : J(columnDefault) } : c)],
+                })
+                .BindTyped("InvoiceNote", ("term", TermId));
         }
 
         public ModelBuilder B { get; }

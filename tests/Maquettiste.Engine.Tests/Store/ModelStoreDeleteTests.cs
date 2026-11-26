@@ -208,40 +208,6 @@ public sealed class ModelStoreDeleteTests
     }
 
     [Fact]
-    public async Task Remove_references_clears_a_column_typeRef_and_keeps_its_type()
-    {
-        // next-phase-2-design.md section 3.2 (D20): remove-references drops the whole { "ref": ... } object, never leaving {}, and the
-        // column keeps its physical type and facets.
-        await using var s = await BillingStore.OpenAsync();
-        var created = await s.Store.CreateAsync(
-            "{\"kind\":\"enum\",\"name\":\"NoteSubject\",\"members\":[{\"name\":\"Invoice\",\"code\":\"invoice\"},{\"name\":\"Customer\",\"code\":\"customer\"}]}"u8.ToArray(),
-            ChangeSource.Editor,
-            Ct);
-        Assert.Equal(SaveOutcome.Saved, created.Outcome);
-        var notes = s.Doc("table", "notes");
-        var typed = await s.Store.SaveAsync(
-            notes.Element.Id,
-            BillingStore.Edit(notes, n => n["columns"]![1]!["typeRef"] = new JsonObject { ["ref"] = created.Id }),
-            notes.Hash,
-            ChangeSource.Editor,
-            Ct);
-        Assert.Equal(SaveOutcome.Saved, typed.Outcome);
-        Assert.Equal(created.Id, s.Store.Current!.Get<Table>(notes.Element.Id)!.Columns[1].TypeRef?.Ref);
-        var refused = await s.Store.DeleteAsync(created.Id!, created.Hash!, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Referenced, refused.Outcome);
-        Assert.Contains(refused.Referrers, r => r.FromElementId == notes.Element.Id && r.JsonPointer == "/columns/1/typeRef/ref");
-
-        var deleted = await s.Store.DeleteAsync(created.Id!, created.Hash!, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
-
-        Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
-        Assert.Equal([notes.Element.Id], deleted.Changes!.Changed.Where(c => c.Kind != "migration").Select(c => c.Id));
-        var column = s.Store.Current!.Get<Table>(notes.Element.Id)!.Columns[1];
-        Assert.Equal(("entity_type", "string", 32, false), (column.Name, column.Type, column.Length, column.Nullable));
-        Assert.Null(column.TypeRef);
-        Assert.DoesNotContain("typeRef", s.Harness.Read("model/databases/main/tables/notes.json"), StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task A_column_delete_ignores_provenance()
     {
         // next-phase-2-design.md section 3.3 (D30, decision 2): a binding's provenance is a record keyed by column ids, not a link, so a

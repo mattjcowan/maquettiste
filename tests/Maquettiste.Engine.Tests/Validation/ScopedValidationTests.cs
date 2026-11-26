@@ -190,7 +190,8 @@ public sealed class ScopedValidationTests
                 rows.Add(new SeedRow { Id = "01K9X3S0000000000000000012", Values = [Json("I"), Json("Issued")] });
             b.Add(new Seed { Id = "01K9X3S0000000000000000010", Name = "invoiceStates", Target = state.Id, Columns = ["code", "label"], Rows = rows });
             b.Table("invoice_events", db).Column("id", "uuid", nullable: false).Column("state", "string", nullable: false, length: 1).PrimaryKey("id")
-                .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { TypeRef = new TypeRef { Ref = state.Id }, Default = Json("I") }] });
+                .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { Default = Json("I") }] })
+                .BindTyped("InvoiceEvent", ("state", state.Id));
             return b.Build();
         }
 
@@ -212,8 +213,8 @@ public sealed class ScopedValidationTests
             var status = b.Enum("Status").Member("Draft", 0).Member("Issued", 1);
             if (withVoid)
                 status.Member("Void", 2);
-            var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).Column("status", "int32", nullable: false).PrimaryKey("id")
-                .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { TypeRef = new TypeRef { Ref = status.Id } }] });
+            var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).Column("status", "int32", nullable: false).PrimaryKey("id");
+            events.BindTyped("InvoiceEvent", ("status", status.Id));
             var seed = new Seed
             {
                 Id = "01K9X3S0000000000000000020", Name = "events", Target = events.Id, Columns = [events.ColumnId("id"), events.ColumnId("status")],
@@ -233,7 +234,8 @@ public sealed class ScopedValidationTests
     [Fact]
     public async Task Removing_an_enum_member_rejudges_a_table_that_gets_the_typed_column_through_an_implied_stereotype()
     {
-        // The table lists lifecycle, which implies stateful, whose column is typed by the enum; the enum's save brings the table seed.
+        // The table lists lifecycle, which implies stateful, whose column a binding maps to an attribute of the enum; the enum's save brings
+        // the table seed.
         static (ModelSnapshot Model, string EnumId, string SeedId) Build(bool withVoid)
         {
             const string statusColumn = "01K9X3S0000000000000000031";
@@ -245,10 +247,11 @@ public sealed class ScopedValidationTests
             b.Add(new Stereotype
             {
                 Id = b.NewId(), Key = "stateful", Name = "Stateful", AppliesTo = ["table"],
-                Columns = [new Column { Id = statusColumn, Name = "status", Type = "int32", Nullable = false, TypeRef = new TypeRef { Ref = status.Id } }],
+                Columns = [new Column { Id = statusColumn, Name = "status", Type = "int32", Nullable = false }],
             });
             b.Stereotype("lifecycle").AppliesTo("table").Implies("stateful");
             var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).PrimaryKey("id").Stereotype("lifecycle");
+            events.BindTyped("InvoiceEvent", ("status", status.Id));
             var seed = new Seed
             {
                 Id = "01K9X3S0000000000000000030", Name = "events", Target = events.Id, Columns = [events.ColumnId("id"), events.Id + "." + statusColumn],

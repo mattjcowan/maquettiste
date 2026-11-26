@@ -160,44 +160,47 @@ The engine now knows the rows are in `bike_types`:
 
 Without a binding nothing changes: it is optional, and a database without one keeps its strategy.
 
-## 11. Type a column of your own table
+## 11. Codes in a column of your own table
 
 A table you design yourself can hold codes too. Say `main` has a table `bike_events` with a `bike_type` column
-(`string`, length 20, not null) that holds the code of a `BikeType` row. Say so on the column, beside its type:
+(`string`, length 20, not null) that holds the code of a `BikeType` row. The table says only that: a table states
+physical types and never names a type of the model. The entity side says what the column holds. Bind an entity to the
+table and map the column to an attribute typed by `BikeType`:
 
 ```json
-{ "id": "01KAB0000000000000000000E3", "name": "bike_type", "type": "string",
-  "typeRef": { "ref": "01KAB0000000000000000000B1" }, "length": 20, "nullable": false }
+{ "kind": "entity", "name": "BikeEvent",
+  "attributes": [ { "id": "01KAB0000000000000000000F2", "name": "bikeType", "type": { "ref": "01KAB0000000000000000000B1" }, "required": true } ],
+  "bindings": [ { "database": "<main id>", "source": "<bike_events id>",
+                  "fields": [ { "attribute": "01KAB0000000000000000000F2", "column": "bike_type" } ] } ] }
 ```
 
-`typeRef` names a reference type, an enum or a scalar type by its id. The editor's Columns grid has no picker for it
-yet; set it in the column's JSON form. `type` stays the column's own: the database type does not change.
+`BikeType` is now the column's **bound type**. It is worked out from the bindings, like a table's bound-by list. When
+several bindings map the column, they must all map it to attributes of the same type; if they do not, the column has no
+bound type.
 
-Three statements, each made once, decide how the database keeps `bike_type` honest:
+Binding an entity never changes the table. `bike_events` keeps its own definition: the database type, the length, the
+keys and the checks it declares. The pack adds no key or CHECK for `bike_type`, and no migration records anything when
+you add or change the binding. If the database should check the codes, say so on the table: declare a foreign key from
+`bike_type` into the table that holds `BikeType`'s rows (the binding of section 10). Validation then wants the key to
+point at that table's code column in the database (MQ4084), and refuses it when the type has no table there.
 
-- The binding of section 10, on the reference type, says where the type's rows live in `main` (or there is none, and the
-  type's strategy decides).
-- `typeRef`, on the column, says whose codes the column holds.
-- How the database checks it is worked out from the two. `sql-ddl` gives the column what it gives an attribute of type
-  `BikeType`: a foreign key into the bound table, a foreign key into the lookup table, or a CHECK. On PostgreSQL a type
-  stored as `native` gets a CHECK here, since an enum type would replace the column's own type.
+What else follows:
 
-When `bike_events` itself declares a foreign key from `bike_type`, that key is the check, and the pack adds none of its
-own. Validation then wants the key to point at the bound table's code column in that database (MQ4084), and refuses it
-when the type has no table there.
-
-What else follows from the one statement:
-
-- A facet the column leaves out comes from the type: drop `length` and the column takes the code's length. A length or
-  type that cannot hold the codes is refused (MQ4083).
+- A length or type that cannot hold the codes is refused (MQ4083). A length the column leaves out is the conventions'
+  default, never the code's.
 - The column's literal default, the cells of table seeds of `bike_events` and the constants a binding gives the column
-  must be codes of `BikeType` (MQ7014). A column typed by an enum holds the members' stored values: their values in an
-  integer column, their codes in a text column.
+  must be codes of `BikeType` (MQ7014). A column bound to an attribute of an enum holds the members' stored values: their
+  values in an integer column, their codes in a text column.
 - **Used by** lists the column with the attributes, and so does `reference_type_usage`.
-- Templates read `column.type_ref`. A query row that reads the column keeps the code's type in `csharp-dapper`, and the
-  row's summary names `BikeType`; a column typed by an enum reads as the enum.
-- A column may state `sensitive` (`pii` or `secret`) the same way. Say it once, on the column or on the attribute a
-  binding maps to it, and both show it. Two different values are a warning (MQ4085).
+- Templates read `column.bound_type` as information. A query row that reads the column keeps the code's type in
+  `csharp-dapper`, and the row's summary names `BikeType`; a column bound to an attribute of an enum reads as the enum.
+- A code refactor (`rename-code`, say) rewrites the column's default and the table seed cells in the model. It records no
+  value map for the column: the database's DDL and migrations never depend on bindings.
+- A column may state `sensitive` (`pii` or `secret`). Say it once, on the column or on the attribute a binding maps to
+  it, and both show it. Two different values are a warning (MQ4085).
+
+Until 0.28.0 a column could name its type itself with `typeRef`. That key is gone: a file that still has it fails to
+load with MQ4082. Remove it and bind the column as above.
 
 ## 12. Name a referenced row by its natural key
 

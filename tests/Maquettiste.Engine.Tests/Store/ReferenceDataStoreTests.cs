@@ -255,11 +255,12 @@ public sealed class ReferenceDataStoreTests
     }
 
     [Fact]
-    public async Task Usage_lists_designed_columns_typed_by_the_type()
+    public async Task Usage_lists_designed_columns_bound_to_attributes_of_the_type()
     {
-        // next-phase-2-design.md section 3.2 (D24): the usage lists the designed, extra and inherited columns whose own typeRef names the
-        // type, ordinal by table id then column id, with the effective storage choice in their database; the projected columns of
-        // attributes typed by it stay covered by their attributes, and a column typed by another type is not listed.
+        // next-phase-2-design.md section 3.2 (D24): the usage lists the own and inherited columns of designed tables that bindings map to
+        // attributes of the type, ordinal by table id then column id, with the effective storage choice in their database; the projected
+        // columns of attributes typed by it stay covered by their attributes, an overlay's extra column has no bound type, and a column
+        // bound to an attribute of another type is not listed.
         var (h, store) = await OpenAsync(TypedPantry);
         using var _ = h;
         await using var __ = store;
@@ -268,11 +269,9 @@ public sealed class ReferenceDataStoreTests
         var usage = (await store.GetReferenceTypeUsageAsync(UnitOfMeasure, Ct))!;
 
         Assert.Contains(usage.Usages, u => u.Attribute == PreferredUnit && u.Owner == Ingredient);
-        var recipes = Recipe + "@" + PantryDatabaseId;
         Assert.Equal(
             new[]
             {
-                (recipes, PantryStockUnitId, PantryDatabaseId, false),
                 (PantryItemsId, PantryItemsId + "." + MeasuredUnitId, PantryDatabaseId, false),
                 (PantryItemsId, PantryUnitId, PantryDatabaseId, true),
             },
@@ -299,9 +298,9 @@ public sealed class ReferenceDataStoreTests
     private const string PantryStockUnitId = "01JRDV00000000000000000031";
 
     /// <summary>
-    /// A database <c>pantry</c> where the designed table pantry_items types its unit by UnitOfMeasure and its allergen by Allergen, and
-    /// inherits a nullable unit_code typed by UnitOfMeasure from the stereotype <c>measured</c>; Recipe alone maps there, and the overlay
-    /// of its table adds an extra column stock_unit typed by UnitOfMeasure. Allergen states no storage; the project's lookup-table choice
+    /// A database <c>pantry</c> where the designed table pantry_items has unit and allergen and inherits a nullable unit_code from the
+    /// stereotype <c>measured</c>, which the entity PantryItem's binding maps to its attributes of UnitOfMeasure, Allergen and
+    /// UnitOfMeasure; Recipe alone maps there, and the overlay of its table adds an extra column stock_unit. Allergen states no storage; the project's lookup-table choice
     /// applies to it, and UnitOfMeasure's own <c>native</c> for the pantry to the other.
     /// </summary>
     private static void TypedPantry(LoaderHarness h)
@@ -320,20 +319,30 @@ public sealed class ReferenceDataStoreTests
             """, StringComparison.Ordinal));
         h.Write("model/vocabularies/stereotypes/measured.json", $$"""
             { "kind": "stereotype", "id": "{{MeasuredId}}", "key": "measured", "name": "Measured", "appliesTo": ["table"],
-              "columns": [ { "id": "{{MeasuredUnitId}}", "name": "unit_code", "type": "string", "length": 8,
-                             "typeRef": { "ref": "{{UnitOfMeasure}}" } } ] }
+              "columns": [ { "id": "{{MeasuredUnitId}}", "name": "unit_code", "type": "string", "length": 8 } ] }
             """);
         h.Write("model/databases/pantry/tables/pantry-items.json", $$"""
             { "kind": "table", "id": "{{PantryItemsId}}", "name": "pantry_items", "database": "{{PantryDatabaseId}}", "stereotypes": ["measured"],
               "columns": [ { "id": "01JRDV00000000000000000021", "name": "id", "type": "uuid", "nullable": false },
-                           { "id": "{{PantryUnitId}}", "name": "unit", "type": "string", "typeRef": { "ref": "{{UnitOfMeasure}}" }, "nullable": false },
-                           { "id": "{{PantryAllergenId}}", "name": "allergen", "type": "string", "typeRef": { "ref": "{{Allergen}}" } } ],
+                           { "id": "{{PantryUnitId}}", "name": "unit", "type": "string", "nullable": false },
+                           { "id": "{{PantryAllergenId}}", "name": "allergen", "type": "string" } ],
               "primaryKey": { "columns": ["01JRDV00000000000000000021"] } }
+            """);
+        h.Write("model/entities/pantry-item.json", $$"""
+            { "kind": "entity", "id": "01JRDV00000000000000000050", "name": "PantryItem", "key": { "attributes": ["01JRDV00000000000000000051"] },
+              "attributes": [ { "id": "01JRDV00000000000000000051", "name": "id", "type": "uuid", "required": true },
+                              { "id": "01JRDV00000000000000000052", "name": "unit", "type": { "ref": "{{UnitOfMeasure}}" }, "required": true },
+                              { "id": "01JRDV00000000000000000053", "name": "allergen", "type": { "ref": "{{Allergen}}" } },
+                              { "id": "01JRDV00000000000000000054", "name": "unitCode", "type": { "ref": "{{UnitOfMeasure}}" } } ],
+              "bindings": [ { "id": "01JRDV00000000000000000055", "database": "{{PantryDatabaseId}}", "source": "{{PantryItemsId}}",
+                "fields": [ { "attribute": "01JRDV00000000000000000051", "column": "01JRDV00000000000000000021" },
+                            { "attribute": "01JRDV00000000000000000052", "column": "{{PantryUnitId}}" },
+                            { "attribute": "01JRDV00000000000000000053", "column": "{{PantryAllergenId}}" },
+                            { "attribute": "01JRDV00000000000000000054", "column": "{{PantryItemsId}}.{{MeasuredUnitId}}" } ] } ] }
             """);
         h.Write("model/databases/pantry/tables/recipes.json", $$"""
             { "kind": "table", "id": "{{RecipeOverlayId}}", "database": "{{PantryDatabaseId}}", "origin": "synthesized", "entity": "{{Recipe}}",
-              "columns": [ { "id": "{{PantryStockUnitId}}", "name": "stock_unit", "type": "string", "length": 8,
-                             "typeRef": { "ref": "{{UnitOfMeasure}}" } } ] }
+              "columns": [ { "id": "{{PantryStockUnitId}}", "name": "stock_unit", "type": "string", "length": 8 } ] }
             """);
     }
 

@@ -23,8 +23,8 @@ internal sealed record HolderCollection(string Table, string? Schema, string Tab
 
 /// <summary>
 /// Where a resolved database stores reference-type codes (next-phase-2-design.md section 3.5, "Recording the value map"): per type, the
-/// columns whose <see cref="RColumn.ReferenceType"/> is the type (a projected reference column, and since 3.2 a designed, imported,
-/// extra or inherited column its <c>typeRef</c> types), and the template-defined collections typed by it (an entity mapping's, with
+/// columns whose <see cref="RColumn.ReferenceType"/> is the type (projected reference columns; a column of a table file holds none, since
+/// binding an entity never changes storage), and the template-defined collections typed by it (an entity mapping's, with
 /// its table; a junction-mapped relation's, with its junction table). Columns are sorted by (table key, column key), collections by
 /// (table key, attribute id), ordinal; a collection a TPH table lists for several entities is listed once.
 /// </summary>

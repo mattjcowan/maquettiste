@@ -42,9 +42,10 @@ internal static class ColumnShapeHash
     }
 
     /// <summary>
-    /// The type part: the hash of eight lines joined by <c>\n</c>: <c>type</c>, <c>subtype</c>, <c>typeRef.ref</c>, <c>length</c>,
+    /// The type part: the hash of eight lines joined by <c>\n</c>: <c>type</c>, <c>subtype</c>, an empty line, <c>length</c>,
     /// <c>precision</c>, <c>scale</c>, <c>nativeType</c> and <c>nullable</c>. Numbers are invariant text, <c>nullable</c> is
-    /// <c>true</c> or <c>false</c> with absent read as <c>true</c>, and any other absent value is empty.
+    /// <c>true</c> or <c>false</c> with absent read as <c>true</c>, and any other absent value is empty. The third line held a column's
+    /// <c>typeRef</c> until 0.28.0 removed it; it stays empty, so a part recorded before then still matches.
     /// </summary>
     /// <param name="column">A column entry of a table file.</param>
     /// <returns>8 lowercase hex digits.</returns>
@@ -54,7 +55,7 @@ internal static class ColumnShapeHash
         var lines = string.Join('\n',
             column.Type ?? "",
             column.Subtype ?? "",
-            column.TypeRef?.Ref ?? "",
+            "",
             Number(column.Length),
             Number(column.Precision),
             Number(column.Scale),

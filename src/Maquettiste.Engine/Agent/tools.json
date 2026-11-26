@@ -1511,7 +1511,7 @@
     {
       "name": "reference_type_usage",
       "title": "Reference type usage",
-      "description": "Every attribute typed by a reference type: attribute, owner, domain (the owner's package), collection, required and the effective storage choice per database; and in columns, every designed, imported, extra and inherited column whose typeRef names it: table, column (a keyed id when inherited), database, domain (the table's package), required, the effective storage choice there and the bound table.",
+      "description": "Every attribute typed by a reference type: attribute, owner, domain (the owner's package), collection, required and the effective storage choice per database; and in columns, every column of a designed or imported table (own or inherited) that the bindings map to attributes of the type: table, column (a keyed id when inherited), database, domain (the table's package), required, the effective storage choice there and the bound table.",
       "inputSchema": {
         "type": "object",
         "properties": {

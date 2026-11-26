@@ -755,18 +755,21 @@ database shows on the Database screen at once. The explorers remember which rows
     database type) is checked only for the kind of value its type keyword implies (a string, a number, true or false),
     since the native type, not the facets, sets the storage. A range column's default is a string. `defaultSql`, SQL
     text per dialect, is not checked.
-  - **Typed columns.** A column's `typeRef` names the enum, reference type or scalar type whose values it holds, by id:
-    `"type": "string", "typeRef": { "ref": "<InvoiceState's id>" }, "length": 1`. `type` stays the column's own keyword.
-    A facet the column leaves out comes from its type (the code's length, a scalar type's length, precision and scale,
-    the longest stored code of an enum in a text column), and a scalar type's native type applies when the column's type
-    is the scalar's base. A column typed by a reference type holds its codes as an attribute of that type does: sql-ddl
-    gives it a foreign key into the bound table or the lookup table, or a CHECK, and `reference_type_usage` lists it.
-    When the table declares a foreign key from the column, that key is the check: it must point at the code column of
-    the type's bound table in that database. Values written into the column (table seed cells, its literal default,
-    binding constants) are codes of the type, or an enum's stored values. Designed, imported, extra and contributed
-    columns take `typeRef`; a projected column has its attribute's type, and a column a reference type's binding fills
-    says nothing more. Templates read it as `column.type_ref`; `type_of` still maps the physical type. The [reference
-    data guide](guides/reference-data-and-seeds.md#11-type-a-column-of-your-own-table) walks through it.
+  - **Columns that hold codes and kinds.** A table states only physical types. It never names an enum, a reference type
+    or a scalar type. The type of a column's values comes from the entity side: when a binding maps the column to an
+    attribute typed by an enum, a reference type or a scalar type, that type is the column's **bound type**. It is
+    worked out, like a table's bound-by list. Every binding that maps the column must agree; when two bindings map it to
+    attributes of different types, it has none. A column no binding maps has only its physical type. Binding an entity
+    never changes storage: the bound type adds no key, no CHECK and no facet to the table, and no migration. The DDL
+    comes only from what the table declares. The bound type is what validation checks: the column's type and length
+    must hold the codes or values (MQ4083), a foreign key the table declares from the column must point at the code
+    column of the type's bound table (MQ4084), and values written into the column (table seed cells, its literal
+    default, binding constants) must be codes of the type, or an enum's stored values (MQ7014). `reference_type_usage`
+    lists the column, and templates read `column.bound_type` as information; `type_of` still maps the physical type. To
+    have the database check the codes, declare a foreign key into the type's bound table. The [reference data guide](guides/reference-data-and-seeds.md#11-codes-in-a-column-of-your-own-table) walks
+    through it.
+  - **Removed in 0.28.0: a column's `typeRef`.** A table or stereotype file that still has it fails to load with MQ4082.
+    Remove the key, and bind the column to an attribute typed by the enum, reference type or scalar type instead.
   - **Sensitive columns.** A column's `sensitive` (`pii` or `secret`) says it holds personal data or a secret, as an
     attribute's does. Say it once, on either side, and the other side shows it: a column without its own value shows the
     strongest one (`secret` over `pii`) of the attributes bindings map to it, or a projected column its attribute's; an
@@ -1843,10 +1846,9 @@ yours. An entity already bound to the database is refused (MQ4055), so running i
 imported tables (or views), `materialize-entities` writes an entity per table in the package you name: the singular of
 the table name in Pascal case, one attribute per column, the key from the primary key, and a binding to the table.
 Foreign keys between the picked tables, or to a table an entity is already bound to, become many-to-one relations naming
-those foreign keys. A column typed by a reference type, an enum or a scalar type (its `typeRef`) gives an attribute of
-that type, with no length of its own; a foreign key from such a column into the code column of the reference type's
-bound table makes no relation, and a note says the attribute is typed by the type instead. A table an entity is already
-bound to is refused.
+those foreign keys. Each attribute takes its column's physical type and facets: a table names no enum, reference type or
+scalar type, so retype an attribute yourself when its column holds codes or kinds. A table an entity is already bound to
+is refused.
 
 **Attributes from the table's columns** (`materialize-attributes`; in the editor, on the binding card of the Storage tab,
 **Add attributes for the unmapped columns**, or **New attribute** in a column's *Account for*). An entity you made yourself and
@@ -1884,7 +1886,7 @@ or **delete dependents**, the binding goes and the entity stays.
 Tables you bind to keep changing: a migration adds a column, someone renames one, a type widens. The binding keeps
 working, because it names columns by id, but the entity stops following the table. So a binding records its
 **provenance**: for each column of its source, two short hashes, one of the name (ignoring case and separators) and one
-of the type (type, subtype, `typeRef`, length, precision, scale, native type, nullable). It is never a copy of the
+of the type (type, subtype, length, precision, scale, native type, nullable). It is never a copy of the
 table, and it holds no date or author, so model files stay the same byte for byte. Only a designed or imported table has
 provenance; a view, a query or a table the database makes from an entity has no column ids to record.
 
@@ -1987,15 +1989,15 @@ writes no description, so the text stays in one place.
 | MQ4088 | warning | a binding's provenance does not describe its source: the source is not a table file, or none of the recorded columns belongs to it |
 | MQ4089 | error | a `map-by-name` or `resync-binding` operation is refused: an entity with no binding to the database, a source it cannot read, `columns` for more than one entity or naming a column the source lacks, or nothing to map or re-sync |
 
-### The rules for typed and sensitive columns
+### The rules for bound and sensitive columns
 
 | Rule | Severity | When |
 | --- | --- | --- |
-| MQ4082 | error | a column's `typeRef` names no enum, reference type or scalar type, sits on an overlay entry of a projected column, or is on a column a reference type's binding fills (reported on the binding's field) |
-| MQ4083 | error | a typed column's type or a facet it states cannot hold the type's values: the codes, an enum's stored values, or a scalar type's base and facets |
-| MQ4084 | error | a declared foreign key from a column typed by a reference type does not point at the code column of the type's bound table, or the type has no binding in that database |
+| MQ4082 | error | a column of a table or stereotype file has `typeRef`, removed in 0.28.0; the file does not load. Remove it, and bind the column to an attribute of the type |
+| MQ4083 | error | a column a binding maps to an attribute of an enum, a reference type or a scalar type has a type or a facet that cannot hold that type's values: the codes, an enum's stored values, or a scalar type's base and facets |
+| MQ4084 | error | a declared foreign key from a column a binding maps to an attribute of a reference type does not point at the code column of the type's bound table, or the type has no binding in that database |
 | MQ4085 | warning | a column and an attribute it stores, or that a binding maps to it, state different sensitivities (reported on the binding field or the overlay entry) |
-| MQ7014 | error | a table seed cell, a column's literal default or a binding constant written into a typed column is not a code or stored value of its type |
+| MQ7014 | error | a table seed cell, a column's literal default or a binding constant written into a column a binding maps to an attribute of an enum or a reference type is not a code or stored value of that type |
 | MQ7019 | error | a table seed cell or a column's literal default names a former code of the column's reference type (as an attribute's default, `allowedValues` entry or seed cell does); write the code of the row that replaced it |
 
 ## Storage: binding an entity

@@ -206,12 +206,12 @@ benchmark model is byte-identical before and after these changes (331,184 object
   code's length rides along and the native type is the code's); a collection maps to no column and no child table and is listed in
   `REntityMapping.TemplateDefined` / `RRelationMapping.TemplateDefined` (an attribute mapping with `ignore` leaves it out). Only
   direct attributes are listed: a reference collection inside an embedded value object is skipped silently (no column either).
-- A designed, imported, extra or inherited column whose `typeRef` names an enum, a reference type or a scalar type
-  (next-phase-2-design.md section 3.2) keeps its own physical `type`; `DatabaseRun.TypeColumn` sets `RColumn.TypeRef`,
-  fills the facets the column leaves out from the type (the code's length and an enum's longest stored code in a string
-  column, a scalar's facets in a column of its base, whose native type then applies), and for a reference type sets
-  `ReferenceType`, `CodeType` and `Strategy` as on a projected reference column. The table gains the type's keys
-  (`s:referenceData` for a reference type).
+- A column of a designed or imported table, own or inherited, has a bound type when the entities' bindings map it to
+  attributes of one enum, reference type or scalar type (`Model/BoundColumnTypes.cs`, 0.28.0: storage never names the
+  model, so the `typeRef` a column once stated is gone). `DatabaseRun.TypeColumn` sets `RColumn.BoundType` only, as
+  information: binding an entity never changes storage, so it sets no `ReferenceType` (no pack key or CHECK, no captured
+  reference state, no value map) and fills no facet or native type. The table gains the bound entities, the elements that
+  declare the mapped attributes and the type's keys.
 - Dependency keys (deviation from the design's wording "a reference type's `e:` key plus the `e:` keys of its seeds"): the
   `RReferenceType` object carries its own element keys only; the seeds' keys sit on the objects that expose rows (`rows`
   membership, each `RRow` and `RSeedRow`, `RReferenceUsage`), so a unit that reads only a type's name or code facets does not

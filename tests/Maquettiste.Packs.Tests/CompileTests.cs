@@ -83,11 +83,12 @@ public sealed class CompileTests
     }
 
     [Fact]
-    public async Task Query_rows_with_typed_columns_compile()
+    public async Task Query_rows_with_bound_columns_compile()
     {
-        // next-phase-2-design.md section 3.2 (D26): a row record field that reads a column typed by an enum is the enum (a stored code
-        // parsed, a stored number cast), and one that reads a column typed by a reference type keeps the code's type, the record's
-        // summary naming the type's record in a cref; the output compiles with warnings as errors.
+        // next-phase-2-design.md section 3.2 (D26): a row record field that reads a column whose bound type is an enum (InvoiceEvent's
+        // binding maps it to an attribute of the enum) is the enum (a stored code parsed, a stored number cast), and one that reads a column
+        // whose bound type is a reference type keeps the code's type, the record's summary naming the type's record in a cref; the output
+        // compiles with warnings as errors.
         using var repo = PackRepo.Billing();
         const string events = "01K9X3C0000000000000000001", main = "01J92P0V1QRN2181XM2ZWE02W4", billing = "01J92P0V01KDRN8GX5PGYCNKSX";
         repo.Write(".maquettiste/model/reference-types/invoice-state.json", $$"""
@@ -103,10 +104,23 @@ public sealed class CompileTests
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{events}}","name":"invoice_events","database":"{{main}}",
              "schema":"01J92P0V1RC04SKQ5353EAKHG2","columns":[
               {"id":"01K9X3C0000000000000000002","name":"id","type":"uuid","nullable":false},
-              {"id":"01K9X3C0000000000000000003","name":"status","type":"string","typeRef":{"ref":"01K9X3A0000000000000000001"},"length":1,"nullable":false},
-              {"id":"01K9X3C0000000000000000004","name":"invoice_status","type":"string","typeRef":{"ref":"01J92P0V05WQDH2GZG539D9VG1"},"nullable":false},
-              {"id":"01K9X3C0000000000000000005","name":"stage","type":"int32","typeRef":{"ref":"01J92P0V05WQDH2GZG539D9VG1"} }],
+              {"id":"01K9X3C0000000000000000003","name":"status","type":"string","length":1,"nullable":false},
+              {"id":"01K9X3C0000000000000000004","name":"invoice_status","type":"string","length":16,"nullable":false},
+              {"id":"01K9X3C0000000000000000005","name":"stage","type":"int32"}],
              "primaryKey":{"columns":["01K9X3C0000000000000000002"]} }
+            """);
+        repo.Write(".maquettiste/model/entities/invoice-event.json", $$"""
+            {"$schema":"../../.schema/v1/entity.json","kind":"entity","id":"01K9X3E0000000000000000001","name":"InvoiceEvent","package":"{{billing}}",
+             "key":{"attributes":["01K9X3E0000000000000000002"]},
+             "attributes":[{"id":"01K9X3E0000000000000000002","name":"id","type":"uuid","required":true},
+               {"id":"01K9X3E0000000000000000003","name":"status","type":{"ref":"01K9X3A0000000000000000001"},"required":true},
+               {"id":"01K9X3E0000000000000000004","name":"invoiceStatus","type":{"ref":"01J92P0V05WQDH2GZG539D9VG1"},"required":true},
+               {"id":"01K9X3E0000000000000000005","name":"stage","type":{"ref":"01J92P0V05WQDH2GZG539D9VG1"} }],
+             "bindings":[{"id":"01K9X3E0000000000000000006","database":"{{main}}","source":"{{events}}","fields":[
+               {"attribute":"01K9X3E0000000000000000002","column":"01K9X3C0000000000000000002"},
+               {"attribute":"01K9X3E0000000000000000003","column":"01K9X3C0000000000000000003"},
+               {"attribute":"01K9X3E0000000000000000004","column":"01K9X3C0000000000000000004"},
+               {"attribute":"01K9X3E0000000000000000005","column":"01K9X3C0000000000000000005"}]}]}
             """);
         repo.Write(".maquettiste/model/databases/main/queries/events-by-status.json", $$"""
             {"$schema":"../../../../.schema/v1/query.json","kind":"query","id":"01K9X3F0000000000000000001","name":"events-by-status","database":"{{main}}",

@@ -135,11 +135,11 @@ public sealed class DatabaseViewTests
         Assert.Equal(
             ["key", "name", "type", "nativeType", "length", "precision", "scale", "nullable", "defaultSql", "identity", "computed", "attributeId",
                 "attributePath", "isPrimaryKey", "isForeignKey", "isDiscriminator", "position", "default", "computedStored", "sequenceId", "dbTypeId", "collation",
-                "comment", "displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation", "typeRef", "sensitive",
+                "comment", "displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation", "boundType", "sensitive",
                 "memberOrigin"],
             column.Select(p => p.Key));
         Assert.Null(column["memberOrigin"]);
-        Assert.Null(column["typeRef"]); // next-phase-2-design.md section 3.2: no column of billing states a typeRef or a sensitivity yet
+        Assert.Null(column["boundType"]); // no binding of billing maps a column to an attribute of an enum, a reference type or a scalar type; no column states a sensitivity
         Assert.Null(column["sensitive"]);
     }
 
@@ -163,22 +163,26 @@ public sealed class DatabaseViewTests
         Edit(repo, MainDatabase, d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("audited"));
 
     [Fact]
-    public async Task A_typed_designed_column_carries_its_type_ref()
+    public async Task A_designed_column_carries_the_bound_type_its_bindings_agree_on()
     {
-        // next-phase-2-design.md section 3.2 (D21): the view's column carries the type its own entry names, as an attribute record
-        // carries its type; type stays the physical keyword. The body column is typed: entity_type takes the bindings' constants
-        // invoice and customer, which are no stored codes of the enum (MQ7014, D22).
+        // 0.28.0: the view's column carries its bound type, the type of the attribute the bindings map to it, as an attribute record
+        // carries its type; type stays the physical keyword. Both note entities map body; it has a bound type only when both attributes
+        // have the same one.
         await using var repo = EditorRepo.Create(packs: false);
         const string invoiceStatus = "01J92P0V05WQDH2GZG539D9VG1";
-        Edit(repo, NotesTable, t => t["columns"]![3]!["typeRef"] = new JsonObject { ["ref"] = invoiceStatus });
+        Edit(repo, ".maquettiste/model/entities/invoice-note.json", e => e["attributes"]![2]!["type"] = new JsonObject { ["ref"] = invoiceStatus });
 
+        var oneSide = await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
+        Assert.Null(Assert.IsType<DatabaseView>(oneSide.View).Tables.Single(t => t.Name == "notes").Columns.Single(c => c.Name == "body").BoundType);
+
+        Edit(repo, ".maquettiste/model/entities/customer-note.json", e => e["attributes"]![2]!["type"] = new JsonObject { ["ref"] = invoiceStatus });
         var result = await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
 
         var notes = Assert.IsType<DatabaseView>(result.View).Tables.Single(t => t.Name == "notes");
         var body = notes.Columns.Single(c => c.Name == "body");
         Assert.Equal(("text", (int?)null), (body.Type, body.Length));
-        Assert.Equal(new TypeRecord("enum", "InvoiceStatus", null, invoiceStatus, null, null, null), body.TypeRef);
-        Assert.All(notes.Columns.Where(c => c.Name != "body"), c => Assert.Null(c.TypeRef));
+        Assert.Equal(new TypeRecord("enum", "InvoiceStatus", null, invoiceStatus, null, null, null), body.BoundType);
+        Assert.All(notes.Columns.Where(c => c.Name != "body"), c => Assert.Null(c.BoundType));
     }
 
     [Fact]

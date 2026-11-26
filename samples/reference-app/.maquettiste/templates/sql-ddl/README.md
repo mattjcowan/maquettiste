@@ -449,14 +449,12 @@ sharing one table), a single code column cannot name a row, so it gets no foreig
 on the table file. On PostgreSQL a column of a type stored as `native` becomes the code's type once the type is bound, and the
 next migration retypes it (the snapshot records the bound table as `referenceTable`).
 
-**A column of your own table typed by a reference type** (0.12.0). A column of a table file whose `typeRef` names a
-reference type holds its codes as a projected column does (`column.reference_type` is set; `column.type` stays the type
-the column states), so it gets the same objects: a foreign key into the lookup table or the bound table, or a CHECK. On
-PostgreSQL a type stored as `native` gives such a column a CHECK instead of the enum type, since the enum type would
-replace the type the column states; the type is still created for the projected columns that use it. When the table
-declares a foreign key that includes the column, that key is the link (validation, MQ4084, has made it point at the
-bound table's code column), and the column gets no `fk_<table>_<column>_ref` of its own. A column typed by an enum or a
-scalar type gets nothing more here: its physical type is the one the table states.
+**A column of your own table bound to a reference type attribute** (0.28.0). A table carries its own definition, and
+binding an entity never changes it: a column of a table file that a binding maps to an attribute of a reference type (its
+bound type, `column.bound_type`) gets no key and no CHECK from the pack. Its DDL is what the table declares: its type, and
+the foreign keys and checks it lists. Declare a foreign key into the type's bound table when the database should check the
+codes; validation (MQ4084) makes sure it points at the code column. From 0.12.0 to 0.27.0 a column's `typeRef` made the pack
+add a key or a CHECK; that key is gone with it.
 
 **Codes that change: the value-map step** (0.12.0). The refactors `rename-code`, `retire-code`,
 `merge-reference-types` and `rename-reference-type` record a `value-map` fact in each database that stores the type's

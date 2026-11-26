@@ -1074,11 +1074,11 @@ public sealed class MaterializeTests
     }
 
     [Fact]
-    public async Task Materialize_tables_writes_typeRef_for_enum_reference_and_scalar_columns()
+    public async Task Materialize_tables_writes_no_type_and_the_binding_keeps_the_columns_types()
     {
-        // Decision 12: a column that stores one attribute typed by an enum, a reference type or a scalar type keeps that type as its
-        // typeRef beside its physical type, so the stored table keeps its storage objects; the native type the scalar type gives is left
-        // out, since typeRef brings it back. The embedded Money columns store builtin members and get none.
+        // 0.28.0: a stored table names no type of the model. A column that stores one attribute typed by an enum, a reference type or a
+        // scalar type gets its physical shape, the scalar type's native type written out; the entity's binding maps the column to that
+        // attribute, so the column's bound type keeps the type, and the stored table keeps its storage objects.
         await using var r = EditorRepo.Create(packs: false);
         TypedBilling(r);
         var before = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
@@ -1089,16 +1089,14 @@ public sealed class MaterializeTests
         var snapshot = r.Store.Current!;
         var invoices = snapshot.Get<Table>(EditorRepo.OverlayTableId)!;
         var status = invoices.Columns.Single(c => c.Name == "status");
-        Assert.Equal(("string", 1, "\"D\"", InvoiceStatusId), (status.Type, status.Length, status.Default?.GetRawText(), status.TypeRef?.Ref));
+        Assert.Equal(("string", 1, "\"D\""), (status.Type, status.Length, status.Default?.GetRawText()));
         var state = invoices.Columns.Single(c => c.Name == "state");
-        Assert.Equal(("string", 1, InvoiceStateId), (state.Type, state.Length, state.TypeRef?.Ref));
-        Assert.All(invoices.Columns.Where(c => c.Name.StartsWith("total_", StringComparison.Ordinal)), c => Assert.Null(c.TypeRef));
-        Assert.Null(invoices.Columns.Single(c => c.Name == "number").TypeRef);
+        Assert.Equal(("string", 1), (state.Type, state.Length));
         var email = snapshot.All<Table>().Single(t => t.Name == "customers").Columns.Single(c => c.Name == "email");
-        Assert.Equal(("string", 254, EmailAddressId, (string?)null), (email.Type, email.Length, email.TypeRef?.Ref, email.NativeType));
+        Assert.Equal(("string", 254, "citext"), (email.Type, email.Length, email.NativeType));
         Assert.Equal(0, (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
 
-        // The resolved columns are what they were: the scalar's native type and the reference column's type come back through typeRef.
+        // The resolved columns are what they were, and the bindings give them their types back.
         var after = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
         foreach (var (table, column) in new[] { ("customers", "email"), ("invoices", "status"), ("invoices", "state") })
         {
@@ -1108,7 +1106,11 @@ public sealed class MaterializeTests
         }
 
         Assert.Equal("citext", after.Tables.Single(t => t.Name == "customers").Columns.Single(c => c.Name == "email").NativeType);
-        Assert.Equal(InvoiceStateId, after.Tables.Single(t => t.Name == "invoices").Columns.Single(c => c.Name == "state").TypeRef?.ReferenceType);
+        var invoiceColumns = after.Tables.Single(t => t.Name == "invoices").Columns;
+        Assert.Equal(InvoiceStateId, invoiceColumns.Single(c => c.Name == "state").BoundType?.ReferenceType);
+        Assert.Equal(InvoiceStatusId, invoiceColumns.Single(c => c.Name == "status").BoundType?.Enum);
+        Assert.All(invoiceColumns.Where(c => c.Name.StartsWith("total_", StringComparison.Ordinal) || c.Name == "number"), c => Assert.Null(c.BoundType));
+        Assert.Equal(EmailAddressId, after.Tables.Single(t => t.Name == "customers").Columns.Single(c => c.Name == "email").BoundType?.Scalar);
     }
 
     [Fact]
@@ -1133,11 +1135,11 @@ public sealed class MaterializeTests
     }
 
     [Fact]
-    public async Task Materialize_columns_writes_typeRef()
+    public async Task Materialize_columns_shapes_a_column_as_the_projection_does()
     {
-        // Decision 12: materialize-columns shapes a new column as the projection does, and keeps the logical type of the attribute it
-        // stores: the enum (its member values, int32), the scalar type (its base and length, without the native type it gives) and the
-        // reference type (its code's type and length).
+        // Decision 12: materialize-columns shapes a new column as the projection does: the enum (its member values, int32), the scalar
+        // type (its base, length and native type) and the reference type (its code's type and length). It writes no type of the model
+        // (0.28.0); the binding it adds a field to gives the column its bound type.
         await using var r = EditorRepo.Create(packs: false);
         TypedBilling(r);
         const string Vendors = "01K6MAC0000000000000000001", VendorId = "01K6MAC0000000000000000002";
@@ -1164,12 +1166,12 @@ public sealed class MaterializeTests
         var table = r.Store.Current!.Get<Table>(Vendors)!;
         Assert.Equal(
             [
-                ("id", "uuid", null, null, null),
-                ("status", "int32", null, null, InvoiceStatusId),
-                ("email", "string", 254, null, EmailAddressId),
-                ("state", "string", 1, null, InvoiceStateId),
+                ("id", "uuid", null, null),
+                ("status", "int32", null, null),
+                ("email", "string", 254, "citext"),
+                ("state", "string", 1, null),
             ],
-            table.Columns.Select(c => (c.Name, c.Type, c.Length, c.NativeType, c.TypeRef?.Ref)));
+            table.Columns.Select(c => (c.Name, c.Type, c.Length, c.NativeType)));
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
         Assert.DoesNotContain(validation.Diagnostics, d => (d.ElementId == Vendor || d.ElementId == Vendors) && d.Severity == DiagnosticSeverity.Error);
         var view = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
@@ -1180,59 +1182,34 @@ public sealed class MaterializeTests
 
     private const string EventsTable = "01K9X3C0000000000000000001", EventsId = "01K9X3C0000000000000000002", EventsState = "01K9X3C0000000000000000003";
     private const string EventsStatus = "01K9X3C0000000000000000004", EventsEmail = "01K9X3C0000000000000000005", EventsNote = "01K9X3C0000000000000000006";
-    private const string StatesTable = "01K9X3E0000000000000000001", StatesCode = "01K9X3E0000000000000000002", StatesLabel = "01K9X3E0000000000000000003";
-
     /// <summary>
-    /// TypedBilling, with the designed table <c>invoice_events</c> whose columns hold InvoiceState (state, not null), InvoiceStatus
-    /// (status) and EmailAddress (email) by their typeRef, beside a plain note. <paramref name="bound"/> also binds InvoiceState to the
-    /// designed table <c>event_states</c> (code, label) and gives <c>invoice_events</c> the key <c>fk_event_state</c> from state to its
-    /// code.
+    /// TypedBilling, with the designed table <c>invoice_events</c> (id, state not null, status, email, note), whose columns name no type of
+    /// the model.
     /// </summary>
-    private static async Task TypedEventsAsync(EditorRepo r, bool bound)
+    private static async Task TypedEventsAsync(EditorRepo r)
     {
         TypedBilling(r);
-        if (bound)
-        {
-            await CreateAsync(r, $$"""
-                {"kind":"table","id":"{{StatesTable}}","name":"event_states","database":"{{EditorRepo.MainDatabaseId}}","columns":[
-                  {"id":"{{StatesCode}}","name":"code","type":"string","length":1,"nullable":false},
-                  {"id":"{{StatesLabel}}","name":"label","type":"string","length":40,"nullable":false}],
-                 "primaryKey":{"columns":["{{StatesCode}}"]} }
-                """);
-            var state = (await r.Store.GetElementAsync(InvoiceStateId, Ct))!;
-            var node = JsonNode.Parse(state.Json.GetRawText())!.AsObject();
-            node["bindings"] = JsonNode.Parse($$"""
-                [{"id":"01K9X3E0000000000000000004","database":"{{EditorRepo.MainDatabaseId}}","table":"{{StatesTable}}",
-                  "fields":[{"attribute":"code","column":"{{StatesCode}}"},{"attribute":"label","column":"{{StatesLabel}}"}]}]
-                """);
-            var saved = await r.Store.SaveAsync(InvoiceStateId, Encoding.UTF8.GetBytes(node.ToJsonString()), state.Hash, ChangeSource.Editor, Ct);
-            Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
-        }
-
-        var foreignKeys = bound
-            ? $$""","foreignKeys":[{"id":"01K9X3C0000000000000000007","name":"fk_event_state","columns":["{{EventsState}}"],"referencesTable":"{{StatesTable}}","referencesColumns":["{{StatesCode}}"]}]"""
-            : "";
         await CreateAsync(r, $$"""
             {"kind":"table","id":"{{EventsTable}}","name":"invoice_events","database":"{{EditorRepo.MainDatabaseId}}","columns":[
               {"id":"{{EventsId}}","name":"id","type":"uuid","nullable":false},
-              {"id":"{{EventsState}}","name":"state","type":"string","typeRef":{"ref":"{{InvoiceStateId}}"},"length":1,"nullable":false},
-              {"id":"{{EventsStatus}}","name":"status","type":"string","typeRef":{"ref":"{{InvoiceStatusId}}"},"length":1},
-              {"id":"{{EventsEmail}}","name":"email","type":"string","typeRef":{"ref":"{{EmailAddressId}}"},"length":254},
+              {"id":"{{EventsState}}","name":"state","type":"string","length":1,"nullable":false},
+              {"id":"{{EventsStatus}}","name":"status","type":"string","length":1},
+              {"id":"{{EventsEmail}}","name":"email","type":"string","length":254},
               {"id":"{{EventsNote}}","name":"note","type":"string","length":400}],
-             "primaryKey":{"columns":["{{EventsId}}"]}{{foreignKeys}} }
+             "primaryKey":{"columns":["{{EventsId}}"]} }
             """);
     }
 
     private static string TypeOf(ModelAttribute attribute) => attribute.Type.Ref ?? attribute.Type.Builtin!;
 
     [Fact]
-    public async Task Materialize_entities_types_an_attribute_by_its_column_typeRef()
+    public async Task Materialize_entities_types_an_attribute_by_its_columns_physical_type()
     {
-        // Decision 11: a column that holds an enum, a reference type or a scalar type becomes one attribute typed by it, { "ref": id },
-        // with no length, precision or scale (the type states them), required when the column is not nullable; a plain column keeps its
-        // keyword and facets.
+        // Decision 11, since 0.28.0: a column of a table file names no type of the model, so each column becomes an attribute of its
+        // keyword and facets, required when the column is not nullable; the team retypes an attribute by an enum, a reference type or a
+        // scalar type, and the binding then gives the column that type.
         await using var r = EditorRepo.Create(packs: false);
-        await TypedEventsAsync(r, bound: false);
+        await TypedEventsAsync(r);
 
         var result = await ApplyAsync(r, $$"""{"op":"materialize-entities","database":"{{EditorRepo.MainDatabaseId}}","tables":["{{EventsTable}}"],"package":"{{EditorRepo.BillingPackageId}}"}""");
 
@@ -1241,9 +1218,9 @@ public sealed class MaterializeTests
         Assert.Equal(
             [
                 ("id", "uuid", null, true, true),
-                ("state", InvoiceStateId, null, false, true),
-                ("status", InvoiceStatusId, null, false, false),
-                ("email", EmailAddressId, null, false, false),
+                ("state", "string", 1, true, true),
+                ("status", "string", 1, true, false),
+                ("email", "string", 254, true, false),
                 ("note", "string", 400, true, false),
             ],
             entity.Attributes.Select(a => (a.Name, TypeOf(a), a.Length, a.Type.Builtin is not null, a.Required)));
@@ -1254,41 +1231,13 @@ public sealed class MaterializeTests
     }
 
     [Fact]
-    public async Task Materialize_entities_makes_no_relation_for_a_key_into_the_types_bound_table()
+    public async Task Materialize_attributes_types_a_projected_reference_column_by_its_type()
     {
-        // Decision 11: a foreign key that pairs a column typed by a reference type with the code column of the table the type is bound
-        // to makes no relation and no mapping, even when the referenced table gets an entity too; a note says the attribute is typed.
+        // Decision 11, for materialize-attributes: a column of a table file gives an attribute of its keyword and facets (it names no type
+        // of the model, 0.28.0), and a projected reference column (a source no table file holds: another entity's projected table) one
+        // typed by the column's reference type.
         await using var r = EditorRepo.Create(packs: false);
-        await TypedEventsAsync(r, bound: true);
-        var request = new MaterializeRequest("materialize-entities", EditorRepo.MainDatabaseId, [EventsTable, StatesTable], null, EditorRepo.BillingPackageId);
-
-        var preview = await r.Store.PlanMaterializeAsync(request, Ct);
-
-        Assert.True(preview.Valid, string.Join("; ", preview.Diagnostics.Select(d => d.Rule + " " + d.Message)));
-        Assert.Equal(["entity", "entity"], preview.Creates.Select(c => c.Kind));
-        var note = Assert.Single(preview.Notes, n => n.Contains("fk_event_state", StringComparison.Ordinal));
-        Assert.Equal(
-            "Foreign key 'fk_event_state' of table 'invoice_events' points at the rows of reference type 'InvoiceState' in table 'event_states': attribute 'state' of entity 'InvoiceEvent' is typed by 'InvoiceState' instead, so no relation is made for it.",
-            note);
-
-        var result = await ApplyAsync(r, $$"""{"op":"materialize-entities","database":"{{EditorRepo.MainDatabaseId}}","tables":["{{EventsTable}}","{{StatesTable}}"],"package":"{{EditorRepo.BillingPackageId}}"}""");
-
-        Assert.Equal(SaveOutcome.Saved, result.Outcome);
-        var snapshot = r.Store.Current!;
-        var events = snapshot.All<Entity>().Single(e => e.Name == "InvoiceEvent");
-        var state = Assert.Single(events.Attributes, a => a.Name == "state");
-        Assert.Equal((InvoiceStateId, true, (int?)null), (state.Type.Ref, state.Required, state.Length));
-        Assert.DoesNotContain(snapshot.All<Relation>(), x => x.Name == "fk_event_state");
-        Assert.DoesNotContain(snapshot.All<Mapping>(), m => m.ForeignKey == "01K9X3C0000000000000000007");
-    }
-
-    [Fact]
-    public async Task Materialize_attributes_types_by_typeRef()
-    {
-        // Decision 11, for materialize-attributes: a typed column of a table file gives an attribute typed by its typeRef, and a projected
-        // reference column (a source no table file holds: another entity's projected table) one typed by the column's reference type.
-        await using var r = EditorRepo.Create(packs: false);
-        await TypedEventsAsync(r, bound: false);
+        await TypedEventsAsync(r);
         const string Event = "01K9X3G0000000000000000001", EventKey = "01K9X3G0000000000000000002";
         const string Digest = "01K9X3G0000000000000000011", DigestKey = "01K9X3G0000000000000000012";
         await CreateAsync(r, $$"""
@@ -1311,7 +1260,7 @@ public sealed class MaterializeTests
         Assert.Equal(SaveOutcome.Saved, projected.Outcome);
         var snapshot = r.Store.Current!;
         Assert.Equal(
-            [("id", "uuid", null, true), ("state", InvoiceStateId, null, true), ("status", InvoiceStatusId, null, false), ("email", EmailAddressId, null, false), ("note", "string", 400, false)],
+            [("id", "uuid", null, true), ("state", "string", 1, true), ("status", "string", 1, false), ("email", "string", 254, false), ("note", "string", 400, false)],
             snapshot.Get<Entity>(Event)!.Attributes.Select(a => (a.Name, TypeOf(a), a.Length, a.Required)));
         var digest = snapshot.Get<Entity>(Digest)!;
         Assert.Equal([("id", "uuid"), ("state", InvoiceStateId), ("number", "string")], digest.Attributes.Select(a => (a.Name, TypeOf(a))));

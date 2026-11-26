@@ -37,7 +37,7 @@ public sealed class ExpressionPreviewTests
     private static TempRepo Catalog()
     {
         var repo = Repo();
-        IntegerUnitColumn(repo, typeRef: false);
+        IntegerUnitColumn(repo);
         repo.WriteFile(".maquettiste/model/enums/color.json", $$"""
             { "kind": "enum", "id": "{{ColorId}}", "name": "Color", "package": "01K6BFX0000000000000000001",
               "members": [ { "id": "{{RedId}}", "name": "Red", "value": 10 }, { "id": "{{BlueId}}", "name": "Blue", "value": 20 } ] }

@@ -175,15 +175,21 @@ public sealed class SchemaConsistencyTests
             """;
         Assert.Empty(Evaluate(valid));
         Assert.Empty(Evaluate(head + ""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"id","type":"uuid"}],"primaryKey":{"columns":["01JAX3KB2C3D4E5F6G7H8J9KAM"]}}"""));
-        // Section 3.2 (D20): a column's typeRef is the object form only, and sensitive takes pii or secret.
-        Assert.Empty(Evaluate(head + ""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"status","type":"string","typeRef":{"ref":"01JAX3KC3D4E5F6G7H8J9KAMBN"},"length":1,"sensitive":"pii"}]}"""));
+        // Section 3.2 (D20): sensitive takes pii or secret.
+        Assert.Empty(Evaluate(head + ""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"status","type":"string","length":1,"sensitive":"pii"}]}"""));
+
+        // 0.28.0: a column's typeRef was removed; the schema refuses it as MQ4082, in place of a bare schema violation.
+        foreach (var removed in new[] { "{\"ref\":\"01JAX3KC3D4E5F6G7H8J9KAMBN\"}", "\"string\"" })
+        {
+            var found = Evaluate(head + ""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"s","type":"string","typeRef":""" + removed + "}]}");
+            var only = Assert.Single(found);
+            Assert.Equal(("MQ4082", "/columns/0/typeRef"), (only.Rule, only.JsonPointer));
+        }
 
         foreach (var (json, pointer) in new[]
         {
             (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"id","type":"uuid","colour":"red"}]}""", "/columns/0/colour"),
             (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"id","type":"int99"}]}""", "/columns/0/type"),
-            (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"s","type":"string","typeRef":"string"}]}""", "/columns/0/typeRef"),
-            (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"s","type":"string","typeRef":{"ref":"01JAX3KC3D4E5F6G7H8J9KAMBN","of":"x"}}]}""", "/columns/0/typeRef"),
             (""","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"s","type":"string","sensitive":"public"}]}""", "/columns/0/sensitive"),
             (""","primaryKey":{"id":"not-an-id","columns":["c"]}}""", "/primaryKey/id"),
             (""","primaryKey":{"columns":[]}}""", "/primaryKey/columns"),

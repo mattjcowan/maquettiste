@@ -1379,7 +1379,7 @@
   {
     "id": "MQ4082",
     "defaultSeverity": "error",
-    "description": "A column's `typeRef` is misplaced: it names no enum, reference type or scalar type, it sits on an overlay entry of a projected column, or a reference type's binding fills the column with a field.",
+    "description": "A column of a table or stereotype file has `typeRef`, which was removed in 0.28.0: storage never names the model. Remove it; to type the column's values, bind the column to an attribute typed by the enum, reference type or scalar type.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1387,7 +1387,7 @@
   {
     "id": "MQ4083",
     "defaultSeverity": "error",
-    "description": "A typed column's type or a facet it states cannot hold its type's values: a reference type's codes, an enum's stored values, or a scalar type's base and facets.",
+    "description": "A column a binding maps to an attribute of an enum, a reference type or a scalar type has a type or a facet that cannot hold that type's values: a reference type's codes, an enum's stored values, or a scalar type's base and facets.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1395,7 +1395,7 @@
   {
     "id": "MQ4084",
     "defaultSeverity": "error",
-    "description": "A foreign key that includes a column typed by a reference type does not point where the type's rows are: the type has no binding in the column's database, or the key does not pair the column with the code column of the bound table.",
+    "description": "A foreign key that includes a column a binding maps to an attribute of a reference type does not point where the type's rows are: the type has no binding in the column's database, or the key does not pair the column with the code column of the bound table.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -2267,7 +2267,7 @@
   {
     "id": "MQ7014",
     "defaultSeverity": "error",
-    "description": "A value written into a column typed by an enum or a reference type is not one of its stored values or codes: a table seed cell, the column's literal default, or a binding constant.",
+    "description": "A value written into a column a binding maps to an attribute of an enum or a reference type is not one of its stored values or codes: a table seed cell, the column's literal default, or a binding constant.",
     "family": "MQ70xx",
     "familyLabel": "Reference types",
     "canBeOff": true

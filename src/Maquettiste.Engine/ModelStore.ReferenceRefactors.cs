@@ -692,8 +692,9 @@ public sealed partial class ModelStore
 
         /// <summary>
         /// Every value that names a code of the type through one of the rows: the index's code uses (defaults, <c>allowedValues</c> entries
-        /// and seed cells of attributes and fields the type types), and the values written into columns the type types (3.2): their
-        /// literal defaults, the cells of the table seeds that list them and the constants of the bindings that name them by id. Each
+        /// and seed cells of attributes and fields the type types), and the values written into columns whose bound type is the type (the
+        /// bindings map them to attributes of the type, <see cref="BoundColumnTypes"/>): their literal defaults (an inherited column's in its
+        /// stereotype), the cells of the table seeds that list them and the constants of the bindings that name them by id. Each
         /// holds the code itself; its <see cref="ReferenceInfo.ToId"/> is the row.
         /// </summary>
         private List<ReferenceInfo> CodeUses(string typeId, string code, IReadOnlyCollection<string> rows)
@@ -717,18 +718,13 @@ public sealed partial class ModelStore
             }
 
             var rowId = rows.FirstOrDefault() ?? typeId;
-            foreach (var typed in snapshot.ReferencesTo(typeId))
+            foreach (var (tableId, columnId) in BoundColumnTypes.Of(snapshot).ColumnsOf(typeId))
             {
-                if (typed.Field != "typeRef" || !typed.JsonPointer.EndsWith("/typeRef/ref", StringComparison.Ordinal)
-                    || snapshot.GetDocument(typed.FromElementId)?.Element is not (Table or Stereotype))
-                {
+                if (snapshot.Get<Table>(tableId) is not { } table || ColumnEntry(table, columnId) is not var (holderId, column, entryId))
                     continue;
-                }
-
-                var column = typed.JsonPointer[..^"/typeRef/ref".Length];
-                foreach (var (pointer, fromId) in Items(typed.FromElementId, column + "/default", typed.FromId))
-                    Add(new ReferenceInfo(typed.FromElementId, fromId, pointer, "default", rowId));
-                foreach (var use in snapshot.ReferencesTo(typed.FromId))
+                foreach (var (pointer, fromId) in Items(holderId, column + "/default", entryId))
+                    Add(new ReferenceInfo(holderId, fromId, pointer, "default", rowId));
+                foreach (var use in snapshot.ReferencesTo(columnId).Concat(entryId == columnId ? [] : snapshot.ReferencesTo(entryId)))
                 {
                     if (snapshot.GetDocument(use.FromElementId) is not { } user)
                         continue;
@@ -750,6 +746,33 @@ public sealed partial class ModelStore
             }
 
             return uses;
+        }
+
+        /// <summary>
+        /// Where a column's entry is written: the table file and its <c>/columns/&lt;i&gt;</c> for an own column, else the stereotype that
+        /// contributes an inherited one (by its keyed id) and the member's entry there, with the entry's id.
+        /// </summary>
+        private (string HolderId, string Pointer, string EntryId)? ColumnEntry(Table table, string columnId)
+        {
+            for (var i = 0; i < table.Columns.Count; i++)
+            {
+                if (string.Equals(table.Columns[i].Id, columnId, StringComparison.Ordinal))
+                    return (table.Id, "/columns/" + Str(i), columnId);
+            }
+
+            foreach (var member in TableMembers.Of(snapshot, table).Columns)
+            {
+                if (!string.Equals(member.Key, columnId, StringComparison.Ordinal))
+                    continue;
+                var stereotype = member.From.Stereotype;
+                for (var j = 0; j < stereotype.Columns.Count; j++)
+                {
+                    if (string.Equals(stereotype.Columns[j].Id, member.MemberId, StringComparison.Ordinal))
+                        return (stereotype.Id, "/columns/" + Str(j), member.MemberId);
+                }
+            }
+
+            return null;
         }
 
         /// <summary>The value at a pointer, or each item of it when it is an array, with the pointer of each.</summary>

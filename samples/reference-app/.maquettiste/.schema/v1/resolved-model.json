@@ -1180,7 +1180,7 @@
         "category",
         "properties",
         "generation",
-        "typeRef",
+        "boundType",
         "sensitive",
         "memberOrigin"
       ],
@@ -1363,8 +1363,8 @@
             "$ref": "#/$defs/generationHints"
           }
         },
-        "typeRef": {
-          "description": "The enum, reference type or scalar type the column's own entry names, or null; a projected column has none, its attribute (`attributeId`) types it.",
+        "boundType": {
+          "description": "Derived from bindings, like a table's bound-by list: the enum, reference type or scalar type of the attribute the entities' bindings map to the column, when they all agree, or null; a projected column has none, its attribute (`attributeId`) types it.",
           "anyOf": [
             {
               "$ref": "#/$defs/typeRecord"
@@ -1425,7 +1425,7 @@
         "category",
         "properties",
         "generation",
-        "typeRef",
+        "boundType",
         "sensitive",
         "memberOrigin"
       ],

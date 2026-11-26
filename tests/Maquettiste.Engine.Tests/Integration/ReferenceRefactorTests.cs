@@ -119,11 +119,12 @@ public sealed class ReferenceRefactorTests
             { "op": "merge-reference-types", "id": "{{PaymentTerms.CreditTerm}}", "target": "{{PaymentTerms.PaymentTerm}}", "codes": { "n90": "net60" } }
             """);
 
-        // Customer.creditTerm and notes.term are typed by PaymentTerm; CreditTerm and its seed, whose rows all matched or mapped, are gone.
+        // Customer.creditTerm and InvoiceNote.term (bound to notes.term) are typed by PaymentTerm; CreditTerm and its seed, whose rows all
+        // matched or mapped, are gone.
         var creditTerm = (await DocumentAsync(repo, E2ERepo.CustomerId))["attributes"]!.AsArray().Single(a => (string?)a!["id"] == PaymentTerms.CustomerCreditTerm)!;
         Assert.Equal(PaymentTerms.PaymentTerm, (string?)creditTerm["type"]!["ref"]);
-        var term = (await DocumentAsync(repo, PaymentTerms.NotesTable))["columns"]!.AsArray().Single(c => (string?)c!["id"] == PaymentTerms.NotesTerm)!;
-        Assert.Equal(PaymentTerms.PaymentTerm, (string?)term["typeRef"]!["ref"]);
+        var term = (await DocumentAsync(repo, PaymentTerms.InvoiceNote))["attributes"]!.AsArray().Single(a => (string?)a!["id"] == PaymentTerms.InvoiceNoteTerm)!;
+        Assert.Equal(PaymentTerms.PaymentTerm, (string?)term["type"]!["ref"]);
         Assert.Null(await repo.Store.GetElementAsync(PaymentTerms.CreditTerm, Ct));
         Assert.Null(await repo.Store.GetElementAsync(PaymentTerms.CreditTermSeed, Ct));
         Assert.Equal([("n90", PaymentTerms.Net60)], await FormerCodesAsync(repo));
@@ -132,7 +133,8 @@ public sealed class ReferenceRefactorTests
         var map = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, E2ERepo.MainDatabaseId));
         Assert.Equal((PaymentTerms.PaymentTerm, PaymentTerms.CreditTerm, "CreditTerm", "PaymentTerm"), (map.ReferenceType, map.FromReferenceType, map.From!.Name, map.To!.Name));
         Assert.Equal([("n90", "net60")], map.Values.Select(v => (v.From, v.To)));
-        Assert.Equal([("customers", "credit_term"), ("notes", "term")], map.Objects.Select(o => (o.TableName!, o.Name!)).Order());
+        // notes.term is bound to an attribute of the type but holds no codes for the database: binding never changes storage.
+        Assert.Equal([("customers", "credit_term")], map.Objects.Select(o => (o.TableName!, o.Name!)));
         await AssertValidAsync(repo);
     }
 }

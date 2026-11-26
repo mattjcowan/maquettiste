@@ -23,15 +23,15 @@ func field_type(f)
   ret f.nullable ? $t + "?" : $t
 end
 
-# The type the table column a field reads states as its typeRef (next-phase-2-design.md section 3.2), or null: a field that is
-# not a plain column of a table (a declared column of a SQL text has no expression), or a column of a table file that names no
-# enum, reference type or scalar type.
+# The bound type of the table column a field reads (column.bound_type: the enum, reference type or scalar type of the attribute the
+# bindings map to it), or null: a field that is not a plain column of a table (a declared column of a SQL text has no expression),
+# or a column no binding maps to such an attribute.
 func column_type_ref(f)
   if !f.expression
     ret null
   end
   $c = f.expression.table_column
-  ret $c ? $c.type_ref : null
+  ret $c ? $c.bound_type : null
 end
 
 # The C# type of a field's member in a generated row or item record: the enum a typed column holds (nullable as the field), else

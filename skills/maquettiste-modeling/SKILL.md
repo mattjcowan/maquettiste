@@ -142,7 +142,7 @@ clobber a concurrent edit or leave a dangling id.
    suppress to make `validate` pass without a reason the user gave. `validate` lists suppressed findings apart and warns
    MQ5020 for an entry that matches nothing.
 5. Reference data and translations: `reference_type_usage` lists the attributes that use a reference type and its storage
-   per database, and in `columns` the table columns whose `typeRef` names it;
+   per database, and in `columns` the table columns bindings map to attributes of the type;
    `create_seed` gives a reference type that has none its empty seed; `export_seed_csv` / `import_seed_csv` (a dry run unless `apply` is true, then `expectedHash`) move rows as
    CSV; `localization_status`, `get_translations` and `set_translations` (with the `shardHash` values you read as
    `expected`) read and write translations, which never go in element files. From a terminal, `maquettiste l10n status`,
@@ -510,10 +510,12 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   storage strategy the project declares. When a table file already holds a reference type's rows, the type's optional
   `bindings` say so per database (`database`, `table`, `fields` mapping `code`, `label`, `description` or a field id to a
   column, `constants` for a table several types share); its rows then count as the table's rows in validation and seed data. Stereotypes and their meaning are the project's own, not built in.
-- A table column that holds an enum's values, a reference type's codes or a scalar type's values says so with
-  `typeRef: {"ref": "<type id>"}` beside its `type`, which stays the physical keyword; facets it leaves out come from
-  the type, and packs give it the same key or CHECK as an attribute of that type. A declared foreign key from such a
-  column points at the code column of the type's bound table (MQ4084). A column holding personal data or a secret states
+- A table states only physical types; it never names an enum, a reference type or a scalar type (a column's `typeRef`
+  was removed in 0.28.0: MQ4082). To say a column holds an enum's values, a reference type's codes or a scalar type's
+  values, bind an entity to the table and map the column to an attribute of that type: that is the column's bound type,
+  set when every binding that maps the column agrees. Validation checks the column against it; binding never changes
+  the table's DDL or migrations. To have the database check the codes, declare a foreign key from the column into the
+  type's bound table, pointing at its code column (MQ4084). A column holding personal data or a secret states
   `sensitive` (`pii` or `secret`); say it once, on the column or on the attribute a binding maps to it (two different
   values are MQ4085, a warning).
 - Codes that databases store change through a refactor, never by editing a seed cell or a type's name: `apply_batch`
