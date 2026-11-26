@@ -46,6 +46,8 @@ record and what a copy of it carries over, and a query's `entity` and `collectio
   and a record's parts come through composition (`entity.parts`), each part with its own binding. The `csharp-dapper`
   example pack and the reference sample now work this way; the pack still renders a query that names an entity. See
   "Retired: a query's entity and collections" in [the user guide](user-guide.md#the-explorers-and-screens).
+- **The rule family MQ41xx is now labelled "Migrations, bindings and queries"**, since it also holds binding, mapping and
+  query rules. Only the label in the rules list changes.
 
 **When you update:**
 

@@ -1509,8 +1509,8 @@ database shows on the Database screen at once. The explorers remember which rows
     for the database's dialect to start from). The tabs of a query built from parts:
     - **General**: the name, marks and description. The editor says nothing about entities: an entity binds to the
       query from its own Storage tab. An older query that still names a result entity (its own, or a collection's
-      elements') keeps working and shows one line, "An older result entity is set; bind the entity to this query on its
-      Storage tab instead", with **Remove**: each field that filled an attribute becomes a field of its own name, its
+      elements') keeps working and shows one line, "A result entity is retired and goes away in a later version; bind the
+      entity to this query on its Storage tab instead", with **Remove**: each field that filled an attribute becomes a field of its own name, its
       expression kept (the attribute's name, numbered when another field has it), and each such collection takes the name
       of what it filled. Nothing is lost; one undo step.
     - **Sources**: the **From** source and its alias, then the joins, each with its kind (inner, left, right, full or

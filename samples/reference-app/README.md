@@ -6,7 +6,8 @@ The data layer of a B2B wholesale distributor, modeled in Maquettiste and genera
 8 value objects, 5 scalar types, 23 enums, 2 reference types, 439 relations, one PostgreSQL 16 database (`main`, schema `northwind`) with
 table overlays, two designed tables, a view, three sequences and two queries (a customer's open sales orders, and revenue by sales
 channel), and one subject-area diagram per package. The read-only entity `OpenSalesOrder` reads the first query through its
-binding, so its repository runs the query; the query itself declares only its columns, and an order's lines are the parts of
+binding, so its repository runs the query (paged and ordered by key; the query class `OpenSalesOrdersQuery` keeps the
+query's own newest-first order); the query itself declares only its columns, and an order's lines are the parts of
 `SalesOrder`, read through their own repository. One designed table, `remarks`, is shared by two entities
 through explicit bindings (erratum E43): `CustomerRemark` and `SalesOrderRemark` are never projected, their binding's constant
 `subject_type` tells their rows apart, and their repositories come from the binding.

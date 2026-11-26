@@ -182,7 +182,7 @@ public sealed partial class AgentToolsTests
         var models = families[0]!;
         Assert.Equal(("MQ10xx", "Model files", "MQ1001"), ((string)models["family"]!, (string)models["familyLabel"]!, (string)models["first"]!));
         Assert.Equal("MQ1019", (string)models["last"]!);
-        Assert.Contains(families, f => (string)f!["family"]! == "MQ41xx" && (string)f["familyLabel"]! == "Migrations");
+        Assert.Contains(families, f => (string)f!["family"]! == "MQ41xx" && (string)f["familyLabel"]! == "Migrations, bindings and queries");
         Assert.DoesNotContain("description", summary.ToJsonString(), StringComparison.Ordinal);
 
         // A family: its full entries, one page.

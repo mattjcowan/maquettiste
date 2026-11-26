@@ -523,7 +523,7 @@ public static class RuleCatalog
         ["MQ30xx"] = "Model structure",
         ["MQ31xx"] = "Expressions",
         ["MQ40xx"] = "Databases and mappings",
-        ["MQ41xx"] = "Migrations",
+        ["MQ41xx"] = "Migrations, bindings and queries",
         ["MQ50xx"] = "Extensions and script rules",
         ["MQ60xx"] = "Packs and generation",
         ["MQ70xx"] = "Reference types",
