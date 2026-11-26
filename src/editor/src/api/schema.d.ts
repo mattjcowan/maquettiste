@@ -3874,7 +3874,7 @@ export interface components {
             isRecursive: boolean;
             /** @description Whether the part's to-one links go round in a circle with other parts or the record. */
             inCycle: boolean;
-            /** @description Per database where the composition is stored with a foreign key, the key that links the part's rows to their owner's. */
+            /** @description The foreign keys that link the part's rows to their owner's, by database then table; one per table when each derived type of the part has its own table. */
             foreignKeys: components["schemas"]["PartForeignKeyRecord"][];
         };
         /** @description The foreign key that links a part's rows to their owner's in one database (parts-and-copy-design.md). */
@@ -9161,7 +9161,7 @@ export interface components {
             /** @description The id of an attribute the record holds: its own, an inherited one or one from a stereotype it carries; never a key or derived attribute (MQ3045). */
             attribute: components["schemas"]["id"];
             /**
-             * @description reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty, never on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.
+             * @description reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty; neither clear, nor reset without a default, on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.
              * @enum {unknown}
              */
             onCopy: "copy" | "reset" | "clear" | "original";
@@ -9287,7 +9287,7 @@ export interface components {
                 attributes?: components["schemas"]["copyAttribute"][];
                 /** @description What the copy's link through each listed to-one relation end is. An end not listed keeps the original's link. */
                 links?: {
-                    /** @description The id of a to-one end the entity navigates to, of a two-ended relation that is not a composition (MQ3045). */
+                    /** @description The id of a to-one end at the other side of a two-ended relation of the entity, not a composition (MQ3045); it needs no navigation. */
                     end: components["schemas"]["id"];
                     /**
                      * @description original: the copy links to the record it was copied from (MQ3046, the end's type must cover the entity); copy: the original's link, so a derived entity can undo a base's entry.
@@ -9413,7 +9413,7 @@ export interface components {
                     /** @description The id of an attribute the record holds: its own, an inherited one or one from a stereotype it carries; never a key or derived attribute (MQ3045). */
                     attribute: components["schemas"]["id"];
                     /**
-                     * @description reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty, never on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.
+                     * @description reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty; neither clear, nor reset without a default, on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.
                      * @enum {unknown}
                      */
                     onCopy: "copy" | "reset" | "clear" | "original";

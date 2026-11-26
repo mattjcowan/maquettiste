@@ -3772,8 +3772,8 @@ then each line's discounts, and so on. Each part says:
 - the composition, its owner end and its part end (`relation`, `owner_end`, `end`);
 - the part's entity and the entity that owns it here (`entity`, `owner`);
 - the part above it and how deep it is (`parent`, `depth`; 1 for the invoice's own parts);
-- per database, the foreign key that links a part to its owner (`foreign_keys["main"]`): its `columns` in the part's table and the
-  owner's key it points at (`referenced_columns`).
+- per database, the foreign keys that link a part to its owner (`foreign_keys["main"]`, usually one; one per table when each kind of
+  part has a table of its own): each has its `columns` in the part's table and the owner's key it points at (`referenced_columns`).
 
 The list is in an order that is safe for foreign keys: an owner before its parts, and a part after the parts it points at. If an
 invoice owns tax groups and each line points at one tax group, the tax groups come before the lines. To delete, take the list
@@ -3827,9 +3827,9 @@ write them for you: teams make ids in too many ways. The packs don't use it yet,
 
 | Rule | What it says |
 | --- | --- |
-| MQ3045 | An attribute or link entry can't stand: an attribute the record doesn't hold, a derived or key attribute, two entries for one attribute or end, `clear` on a required attribute, or a link end that isn't a to-one end of a two-ended relation that isn't a composition. |
+| MQ3045 | An attribute or link entry can't stand: an attribute the record doesn't hold, a derived or key attribute, two entries for one attribute or end, `clear` on a required attribute (or `reset` on one with no default), or a link end that isn't a to-one end of a two-ended relation that isn't a composition. The end needs no navigation. |
 | MQ3046 | `original` can't hold the id of the record copied from: the key isn't one attribute, the attribute isn't typed as the key is, or a link's end can't lead to this entity. |
-| MQ3047 | A part entry can't stand: an end that isn't a part end among the entity's parts, two entries for one end, `one` without `choose`, `choose` beside `all` or `none`, both a condition and a state, or `attributes` beside `none`. |
+| MQ3047 | A part entry can't stand: an end that isn't a part end among the entity's parts, two entries for one end, `one` without `choose`, `choose` beside `all` or `none`, both a condition and a state, or `attributes` beside `none`. Also a warning when an entity's parts pass 10,000: they are listed only that far. |
 | MQ3048 | A choice can't stand: a state that isn't of a lifecycle of the part's entity, or `latestBy` that isn't an attribute of the part or has no order. |
 
 A condition that doesn't parse or type is reported by the expression rules (MQ31xx), at `/copy/parts/n/choose/condition`. The editor

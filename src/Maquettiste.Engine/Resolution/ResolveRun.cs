@@ -184,7 +184,7 @@ internal sealed partial class ResolveRun
         var stereotypes = ResolveStereotypeDefinitions(); // before processes: a subject entry may name a stereotype
         ResolveEndStereotypes();
         ResolveProcesses();
-        FinishPartsAndCopy(); // after the databases (foreign keys) and the processes (states)
+        FinishPartsAndCopy(resolvedDatabases); // after the databases (foreign keys) and the processes (states)
         ResolveOperations();
         ResolveCustomElements();
         var verbs = ResolveVerbs();

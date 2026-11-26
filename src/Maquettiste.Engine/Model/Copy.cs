@@ -51,7 +51,10 @@ public enum AttributeOnCopy
 /// <summary>What a copy's link through one to-one relation end is (parts-and-copy-design.md).</summary>
 public sealed record CopyLinkEntry
 {
-    /// <summary>The id of a to-one end the record navigates to, of a two-ended relation that is not a composition (MQ3045).</summary>
+    /// <summary>
+    /// The id of a to-one end at the other side of a two-ended relation of the record's entity, not a composition (MQ3045); the end needs no
+    /// navigation, since the record holds the link whether or not code walks it.
+    /// </summary>
     [ElementRef(IndexKinds = ["end"])]
     public required string End { get; init; }
 

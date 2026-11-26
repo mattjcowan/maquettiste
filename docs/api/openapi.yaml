@@ -9783,7 +9783,7 @@ components:
           description: Whether the part's to-one links go round in a circle with other parts or the record.
         foreignKeys:
           type: array
-          description: Per database where the composition is stored with a foreign key, the key that links the part's rows to their owner's.
+          description: The foreign keys that link the part's rows to their owner's, by database then table; one per table when each derived type of the part has its own table.
           items:
             $ref: '#/components/schemas/PartForeignKeyRecord'
     PartForeignKeyRecord:

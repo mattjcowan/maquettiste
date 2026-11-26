@@ -1208,7 +1208,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
         var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
         var followers = FormerFactFollowers(changed, before, candidate).Concat(FormerActorPeers(changed, before, candidate))
-            .Concat(FormerTypeCodePeers(changed, before, candidate)).Concat(FormerRevisionPeers(changed, before, candidate))
+            .Concat(FormerTypeCodePeers(changed, before, candidate)).Concat(FormerRevisionPeers(changed, before, candidate)).Concat(FormerCopyPeers(changed, before, candidate))
             .Concat(FormerOperationPeers(changed, before, candidate)).ToList();
         // A dry run counts the deletes too: what a deleted element had shows as removed.
         if ((preview is null ? plan.ChangedIds.Count : changed.Count) == 0 && placements.Count == 0 && followers.Count == 0)
@@ -1432,6 +1432,25 @@ public sealed partial class ModelStore : IAsyncDisposable
             if (before.GetDocument(id)?.Element is not { } element)
                 continue;
             foreach (var peer in Validation.ModelValidator.RevisionPeers(before, element))
+            {
+                if (candidate.GetDocument(peer) is not null)
+                    yield return peer;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The copy blocks whose findings a change may move through what the model had before it (parts-and-copy-design.md): those whose parts
+    /// reached a changed or deleted relation or entity before the change, such as a composition on the way down to a part an entry names; the
+    /// validator reaches those whose parts reach it after the change.
+    /// </summary>
+    private static IEnumerable<string> FormerCopyPeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        foreach (var id in changedIds)
+        {
+            if (before.GetDocument(id)?.Element is not { } element)
+                continue;
+            foreach (var peer in Validation.CopyRules.Peers(before, element))
             {
                 if (candidate.GetDocument(peer) is not null)
                     yield return peer;

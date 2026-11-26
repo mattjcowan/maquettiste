@@ -1,3 +1,5 @@
+using System.Globalization;
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Processes;
@@ -67,6 +69,9 @@ internal static class CopyRules
 
             if (entry.OnCopy == AttributeOnCopy.Clear && attribute.Required)
                 report.Add("MQ3045", $"Attribute '{attribute.Name}' of '{entity.Name}' is required, so a copy can't leave it empty; use reset, or remove the entry.", at + "/onCopy");
+            else if (entry.OnCopy == AttributeOnCopy.Reset && attribute.Required && attribute.Default is null && attribute.DefaultExpression is null)
+                report.Add("MQ3045", $"Attribute '{attribute.Name}' of '{entity.Name}' is required and has no default, so a reset copy would leave it empty; give it a default, or remove the entry.",
+                    at + "/onCopy");
             if (entry.OnCopy == AttributeOnCopy.Original && OriginalProblem(model, entity, held, key, attribute) is { } problem)
                 report.Add("MQ3046", problem, at + "/onCopy");
         }
@@ -113,7 +118,7 @@ internal static class CopyRules
                 : relation.RelationKind == RelationKind.Composition
                     ? $"End '{named.Role}' belongs to composition '{relation.Name}': a composition makes parts of a whole, which the copy's parts say, not a link; remove the entry."
                     : !EndCoverage.Covers(model, own, entity.Id)
-                        ? $"'{entity.Name}' doesn't reach end '{named.Role}' of relation '{relation.Name}'; name an end at the other side of a relation of '{entity.Name}'."
+                        ? $"'{entity.Name}' doesn't reach end '{named.Role}' of relation '{relation.Name}'; name the end at the other side of a relation of '{entity.Name}'."
                         : named.Max != MaxCardinality.One
                             ? $"End '{named.Role}' of relation '{relation.Name}' leads to many records, so it is no field of a copy; name a to-one end."
                             : null;
@@ -136,6 +141,10 @@ internal static class CopyRules
         if (entries.Count == 0)
             return;
         var tree = PartTree.Of(model, entity);
+        if (tree.Truncated)
+            report.Add("MQ3047", DiagnosticSeverity.Warning,
+                $"The parts of '{entity.Name}' pass {PartTree.MaxNodes.ToString("N0", CultureInfo.InvariantCulture)} and are listed only that far, so an end beyond them is not checked; fix the compositions with two owners (MQ3016).",
+                "/copy/parts");
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var j = 0; j < entries.Count; j++)
         {
@@ -150,7 +159,7 @@ internal static class CopyRules
                 continue;
             }
 
-            if (!tree.Reaches(entry.End))
+            if (!tree.Reaches(entry.End) && !tree.Truncated)
             {
                 report.Add("MQ3047", ValidationContext.CompositionEnds(relation) is { } ends && ReferenceEquals(relation.Ends[ends.Child], named) && named.HasSeveralTypes
                     ? $"End '{named.Role}' of composition '{relation.Name}' has several types, and the parts of a record list only parts of one type; remove the entry."
@@ -175,7 +184,7 @@ internal static class CopyRules
 
             if (entry.OnCopy == PartOnCopy.None && entry.Attributes is { Count: > 0 })
                 report.Add("MQ3047", $"The copy of '{entity.Name}' keeps no '{named.Role}' part, so it sets no values on them; remove attributes, or copy the parts.", at + "/attributes");
-            if (named.SingleEntity is not { } partId || model.Get<Entity>(partId) is not { } part)
+            if (!tree.Reaches(entry.End) || named.SingleEntity is not { } partId || model.Get<Entity>(partId) is not { } part)
                 continue;
             if (entry.OnCopy == PartOnCopy.One && entry.Choose is { } choose)
                 CheckChoice(model, part, named, choose, at + "/choose", report);
@@ -247,8 +256,41 @@ internal static class CopyRules
 
     private static string Name(Dictionary<string, ModelAttribute> held, string id) => held.TryGetValue(id, out var attribute) ? attribute.Name : id;
 
-    /// <summary>The entities with a <c>copy</c> block, whose findings a relation or entity change can move without referencing it.</summary>
+    /// <summary>
+    /// The entities with a <c>copy</c> block whose findings a change of <paramref name="element"/> can move without the block referencing it: for
+    /// a relation or an entity, the blocks whose parts (worked out on <paramref name="model"/>) reach it, as an entity on the way down or a base
+    /// of one, or a composition of the tree; for a scalar type (the type of a key or of an <c>original</c> attribute), a process (which
+    /// lifecycles govern a part), a stereotype or a package (which entities carry a stereotype a lifecycle names), every block. The store asks it
+    /// of the model before a change too, so a delete or a change that takes something off the way down checks the blocks it reached.
+    /// </summary>
     /// <param name="model">The model.</param>
-    /// <returns>The entities, in model order.</returns>
-    internal static IEnumerable<Entity> Writers(ModelSnapshot model) => model.All<Entity>().Where(e => e.Copy is not null);
+    /// <param name="element">The changed element.</param>
+    /// <returns>The ids of the entities, in model order.</returns>
+    internal static IEnumerable<string> Peers(ModelSnapshot model, Element element)
+    {
+        if (element is not (Relation or Entity or ScalarType or Process or Stereotype or Package))
+            yield break;
+        foreach (var writer in model.All<Entity>())
+        {
+            if (writer.Copy is null || string.Equals(writer.Id, element.Id, StringComparison.Ordinal))
+                continue;
+            if (element is not (Relation or Entity) || Reaches(model, writer, element.Id))
+                yield return writer.Id;
+        }
+    }
+
+    /// <summary>Whether an entity's parts reach an element: an entity on the way down (its own chain or a part's), or a composition of the tree.</summary>
+    private static bool Reaches(ModelSnapshot model, Entity writer, string id)
+    {
+        if (SubjectCoverage.Chain(model, writer).Contains(id, StringComparer.Ordinal))
+            return true;
+        foreach (var node in PartTree.Of(model, writer).Nodes)
+        {
+            if (string.Equals(node.Relation.Id, id, StringComparison.Ordinal) || string.Equals(node.EntityId, id, StringComparison.Ordinal)
+                || (model.Get<Entity>(node.EntityId) is { } part && SubjectCoverage.Chain(model, part).Contains(id, StringComparer.Ordinal)))
+                return true;
+        }
+
+        return false;
+    }
 }

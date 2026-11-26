@@ -41,28 +41,36 @@ internal sealed record PartNode(Relation Relation, int OwnerEnd, int PartEnd, st
 /// <para>
 /// <see cref="Order"/> is safe for foreign keys: every part after its owner, and a part after the parts its to-one links point at (for a
 /// two-ended relation between two parts' entities, both ends of one type: the end with max 1, else the one with min 1, else the first end, is
-/// the one pointed at; a many-to-many link points at neither). When links go round in a circle, the earliest part left in walk order goes next,
-/// which never puts a part before its owner, and each part on the circle is marked in <see cref="InCycle"/>, a circle through the record itself
-/// included. Deleting deepest first is the order reversed.
+/// the one pointed at; a many-to-many link points at neither; a composition is never a link, since the walk already orders it). When links go
+/// round in a circle, a part on the circle goes next: the earliest in walk order of a circle that waits on nothing else, which never puts a part
+/// before its owner nor a part that only points at a circle before it. Each part on a circle is marked in <see cref="InCycle"/>, a circle through
+/// the record itself included. Deleting deepest first is the order reversed.
+/// </para>
+/// <para>
+/// A tree stops at <see cref="MaxNodes"/> parts (<see cref="Truncated"/>); only a model with composition errors (MQ3016) or one that size gets there.
 /// </para>
 /// </summary>
 internal sealed class PartTree
 {
     /// <summary>The most parts a tree lists; a model past it has composition errors (MQ3016) that multiply the ways down.</summary>
-    private const int MaxNodes = 10_000;
+    public const int MaxNodes = 10_000;
 
     private static readonly ConditionalWeakTable<ModelSnapshot, Index> Indexes = new();
 
     private static readonly ConditionalWeakTable<ModelSnapshot, ConcurrentDictionary<string, PartTree>> Trees = new();
 
-    private static readonly PartTree None = new([], [], []);
+    private static readonly PartTree None = new([], [], [], false);
 
-    private PartTree(IReadOnlyList<PartNode> nodes, IReadOnlyList<int> order, IReadOnlyList<bool> inCycle)
+    private PartTree(IReadOnlyList<PartNode> nodes, IReadOnlyList<int> order, IReadOnlyList<bool> inCycle, bool truncated)
     {
         Nodes = nodes;
         Order = order;
         InCycle = inCycle;
+        Truncated = truncated;
     }
+
+    /// <summary>Whether the walk stopped at <see cref="MaxNodes"/> parts, so parts further down are not listed.</summary>
+    public bool Truncated { get; }
 
     /// <summary>The parts in walk order: depth first, each owner's parts by relation name, then id.</summary>
     public IReadOnlyList<PartNode> Nodes { get; }
@@ -143,32 +151,50 @@ internal sealed class PartTree
         for (var i = 0; i < n; i++)
             chains[i] = model.Get<Entity>(nodes[i].EntityId) is { } e ? SubjectCoverage.Chain(model, e) : [nodes[i].EntityId];
         chains[n] = SubjectCoverage.Chain(model, root);
+
+        // The nodes whose entity is, or derives from, each entity: the nodes a one-type end at that entity covers.
+        var covered = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        for (var i = 0; i <= n; i++)
+        {
+            foreach (var id in chains[i])
+            {
+                if (!covered.TryGetValue(id, out var list))
+                    covered[id] = list = [];
+                list.Add(i);
+            }
+        }
+
         var successors = new HashSet<int>[n + 1];
         for (var i = 0; i <= n; i++)
             successors[i] = [];
         for (var i = 0; i < n; i++)
             successors[nodes[i].Parent < 0 ? n : nodes[i].Parent].Add(i);
-        for (var j = 0; j <= n; j++)
+        foreach (var (id, holders) in covered)
         {
-            foreach (var id in chains[j])
+            foreach (var relation in index.Touching.GetValueOrDefault(id) ?? [])
             {
-                foreach (var relation in index.Touching.GetValueOrDefault(id) ?? [])
+                // A composition is a tree edge, never a link: a part of its own kind gets no edge back to its owner.
+                if (relation.RelationKind == RelationKind.Composition || Pointed(relation) is not { } pointed)
+                    continue;
+                var (principal, dependent) = pointed;
+                if (!string.Equals(dependent.SingleEntity, id, StringComparison.Ordinal) || !covered.TryGetValue(principal.SingleEntity!, out var targets))
+                    continue;
+                foreach (var j in holders)
                 {
-                    if ((j < n && ReferenceEquals(relation, nodes[j].Relation)) || Pointed(relation) is not { } pointed)
-                        continue;
-                    var (principal, dependent) = pointed;
-                    if (!string.Equals(dependent.SingleEntity, id, StringComparison.Ordinal))
-                        continue;
-                    for (var i = 0; i <= n; i++)
+                    foreach (var i in targets)
                     {
-                        if (i != j && chains[i].Contains(principal.SingleEntity!, StringComparer.Ordinal))
+                        if (i != j)
                             successors[i].Add(j);
                     }
                 }
             }
         }
 
-        return new PartTree(nodes, SortedOrder(n, successors), Cycles(n, successors));
+        var (group, sizes) = Groups(n + 1, static _ => true, successors);
+        var inCycle = new bool[n];
+        for (var i = 0; i < n; i++)
+            inCycle[i] = sizes[group[i]] > 1;
+        return new PartTree(nodes, SortedOrder(n, successors), inCycle, nodes.Count >= MaxNodes);
     }
 
     private static void Walk(ModelSnapshot model, Index index, Entity owner, int parent, int depth, List<string> path, List<PartNode> nodes)
@@ -206,8 +232,9 @@ internal sealed class PartTree
     }
 
     /// <summary>
-    /// A stable Kahn sort of the parts; the record, node <paramref name="n"/>, is placed before them all, so its edges count for nothing. A circle
-    /// releases the earliest part left.
+    /// A stable Kahn sort of the parts; the record, node <paramref name="n"/>, is placed before them all, so its edges count for nothing. When
+    /// every part left waits, the parts left hold a circle that waits on nothing else: a group with no edge in from the other parts left, which
+    /// <see cref="Released"/> finds.
     /// </summary>
     private static int[] SortedOrder(int n, HashSet<int>[] successors)
     {
@@ -232,7 +259,7 @@ internal sealed class PartTree
         var order = new int[n];
         for (var k = 0; k < n; k++)
         {
-            var next = ready.Count > 0 ? ready.Min : left.Min;
+            var next = ready.Count > 0 ? ready.Min : Released(n, successors, left);
             ready.Remove(next);
             left.Remove(next);
             order[k] = next;
@@ -247,19 +274,58 @@ internal sealed class PartTree
     }
 
     /// <summary>
-    /// Which parts sit on a circle of edges (a strongly connected group of two or more nodes, the record among them), by an iterative
-    /// Kosaraju walk.
+    /// The part a circle releases when every part left waits: of the groups of parts left with no edge in from another group left, the earliest
+    /// part in walk order. Every part left waits, so such a group is a circle; its earliest part's owner comes earlier in walk order and so is
+    /// placed already or in the group, where it would be earlier still. A part that only points at a circle is never released before it.
     /// </summary>
-    private static bool[] Cycles(int n, HashSet<int>[] successors)
+    private static int Released(int n, HashSet<int>[] successors, SortedSet<int> left)
     {
-        var count = n + 1;
-        var predecessors = new List<int>[count];
-        for (var i = 0; i < count; i++)
-            predecessors[i] = [];
-        for (var i = 0; i < count; i++)
+        var (group, _) = Groups(n, left.Contains, successors);
+        var fed = new HashSet<int>();
+        foreach (var i in left)
         {
             foreach (var s in successors[i])
-                predecessors[s].Add(i);
+            {
+                if (s < n && left.Contains(s) && group[s] != group[i])
+                    fed.Add(group[s]);
+            }
+        }
+
+        foreach (var i in left)
+        {
+            if (!fed.Contains(group[i]))
+                return i;
+        }
+
+        return left.Min;
+    }
+
+    /// <summary>
+    /// The strongly connected groups of the nodes below <paramref name="count"/> that <paramref name="included"/> keeps, over the edges between
+    /// them, by an iterative Kosaraju walk: each node's group (-1 when left out) and each group's size.
+    /// </summary>
+    private static (int[] Group, List<int> Sizes) Groups(int count, Func<int, bool> included, HashSet<int>[] successors)
+    {
+        var predecessors = new List<int>[count];
+        var next = new List<int>[count];
+        for (var i = 0; i < count; i++)
+        {
+            predecessors[i] = [];
+            next[i] = [];
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            if (!included(i))
+                continue;
+            foreach (var s in successors[i].Order())
+            {
+                if (s < count && included(s))
+                {
+                    next[i].Add(s);
+                    predecessors[s].Add(i);
+                }
+            }
         }
 
         // First pass: finishing order.
@@ -267,25 +333,26 @@ internal sealed class PartTree
         var finished = new List<int>(count);
         for (var start = 0; start < count; start++)
         {
-            if (visited[start])
+            if (visited[start] || !included(start))
                 continue;
-            var stack = new Stack<(int Node, IEnumerator<int> Next)>();
+            var stack = new Stack<(int Node, int At)>();
             visited[start] = true;
-            stack.Push((start, successors[start].Order().GetEnumerator()));
+            stack.Push((start, 0));
             while (stack.Count > 0)
             {
-                var (node, next) = stack.Peek();
-                if (next.MoveNext())
+                var (node, at) = stack.Pop();
+                if (at < next[node].Count)
                 {
-                    if (!visited[next.Current])
+                    stack.Push((node, at + 1));
+                    var s = next[node][at];
+                    if (!visited[s])
                     {
-                        visited[next.Current] = true;
-                        stack.Push((next.Current, successors[next.Current].Order().GetEnumerator()));
+                        visited[s] = true;
+                        stack.Push((s, 0));
                     }
                 }
                 else
                 {
-                    stack.Pop();
                     finished.Add(node);
                 }
             }
@@ -320,10 +387,7 @@ internal sealed class PartTree
             }
         }
 
-        var inCycle = new bool[n];
-        for (var i = 0; i < n; i++)
-            inCycle[i] = sizes[group[i]] > 1;
-        return inCycle;
+        return (group, sizes);
     }
 
     /// <summary>

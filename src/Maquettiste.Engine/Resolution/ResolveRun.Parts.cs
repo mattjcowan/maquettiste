@@ -15,25 +15,55 @@ namespace Maquettiste.Engine.Resolution;
 internal sealed partial class ResolveRun
 {
     /// <summary>After every database and process is built: each entity's <c>parts</c> and <c>copy</c>.</summary>
-    private void FinishPartsAndCopy()
+    /// <param name="databases">The resolved databases, whose tables hold the compositions' foreign keys.</param>
+    private void FinishPartsAndCopy(IReadOnlyList<RDatabase> databases)
     {
         var anyCopy = Model.All<Entity>().Any(e => e.Copy is not null);
         var anyParts = PartTree.Any(Model);
+        var keysByRelation = anyParts ? CompositionKeys(databases) : [];
         foreach (var (id, source) in _entitySources)
         {
             if (!_entities.TryGetValue(id, out var r) || r.Id.Length == 0)
                 continue;
             var tree = anyParts ? PartTree.Of(Model, source) : null;
             var keys = PartKeys(source, tree);
-            var parts = tree is null || tree.Nodes.Count == 0 ? [] : Parts(r, tree);
+            var parts = tree is null || tree.Nodes.Count == 0 ? [] : Parts(r, tree, keysByRelation);
             r.Parts = new KeyedList<RPart>(parts, keys);
             if (anyCopy && SubjectCoverage.Chain(Model, source).Any(b => Model.Get<Entity>(b)?.Copy is not null))
                 r.Copy = Copy(r, source, parts, keys);
         }
     }
 
+    /// <summary>
+    /// By composition id, then database name: every foreign key of the composition in the database's tables, in table order, where the
+    /// composition is stored with foreign keys there. With one table per derived type, each table that holds parts has a key of its own.
+    /// </summary>
+    private static Dictionary<string, SortedDictionary<string, List<RForeignKey>>> CompositionKeys(IReadOnlyList<RDatabase> databases)
+    {
+        var keys = new Dictionary<string, SortedDictionary<string, List<RForeignKey>>>(StringComparer.Ordinal);
+        foreach (var database in databases)
+        {
+            foreach (var table in database.Tables)
+            {
+                foreach (var fk in table.ForeignKeys)
+                {
+                    if (fk.Relation is not { RelationKind: "composition" } relation
+                        || relation.Mappings.GetValueOrDefault(database.Name) is not { Shape: "foreign-key" })
+                        continue;
+                    if (!keys.TryGetValue(relation.Id, out var byDatabase))
+                        keys[relation.Id] = byDatabase = new SortedDictionary<string, List<RForeignKey>>(StringComparer.Ordinal);
+                    if (!byDatabase.TryGetValue(database.Name, out var list))
+                        byDatabase[database.Name] = list = [];
+                    list.Add(fk);
+                }
+            }
+        }
+
+        return keys;
+    }
+
     /// <summary>The parts as templates read them, in the tree's order safe for foreign keys.</summary>
-    private List<RPart> Parts(REntity record, PartTree tree)
+    private List<RPart> Parts(REntity record, PartTree tree, Dictionary<string, SortedDictionary<string, List<RForeignKey>>> keysByRelation)
     {
         var built = new RPart?[tree.Nodes.Count];
         for (var i = 0; i < tree.Nodes.Count; i++)
@@ -46,15 +76,7 @@ internal sealed partial class ResolveRun
             if (node.Parent >= 0 && parent is null)
                 continue;
             var owner = parent?.Entity ?? record;
-            var keys = new SortedDictionary<string, RForeignKey>(StringComparer.Ordinal);
-            if (node.Owner.SingleEntity is not null)
-            {
-                foreach (var (database, mapping) in relation.Mappings)
-                {
-                    if (mapping is { Shape: "foreign-key", ForeignKey: { } fk })
-                        keys[database] = fk;
-                }
-            }
+            var keys = node.Owner.SingleEntity is not null ? keysByRelation.GetValueOrDefault(relation.Id) : null;
 
             built[i] = new RPart
             {
@@ -68,7 +90,8 @@ internal sealed partial class ResolveRun
                 Depth = node.Depth,
                 IsRecursive = node.Recursive,
                 InCycle = tree.InCycle[i],
-                ForeignKeys = keys.Count == 0 ? FrozenDictionary<string, RForeignKey>.Empty : keys.ToFrozenDictionary(StringComparer.Ordinal),
+                ForeignKeys = keys is null ? FrozenDictionary<string, IReadOnlyList<RForeignKey>>.Empty
+                    : keys.ToFrozenDictionary(k => k.Key, IReadOnlyList<RForeignKey> (k) => k.Value, StringComparer.Ordinal),
             };
         }
 

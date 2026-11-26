@@ -682,7 +682,7 @@
   {
     "id": "MQ3045",
     "defaultSeverity": "error",
-    "description": "A copy's attribute or link entry can't stand: an attribute the record doesn't hold (its own, an inherited one or one from a stereotype it carries), a derived one or one of its key attributes, since a copy's key is always new; two entries for one attribute or end; clear on a required attribute; a link end that is not a to-one end the entity navigates to, of a two-ended relation that is not a composition. Parts' attribute entries are judged on the part's entity.",
+    "description": "A copy's attribute or link entry can't stand: an attribute the record doesn't hold (its own, an inherited one or one from a stereotype it carries), a derived one or one of its key attributes, since a copy's key is always new; two entries for one attribute or end; clear, or reset with no default, on a required attribute; a link end that is not a to-one end at the other side of a two-ended relation of the entity that is not a composition (it needs no navigation). Parts' attribute entries are judged on the part's entity.",
     "family": "MQ30xx",
     "familyLabel": "Model structure",
     "canBeOff": true
@@ -698,7 +698,7 @@
   {
     "id": "MQ3047",
     "defaultSeverity": "error",
-    "description": "A copy's part entry can't stand: an end that is not the part end of a composition among the entity's parts at some level (a part end with several types never is); two entries for one end; one without choose, choose beside all or none, or choose with both a condition and a state; attributes beside none.",
+    "description": "A copy's part entry can't stand: an end that is not the part end of a composition among the entity's parts at some level (a part end with several types never is); two entries for one end; one without choose, choose beside all or none, or choose with both a condition and a state; attributes beside none. A warning when the entity's parts pass 10,000 and are listed only that far, so entries beyond are not checked.",
     "family": "MQ30xx",
     "familyLabel": "Model structure",
     "canBeOff": true

@@ -515,7 +515,7 @@ One part of a whole record: records of an entity owned through a composition, at
 | `depth` | integer | never | 1 for a part of the record itself, 2 for a part of a part, and so on. |
 | `isRecursive` | boolean | never | Whether the part's entity is already on the way down, so its own parts are not listed again. |
 | `inCycle` | boolean | never | Whether the part's to-one links go round in a circle with other parts or the record. |
-| `foreignKeys` | list of [partForeignKeyRecord](#partforeignkeyrecord) | never | Per database where the composition is stored with a foreign key, by database name, the key that links the part's rows to their owner's. |
+| `foreignKeys` | list of [partForeignKeyRecord](#partforeignkeyrecord) | never | The foreign keys that link the part's rows to their owner's, by database name, then table: usually one per database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table of its own. |
 
 ### partForeignKeyRecord
 

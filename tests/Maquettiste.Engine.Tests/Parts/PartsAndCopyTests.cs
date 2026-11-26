@@ -89,7 +89,7 @@ public sealed class PartsAndCopyTests
         h.Write("model/relations/copied-from.json", $$"""
             {"$schema":"../../.schema/v1/relation.json","kind":"relation","id":"01JPCR00000000000000000005","name":"copiedFrom","package":"{{Package}}",
              "ends":[{"id":"{{CopiesEnd}}","entity":"{{Invoice}}","role":"copies"},
-                     {"id":"{{SourceEnd}}","entity":"{{Invoice}}","role":"source","navigation":"source","max":1}]}
+                     {"id":"{{SourceEnd}}","entity":"{{Invoice}}","role":"source","max":1}]}
             """);
         h.Write("model/processes/schedule-lifecycle.json", Lifecycle(ScheduleLifecycle, "ScheduleLifecycle", Schedule,
             $$"""{"id":"{{Active}}","name":"Active"},{"id":"{{Replaced}}","name":"Replaced"}"""));
@@ -158,8 +158,9 @@ public sealed class PartsAndCopyTests
         var (model, _) = await ResolveAsync(null);
         var lines = model.Entity("Invoice").Parts.Single(p => p.End.Id == LinesEnd);
 
-        var fk = Assert.Single(lines.ForeignKeys).Value;
-        Assert.Equal("main", Assert.Single(lines.ForeignKeys).Key);
+        var (database, keys) = Assert.Single(lines.ForeignKeys);
+        var fk = Assert.Single(keys);
+        Assert.Equal("main", database);
         Assert.Equal(("invoice_lines", "invoices"), (fk.Columns[0].Table.Name, fk.ReferencedTable.Name));
         Assert.Equal(["invoice_id"], fk.Columns.Select(c => c.Name));
         Assert.Equal(["id"], fk.ReferencedColumns.Select(c => c.Name));
@@ -183,6 +184,32 @@ public sealed class PartsAndCopyTests
     }
 
     [Fact]
+    public async Task A_part_that_only_points_at_a_circle_comes_after_it_and_is_not_marked()
+    {
+        // The circle of the test above, and an adjustment of the invoice that points at a tax group: it waits on the circle, never breaks it.
+        var (model, _) = await ResolveAsync(null, h =>
+        {
+            h.Write("model/relations/main-line.json", $$"""
+                {"$schema":"../../.schema/v1/relation.json","kind":"relation","id":"01JPCR00000000000000000006","name":"mainLine","package":"{{Package}}",
+                 "ends":[{"id":"01JPCN00000000000000000011","entity":"{{TaxGroup}}","role":"groups"},
+                         {"id":"01JPCN00000000000000000012","entity":"01J92P0V0GWFR78HZH0P8Z3GY7","role":"mainLine","navigation":"mainLine","max":1}]}
+                """);
+            h.Write("model/entities/adjustment.json", EntityFile("01JPCE00000000000000000005", "Adjustment", ""));
+            h.Write("model/relations/has-adjustments.json", Composition("01JPCR00000000000000000008", "hasAdjustments", "01JPCN00000000000000000015", Invoice,
+                "01JPCN00000000000000000016", "01JPCE00000000000000000005", "adjustments"));
+            h.Write("model/relations/adjusts.json", $$"""
+                {"$schema":"../../.schema/v1/relation.json","kind":"relation","id":"01JPCR00000000000000000009","name":"adjusts","package":"{{Package}}",
+                 "ends":[{"id":"01JPCN00000000000000000017","entity":"01JPCE00000000000000000005","role":"adjustments"},
+                         {"id":"01JPCN00000000000000000018","entity":"{{TaxGroup}}","role":"taxGroup","min":1,"max":1}]}
+                """);
+        });
+        var parts = model.Entity("Invoice").Parts;
+
+        Assert.Equal(["PaymentSchedule", "InvoiceLine", "LineDiscount", "TaxGroup", "Adjustment"], parts.Select(p => p.Entity.Name));
+        Assert.Equal([false, true, false, true, false], parts.Select(p => p.InCycle));
+    }
+
+    [Fact]
     public async Task A_part_of_its_own_kind_is_listed_once_and_marked_recursive()
     {
         var (model, _) = await ResolveAsync(null, h => h.Write("model/relations/sub-discounts.json",
@@ -192,6 +219,8 @@ public sealed class PartsAndCopyTests
         var sub = parts.Single(p => p.Relation.Name == "subDiscounts");
         Assert.Equal((3, true, "LineDiscount"), (sub.Depth, sub.IsRecursive, sub.Parent!.Entity.Name));
         Assert.Equal(5, parts.Count);
+        // A tree of parts of one kind is no circle of links: the composition orders it.
+        Assert.All(parts, p => Assert.False(p.InCycle));
     }
 
     [Fact]
@@ -244,7 +273,8 @@ public sealed class PartsAndCopyTests
     {
         var found = await FindingsAsync($$"""
             {"attributes":[{"attribute":"{{InvoiceId}}","onCopy":"reset"},{"attribute":"{{InvoiceNumber}}","onCopy":"clear"},{"attribute":"{{TaxRate}}","onCopy":"reset"},
-                           {"attribute":"{{InvoiceNotes}}","onCopy":"original"},{"attribute":"{{InvoiceNotes}}","onCopy":"clear"}],
+                           {"attribute":"{{InvoiceNotes}}","onCopy":"original"},{"attribute":"{{InvoiceNotes}}","onCopy":"clear"},
+                           {"attribute":"01J92P0V0SNXS6PZ42VDK42HP9","onCopy":"reset"}],
              "links":[{"end":"{{LinesEnd}}","onCopy":"original"},{"end":"{{ProductEnd}}","onCopy":"original"},{"end":"{{CustomerEnd}}","onCopy":"original"}],
              "parts":[{"end":"{{LinesEnd}}","onCopy":"all","attributes":[{"attribute":"01J92P0V0Y049452AH0K8CDC9N","onCopy":"clear"}]}]}
             """);
@@ -255,8 +285,9 @@ public sealed class PartsAndCopyTests
             ("MQ3045", "/copy/attributes/1/onCopy", "Attribute 'number' of 'Invoice' is required, so a copy can't leave it empty; use reset, or remove the entry."),
             ("MQ3045", "/copy/attributes/2/attribute", $"Attribute '{TaxRate}' is not one of the attributes of 'Invoice' (its own, an inherited one or one from a stereotype it carries); remove the entry."),
             ("MQ3045", "/copy/attributes/4/attribute", "'Invoice' has two copy entries for attribute 'notes'; remove the second."),
+            ("MQ3045", "/copy/attributes/5/onCopy", "Attribute 'issuedOn' of 'Invoice' is required and has no default, so a reset copy would leave it empty; give it a default, or remove the entry."),
             ("MQ3045", "/copy/links/0/end", "End 'lines' belongs to composition 'contains': a composition makes parts of a whole, which the copy's parts say, not a link; remove the entry."),
-            ("MQ3045", "/copy/links/1/end", "'Invoice' doesn't reach end 'product' of relation 'refers to'; name an end at the other side of a relation of 'Invoice'."),
+            ("MQ3045", "/copy/links/1/end", "'Invoice' doesn't reach end 'product' of relation 'refers to'; name the end at the other side of a relation of 'Invoice'."),
             ("MQ3045", "/copy/parts/0/attributes/0/onCopy", "Attribute 'quantity' of 'InvoiceLine' is required, so a copy can't leave it empty; use reset, or remove the entry."),
             ("MQ3046", "/copy/attributes/3/onCopy", "Attribute 'notes' of 'Invoice' is typed text, and its key 'id' is typed uuid, so it can't hold the id of the record a copy was made from; type it as the key is typed."),
             ("MQ3046", "/copy/links/2/onCopy", "End 'customer' of relation 'places' can't lead to a 'Invoice', so it can't link a copy to the record it was made from; name an end whose type covers 'Invoice'."),
@@ -322,6 +353,25 @@ public sealed class PartsAndCopyTests
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         var parts = JsonNode.Parse(h.Read(InvoiceFile))!["copy"]!["parts"]!.AsArray();
         Assert.Equal([DiscountsEnd, LinesEnd], parts.Select(p => (string)p!["end"]!));
+    }
+
+    [Fact]
+    public async Task Deleting_a_composition_on_the_way_down_checks_the_copy_again()
+    {
+        var subs = "01JPCN00000000000000000014";
+        var (h, store) = await OpenAsync($$"""{"parts":[{"end":"{{subs}}","onCopy":"none"}]}""", h => h.Write("model/relations/sub-discounts.json",
+            Composition("01JPCR00000000000000000007", "subDiscounts", "01JPCN00000000000000000013", Discount, subs, Discount, "subDiscounts")));
+        using var _ = h;
+        await using var __ = store;
+        Assert.DoesNotContain((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ3047");
+
+        // Taking the discounts away makes their sub-discounts no part of an invoice, though the entry's end is still there.
+        var hasDiscounts = "01JPCR00000000000000000001";
+        var deleted = await store.DeleteAsync(hasDiscounts, store.Current!.GetDocument(hasDiscounts)!.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+
+        // The delete would leave the entry naming no part, so it is refused with that finding.
+        Assert.Equal(SaveOutcome.Invalid, deleted.Outcome);
+        Assert.Contains(deleted.Diagnostics, d => d.Rule == "MQ3047" && d.FilePath!.EndsWith("invoice.json", StringComparison.Ordinal));
     }
 
     [Fact]

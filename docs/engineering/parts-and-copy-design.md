@@ -30,18 +30,22 @@ template that doesn't read it renders as before.
   two-ended relation between two parts' entities, both ends of one type, the end with max 1 is the one pointed at; when both have max 1, the
   one with min 1; else the first end. A many-to-many link orders nothing. The order is worked out from the model, the same for every database.
   **Deleting deepest first is the order reversed;** there is no second list.
-- **A circle.** When to-one links go round in a circle (a line points at its tax group and the tax group at its main line), the earliest part
-  left in walk order goes next. That never puts a part before its owner. Each part on the circle has `in_cycle` true, a circle through the
-  record itself included: one of its links has to be written empty and set after the rows are in. No finding: a circle is legal when one link
-  is optional.
+- **A circle.** When to-one links go round in a circle (a line points at its tax group and the tax group at its main line), a part on the
+  circle goes next: the earliest in walk order of a circle that waits on nothing else. That never puts a part before its owner, nor a part
+  that only points at the circle (an adjustment that points at a tax group) before the circle. Each part on the circle has `in_cycle` true, a
+  circle through the record itself included: one of its links has to be written empty and set after the rows are in. No finding: a circle is
+  legal when one link is optional. A composition is never a link here, so a tree of parts of one kind is no circle.
+- **A limit.** A tree stops at 10,000 parts; only compositions with two owners (MQ3016) multiply the ways down that far. A copy block on such
+  an entity gets an MQ3047 warning, and its entries beyond the cut are not checked.
 - **A part of its own kind.** When a part's entity is already on the way down (a folder in a folder), it is listed once with `is_recursive`
   true, and its own parts are not listed again. Its rows point at rows of the same kind; the team orders them by their own links.
 - **Several types.** A composition whose **part end** has several types is left out, with what lies below it, and its end can't be named in
   a copy (MQ3047). A part of one kind keeps one meaning for `entity` and for its attribute entries. An **owner end** with several types is
   fine: the part is listed for each entity it covers, with no foreign key (that relation is stored as its mapping describes; read
   `relation.mappings[db].links`).
-- **Foreign keys.** `part.foreign_keys[db]` is the relation's foreign key in each database where it is stored with one, through bindings, a
-  mapping or projection: `columns` in the part's table, `referenced_columns` the owner's key. Its `end` is the part end, except for a
+- **Foreign keys.** `part.foreign_keys[db]` lists the relation's foreign keys in each database where it is stored with them, through
+  bindings, a mapping or projection, in table order: usually one, and one per table when each derived type of the part has a table of its
+  own. Each has `columns` in the part's table and `referenced_columns`, the owner's key. Its `end` is the part end, except for a
   one-to-one composition stored with the key in the owner's table, where the part is written before its owner. A composition stored through a
   link table has none.
 
@@ -52,7 +56,7 @@ template that doesn't read it renders as before.
 | `entity`, `owner` | The part's entity, and the entity that owns it here (the record's, or the parent part's) |
 | `parent`, `depth` | The part above (null at depth 1), and 1, 2, … |
 | `is_recursive`, `in_cycle` | As above |
-| `foreign_keys` | By database name, an `RForeignKey` |
+| `foreign_keys` | By database name, a list of `RForeignKey`, in table order |
 
 **Keys.** `entity.parts` keys on the files of the entity, each part's entity and their bases, their referrers, and the relations at them;
 reading a part records its relation's keys, which cover its storage.
@@ -73,7 +77,7 @@ reading a part records its relation's keys, which cover its storage.
 
 - **Fields.** `attributes`: `reset` (the attribute's default, else empty; on a column the database fills, the insert leaves it to the
   column's default, so the copy gets a fresh value), `clear` (empty), `original` (the id of the record it was copied from), `copy` (the
-  original's value; undoes a base's entry). `links`, for a to-one end the entity navigates to: `original` (the copy links to the record it was
+  original's value; undoes a base's entry). `links`, for a to-one end at the other side of a relation of the entity (it needs no navigation): `original` (the copy links to the record it was
   made from) or `copy`. Anything not listed is copied as it is.
 - **Parts.** One entry per kind of part, by its part end at any level: `all`, `one` with `choose`, or `none`. A part the copy leaves out leaves
   its own parts out too. A part kind's `attributes` take the same words, judged on the part's entity; `original` there is the original part's id.
@@ -95,17 +99,19 @@ for a kind with no entry, filled in with `all`). A kind left out is not listed, 
 
 | Rule | Sev | What |
 | --- | --- | --- |
-| MQ3045 | E | An attribute or link entry can't stand: an attribute the record doesn't hold, a derived one or a key attribute; two entries for one attribute or end; `clear` on a required attribute; a link end that is not a to-one end the entity navigates to, of a two-ended relation that is not a composition |
+| MQ3045 | E | An attribute or link entry can't stand: an attribute the record doesn't hold, a derived one or a key attribute; two entries for one attribute or end; `clear`, or `reset` with no default, on a required attribute; a link end that is not a to-one end at the other side of a two-ended relation of the entity that is not a composition (no navigation needed) |
 | MQ3046 | E | `original` can't hold the original's id: the key is not one attribute, the attribute holds a list or is not typed as the key is, or a link end's type doesn't cover the entity |
-| MQ3047 | E | A part entry can't stand: an end that is not a part end among the entity's parts (several types never is); two entries for one end; `one` without `choose`, `choose` beside `all` or `none`, both `condition` and `state`; `attributes` beside `none` |
+| MQ3047 | E | A part entry can't stand: an end that is not a part end among the entity's parts (several types never is); two entries for one end; `one` without `choose`, `choose` beside `all` or `none`, both `condition` and `state`; `attributes` beside `none`. A warning when the parts pass 10,000, with entries beyond them unchecked |
 | MQ3048 | E | A choice can't stand: a state not of a lifecycle that governs the part's entity, or a history or choice state; `latestBy` not an attribute of the part's entity, or one with no order |
 
 The condition is an expression site of the entity (site kind "part choice", only true chooses), so MQ3101 to MQ3113 type it against the part's
 attributes. It reads the part's own attributes only: no navigation, `now()`, `current_actor()`, `in_state` or `old`.
 
 Each rule points at its key in the entity's file (`/copy/parts/0/choose/latestBy`). Each block is checked on the entity that writes it; a
-derived entity holds what its bases hold. A relation or entity save checks every copy block again, since the parts depend on compositions the
-block doesn't name.
+derived entity holds what its bases hold. The parts depend on compositions and bases the block doesn't name, so a save or delete of a
+relation or entity checks again every block whose parts reach it, before or after the change; a save of a scalar type, process, stereotype or
+package checks every block (which lifecycle governs a part, the type of a key). What else an entry names (an attribute, an end, a state, an
+enum member in a condition) is a reference, so its holder's save checks the block as for any reference.
 
 ## 5. Decisions
 
@@ -121,9 +127,12 @@ block doesn't name.
 7. **The root's block is the one place to read.** A part's own `copy` block applies when the part is copied on its own, not as part of a whole.
 8. **`copy` on an entity that is itself a part is allowed.** Copying one line keeps its owner, as every link out of a copy does.
 9. **Key attributes are never listed.** A copy is a new record, and ids are made in too many ways for the model to say how.
-10. **`links` holds only `original` and `copy`.** Clearing a link out of the copy is not asked for; adding `clear` later is additive.
+10. **`links` holds only `original` and `copy`.** Clearing a link out of the copy is not asked for; adding `clear` later is additive. The end
+    needs no navigation: the record holds the link whether or not code walks it.
 11. **A circle of links is marked, not reported.** It is legal when one link is optional; `in_cycle` tells the template where to break it.
 12. **No helper renders copy SQL and no pack writes copy code** (decided before this design).
+13. **`reset` on a required attribute with no default is refused,** as `clear` is: both leave it empty. A column the database fills needs its
+    attribute to say a default (or a default expression) to be reset.
 
 ## 6. Deferred
 

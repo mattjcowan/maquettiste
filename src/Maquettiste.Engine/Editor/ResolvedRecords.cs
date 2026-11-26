@@ -137,8 +137,8 @@ public sealed record EntityRecord(string Id, string Kind, string Name, string? P
 /// <param name="Depth">1 for a part of the record itself, 2 for a part of a part, and so on.</param>
 /// <param name="IsRecursive">Whether the part's entity is already on the way down, so its own parts are not listed again.</param>
 /// <param name="InCycle">Whether the part's to-one links go round in a circle with other parts or the record.</param>
-/// <param name="ForeignKeys">Per database where the composition is stored with a foreign key, by database name, the key that links the part's
-/// rows to their owner's.</param>
+/// <param name="ForeignKeys">The foreign keys that link the part's rows to their owner's, by database name, then table: usually one per
+/// database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table of its own.</param>
 public sealed record PartRecord(string Id, string Relation, string OwnerEnd, string End, string Entity, string Owner, string? Parent, int Depth,
     bool IsRecursive, bool InCycle, IReadOnlyList<PartForeignKeyRecord> ForeignKeys);
 
@@ -1912,8 +1912,8 @@ public static class ResolvedRecords
 
         private PartRecord Part(RPart p) => new(p.Id, p.Relation.Id, p.OwnerEnd.Id, p.End.Id, p.Entity.Id, p.Owner.Id, p.Parent?.Id, p.Depth,
             p.IsRecursive, p.InCycle,
-            [.. p.ForeignKeys.OrderBy(k => k.Key, StringComparer.Ordinal).Select(k => new PartForeignKeyRecord(DatabaseId(k.Key), k.Value.Name, k.Value.End?.Id,
-                [.. k.Value.Columns.Select(c => c.Key)], k.Value.ReferencedTable.Key, [.. k.Value.ReferencedColumns.Select(c => c.Key)]))]);
+            [.. p.ForeignKeys.OrderBy(k => k.Key, StringComparer.Ordinal).SelectMany(k => k.Value.Select(fk => new PartForeignKeyRecord(DatabaseId(k.Key), fk.Name,
+                fk.End?.Id, [.. fk.Columns.Select(c => c.Key)], fk.ReferencedTable.Key, [.. fk.ReferencedColumns.Select(c => c.Key)])))]);
 
         private static CopyRecord Copy(RCopy c) => new(
             [.. c.Attributes.Select(CopyAttribute)],

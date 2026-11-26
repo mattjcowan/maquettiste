@@ -332,7 +332,7 @@
             "x-order": ["end", "onCopy"],
             "properties": {
               "end": {
-                "description": "The id of a to-one end the entity navigates to, of a two-ended relation that is not a composition (MQ3045).",
+                "description": "The id of a to-one end at the other side of a two-ended relation of the entity, not a composition (MQ3045); it needs no navigation.",
                 "$ref": "common.json#/$defs/id"
               },
               "onCopy": {
@@ -639,7 +639,7 @@
           "$ref": "common.json#/$defs/id"
         },
         "onCopy": {
-          "description": "reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty, never on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.",
+          "description": "reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty; neither clear, nor reset without a default, on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.",
           "enum": ["copy", "reset", "clear", "original"]
         }
       },

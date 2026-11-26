@@ -50,12 +50,13 @@ public sealed class RPart : ITrackedValue
     public bool InCycle { get; internal set; }
 
     /// <summary>
-    /// By database name, the foreign key that links the part's rows to their owner's, in each database where the composition is stored with
-    /// one (through bindings, a mapping or projection): its <c>columns</c> in the part's table and its <c>referenced_columns</c>, the owner's
-    /// key. Its <c>end</c> is the part end, except for a one-to-one composition stored with the key in the owner's table, where the part is
-    /// written before its owner. A composition stored through a link table, or with several types at the owner end, has none here.
+    /// By database name, the foreign keys that link the part's rows to their owner's, in each database where the composition is stored with
+    /// them (through bindings, a mapping or projection), in table order: usually one, and one per table when each derived type of the part
+    /// has a table of its own. Each has its <c>columns</c> in the part's table and its <c>referenced_columns</c>, the owner's key. Its
+    /// <c>end</c> is the part end, except for a one-to-one composition stored with the key in the owner's table, where the part is written
+    /// before its owner. A composition stored through a link table, or with several types at the owner end, has none here.
     /// </summary>
-    public IReadOnlyDictionary<string, RForeignKey> ForeignKeys { get; internal set; } = FrozenDictionary<string, RForeignKey>.Empty;
+    public IReadOnlyDictionary<string, IReadOnlyList<RForeignKey>> ForeignKeys { get; internal set; } = FrozenDictionary<string, IReadOnlyList<RForeignKey>>.Empty;
 
     IReadOnlyList<string> ITrackedValue.Dependencies => Relation.Dependencies;
 }
@@ -109,7 +110,7 @@ public sealed class RCopyAttribute
 /// <summary>What a copy's link through one to-one relation end is (parts-and-copy-design.md).</summary>
 public sealed class RCopyLink
 {
-    /// <summary>The end the entity navigates to.</summary>
+    /// <summary>The end at the other side of the relation from the entity.</summary>
     public REnd End { get; internal set; } = null!;
 
     /// <summary><c>original</c>: the copy links to the record it was copied from.</summary>
