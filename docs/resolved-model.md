@@ -155,6 +155,8 @@ A resolved entity: its attributes resolved (inherited ones included and marked),
 | `checks` | list of [entityCheckRecord](#entitycheckrecord) | left out when not set | The entity checks, the root base's first; null, and left out of the JSON, for an entity without any. |
 | `lifecycles` | list of string | left out when not set | The ids of the lifecycles that govern the entity or a base of it, by name then id; null, and left out of the JSON, unless one of them lists its subjects in `subjects`. |
 | `revisions` | [revisionsRecord](#revisionsrecord) | left out when not set | The entity's revisions merged through its bases; null, and left out of the JSON, when neither the entity nor a base has a revisions block. |
+| `parts` | list of [partRecord](#partrecord) | left out when not set | The parts of a whole record of the entity at every level down, in an order safe for foreign keys; null, and left out of the JSON, for an entity without parts. |
+| `copy` | [copyRecord](#copyrecord) | left out when not set | What a copy of a whole record carries over, merged through the bases; null, and left out of the JSON, when neither the entity nor a base has a copy block. |
 
 ### attributeRecord
 
@@ -496,6 +498,90 @@ What a revise does to the links through a relation end the entity reaches.
 | `end` | string | never | The relation end's id. |
 | `onRevise` | string | never | `stay`, `move` or `duplicate`. |
 | `from` | string | never | The id of the entity whose entry says it. |
+
+### partRecord
+
+One part of a whole record: records of an entity owned through a composition, at a depth under a parent part; other elements by id.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | never | The part's path from the record: the ids of the part ends on the way down, joined by `/`. |
+| `relation` | string | never | The composition's id. |
+| `ownerEnd` | string | never | The id of the composition's owner end, at the owner. |
+| `end` | string | never | The id of the composition's part end, at the part. |
+| `entity` | string | never | The part entity's id. |
+| `owner` | string | never | The id of the entity that owns the part here: the record's entity, or the parent part's. |
+| `parent` | string | can be null | The parent part's `partRecord.id`; null for a part of the record itself. |
+| `depth` | integer | never | 1 for a part of the record itself, 2 for a part of a part, and so on. |
+| `isRecursive` | boolean | never | Whether the part's entity is already on the way down, so its own parts are not listed again. |
+| `inCycle` | boolean | never | Whether the part's to-one links go round in a circle with other parts or the record. |
+| `foreignKeys` | list of [partForeignKeyRecord](#partforeignkeyrecord) | never | The foreign keys that link the part's rows to their owner's, by database name, then in the database's table order: usually one per database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table of its own. |
+
+### partForeignKeyRecord
+
+The foreign key that links a part's rows to their owner's in one database.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `database` | string | never | The database's id. |
+| `name` | string | never | The foreign key's name. |
+| `table` | string | never | The key of the table that holds the foreign key. |
+| `end` | string | can be null | The id of the relation end whose table holds the key: the part end, except for a one-to-one composition stored with the key in the owner's table; null when the key records none. |
+| `columns` | list of string | never | The keys of the key's columns in the table that holds it. |
+| `referencedTable` | string | never | The key of the table the key refers to. |
+| `referencedColumns` | list of string | never | The keys of the columns the key refers to. |
+
+### copyRecord
+
+What a copy of a whole record carries over, merged through the entity's bases; other elements by id.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `attributes` | list of [copyAttributeRecord](#copyattributerecord) | never | Each attribute the copy doesn't take as it is. |
+| `links` | list of [copyLinkRecord](#copylinkrecord) | never | Each to-one link the copy doesn't take as it is. |
+| `parts` | list of [copyPartRecord](#copypartrecord) | never | Each part the copy carries over, in the order of the entity's parts; a kind with no entry is filled in with `all`. |
+
+### copyAttributeRecord
+
+What a copy's value of one attribute is.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `attribute` | string | never | The attribute's id. |
+| `onCopy` | string | never | `reset`, `clear` or `original`. |
+| `from` | string | never | The id of the entity whose block says it. |
+
+### copyLinkRecord
+
+What a copy's link through one to-one relation end is.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `end` | string | never | The relation end's id. |
+| `onCopy` | string | never | `original`. |
+| `from` | string | never | The id of the entity whose block says it. |
+
+### copyPartRecord
+
+Which parts of one kind a copy carries over.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `part` | string | never | The part's id, as in the entity's parts. |
+| `onCopy` | string | never | `all` or `one`. |
+| `choose` | [copyChoiceRecord](#copychoicerecord) | can be null | With `one`, how the part is chosen; else null. |
+| `attributes` | list of [copyAttributeRecord](#copyattributerecord) | never | Each attribute of the part the copy doesn't take as it is. |
+| `from` | string | can be null | The id of the entity whose block says it; null for a kind with no entry. |
+
+### copyChoiceRecord
+
+How a copy chooses one part under each copied owner.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `condition` | [expressionRecord](#expressionrecord) | can be null | The condition on the part's attributes, or null. |
+| `state` | string | can be null | The id of the state the part is in, or null. |
+| `latestBy` | string | can be null | The id of the attribute whose greatest value is the latest, or null. |
 
 ## Scope relations
 

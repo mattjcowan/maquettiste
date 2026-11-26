@@ -680,6 +680,38 @@
     "canBeOff": true
   },
   {
+    "id": "MQ3045",
+    "defaultSeverity": "error",
+    "description": "A copy's attribute or link entry can't stand: an attribute the record doesn't hold (its own, an inherited one or one from a stereotype it carries), a derived one or one of its key attributes, since a copy's key is always new; two entries for one attribute or end; clear, or reset with no default, on a required attribute; a link end that is not a to-one end at the other side of a two-ended relation of the entity that is not a composition (it needs no navigation). Parts' attribute entries are judged on the part's entity.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3046",
+    "defaultSeverity": "error",
+    "description": "A copy's original can't hold the id of the record the copy was made from: the record's key is not one attribute, the attribute holds a list or is not typed as the key is, or a link end's type doesn't cover the entity.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3047",
+    "defaultSeverity": "error",
+    "description": "A copy's part entry can't stand: an end that is not the part end of a composition among the entity's parts at some level (a part end with several types never is); two entries for one end; one without choose, choose beside all or none, or choose with both a condition and a state; attributes beside none. A warning when the entity's parts pass 10,000 and are listed only that far, so entries beyond are not checked.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3048",
+    "defaultSeverity": "error",
+    "description": "A copy's choice of one part can't stand: a state that is not a state of a lifecycle that governs the part's entity, or a history or choice state; latestBy that is not an attribute of the part's entity, or one with no order (not a number, a text, a date or a time) or holding a list.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
     "id": "MQ3101",
     "defaultSeverity": "error",
     "description": "An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands.",

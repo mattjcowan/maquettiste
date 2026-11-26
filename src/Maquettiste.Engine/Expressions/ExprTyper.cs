@@ -155,6 +155,7 @@ public static class ExprTyper
         ExprSiteKind.Right => "right's condition",
         ExprSiteKind.Trigger => "trigger point's condition",
         ExprSiteKind.Approval => scope.StageCondition ? "stage's when" : "named signature's when",
+        ExprSiteKind.PartChoice => "part choice",
         _ => "rule condition",
     };
 

@@ -49,6 +49,12 @@ public enum ExprSiteKind
     /// context, <c>now()</c> and <c>in_state</c>; never <c>current_actor()</c>, since nobody acts when a round starts, a payload or <c>old</c>.
     /// </summary>
     Approval,
+
+    /// <summary>
+    /// How a copy chooses one part of a kind (parts-and-copy-design.md): only true chooses, as at a guard. It reads the part's own attributes
+    /// only: no navigation, <c>now()</c>, <c>current_actor()</c>, <c>in_state</c> or <c>old</c>.
+    /// </summary>
+    PartChoice,
 }
 
 /// <summary>

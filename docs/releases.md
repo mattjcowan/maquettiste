@@ -7,7 +7,8 @@ one.
 
 ## 0.27.0 (not released yet)
 
-A base entity and its subtypes can share one table through their bindings.
+A base entity and its subtypes can share one table through their bindings, and templates can read the parts of a whole
+record and what a copy of it carries over.
 
 - **Subtypes in one table.** A base entity's binding names the type column once, with the new optional key
   `discriminatorColumn`. Every derived entity's binding to the same database then uses that column. Its type code is its
@@ -28,10 +29,24 @@ A base entity and its subtypes can share one table through their bindings.
 - **Relation ends with several types use it.** When the targets of such an end share one table and only a type column
   tells their rows apart, a link picks each target's rows by its code, and MQ4118 no longer says the rows are not told
   apart.
+- **The parts of a whole record.** Templates read `entity.parts`: an entity's composition parts at every level down, such as an
+  invoice's lines and each line's discounts. Each part says its composition, its owner, the part above it and how deep it is, and per
+  database the foreign key that links it to its owner. The list is in an order that is safe for foreign keys: an owner before its
+  parts, and a part after the parts it points at. Take it backwards to delete. Parts whose links go round in a circle say
+  `in_cycle`. A composition whose part end has several types is not listed.
+- **What a copy carries over.** An entity may describe a copy of a whole record in a `copy` block: per field, `reset`, `clear` or
+  `original` (the id of the record it was copied from, for a "copied from" field or link); per kind of part, `all`, `one` (chosen by
+  a condition or a lifecycle state, else the latest by a field) or `none`. Links inside the copy point at the copies; links out stay
+  as they were. Templates read `entity.copy`, merged through the bases, and write their own copy statements. New rules MQ3045 to
+  MQ3048 check the block. See [the user guide](user-guide.md#the-parts-of-a-record-and-what-a-copy-carries-over).
 
-**When you update:** nothing changes until a binding names `discriminatorColumn`. A table whose subtypes are told apart
-by constants keeps working; to move it over, put `discriminatorColumn` on the base's binding and replace each derived
-binding's constant on that column with its `discriminatorValue`.
+**When you update:**
+
+- Nothing changes until a binding names `discriminatorColumn`. A table whose subtypes are told apart by constants keeps
+  working. To move it over, put `discriminatorColumn` on the base's binding and replace each derived binding's constant on
+  that column with its `discriminatorValue`.
+- The resolved model's entity records gain `parts` for each entity that owns a composition. Generated output stays the
+  same until a template reads the new members.
 
 ## 0.26.1 (2026-11-26)
 

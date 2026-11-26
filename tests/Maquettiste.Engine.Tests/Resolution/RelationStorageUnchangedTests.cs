@@ -81,7 +81,7 @@ public sealed class RelationStorageUnchangedTests
         }
 
         foreach (var scope in new[] { "entities", "relations" })
-            Json(scope, Engine.ResolvedRecords.Entries(model, scope, null).Select(e => e.Project()).ToList());
+            text.Append(scope).Append(':').Append(RelationTypesUnchangedTests.WithoutParts(Engine.ResolvedRecords.Entries(model, scope, null).Select(e => e.Project()).ToList())).Append('\n');
         foreach (var database in model.Databases)
             Json("database " + database.Name, DatabaseViews.From(database));
         return text.ToString();

@@ -61,7 +61,7 @@ The model keeps two keys on a subject entry for the last items, but does not acc
 | | Lifecycles on custom kinds and tables, not only entities | yes (the owner) | Later | [Design, section 12](lifecycle-design.md#12-what-comes-next). Needs the `when` key. |
 | | One of several lifecycles per object | yes (the owner) | Later | [Design, section 2 and decision on subjects](lifecycle-design.md#2-what-the-owner-said). Adds a `when` condition to the subject entry; an entry without one keeps its meaning. |
 | | Rights on types with no lifecycle | yes (the owner) | Later | [Rights design, decision 8](rights-design.md). The owner put it later on 2026-11-06. Until then a type with no lifecycle has no rights. |
-| | Revisions, the rest: reading the revision in conditions (`is_latest`, `at_revision`), what a copy carries over, an edit that revises by itself, links in a run | yes (the owner) | Later | What revisions (0.23.0) left out; see its row above and [the design](revisions-design.md). |
+| | Revisions, the rest: reading the revision in conditions (`is_latest`, `at_revision`), what a copy carries over, an edit that revises by itself, links in a run | yes (the owner) | Later; what a copy carries over: covered, built in 0.27.0 | What revisions (0.23.0) left out; see its row above and [the design](revisions-design.md). What a copy carries over is the `copy` block of [the parts and copy design](parts-and-copy-design.md). |
 
 ## Phase 1: built in 0.11.0
 
@@ -250,6 +250,14 @@ Built since:
   base is saved only when its binding writes, its insert then writes its own code, and its updates and deletes keep the
   same codes. A field on the type column is read only. A derived entity in its base's table may not name its own column.
   MQ4122 to MQ4126 check the column and the codes. Requested.
+- **The parts of a whole record (0.27.0).** `entity.parts` lists each entity's composition parts at every level, with the
+  owning end, the parent part, an order safe for foreign keys (reversed for deletes; a circle of links marked `in_cycle`)
+  and per database the foreign key to the owner. A part end with several types is left out. [The design](parts-and-copy-design.md).
+  Requested.
+- **What a copy carries over (0.27.0).** An entity's optional `copy` block: per field `reset`, `clear` or `original`; per
+  kind of part `all`, `one` (by a condition or a state, else the latest by a field) or `none`; links inside the copy
+  pointed at the copies, links out kept. `entity.copy` resolves it for templates; MQ3045 to MQ3048. Scenarios don't run
+  copies yet. Covers "Revisions, the rest: what a copy carries over". [The design](parts-and-copy-design.md). Requested.
 
 Left:
 
@@ -260,14 +268,9 @@ Left:
 Requested on 2026-11-26; the owner approved the order and the decisions the same day. The requesting team answered the
 design questions on 2026-11-26; their answers are folded in below.
 
-- **The parts of a whole record.** Build next. The resolved model lists each entity's composition parts at every level,
-  with the owning end, the linking columns and a foreign-key-safe order, so templates stop rebuilding the tree. Deleting
-  deepest first is that order reversed.
-- **What a copy carries over.** Build next, designed with the parts above. On the root entity: a copy choice per field
-  (`reset`, `clear`, or set to the original's id, for a "copied from" link), all parts or one chosen part (by a condition
-  or a state, else the latest by a field), links inside the copy pointed at the copies, links out kept. Settled: a part
-  that is not copied leaves its own parts out too; `reset` on a column the database fills means the insert leaves it to
-  the column's default, so the copy gets a fresh value. The same item as "Revisions, the rest: what a copy carries over".
+- **The parts of a whole record** and **what a copy carries over.** Built in 0.27.0; see "Built since" above. Settled: a
+  part that is not copied leaves its own parts out too; `reset` on a column the database fills means the insert leaves it
+  to the column's default, so the copy gets a fresh value.
 - **Queries stop naming entities.** After the parts above. A query's `entity` (its rows' shape) and `collections` (an
   entity's lists filled per relation end) predate the decision below that the database knows no entities, and were
   never brought in line with it. An entity already reaches a query through its binding's `source`, which gives the same

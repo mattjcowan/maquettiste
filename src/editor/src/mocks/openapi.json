@@ -14624,6 +14624,17 @@
               "revisions": {
                 "description": "What revisions of the entity look like and what a revise does to an instance (revisions-design.md section 8), merged\nthrough its bases: levels, separator and bound attribute from the nearest statement, entries added to the bases' and\nreplacing a base's entry for the same lifecycle, attribute or end. Absent when neither the entity nor a base has a\nrevisions block.\n",
                 "$ref": "#/components/schemas/RevisionsRecord"
+              },
+              "parts": {
+                "type": "array",
+                "description": "The parts of a whole record of the entity at every level down (parts-and-copy-design.md), in an order safe for foreign\nkeys: owners before their parts, a part after the parts its to-one links point at. Absent for an entity without parts.\n",
+                "items": {
+                  "$ref": "#/components/schemas/PartRecord"
+                }
+              },
+              "copy": {
+                "description": "What a copy of a whole record carries over (parts-and-copy-design.md), merged through the bases. Absent when neither the\nentity nor a base has a copy block.\n",
+                "$ref": "#/components/schemas/CopyRecord"
               }
             }
           }
@@ -14687,6 +14698,307 @@
             "items": {
               "$ref": "#/components/schemas/RevisionLinkRecord"
             }
+          }
+        }
+      },
+      "PartRecord": {
+        "x-engine-record": "Maquettiste.Engine.PartRecord",
+        "description": "One part of a whole record (parts-and-copy-design.md), owned through a composition; other elements by id.",
+        "type": "object",
+        "required": [
+          "id",
+          "relation",
+          "ownerEnd",
+          "end",
+          "entity",
+          "owner",
+          "parent",
+          "depth",
+          "isRecursive",
+          "inCycle",
+          "foreignKeys"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The part's path from the record, the ids of the part ends on the way down joined by `/`."
+          },
+          "relation": {
+            "type": "string",
+            "description": "The composition's id."
+          },
+          "ownerEnd": {
+            "type": "string",
+            "description": "The id of the composition's owner end, at the owner."
+          },
+          "end": {
+            "type": "string",
+            "description": "The id of the composition's part end, at the part."
+          },
+          "entity": {
+            "type": "string",
+            "description": "The part entity's id."
+          },
+          "owner": {
+            "type": "string",
+            "description": "The id of the entity that owns the part here, the record's or the parent part's."
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The parent part's id; null for a part of the record itself."
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 for a part of the record itself, 2 for a part of a part, and so on."
+          },
+          "isRecursive": {
+            "type": "boolean",
+            "description": "Whether the part's entity is already on the way down, so its own parts are not listed again."
+          },
+          "inCycle": {
+            "type": "boolean",
+            "description": "Whether the part's to-one links go round in a circle with other parts or the record."
+          },
+          "foreignKeys": {
+            "type": "array",
+            "description": "The foreign keys that link the part's rows to their owner's, by database name, then in the database's table order; one per table when each derived type of the part has its own table.",
+            "items": {
+              "$ref": "#/components/schemas/PartForeignKeyRecord"
+            }
+          }
+        }
+      },
+      "PartForeignKeyRecord": {
+        "x-engine-record": "Maquettiste.Engine.PartForeignKeyRecord",
+        "description": "The foreign key that links a part's rows to their owner's in one database (parts-and-copy-design.md).",
+        "type": "object",
+        "required": [
+          "database",
+          "name",
+          "table",
+          "end",
+          "columns",
+          "referencedTable",
+          "referencedColumns"
+        ],
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "The database's id."
+          },
+          "name": {
+            "type": "string",
+            "description": "The foreign key's name."
+          },
+          "table": {
+            "type": "string",
+            "description": "The key of the table that holds the foreign key."
+          },
+          "end": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the relation end whose table holds the key; the part end, except for a one-to-one composition stored with the key in the owner's table."
+          },
+          "columns": {
+            "type": "array",
+            "description": "The keys of the key's columns in the table that holds it.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "referencedTable": {
+            "type": "string",
+            "description": "The key of the table the key refers to."
+          },
+          "referencedColumns": {
+            "type": "array",
+            "description": "The keys of the columns the key refers to.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CopyRecord": {
+        "x-engine-record": "Maquettiste.Engine.CopyRecord",
+        "description": "What a copy of a whole record carries over, merged through the entity's bases (parts-and-copy-design.md); other elements by id.",
+        "type": "object",
+        "required": [
+          "attributes",
+          "links",
+          "parts"
+        ],
+        "properties": {
+          "attributes": {
+            "type": "array",
+            "description": "Each attribute the copy doesn't take as it is.",
+            "items": {
+              "$ref": "#/components/schemas/CopyAttributeRecord"
+            }
+          },
+          "links": {
+            "type": "array",
+            "description": "Each to-one link the copy doesn't take as it is.",
+            "items": {
+              "$ref": "#/components/schemas/CopyLinkRecord"
+            }
+          },
+          "parts": {
+            "type": "array",
+            "description": "Each part the copy carries over, in the order of the entity's parts; a kind with no entry is filled in with `all` and `from` null.",
+            "items": {
+              "$ref": "#/components/schemas/CopyPartRecord"
+            }
+          }
+        }
+      },
+      "CopyAttributeRecord": {
+        "x-engine-record": "Maquettiste.Engine.CopyAttributeRecord",
+        "description": "What a copy's value of one attribute is (parts-and-copy-design.md).",
+        "type": "object",
+        "required": [
+          "attribute",
+          "onCopy",
+          "from"
+        ],
+        "properties": {
+          "attribute": {
+            "type": "string",
+            "description": "The attribute's id."
+          },
+          "onCopy": {
+            "type": "string",
+            "description": "`reset`: the attribute's default, else empty; `clear`: empty; `original`: the id of the record copied from.",
+            "enum": [
+              "reset",
+              "clear",
+              "original"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "description": "The id of the entity whose block says it."
+          }
+        }
+      },
+      "CopyLinkRecord": {
+        "x-engine-record": "Maquettiste.Engine.CopyLinkRecord",
+        "description": "What a copy's link through one to-one relation end is (parts-and-copy-design.md).",
+        "type": "object",
+        "required": [
+          "end",
+          "onCopy",
+          "from"
+        ],
+        "properties": {
+          "end": {
+            "type": "string",
+            "description": "The relation end's id."
+          },
+          "onCopy": {
+            "type": "string",
+            "description": "`original`: the copy links to the record it was copied from.",
+            "enum": [
+              "original"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "description": "The id of the entity whose block says it."
+          }
+        }
+      },
+      "CopyPartRecord": {
+        "x-engine-record": "Maquettiste.Engine.CopyPartRecord",
+        "description": "Which parts of one kind a copy carries over (parts-and-copy-design.md).",
+        "type": "object",
+        "required": [
+          "part",
+          "onCopy",
+          "choose",
+          "attributes",
+          "from"
+        ],
+        "properties": {
+          "part": {
+            "type": "string",
+            "description": "The part's id, as in the entity's parts."
+          },
+          "onCopy": {
+            "type": "string",
+            "description": "`all`: every part under each copied owner; `one`: one part, as `choose` says.",
+            "enum": [
+              "all",
+              "one"
+            ]
+          },
+          "choose": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CopyChoiceRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With `one`, how the part is chosen; else null."
+          },
+          "attributes": {
+            "type": "array",
+            "description": "Each attribute of the part the copy doesn't take as it is.",
+            "items": {
+              "$ref": "#/components/schemas/CopyAttributeRecord"
+            }
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the entity whose block says it; null for a kind with no entry."
+          }
+        }
+      },
+      "CopyChoiceRecord": {
+        "x-engine-record": "Maquettiste.Engine.CopyChoiceRecord",
+        "description": "How a copy chooses one part under each copied owner (parts-and-copy-design.md).",
+        "type": "object",
+        "required": [
+          "condition",
+          "state",
+          "latestBy"
+        ],
+        "properties": {
+          "condition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExpressionRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The condition on the part's attributes, or null."
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the state the part is in, or null."
+          },
+          "latestBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the attribute whose greatest value is the latest, or null."
           }
         }
       },
@@ -32440,6 +32752,35 @@
         ],
         "additionalProperties": false
       },
+      "copyAttribute": {
+        "title": "Copy attribute entry",
+        "description": "What a copy's value of one attribute is.",
+        "type": "object",
+        "x-order": [
+          "attribute",
+          "onCopy"
+        ],
+        "properties": {
+          "attribute": {
+            "description": "The id of an attribute the record holds: its own, an inherited one or one from a stereotype it carries; never a key or derived attribute (MQ3045).",
+            "$ref": "#/components/schemas/id"
+          },
+          "onCopy": {
+            "description": "reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty; neither clear, nor reset without a default, on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.",
+            "enum": [
+              "copy",
+              "reset",
+              "clear",
+              "original"
+            ]
+          }
+        },
+        "required": [
+          "attribute",
+          "onCopy"
+        ],
+        "additionalProperties": false
+      },
       "entity": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Entity",
@@ -32470,6 +32811,7 @@
           "checks",
           "attributes",
           "revisions",
+          "copy",
           "bindings",
           "properties",
           "generation",
@@ -32817,6 +33159,123 @@
             "minProperties": 1,
             "additionalProperties": false
           },
+          "copy": {
+            "title": "Copy",
+            "description": "What a copy of a whole record of this entity carries over (parts-and-copy-design.md): a copy is a new record made from an existing one, with copies of its composition parts. Per attribute and to-one link, and per kind of part, what the copy gets; anything not listed is copied as it is. Links inside the copy point at the copies; links out of the copy stay as they were. A derived entity inherits its bases' block, a nearer entry replacing a farther one for the same attribute or end.",
+            "type": "object",
+            "x-order": [
+              "attributes",
+              "links",
+              "parts"
+            ],
+            "properties": {
+              "attributes": {
+                "description": "What the copy's value of each listed attribute is. An attribute not listed is copied as it is.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/copyAttribute"
+                }
+              },
+              "links": {
+                "description": "What the copy's link through each listed to-one relation end is. An end not listed keeps the original's link.",
+                "type": "array",
+                "items": {
+                  "title": "Copy link entry",
+                  "type": "object",
+                  "x-order": [
+                    "end",
+                    "onCopy"
+                  ],
+                  "properties": {
+                    "end": {
+                      "description": "The id of a to-one end at the other side of a two-ended relation of the entity, not a composition (MQ3045); it needs no navigation.",
+                      "$ref": "#/components/schemas/id"
+                    },
+                    "onCopy": {
+                      "description": "original: the copy links to the record it was copied from (MQ3046, the end's type must cover the entity); copy: the original's link, so a derived entity can undo a base's entry.",
+                      "enum": [
+                        "copy",
+                        "original"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "end",
+                    "onCopy"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "parts": {
+                "description": "Which parts of each listed kind the copy carries over. A kind not listed is copied whole. A part the copy leaves out leaves its own parts out too.",
+                "type": "array",
+                "items": {
+                  "title": "Copy part entry",
+                  "type": "object",
+                  "x-order": [
+                    "end",
+                    "onCopy",
+                    "choose",
+                    "attributes"
+                  ],
+                  "properties": {
+                    "end": {
+                      "description": "The id of the part end of a composition among the entity's parts, at any level (MQ3047).",
+                      "$ref": "#/components/schemas/id"
+                    },
+                    "onCopy": {
+                      "description": "all: every part; one: one part under each copied owner, chosen as choose says; none: no part of the kind.",
+                      "enum": [
+                        "all",
+                        "one",
+                        "none"
+                      ]
+                    },
+                    "choose": {
+                      "title": "Copy choice",
+                      "description": "With one only (MQ3047): the part that meets the condition or is in the state, the latest by latestBy among several; when none does, the latest of all by latestBy. At least one key, and not both condition and state.",
+                      "type": "object",
+                      "x-order": [
+                        "condition",
+                        "state",
+                        "latestBy"
+                      ],
+                      "properties": {
+                        "condition": {
+                          "description": "A condition on the part's own attributes: the part for which it is true.",
+                          "$ref": "#/components/schemas/expr"
+                        },
+                        "state": {
+                          "description": "The id of a state of a lifecycle that governs the part's entity: the part in that state (MQ3048).",
+                          "$ref": "#/components/schemas/id"
+                        },
+                        "latestBy": {
+                          "description": "The id of an attribute of the part with an order (a number, a text, a date or a time): the latest is the one with the greatest value (MQ3048).",
+                          "$ref": "#/components/schemas/id"
+                        }
+                      },
+                      "minProperties": 1,
+                      "additionalProperties": false
+                    },
+                    "attributes": {
+                      "description": "What the copied parts' value of each listed attribute is. An attribute not listed is copied as it is.",
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/copyAttribute"
+                      }
+                    }
+                  },
+                  "required": [
+                    "end",
+                    "onCopy"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "minProperties": 1,
+            "additionalProperties": false
+          },
           "bindings": {
             "description": "How the entity reads from and writes to databases, one binding per database (erratum E43). A binding wins over any projection of the entity into its database.",
             "type": "array",
@@ -33107,7 +33566,38 @@
           "id",
           "name"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "$defs": {
+          "copyAttribute": {
+            "title": "Copy attribute entry",
+            "description": "What a copy's value of one attribute is.",
+            "type": "object",
+            "x-order": [
+              "attribute",
+              "onCopy"
+            ],
+            "properties": {
+              "attribute": {
+                "description": "The id of an attribute the record holds: its own, an inherited one or one from a stereotype it carries; never a key or derived attribute (MQ3045).",
+                "$ref": "#/components/schemas/id"
+              },
+              "onCopy": {
+                "description": "reset: the attribute's default, else empty (on a column the database fills, the database's default, so the copy gets a fresh value); clear: empty; neither clear, nor reset without a default, on a required attribute (MQ3045); original: the id of the record it was copied from (MQ3046); copy: the original's value, so a derived entity can undo a base's entry.",
+                "enum": [
+                  "copy",
+                  "reset",
+                  "clear",
+                  "original"
+                ]
+              }
+            },
+            "required": [
+              "attribute",
+              "onCopy"
+            ],
+            "additionalProperties": false
+          }
+        }
       },
       "value-object": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

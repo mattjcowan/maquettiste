@@ -231,6 +231,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
                     RevisionRules.Validate(context, report);
+                    CopyRules.Validate(context, report);
                     OperationRules.Validate(context, report);
                     ExpressionRules.Validate(context, report);
                     CustomRules.Validate(context, report);
@@ -659,6 +660,14 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             yield return peer;
 
         foreach (var id in RevisionPeers(model, element))
+        {
+            if (model.GetDocument(id) is { } peer)
+                yield return peer;
+        }
+
+        // A copy block's entries depend on the compositions and bases on the way down to a part, which it doesn't reference
+        // (parts-and-copy-design.md): the blocks whose parts reach the change are checked again; the store adds those they reached before it.
+        foreach (var id in CopyRules.Peers(model, element))
         {
             if (model.GetDocument(id) is { } peer)
                 yield return peer;

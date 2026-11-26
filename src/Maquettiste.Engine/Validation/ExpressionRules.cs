@@ -118,6 +118,20 @@ internal static class ExprSites
                     });
                 }
 
+                // A copy's choice of one part reads the part's own attributes (parts-and-copy-design.md); it is found by its entry's end.
+                var parts = entity.Copy?.Parts ?? [];
+                for (var i = 0; i < parts.Count; i++)
+                {
+                    if (parts[i].Choose?.Condition is not { } condition)
+                        continue;
+                    var part = PartTree.EndOf(model, parts[i].End)?.End.SingleEntity is { } partId ? model.Get<Entity>(partId) : null;
+                    sites.Add(new ExprSite(Ptr.At("/copy/parts", i) + "/choose/condition", condition, false, entity.Id, ExprSiteKind.PartChoice,
+                        s => { if (part is not null) Attributes(s, model, part); })
+                    {
+                        Key = PartTree.ChoiceKey(parts[i].End),
+                    });
+                }
+
                 break;
             case Operation operation:
                 var subject = operation.Guards.Count > 0 ? SubjectIds(model, operation) : null;

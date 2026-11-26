@@ -3756,11 +3756,84 @@ they are, and its note says what the type's links would do.
 them. `csharp-dapper` writes nothing that runs for revisions. It skips its generated test of a scenario that revises. Both packs
 change only when a block exists.
 
-**What waits.** Readings in conditions (`is_latest`, `at_revision`), what a copy carries over, an edit that revises by itself, a limit
-to a letters or numbers level, links on a revise in a run, and saves (versions inside a revision). Each can be added later without
-changing a file.
+**What waits.** Readings in conditions (`is_latest`, `at_revision`), an edit that revises by itself, a limit to a letters or numbers
+level, links on a revise in a run, and saves (versions inside a revision). Each can be added later without changing a file. What a
+copy carries over has its own block; see the next section.
 
 **Upgrading.** An older engine refuses the new keys. The file format version stays 1.
+
+### The parts of a record, and what a copy carries over
+
+**The parts of a record.** A composition makes one record the whole and another its part: an invoice owns its lines. Templates often
+need the whole tree, for example to write the rows of an invoice and its lines in the right order. `entity.parts` gives it, so a
+template doesn't have to build it from the relations. For each entity it lists the parts at every level down: the invoice's lines,
+then each line's discounts, and so on. Each part says:
+
+- the composition, its owner end and its part end (`relation`, `owner_end`, `end`);
+- the part's entity and the entity that owns it here (`entity`, `owner`);
+- the part above it and how deep it is (`parent`, `depth`; 1 for the invoice's own parts);
+- per database, the foreign keys that link a part to its owner (`foreign_keys["main"]`, usually one; one per table when each kind of
+  part has a table of its own): each has its `columns` in the part's table and the owner's key it points at (`referenced_columns`).
+
+The list is in an order that is safe for foreign keys: an owner before its parts, and a part after the parts it points at. If an
+invoice owns tax groups and each line points at one tax group, the tax groups come before the lines. To delete, take the list
+backwards: deepest first. When links go round in a circle (a line points at its tax group, and the tax group at its main line), no
+order can put every part after the parts it points at. Those parts say `in_cycle`, and one of the links has to be written empty and
+set afterwards. A part of its own kind (a folder in a folder) is listed once and says `is_recursive`. A composition whose part end has
+several types is not listed, nor what lies below it.
+
+**What a copy carries over.** A copy is a new record made from an existing one, with copies of its parts: "copy this invoice". The
+`copy` block on an entity says what the copy gets. It is optional; without it the model says nothing about copies. In the file:
+
+```json
+"copy": {
+  "attributes": [
+    { "attribute": "<id of status>", "onCopy": "reset" },
+    { "attribute": "<id of notes>", "onCopy": "clear" },
+    { "attribute": "<id of copiedFrom>", "onCopy": "original" }
+  ],
+  "parts": [
+    { "end": "<id of schedules>", "onCopy": "one", "choose": { "condition": { "text": "current = true" }, "latestBy": "<id of version>" } },
+    { "end": "<id of discounts>", "onCopy": "none" },
+    { "end": "<id of lines>", "onCopy": "all", "attributes": [ { "attribute": "<id of description>", "onCopy": "clear" } ] }
+  ]
+}
+```
+
+- **Fields.** For each attribute you list: **reset** (back to the attribute's default, else empty; when the database fills the column,
+  the insert leaves it to the database, so the copy gets a fresh value such as a new number), **clear** (empty), or **original** (the
+  id of the invoice it was copied from, for a "copied from" field). An attribute you don't list is copied as it is. `links` takes a
+  to-one end the same way: `{ "end": "<id of source>", "onCopy": "original" }` links the copy to the invoice it was made from.
+- **Parts.** For each kind of part, named by its part end at any level: **all** (every part), **one** (one part under each copied
+  owner) or **none** (no part of that kind). A part that is not copied leaves its own parts out too, so `none` on discounts copies the
+  lines without their discounts. A kind you don't list is copied whole. A kind of part may list its own `attributes`, with the same
+  words; `original` there is the id of the part it was copied from.
+- **Choosing one part.** `choose` holds a **condition** on the part's own attributes, or a **state** of a lifecycle of the part, and
+  **latestBy**, an attribute with an order (a number, a text, a date or a time). The copy takes the part that matches; among several
+  that match, the latest; when none matches, the latest of all. With only `latestBy`, it takes the latest of all.
+- **Links.** Links inside the copy point at the copies: a copied line points at the copied tax group. Links out of the copy stay as
+  they were: the copied invoice has the same customer.
+- **What doesn't change.** A copy is a new record, so its key is always new, made your way, and every lifecycle starts at its initial
+  state. A `copy` trigger point that replaces the verb's own effect replaces this description.
+- **Inheritance.** A derived entity inherits its bases' block. An entry for the same attribute or end replaces the base's; `copy` (for
+  an attribute or a link) and `all` (for a part) undo a base's entry.
+
+**In templates,** `entity.copy` gives the block merged through the bases, with every reference resolved. Its `parts` follow
+`entity.parts` and list only the parts the copy carries, each with `on_copy` (`all` or `one`), `choose`, `attributes` and `from`. A
+template writes its own copy statements from it, such as `INSERT … SELECT` with a map from old ids to new ones. Maquettiste doesn't
+write them for you: teams make ids in too many ways. The packs don't use it yet, and scenarios don't run copies.
+
+**The rules.**
+
+| Rule | What it says |
+| --- | --- |
+| MQ3045 | An attribute or link entry can't stand: an attribute the record doesn't hold, a derived or key attribute, two entries for one attribute or end, `clear` on a required attribute (or `reset` on one with no default), or a link end that isn't a to-one end of a two-ended relation that isn't a composition. The end needs no navigation. |
+| MQ3046 | `original` can't hold the id of the record copied from: the key isn't one attribute, the attribute isn't typed as the key is, or a link's end can't lead to this entity. |
+| MQ3047 | A part entry can't stand: an end that isn't a part end among the entity's parts, two entries for one end, `one` without `choose`, `choose` beside `all` or `none`, both a condition and a state, or `attributes` beside `none`. Also a warning when an entity's parts pass 10,000: they are listed only that far. |
+| MQ3048 | A choice can't stand: a state that isn't of a lifecycle of the part's entity, or `latestBy` that isn't an attribute of the part or has no order. |
+
+A condition that doesn't parse or type is reported by the expression rules (MQ31xx), at `/copy/parts/n/choose/condition`. The editor
+has no screen for the block yet; edit it in the JSON tab.
 
 ### The rules for processes (MQ9xxx)
 
@@ -4277,6 +4350,7 @@ most 64 deep (MQ3113).
 | Right's condition | `condition` of a right in a lifecycle's `rights`, or of a named right | the object as `subject.<attribute>`, to-one paths too, `current_actor()` and `in_state`. Not the context or a payload (MQ3102) | guard | the simulation's clock | `description`, the why |
 | Operation guard | the operation's `guards`: `name`, `condition`, `error` | input members; `subject.status` at record level, to-one navigations included | guard | yes | |
 | Declared rule condition | `expression` in a rule's `require` | `member` paths of the selected object | guard | no | the other conditions |
+| Choice of one part in a copy | `copy.parts[].choose.condition` of an entity | the part's own attributes, inherited ones and value object members (see [What a copy carries over](#the-parts-of-a-record-and-what-a-copy-carries-over)) | guard | no | `state`, `latestBy` |
 | Named constraint | the constraint's `condition` | its parameters | the citing site's | the citing site's | |
 
 A site holds its raw form or its tree, exactly one of the two (MQ3107); a process guard may hold neither and stays a
@@ -4314,7 +4388,7 @@ attribute's `required`, never the expression's concern.
   take the path syntax of the other conditions (`{ "member": "properties.retentionDays" }`), typed from the resolved
   record of the selected kind. Lists and objects are not values: `count` and `has` stay for them.
 
-Check sites and value sites read one row: they take no navigation (MQ3102), no `now()`, no `current_actor()` and no `in_state` (MQ3104),
+Check sites, value sites and a copy's choice read one row: they take no navigation (MQ3102), no `now()`, no `current_actor()` and no `in_state` (MQ3104),
 since a CHECK must not depend on the clock and a derived value must be the same wherever it is computed. An action's set
 is a site too: its value reads like a guard, and types like a value site (MQ3103). Paths through to-many
 navigations, aggregates and subqueries are not in the language.
