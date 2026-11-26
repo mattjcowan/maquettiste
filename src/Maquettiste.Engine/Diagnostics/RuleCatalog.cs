@@ -274,6 +274,7 @@ public static class RuleCatalog
         new("MQ4124", E, "A binding has a constant on its type column, its own or the one it inherits from a base, or a soft delete that sets it: the column already holds the entity's type code."),
         new("MQ4125", E, "Two entities that share a type column in one table have the same type code, so reads cannot tell their rows apart; or an entity's type code cannot fit the type column (the wrong type, too long, out of range)."),
         new("MQ4126", E, "A derived entity's binding names a type column (discriminatorColumn) while a base's binding in the same table already names one: the column is inherited, so remove the key. A derived entity bound to another table may name its own."),
+        new("MQ4127", W, "A query names an entity as the shape of its rows (entity) or fills collections (collections): both are retired and go away in a later version. Give the query its own columns and bind the entity to it with its binding's source; read a record with its parts through composition, each part with its own binding."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule or calculation script error."),

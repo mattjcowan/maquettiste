@@ -1,0 +1,109 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01M1V8ERRVJHFSXZHA9019PV1B",
+  "name": "OpenSalesOrder",
+  "displayName": "Open sales order",
+  "pluralName": "Open sales orders",
+  "package": "01M28AC84B1SVDDC2EY42YJNZ8",
+  "description": "A customer's sales order as the OpenSalesOrders query reads it, read-only; its lines are the parts of SalesOrder, read through their own repository.",
+  "category": "01M1DDZYJWHS2VRM9BAYTT4SKZ",
+  "key": {
+    "attributes": [
+      "01M1QVXG57JWMKTD732TX7X1XV"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01M1QVXG57JWMKTD732TX7X1XV",
+      "name": "id",
+      "type": "uuid",
+      "required": true,
+      "readOnly": true,
+      "description": "Surrogate key of the open sales order."
+    },
+    {
+      "id": "01M1HB2CZS4RB1WHA4T0H5P0JX",
+      "name": "orderNumber",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Order number."
+    },
+    {
+      "id": "01M1JYFJWEZ0ER71JYG0XVHV50",
+      "name": "orderedAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the order was placed."
+    },
+    {
+      "id": "01M2Z49H8PTW3JGZM8AM6YDJHF",
+      "name": "status",
+      "type": {
+        "ref": "01M1ND9H30R3QBP5WGNQFW4FQZ"
+      },
+      "required": true,
+      "description": "Lifecycle state."
+    },
+    {
+      "id": "01M290TSKTGXFAJ95VMTJK5N3F",
+      "name": "source",
+      "type": "string",
+      "length": 20,
+      "required": true,
+      "description": "Entry channel."
+    },
+    {
+      "id": "01M31KH2YPT42QA3KKZ2ZB7KGD",
+      "name": "promisedDeliveryOn",
+      "type": "date",
+      "description": "Delivery date Northwind committed to."
+    },
+    {
+      "id": "01M1NAC97F64HZFC02V4V74RTJ",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "required": true,
+      "description": "When the order was created."
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01M233ZTNPMC4MSP333NY01AH4",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M271B0Z1YTW9BX14WNDVQ9PB",
+      "fields": [
+        {
+          "attribute": "01M1QVXG57JWMKTD732TX7X1XV",
+          "column": "id"
+        },
+        {
+          "attribute": "01M1HB2CZS4RB1WHA4T0H5P0JX",
+          "column": "orderNumber"
+        },
+        {
+          "attribute": "01M1JYFJWEZ0ER71JYG0XVHV50",
+          "column": "orderedAt"
+        },
+        {
+          "attribute": "01M2Z49H8PTW3JGZM8AM6YDJHF",
+          "column": "status"
+        },
+        {
+          "attribute": "01M290TSKTGXFAJ95VMTJK5N3F",
+          "column": "source"
+        },
+        {
+          "attribute": "01M31KH2YPT42QA3KKZ2ZB7KGD",
+          "column": "promisedDeliveryOn"
+        },
+        {
+          "attribute": "01M1NAC97F64HZFC02V4V74RTJ",
+          "column": "createdAt"
+        }
+      ]
+    }
+  ]
+}

@@ -258,6 +258,14 @@ Built since:
   kind of part `all`, `one` (by a condition or a state, else the latest by a field) or `none`; links inside the copy
   pointed at the copies, links out kept. `entity.copy` resolves it for templates; MQ3045 to MQ3048. Scenarios don't run
   copies yet. Covers "Revisions, the rest: what a copy carries over". [The design](parts-and-copy-design.md). Requested.
+- **Queries stop naming entities (0.27.0).** A query that names an `entity` as its rows' shape or has `collections` is
+  warning MQ4127, once per file (at `/entity`, else `/collections`); teams may change its severity or turn it off in
+  `validation.rules`. Such a query still resolves and renders as before; removal comes in a later version. The way now:
+  the query declares only its columns, the entity reads it through its binding's `source`, and a record's parts come
+  through composition (`entity.parts`), each part with its own binding. `csharp-dapper` teaches the binding way and still
+  renders a query that names an entity; the reference sample's `OpenSalesOrders` query lost its entity and its lines
+  collection, and the new read-only entity `OpenSalesOrder` binds to it. The billing fixture keeps its two older queries
+  in the retired form, with the rule off, to cover them until removal. Requested.
 
 Left:
 
@@ -271,12 +279,10 @@ design questions on 2026-11-26; their answers are folded in below.
 - **The parts of a whole record** and **what a copy carries over.** Built in 0.27.0; see "Built since" above. Settled: a
   part that is not copied leaves its own parts out too; `reset` on a column the database fills means the insert leaves it
   to the column's default, so the copy gets a fresh value.
-- **Queries stop naming entities.** After the parts above. A query's `entity` (its rows' shape) and `collections` (an
-  entity's lists filled per relation end) predate the decision below that the database knows no entities, and were
-  never brought in line with it. An entity already reaches a query through its binding's `source`, which gives the same
-  shape; the parts of a whole record replace `collections`. Then a warning on both, with `csharp-dapper` moved to
-  bindings in the same change, and removal in a later version. Until then a project can warn with a declared rule on the
-  `query` kind (`not has entity`, `count collections max 0`).
+- **Queries stop naming entities.** Built in 0.27.0; see "Built since" above. A query's `entity` (its rows' shape) and
+  `collections` (an entity's lists filled per relation end) predated the decision below that the database knows no
+  entities. They are now warning MQ4127, with `csharp-dapper` moved to bindings in the same change. Removal comes in a
+  later version.
 - **Views and functions a stereotype adds.** Later. A script works them out from a table's columns and the model treats
   them like written ones; a script that writes them into the model with `upsert` works today.
 

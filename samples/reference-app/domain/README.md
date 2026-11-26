@@ -11,7 +11,7 @@ section 7.1). This folder describes its data model; `tools/build-model.mjs` turn
 | `02-crm.yaml` | Parties and CRM | 22 |
 | `03-catalog.yaml` | Catalog | 24 |
 | `04-pricing.yaml` | Pricing and promotions | 16 |
-| `05-sales.yaml` | Sales orders | 20 |
+| `05-sales.yaml` | Sales orders | 21 |
 | `06-finance.yaml` | Finance and ledger | 10 |
 | `07-inventory.yaml` | Inventory and warehousing | 24 |
 | `08-fulfillment.yaml` | Fulfillment and shipping | 18 |
@@ -53,10 +53,11 @@ Every element and attribute needs a description; the build fails without one.
   (`name=sales_order_contains_lines`); without it, `<entity words> <role words>`.
 - `mapping` (only where conventions are not enough): `inheritance` (`tph`, `tpt`), `discriminator`, `storage`
   (`attribute: int|string|lookup|json|table|embedded`), `prefix` (`attribute: column_prefix_`).
-- `binding` binds the entity to a designed table of `main` (erratum E43) instead of projecting it: `table` (the designed
-  table's name), `constants` (`column: value`, a filter on every read and a value on every insert), `fields`
-  (`attribute: column`, the surrogate `id` included) and `columns` (`column: ignored|database|computed`, the columns no
-  field maps). The entity gets no table of its own; `remarks` is shared by `CustomerRemark` and `SalesOrderRemark` this way.
+- `binding` binds the entity to a designed table or a query of `main` (erratum E43) instead of projecting it: `table` (the
+  designed table's name) or `query` (the query's name), `constants` (`column: value`, a filter on every read and a value on
+  every insert), `fields` (`attribute: column`, the surrogate `id` included; for a query, its select fields' names) and
+  `columns` (`column: ignored|database|computed`, the columns no field maps). The entity gets no table of its own; `remarks`
+  is shared by `CustomerRemark` and `SalesOrderRemark` this way, and `OpenSalesOrder` reads the query `OpenSalesOrders`.
 - `overlay` is a synthesized table overlay in `main`: `columns` (`attribute: {nativeType, defaultSql, sequence, comment}`),
   `checks` (`name: SQL`), `indexes` (`{name, columns: [attribute [desc]], where, unique}`).
 
@@ -70,10 +71,9 @@ the navigation on the other end's entity) and `attributes` (which make the conve
 every relation between two of them.
 
 **Queries** (`database.queries` in `00-project.yaml`): each one is a query file's JSON tree written as YAML (`parameters`,
-`from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`, `collections`), with names where the file has ids: `entity`
-and a collection's `entity` are entity names, a `source` is an entity name (its table), a designed table's name or
-`view:<name>`, a field's `attribute` is an attribute of the query's (or the collection's) entity, stereotype attributes
-included, and a collection's `attribute` is the navigation it fills. Column references are written `alias.column_name`.
+`from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`), with names where the file has ids: a `source` is an entity
+name (its table), a designed table's name or `view:<name>`. Every select field has a `name`: a query's rows have the shape of
+its select list, and the retired `entity` and `collections` are refused. Column references are written `alias.column_name`.
 
 ## Ids
 

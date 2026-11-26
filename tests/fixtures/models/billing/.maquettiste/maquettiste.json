@@ -19,5 +19,10 @@
     "sql-ddl": {
       "output": "db"
     }
+  },
+  "validation": {
+    "rules": {
+      "MQ4127": "off"
+    }
   }
 }

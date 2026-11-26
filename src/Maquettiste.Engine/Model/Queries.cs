@@ -26,7 +26,8 @@ public sealed record Query : Element, IPackaged
     [ElementRef(ElementKind.Database)]
     public required string Database { get; init; }
 
-    /// <summary>The entity each result row has, or <see langword="null"/> for an ad hoc row (the select list).</summary>
+    /// <summary>The entity each result row has, or <see langword="null"/> for an ad hoc row (the select list). Retired (MQ4127), removed in
+    /// a later version: an entity reads a query through its binding's <c>source</c>.</summary>
     [ElementRef(ElementKind.Entity)]
     public string? Entity { get; init; }
 
@@ -63,7 +64,8 @@ public sealed record Query : Element, IPackaged
     /// <summary>The rows to skip and the most rows to return.</summary>
     public QueryPaging? Paging { get; init; }
 
-    /// <summary>The collections filled per result row.</summary>
+    /// <summary>The collections filled per result row. Retired (MQ4127), removed in a later version: a record's parts come through
+    /// composition (<c>entity.parts</c>), each part with its own binding.</summary>
     public IReadOnlyList<QueryCollection> Collections { get; init; } = [];
 
     /// <summary>

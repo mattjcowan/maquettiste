@@ -1,10 +1,12 @@
 {{-
 # A Dapper query class per query: an interface and a class with one ExecuteAsync that runs the query's SQL (query_sql) and
-# returns its rows as the query's entity, or as a generated <Name>Row record for an ad hoc row. Each collection runs as a
-# second statement (query_collection_sql) for the parent rows, at most MaxKeysPerStatement parent keys at a time, matched to
-# its parent by the correlation keys; a query with collections returns <Name>Result records (the row and one list per
-# collection). The template's own names start with mq_, which the engine reserves (MQ4040), so no parameter, field or
+# returns its rows as a generated <Name>Row record, the query's own shape. An entity reads a query through its binding instead
+# (repository.scriban). The template's own names start with mq_, which the engine reserves (MQ4040), so no parameter, field or
 # collection name collides with them; entity, enum and value object types are written global::-qualified.
+# Retired, rendered until removal (MQ4127): a query that names an entity returns its rows as that entity, and each collection
+# runs as a second statement (query_collection_sql) for the parent rows, at most MaxKeysPerStatement parent keys at a time,
+# matched to its parent by the correlation keys; a query with collections returns <Name>Result records (the row and one list
+# per collection).
 # Both forms of query come here. query.form is "structured" for a query built from parts and "sql" for one written as SQL text;
 # query_sql gives either one's statement with @name placeholders. query.select is the built query's select fields, or the SQL
 # text's declared columns (expression null: column_type_ref finds no table column, so each member takes the column's own type).

@@ -297,13 +297,23 @@ export function compile(domain) {
     });
   }
 
-  // An entity's binding to a designed table of the database (erratum E43): its constants, field map (attribute -> column) and the
-  // columns it accounts for without a field. A bound entity is never projected.
+  // An entity's binding to a designed table or a query of the database (erratum E43): its constants, field map (attribute ->
+  // column) and the columns it accounts for without a field. A bound entity is never projected. A query's columns are its select
+  // fields' names, which the binding names as they are.
   const bindingOf = (entity, b, attrs) => {
+    const attr = (an) => { const a = attrs.find((x) => x.name === an); if (!a) throw new Error(`${entity}: binding names unknown attribute ${an}`); return a.id; };
+    if (b.query) {
+      const q = db.queries?.[b.query];
+      if (!q) throw new Error(`${entity}: binding names unknown query ${b.query}`);
+      const col = (cn) => { if (!(q.select ?? []).some((f) => f.name === cn)) throw new Error(`${entity}: query ${b.query} has no column ${cn}`); return cn; };
+      return {
+        id: id(`binding:${entity}`), database: dbId, source: id(`query:${b.query}`),
+        fields: Object.entries(b.fields ?? {}).map(([an, cn]) => ({ attribute: attr(an), column: col(cn) })),
+      };
+    }
     const t = db.tables?.[b.table];
     if (!t) throw new Error(`${entity}: binding names unknown table ${b.table}`);
     const col = (cn) => { if (!t.columns[cn]) throw new Error(`${entity}: table ${b.table} has no column ${cn}`); return id(`table:${b.table}.${cn}`); };
-    const attr = (an) => { const a = attrs.find((x) => x.name === an); if (!a) throw new Error(`${entity}: binding names unknown attribute ${an}`); return a.id; };
     return {
       id: id(`binding:${entity}`), database: dbId, source: id(`table:${b.table}`),
       constants: Object.entries(b.constants ?? {}).map(([cn, value]) => ({ column: col(cn), value })),
@@ -529,9 +539,12 @@ export function compile(domain) {
     }
   }
 
-  // Emit entities (per package, in file order), relations, tables, mappings, diagrams.
+  // Emit entities (per package, in file order), relations, tables, mappings, diagrams. An entity that reads a query comes after
+  // the queries, which the seed creates last.
+  const readsQuery = (name) => Boolean(entities.get(name).spec.binding?.query);
   for (const p of packages) {
     for (const name of Object.keys(p.entities ?? {})) {
+      if (readsQuery(name)) continue;
       const ent = entities.get(name);
       emit(`entities:${p.package}`, `model/entities/${kebab(name)}.json`, "entity.json", ent.doc);
     }
@@ -553,20 +566,8 @@ export function compile(domain) {
     });
   }
 
-  // Queries (written as data): entity and source names become ids, a field's attribute name the attribute of the query's (or
-  // the collection's) entity, a collection's attribute the end its navigation leads to; trees are copied as written.
-  const stereotypeAttrId = new Map(); // "<key>.<attribute>" -> id
-  for (const o of out) {
-    if (o.schema === "stereotype.json") for (const a of o.doc.attributes ?? []) stereotypeAttrId.set(`${o.doc.key}.${a.name}`, a.id);
-  }
-  const fieldAttr = (entName, attrName, where) => {
-    for (let ent = entities.get(entName); ent; ent = ent.spec.base ? entities.get(ent.spec.base) : undefined) {
-      const own = ent.attrs.find((x) => x.name === attrName);
-      if (own) return own.id;
-      for (const key of ent.spec.stereotypes ?? []) if (stereotypeAttrId.has(`${key}.${attrName}`)) return stereotypeAttrId.get(`${key}.${attrName}`);
-    }
-    throw new Error(`${where}: ${entName} has no attribute ${attrName}`);
-  };
+  // Queries (written as data): source names become ids; trees are copied as written. A query's rows have the shape of its own
+  // select list: naming an entity (entity) or filling collections is retired, and an entity reads a query through its binding.
   const sourceRef = (name, where) => {
     if (name.startsWith("view:")) {
       const view = name.slice(5);
@@ -576,35 +577,22 @@ export function compile(domain) {
     if (db.tables?.[name]) return id(`table:${name}`);
     return entityRef(name, where).id;
   };
-  const navigationEnd = (entName, nav, where) => {
-    const entId = entities.get(entName).id;
-    for (const r of relations) {
-      const ends = r.doc.ends;
-      for (let i = 0; i < ends.length; i++) {
-        if (ends[i].navigation === nav && ends.some((e, j) => j !== i && e.entity === entId)) return ends[i].id;
-      }
-    }
-    throw new Error(`${where}: ${entName} has no navigation ${nav}`);
-  };
-  const subquery = (q, entName, where) => ({
-    from: { source: sourceRef(q.from.source, where), alias: q.from.alias },
-    joins: q.joins?.map((j) => ({ ...j, source: sourceRef(j.source, where) })),
-    select: q.select?.map((f) => (f.attribute ? { ...f, attribute: fieldAttr(entName, f.attribute, where) } : f)),
-    where: q.where, groupBy: q.groupBy, having: q.having, orderBy: q.orderBy, distinct: q.distinct,
-  });
   for (const [name, q] of Object.entries(db.queries ?? {})) {
     const where = `query ${name}`;
     if (!q.description) throw new Error(`${where}: missing description`);
-    const body = subquery(q, q.entity, where);
+    if (q.entity || q.collections) throw new Error(`${where}: entity and collections are retired; bind an entity to the query instead`);
+    for (const f of q.select ?? []) if (!f.name) throw new Error(`${where}: every select field needs a name`);
     emit("queries", `model/databases/${kebab(db.name)}/queries/${kebab(name)}.json`, "query.json", {
-      kind: "query", id: id(`query:${name}`), name, database: dbId, description: q.description, tags: q.tags,
-      entity: q.entity ? entityRef(q.entity, where).id : undefined, parameters: q.parameters, ...body, paging: q.paging,
-      collections: q.collections?.map((c) => ({
-        attribute: q.entity ? navigationEnd(q.entity, c.attribute, where) : c.attribute,
-        entity: c.entity ? entityRef(c.entity, where).id : undefined,
-        query: subquery(c.query, c.entity, `${where} ${c.attribute}`),
-      })),
+      kind: "query", id: id(`query:${name}`), name, database: dbId, description: q.description, tags: q.tags, parameters: q.parameters,
+      from: { source: sourceRef(q.from.source, where), alias: q.from.alias },
+      joins: q.joins?.map((j) => ({ ...j, source: sourceRef(j.source, where) })),
+      select: q.select, where: q.where, groupBy: q.groupBy, having: q.having, orderBy: q.orderBy, distinct: q.distinct, paging: q.paging,
     });
+  }
+  for (const p of packages) {
+    for (const name of Object.keys(p.entities ?? {})) {
+      if (readsQuery(name)) emit("queries", `model/entities/${kebab(name)}.json`, "entity.json", entities.get(name).doc);
+    }
   }
 
   const paths = new Set();

@@ -308,27 +308,24 @@ database:
       indexes:
         - name: ix_remarks_subject
           columns: [subject_type, subject_id]
-  # Queries over the tables (written as data; see the guide's Queries): the entity or ad hoc row each returns, its sources,
-  # select list and conditions. Names resolve when the model is built: entity and source names to ids, a field's attribute
-  # to the attribute of the query's (or the collection's) entity, a collection's attribute to the end its navigation leads to.
+  # Queries over the tables (written as data; see the guide's Queries): each one's parameters, sources, select list and
+  # conditions; its rows have the shape of its own select list. Names resolve when the model is built: source names to ids.
+  # An entity reads a query through its binding (OpenSalesOrder reads OpenSalesOrders).
   queries:
     OpenSalesOrders:
-      description: A customer's sales orders in some statuses, newest first, a page at a time, each with its lines.
-      entity: SalesOrder
+      description: A customer's sales orders in some statuses, newest first.
       parameters:
         - { name: customerId, type: uuid }
         - { name: statuses, type: string, length: 8, collection: true, description: Status codes such as SUBMIT or CONFIRM. }
-        - { name: offset, type: int32, default: 0 }
-        - { name: limit, type: int32, default: 50 }
       from: { source: SalesOrder, alias: o }
       select:
-        - { attribute: id, expression: { column: o.id } }
-        - { attribute: orderNumber, expression: { column: o.order_number } }
-        - { attribute: orderedAt, expression: { column: o.ordered_at } }
-        - { attribute: status, expression: { column: o.status } }
-        - { attribute: source, expression: { column: o.source } }
-        - { attribute: promisedDeliveryOn, expression: { column: o.promised_delivery_on } }
-        - { attribute: createdAt, expression: { column: o.created_at } }
+        - { name: id, expression: { column: o.id } }
+        - { name: orderNumber, expression: { column: o.order_number } }
+        - { name: orderedAt, expression: { column: o.ordered_at } }
+        - { name: status, expression: { column: o.status } }
+        - { name: source, expression: { column: o.source } }
+        - { name: promisedDeliveryOn, expression: { column: o.promised_delivery_on } }
+        - { name: createdAt, expression: { column: o.created_at } }
       where:
         and:
           - { op: eq, left: { column: o.customer_id }, right: { param: customerId } }
@@ -336,22 +333,6 @@ database:
           - { op: isNull, left: { column: o.deleted_at } }
       orderBy:
         - { expression: { column: o.ordered_at }, direction: desc }
-      paging: { offset: offset, limit: limit }
-      collections:
-        - attribute: lines
-          entity: SalesOrderLine
-          query:
-            from: { source: SalesOrderLine, alias: l }
-            select:
-              - { attribute: id, expression: { column: l.id } }
-              - { attribute: lineNumber, expression: { column: l.line_number } }
-              - { attribute: quantity, expression: { column: l.quantity } }
-              - { attribute: status, expression: { column: l.status } }
-              - { attribute: description, expression: { column: l.description } }
-              - { attribute: createdAt, expression: { column: l.created_at } }
-            where: { op: eq, left: { column: l.sales_order_id }, right: { column: o.id } }
-            orderBy:
-              - { expression: { column: l.line_number } }
     SalesByChannel:
       description: Revenue per sales channel since a date, largest first; orders without a channel count as direct.
       parameters:

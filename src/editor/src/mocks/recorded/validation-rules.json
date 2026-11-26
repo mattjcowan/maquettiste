@@ -1721,6 +1721,14 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4127",
+    "defaultSeverity": "warning",
+    "description": "A query names an entity as the shape of its rows (entity) or fills collections (collections): both are retired and go away in a later version. Give the query its own columns and bind the entity to it with its binding's source; read a record with its parts through composition, each part with its own binding.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",

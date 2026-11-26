@@ -25,7 +25,7 @@ For entity `Invoice` in package `Billing`:
 | `reference-type` | `overwrite` | `each reference type` | `ReferenceData/UnitOfMeasure.g.cs`: a `sealed record` and a static class of rows (see Reference types) |
 | `resources` | `overwrite` | `each locale` | `ReferenceData/ReferenceData.resx`, `ReferenceData.fr.resx`, …: display names and row labels per declared locale |
 | `repository` | file blocks | `each entity` | `Billing/InvoiceRepository.g.cs`: `IInvoiceRepository` and `InvoiceRepository` |
-| `query` | `overwrite` | `each query` | `Queries/InvoicesByCustomerQuery.g.cs`: `IInvoicesByCustomerQuery` and `InvoicesByCustomerQuery` (see Queries) |
+| `query` | `overwrite` | `each query` | `Queries/RevenueByMonthQuery.g.cs`: `IRevenueByMonthQuery` and `RevenueByMonthQuery` (see Queries) |
 | `operation-contracts` | `overwrite` | `each operation` | `Operations/Billing/SendInvoice.g.cs`: the request, result, error codes and handler interface of operation `send` on Invoice (see Operations) |
 | `operation-endpoints` | `overwrite` | `each operation` | Only with `endpointsFolder` set: `<endpointsFolder>/Operations/Billing/SendInvoiceEndpoint.g.cs`, one route that calls the handler (see Operations) |
 | `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories; `Queries/QueryRegistrations.g.cs` when the model has queries |
@@ -186,8 +186,7 @@ namespace `<namespace>.Queries`: an interface `I<Name>Query` and a class `<Name>
 digit (the `cs_class` helper; the engine reports two queries of a database that end up with one class name, MQ4040).
 
 ```csharp
-Task<IReadOnlyList<InvoicesByCustomerResult>> ExecuteAsync(Guid customerId, IEnumerable<string> statuses, int offset = 0, int limit = 50,
-    CancellationToken mq_cancellationToken = default);
+Task<IReadOnlyList<RevenueByMonthRow>> ExecuteAsync(DateOnly from, DateOnly to, CancellationToken mq_cancellationToken = default);
 ```
 
 Its parameters are the query's, typed through `types/csharp.json` (a list parameter is an `IEnumerable<T>`), the ones with a
@@ -199,6 +198,22 @@ imported when a field is `json` (a `JsonElement`). The SQL is what the engine re
 `IN @name` for a list, which Dapper expands. A private `Row` class has one property per select field, named as the field (Dapper
 matches column aliases without regard to case), and converts to the result:
 
+- The method returns `<Name>Row`, a `sealed partial record` with one property per field (`pascal` of its name), typed by
+  the field's type and nullability. A field that reads a column of a table file typed by an enum (the column's `typeRef`)
+  is that enum, nullable as the field, converted as an entity's enum attribute is (a stored code through
+  `<Enum>Codes.Parse`, a stored number cast). A field that reads a column typed by a reference type keeps the code's
+  type, and the record's summary says so with a cref to the type's record ("Status holds a code of
+  `<see cref="global::Billing.InvoiceState"/>`.").
+- To read a query's rows as an entity, bind the entity to the query: its binding's `source` names the query and each field
+  names one of the query's columns. The entity's repository then reads through the query (see Repositories from bindings
+  above): `GetAsync` and `ListAsync` take the query's parameters first. The billing sample's `RevenueMonth` reads
+  `RevenueByMonth` this way, and the reference sample's `OpenSalesOrder` reads `OpenSalesOrders`. A record's lines and
+  other parts are compositions: each part reads through its own repository, and a template that loads or writes a whole
+  record reads `entity.parts` for the parts and their foreign keys.
+
+**Retired: a query's `entity` and `collections`.** A query that names an `entity` or fills `collections` is warning MQ4127
+and goes away in a later version. Until then the pack still renders it:
+
 - With an `entity`, each row becomes that entity: a field that names an attribute fills its property (an enum stored as text goes
   through `<Enum>Codes.Parse`, an enum stored as a number is cast, a number of another number type than the attribute's is
   cast to it); a field that names a value object member (`<attribute id>.<member id>`) fills it, the members of one attribute
@@ -206,18 +221,13 @@ matches column aliases without regard to case), and converts to the result:
   to-one navigation fills the entity's foreign key property (`CustomerId`); a field without an attribute is read but not
   copied. The rows are read-only projections, as the class's remarks say: an entity holds what the query selects and leaves
   its other properties at their defaults, so it is not a row to save back through the entity's repository.
-- Without one, the method returns `<Name>Row`, a `sealed partial record` with one property per field (`pascal` of its
-  name), typed by the field's type and nullability. A field that reads a column of a table file typed by an enum (the
-  column's `typeRef`) is that enum, nullable as the field, converted as an entity's enum attribute is (a stored code
-  through `<Enum>Codes.Parse`, a stored number cast). A field that reads a column typed by a reference type keeps the
-  code's type, and the record's summary says so with a cref to the type's record ("Status holds a code of
-  `<see cref="global::Billing.InvoiceState"/>`."). The same goes for a generated `<Name><Collection>Item` record.
 - With collections, the method returns `<Name>Result(Item, <Collection>…)`: after the parent rows, each collection's statement
   (`query_collection_sql`) runs with the parent rows' distinct key values (`mq_keys0`), at most `MaxKeysPerStatement` (1000)
   of them per run, so a large parent set stays under the databases' parameter limits; the runs go in the parents' order and
   their rows are merged, grouped by their `mq_key0` and attached to the parent whose key matches. With several keys each run
   keeps only the rows whose whole key is one of its own (the `IN` lists over-fetch). An element is the collection's `entity`,
-  or a generated `<Name><Collection>Item` record. The collections are on the result record, never on the entity.
+  or a generated `<Name><Collection>Item` record, typed as a `<Name>Row` is. The collections are on the result record, never
+  on the entity. The billing sample's `InvoicesByCustomer` still has this form, so the pack's tests cover it until removal.
 
 A query written as SQL text (`query.form` is `"sql"`) takes the same path. Its `query.select` holds its declared columns, so
 `<Name>Row` has one property per column, typed by the column's type and nullability (a column is nullable unless it says

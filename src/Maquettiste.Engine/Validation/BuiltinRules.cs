@@ -75,6 +75,7 @@ internal static partial class BuiltinRules
                 MappingRules.CheckMapping(context, mapping, report);
                 break;
             case Query query:
+                CheckRetiredQueryShape(query, report);
                 RelationTypeRules.CheckQuery(context, query, report);
                 break;
             case TagVocabulary tags:
@@ -105,6 +106,31 @@ internal static partial class BuiltinRules
         RightRules.Check(context, element, report);
         TriggerRules.Check(context, element, report);
         ApprovalRules.Check(context, element, report);
+    }
+
+    // ---- MQ4127: a query that names an entity or fills collections ----
+
+    /// <summary>
+    /// MQ4127: a query that names an entity as the shape of its rows (<c>entity</c>) or fills collections (<c>collections</c>, whose
+    /// nested queries may name entities too). Both predate "the database knows no entities": an entity reads a query through its
+    /// binding's <c>source</c>, and a record's parts come through composition, each part with its own binding. Reported once per file,
+    /// at <c>/entity</c> when the query names one, else at <c>/collections</c>. Such a query still resolves and renders as before.
+    /// </summary>
+    private static void CheckRetiredQueryShape(Query query, Report report)
+    {
+        var hasEntity = !string.IsNullOrEmpty(query.Entity);
+        var hasCollections = query.Collections.Count > 0;
+        if (!hasEntity && !hasCollections)
+            return;
+        var what = (hasEntity, hasCollections) switch
+        {
+            (true, true) => "names an entity as the shape of its rows and fills collections",
+            (true, false) => "names an entity as the shape of its rows",
+            _ => "fills collections",
+        };
+        report.Add("MQ4127",
+            $"Query '{query.Name}' {what}, which is retired and goes away in a later version: give the query its own columns (each select field a name) and bind the entity to it with its binding's source; read a record with its parts through composition, each part with its own binding.",
+            hasEntity ? "/entity" : "/collections");
     }
 
     // ---- MQ3022: a package diagram without a package ----

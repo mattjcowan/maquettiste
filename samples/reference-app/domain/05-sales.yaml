@@ -188,6 +188,19 @@ entities:
       fields: { id: id, salesOrderId: subject_id, body: body, createdAt: created_at }
       columns: { created_at: database }
 
+  OpenSalesOrder:
+    description: A customer's sales order as the OpenSalesOrders query reads it, read-only; its lines are the parts of SalesOrder, read through their own repository.
+    attributes:
+      orderNumber: string(20)! | Order number.
+      orderedAt: datetimeoffset! | When the order was placed.
+      status: SalesOrderStatus! | Lifecycle state.
+      source: string(20)! | Entry channel.
+      promisedDeliveryOn: date | Delivery date Northwind committed to.
+      createdAt: datetimeoffset! | When the order was created.
+    binding:
+      query: OpenSalesOrders
+      fields: { id: id, orderNumber: orderNumber, orderedAt: orderedAt, status: status, source: source, promisedDeliveryOn: promisedDeliveryOn, createdAt: createdAt }
+
   SalesOrderStatusChange:
     description: A status transition of a sales order, kept as history.
     tags: [high-volume]
