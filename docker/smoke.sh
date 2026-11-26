@@ -62,7 +62,7 @@ docker volume create "$volume" >/dev/null
 docker run -d --name "$name" --network none -v "$volume:/data" -v "$work/.maquettiste:/data/sites/maquettiste.localhost/data" \
   -v "$work:/repo" -e MAQUETTISTE_WORKSPACE=smoke "$image" >/dev/null
 
-# Every request goes to the site from inside the container: loopback, Host maquettiste.localhost, so local trust applies.
+# Every request goes to the site from inside the container with the site's Host; no token is set, so nobody signs in.
 api() { docker exec "$name" curl -sS -H 'Host: maquettiste.localhost:8080' "$@"; }
 jqc() { docker exec -i "$name" jq "$@"; }
 
@@ -96,6 +96,23 @@ pass "/api/project (workspace $workspace)"
 count=$(api -f http://127.0.0.1:8080/api/model/index | jqc 'length')
 [ "$count" -gt 20 ] || fail "/api/model/index has $count elements"
 pass "/api/model/index lists $count elements"
+
+# The editor answers at its own domain and the default local names (site aliases set by the entrypoint).
+for local in localhost:8080 127.0.0.1:8080; do
+  answer=$(docker exec "$name" curl -sS -H "Host: $local" http://127.0.0.1:8080/api/project 2>/dev/null || true)
+  echo "$answer" | grep -q '"name":"billing"' || fail "the editor does not answer at $local: $answer"
+done
+pass "the editor answers at localhost and 127.0.0.1 too"
+
+# With no token the editor is open, so the host's routing by name is what stops DNS rebinding: a page on another name that
+# points its name at 127.0.0.1 must never reach the editor's functions (phase2-design.md PD9). The admin name is the host's.
+for other in evil.example:8080 maquettiste-admin.localhost:8080; do
+  answer=$(docker exec "$name" curl -sS -H "Host: $other" http://127.0.0.1:8080/api/project 2>/dev/null || true)
+  if echo "$answer" | grep -q '"name":"billing"'; then fail "a request with Host $other reached the editor's API"; fi
+done
+docker exec "$name" curl -fsS -o /dev/null -H 'Host: maquettiste-admin.localhost:8080' http://127.0.0.1:8080/login \
+  || fail "the host's admin app does not answer at maquettiste-admin.localhost"
+pass "requests with another Host never reach the editor's API; the admin app answers at maquettiste-admin.localhost"
 
 invoice=01J92P0V0FJ23CGSNKM7P1W5V7
 etag=$(api -f -D - -o /dev/null "http://127.0.0.1:8080/api/model/elements/$invoice" | tr -d '\r' | awk -F': ' 'tolower($1) == "etag" { print $2 }')
@@ -315,4 +332,28 @@ written=$(docker run --rm --network none --user 0:0 -v "$work3:/w" --entrypoint 
 [ "$written" = "0:0
 1" ] || fail "the save as root did not reach the bind-mounted model as root's file: $written"
 pass "a save over the root-owned model folder answered 200 and wrote the model file as root"
+
+# Hosting behind a proxy: a public name without a token is refused at start; with a token and proxy trust, a request the proxy
+# forwards for the public name over https reaches the editor and its saves pass the origin check.
+docker rm -f "$name" >/dev/null
+if public_log=$(docker run --rm --network none -e MAQUETTISTE_EDITOR_HOST=localhost,models.example.test "$image" 2>&1); then
+  fail "a public host without MAQUETTISTE_EDITOR_TOKEN started"
+fi
+echo "$public_log" | grep -q 'MAQUETTISTE_EDITOR_HOST names public hosts (models.example.test)' \
+  || fail "a public host without a token did not say why it stopped: $(echo "$public_log" | tail -3)"
+pass "a public host without a token is refused at start"
+docker run -d --name "$name" --network none --user 0:0 -e MAQUETTISTE_EDITOR_HOST=localhost,models.example.test \
+  -e MAQUETTISTE_EDITOR_TOKEN=smoke-token -e MAQUETTISTE_TRUST_PROXY=true \
+  -v "$volume:/data" -v "$work3/.maquettiste:/data/sites/maquettiste.localhost/data" -v "$work3:/repo" "$image" >/dev/null
+wait_health
+proxied() { docker exec "$name" curl -sS -H 'Host: 10.0.0.5:8080' -H 'X-Forwarded-Host: models.example.test' \
+  -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-For: 203.0.113.9' "$@"; }
+answer=$(proxied -H 'Authorization: Bearer smoke-token' http://127.0.0.1:8080/api/project)
+echo "$answer" | grep -q '"name":"billing"' || fail "the public name through the proxy did not reach the editor: $answer"
+status=$(proxied -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/project)
+[ "$status" = 401 ] || fail "the public name without the token answered $status, not 401"
+status=$(proxied -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer smoke-token' -H 'Origin: https://models.example.test' \
+  -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8080/api/validate)
+[ "$status" = 200 ] || fail "a save-style request through the proxy answered $status (the origin check must see https and the public name)"
+pass "behind a proxy the public name reaches the editor, needs the token, and passes the origin check"
 echo "smoke: all checks passed"

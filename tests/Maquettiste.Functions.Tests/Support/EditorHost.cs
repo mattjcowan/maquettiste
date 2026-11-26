@@ -58,7 +58,6 @@ internal sealed class EditorHost : IAsyncDisposable
         Variables = new FakeSiteVariables()
             .Set(EditorSettings.RepoRootVariable, RepoRoot)
             .Set(EditorSettings.CacheVariable, CacheRoot)
-            .Set(EditorSettings.TokenVariable, Token, isPublic: false)
             .Set(EditorSettings.LocalUserVariable, "local");
         variables?.Invoke(Variables);
         Site = new FakeSite { Domain = Domain, Data = new DirectoryInfo(ModelRoot), Variables = Variables };
@@ -72,7 +71,7 @@ internal sealed class EditorHost : IAsyncDisposable
         services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton<TimeProvider>(Clock);
         services.AddSingleton<ILogger>(Logs.CreateLogger("functions:" + Domain));
-        EditorSetup.Configure(services, Variables, Site.Data, Logs.CreateLogger("functions:" + Domain));
+        EditorSetup.Configure(services, Variables, Site.Data);
         _provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         Site.Services = _provider;
     }
@@ -104,6 +103,9 @@ internal sealed class EditorHost : IAsyncDisposable
     public EditorEvents Events => _provider.GetRequiredService<EditorEvents>();
 
     public static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    /// <summary>Sets the editor token on a new site (pass to <see cref="Create"/>): every caller then signs in. Without it the site is open.</summary>
+    public static void WithToken(FakeSiteVariables variables) => variables.Set(EditorSettings.TokenVariable, Token, isPublic: false);
 
     /// <summary>A new site over a fresh copy of the billing fixture.</summary>
     public static EditorHost Create(Action<FakeSiteVariables>? variables = null, bool packs = true) =>

@@ -94,7 +94,7 @@ public sealed class AssistTests
     [Fact]
     public async Task Unauthenticated_callers_are_refused_by_the_gate_and_by_the_handlers_themselves()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
         Assert.Equal(401, (await host.SendAsync(TestRequest.FromElsewhere("GET", "/api/assist/status"))).Status);
         Assert.Equal(401, (await host.SendAsync(TestRequest.FromElsewhere("POST", "/api/assist/chat").WithJson(new { message = "hi" }))).Status);
 
@@ -372,8 +372,10 @@ public sealed class AssistTests
         Contract.AssertResponse(read, "/api/assist/conversations/{id}");
         Assert.Equal(["user", "assistant", "user", "assistant"], read.Json["entries"]!.AsArray().Select(e => (string)e!["type"]!));
 
+        EditorHost.WithToken(host.Variables);
         var other = await host.SendAsync(TestRequest.FromElsewhere("GET", "/api/assist/conversations/" + id).Bearer(EditorHost.Token));
         Assert.Equal(404, other.Status); // the token holder is another user
+        host.Variables.Set("MAQUETTISTE_EDITOR_TOKEN", "", isPublic: false);
 
         Assert.Equal(204, (await host.SendAsync(TestRequest.Local("DELETE", "/api/assist/conversations/" + id))).Status);
         Assert.Equal(404, (await host.GetAsync("/api/assist/conversations/" + id)).Status);

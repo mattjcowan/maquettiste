@@ -214,14 +214,14 @@
       "maquettiste.functions": {
         "type": "Project",
         "dependencies": {
-          "Maquettiste.Engine": "[1.0.0-alpha.1, )",
-          "StaticSiteHost.Abstractions": "[0.4.0, )"
+          "Maquettiste.Engine": "[0.25.1, )",
+          "StaticSiteHost.Abstractions": "[0.10.2, )"
         }
       },
       "maquettiste.testing": {
         "type": "Project",
         "dependencies": {
-          "Maquettiste.Engine": "[1.0.0-alpha.1, )"
+          "Maquettiste.Engine": "[0.25.1, )"
         }
       },
       "Jint": {
@@ -241,9 +241,9 @@
       },
       "StaticSiteHost.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[0.4.0, )",
-        "resolved": "0.4.0",
-        "contentHash": "m8XpVH/KaB4tggOxsxXNjOzVJh6afwPc+PB9QpJDiDEc9Sd6MzueFw2nQXijgRuYVdKBOn7kXT7Dr/5wFyREmQ=="
+        "requested": "[0.10.2, )",
+        "resolved": "0.10.2",
+        "contentHash": "hIDiLlb6fRSlhW9OTTrLabsDrcVCoWpr40+uPKp8kLL6bl6jGJyJnr3UE0tGgpWJ1F+zRCVAMasEdnUhUuxmAQ=="
       },
       "Ulid": {
         "type": "CentralTransitive",

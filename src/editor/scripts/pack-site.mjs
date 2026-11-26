@@ -22,15 +22,10 @@ export const DEFAULT_VARIABLES = {
   MAQUETTISTE_REPO_ROOT: { default: "${env:MAQUETTISTE_REPO_ROOT}", description: "EngineOptions.RepoRoot." },
   MAQUETTISTE_EDITOR_TOKEN: {
     default: "${env:MAQUETTISTE_EDITOR_TOKEN}",
-    description: "Bearer token and cookie sign-in; empty means local peers only.",
+    description: "When set, every caller signs in with it; empty in local mode means nobody signs in.",
     secret: true,
   },
   MAQUETTISTE_CACHE_DIR: { default: "${env:MAQUETTISTE_CACHE_DIR}", description: "Index cache root on the host volume." },
-  MAQUETTISTE_LOCAL_PEERS: {
-    default: "${env:MAQUETTISTE_LOCAL_PEERS}",
-    description: "Comma-separated IP addresses trusted as the local developer in local mode.",
-  },
-  MAQUETTISTE_LOCAL_TRUST: { default: "${env:MAQUETTISTE_LOCAL_TRUST}", description: "on (also when empty) or off." },
   MAQUETTISTE_LOCAL_USER: { default: "local", description: "User name of the local developer (presence)." },
 };
 

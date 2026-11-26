@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using StaticSiteHost.Functions;
 
 namespace Maquettiste.Functions;
@@ -39,9 +38,10 @@ public sealed record EditorUser(string Name, string DisplayName, string Role, st
 }
 
 /// <summary>
-/// Who a request is (phase2-design.md section 3.3, PD9, PD11): the local developer, a bearer of the editor token, or the holder of a
-/// session cookie issued for the current token; plus the failed sign-in throttle. Variables are read at call time, so rotating the
-/// token takes effect at once and ends every cookie session.
+/// Who a request is (phase2-design.md section 3.3, PD9, PD11). In local mode without an editor token the editor is open: every request is
+/// the local developer and nobody signs in. Once a token is set, a caller is a bearer of the token or the holder of a session cookie
+/// issued for it; plus the failed sign-in throttle. Variables are read at call time, so setting, rotating or clearing the token takes
+/// effect at once, and rotating it ends every cookie session.
 /// </summary>
 public sealed class EditorAuth
 {
@@ -67,35 +67,28 @@ public sealed class EditorAuth
     /// <summary>Failed sign-ins an address may make per minute before it gets 429.</summary>
     public const int MaxFailuresPerMinute = 5;
 
-    private static readonly string[] ForwardingHeaders = ["Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Real-IP"];
-
     private readonly ISiteVariables _variables;
     private readonly IDataProtector _protector;
     private readonly TimeProvider _time;
-    private readonly ILogger _logger;
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<IPAddress, byte> _rejectedPeers = new();
     private readonly Lock _gate = new();
     private readonly Dictionary<string, Queue<DateTimeOffset>> _failures = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _reportedPeers = new(StringComparer.Ordinal);
 
     /// <summary>Creates the sign-in state.</summary>
     /// <param name="variables">The site's variables, used outside a request (a request reads its own).</param>
     /// <param name="protection">The host's data protection, for the session cookie.</param>
     /// <param name="time">The clock.</param>
-    /// <param name="loggers">The loggers.</param>
-    public EditorAuth(ISiteVariables variables, IDataProtectionProvider protection, TimeProvider time, ILoggerFactory loggers)
+    public EditorAuth(ISiteVariables variables, IDataProtectionProvider protection, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(protection);
-        ArgumentNullException.ThrowIfNull(loggers);
         _variables = variables ?? throw new ArgumentNullException(nameof(variables));
         _protector = protection.CreateProtector("Maquettiste.Session.v1");
         _time = time ?? throw new ArgumentNullException(nameof(time));
-        _logger = loggers.CreateLogger("maquettiste.auth");
     }
 
     /// <summary>
-    /// Who the caller is: the local developer (local trust), a bearer of the token, or a valid session cookie, in that order; a wrong
-    /// bearer token identifies nobody, even from a local peer (<see cref="HasWrongBearer"/> says so).
+    /// Who the caller is. An open editor (<see cref="IsOpen"/>) answers the local developer for every request, whatever its address, host
+    /// name or headers. Otherwise: a bearer of the token, or a valid session cookie; a wrong bearer token identifies nobody
+    /// (<see cref="HasWrongBearer"/> says so).
     /// </summary>
     /// <param name="context">The request.</param>
     /// <returns>The user, or <see langword="null"/>.</returns>
@@ -103,23 +96,32 @@ public sealed class EditorAuth
     {
         ArgumentNullException.ThrowIfNull(context);
         var variables = VariablesFor(context);
-        var bearer = Bearer(context);
-        if (bearer is not null && !TokenMatches(variables, bearer))
-            return null;
-        if (IsLocal(context, variables))
+        if (IsOpen(variables))
             return new EditorUser(LocalUserName(variables), "Local developer", "admin", "local");
-        if (bearer is not null)
-            return new EditorUser("token", "Token holder", "admin", "token");
+        if (Bearer(context) is { } bearer)
+            return TokenMatches(variables, bearer) ? new EditorUser("token", "Token holder", "admin", "token") : null;
         return FromCookie(context, variables);
     }
 
-    /// <summary>Whether the request carries <c>Authorization: Bearer</c> with a token that is not the editor token (401 <c>bad-token</c>).</summary>
+    /// <summary>Whether the editor is open: local mode and no editor token set. Nobody signs in, and every request is the local developer.</summary>
+    /// <param name="variables">The variables in force.</param>
+    /// <returns><see langword="true"/> when open.</returns>
+    public static bool IsOpen(ISiteVariables variables)
+    {
+        ArgumentNullException.ThrowIfNull(variables);
+        return EditorSettings.ModeOf(variables) == "local" && variables.Get(EditorSettings.TokenVariable).Length == 0;
+    }
+
+    /// <summary>
+    /// Whether the request carries <c>Authorization: Bearer</c> with a token that is not the editor token (401 <c>bad-token</c>); never on an
+    /// open editor, which ignores credentials.
+    /// </summary>
     /// <param name="context">The request.</param>
     /// <returns><see langword="true"/> for a wrong bearer token.</returns>
     public bool HasWrongBearer(HttpContext context)
     {
-        var bearer = Bearer(context);
-        return bearer is not null && !TokenMatches(VariablesFor(context), bearer);
+        var variables = VariablesFor(context);
+        return Bearer(context) is { } bearer && !IsOpen(variables) && !TokenMatches(variables, bearer);
     }
 
     /// <summary>Whether a presented token is the editor token (compared in fixed time; never when no token is set).</summary>
@@ -174,84 +176,6 @@ public sealed class EditorAuth
     /// <param name="address">The address.</param>
     /// <returns>The normalised address.</returns>
     public static IPAddress? Normalize(IPAddress? address) => address is { IsIPv4MappedToIPv6: true } ? address.MapToIPv4() : address;
-
-    /// <summary>
-    /// Whether the request is the local developer: local mode with local trust on, a peer that is loopback or one of
-    /// <c>MAQUETTISTE_LOCAL_PEERS</c> (both compared after <see cref="Normalize"/>), a local <c>Host</c>, and no forwarding header.
-    /// </summary>
-    /// <param name="context">The request.</param>
-    /// <param name="variables">The variables in force.</param>
-    /// <returns><see langword="true"/> for the local developer.</returns>
-    public bool IsLocal(HttpContext context, ISiteVariables variables)
-    {
-        if (!EditorSettings.LocalTrustOn(variables))
-            return false;
-        var peer = Normalize(context.Connection.RemoteIpAddress);
-        if (peer is null)
-            return false;
-        if (!IsLocalHost(context.Request.Host.Host))
-            return false;
-        if (!(IPAddress.IsLoopback(peer) || LocalPeers(variables).Contains(peer)))
-        {
-            NoteRejectedPeer(peer);
-            return false;
-        }
-
-        foreach (var header in ForwardingHeaders)
-        {
-            if (context.Request.Headers.ContainsKey(header))
-                return false;
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Logs, once per address (at most 16), a request for the local host name that came from an address that is not a local peer, so a
-    /// developer on Docker Desktop or behind another network layer can find the value to put in <c>MAQUETTISTE_LOCAL_PEERS</c>.
-    /// </summary>
-    /// <param name="peer">The rejected peer.</param>
-    private void NoteRejectedPeer(IPAddress peer)
-    {
-        if (_rejectedPeers.Count >= 16 || !_rejectedPeers.TryAdd(peer, 0))
-            return;
-        _logger.LogWarning(
-            "maquettiste: a request for the local editor came from {Peer}, which is not a local peer, so it must sign in. If that is your browser, set MAQUETTISTE_LOCAL_PEERS={Peer} (never *) or set MAQUETTISTE_EDITOR_TOKEN and sign in.",
-            peer, peer);
-    }
-
-    /// <summary>The parsed <c>MAQUETTISTE_LOCAL_PEERS</c>; an entry that is not an IP address (<c>*</c> included) is logged once and ignored.</summary>
-    /// <param name="variables">The variables in force.</param>
-    /// <returns>The normalised addresses.</returns>
-    public IReadOnlyList<IPAddress> LocalPeers(ISiteVariables variables)
-    {
-        var peers = new List<IPAddress>();
-        foreach (var entry in variables.Get(EditorSettings.LocalPeersVariable).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (IPAddress.TryParse(entry, out var address) && entry.Any(c => c is '.' or ':'))
-            {
-                peers.Add(Normalize(address)!);
-                continue;
-            }
-
-            bool first;
-            lock (_gate)
-                first = _reportedPeers.Add(entry);
-            if (first)
-                _logger.LogWarning("maquettiste: MAQUETTISTE_LOCAL_PEERS entry '{Entry}' is not an IP address and is ignored.", entry);
-        }
-
-        return peers;
-    }
-
-    /// <summary>Whether a host name (without its port) names this machine: <c>localhost</c>, a <c>*.localhost</c> name, <c>127.0.0.1</c> or <c>[::1]</c>.</summary>
-    /// <param name="host">The host.</param>
-    /// <returns><see langword="true"/> when it is local.</returns>
-    public static bool IsLocalHost(string? host)
-    {
-        var name = (host ?? "").TrimEnd('.').ToLowerInvariant();
-        return name is "localhost" or "127.0.0.1" or "[::1]" or "::1" || name.EndsWith(".localhost", StringComparison.Ordinal);
-    }
 
     /// <summary>The first 16 hex of the SHA-256 of a token: what a session cookie is bound to.</summary>
     /// <param name="token">The token.</param>

@@ -64,6 +64,9 @@ services:
       MAQUETTISTE_UID: ${MAQUETTISTE_UID:-}                         # optional override; empty = the owner of .maquettiste/
       MAQUETTISTE_GID: ${MAQUETTISTE_GID:-}
       MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}
+      MAQUETTISTE_EDITOR_HOST: ${MAQUETTISTE_EDITOR_HOST:-}         # optional; empty = localhost,127.0.0.1 (docker/README.md, Host names)
+      MAQUETTISTE_ADMIN_HOST: ${MAQUETTISTE_ADMIN_HOST:-}           # optional; empty = maquettiste-admin.localhost
+      MAQUETTISTE_TRUST_PROXY: ${MAQUETTISTE_TRUST_PROXY:-}         # optional; true only behind a reverse proxy
 volumes:
   maquettiste-host:
 ```
@@ -71,17 +74,20 @@ volumes:
 Run `init` before the first `up`. Otherwise Docker creates `.maquettiste/` empty and the editor starts on a project with
 no settings.
 
+`MAQUETTISTE_EDITOR_TOKEN` is optional. Leave it empty and nobody signs in. Set it, and everyone signs in with it: the
+browser on the sign-in page, scripts with `Authorization: Bearer <token>`. The editor answers at
+`http://maquettiste.localhost:8080` and `http://localhost:8080`; to give it other names, or to host it behind a reverse
+proxy, see [Host names](docker/README.md#host-names).
+
 ### Mac
 
 ```zsh
 cd <your repository>
 docker run --rm --user 0:0 -v "$(pwd -P):/repo" -w /repo mattjcowan/maquettiste:<tag> maquettiste init
-export MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)
 docker compose -f maquettiste.compose.yaml up -d
 ```
 
-Open http://maquettiste.localhost:8080. Docker Desktop on the Mac may show the sign-in page, because the browser's
-requests reach the container from another address: paste the token (`echo $MAQUETTISTE_EDITOR_TOKEN | pbcopy`). The
+Open http://maquettiste.localhost:8080. There is no sign-in. The
 repository must sit in a folder Docker shares with containers (your home folder is shared by default). `$(pwd -P)` mounts
 the real path of the folder, which file sharing needs when you reached it through a link. An agent client started from
 the Dock does not inherit your shell's `PATH`, so the entry `init --mcp --docker` writes adds `/opt/homebrew/bin`,
@@ -96,15 +102,15 @@ docker compose -f maquettiste.compose.yaml up -d
 ```
 
 Open http://maquettiste.localhost:8080. Nothing else is needed. The container runs as the owner of the folder, so the
-model and the generated files stay yours, and there is no sign-in in local mode. Rootless Podman works with the same file.
+model and the generated files stay yours, and there is no sign-in. Rootless Podman works with the same file.
 
 ### Windows with WSL
 
 Run the Linux commands in a WSL terminal. Keep the repository in the WSL filesystem (for example `~/src`), not under
 `/mnt/c`: file access across the Windows drive is slow, and file change events from Windows do not reach Linux. WSL
 forwards the port to Windows, so open http://maquettiste.localhost:8080 in a Windows browser. If Windows already uses
-port 8080, change the ports line to another host port, such as `"127.0.0.1:8094:8080"`, and open that port. With Docker
-Engine inside WSL there is no sign-in; with Docker Desktop, set a token as on the Mac.
+port 8080, change the ports line to another host port, such as `"127.0.0.1:8094:8080"`, and open that port. There is no
+sign-in, with Docker Engine inside WSL or with Docker Desktop.
 
 ## Updating
 

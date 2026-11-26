@@ -4,9 +4,9 @@
     "net10.0": {
       "StaticSiteHost.Abstractions": {
         "type": "Direct",
-        "requested": "[0.4.0, )",
-        "resolved": "0.4.0",
-        "contentHash": "m8XpVH/KaB4tggOxsxXNjOzVJh6afwPc+PB9QpJDiDEc9Sd6MzueFw2nQXijgRuYVdKBOn7kXT7Dr/5wFyREmQ=="
+        "requested": "[0.10.2, )",
+        "resolved": "0.10.2",
+        "contentHash": "hIDiLlb6fRSlhW9OTTrLabsDrcVCoWpr40+uPKp8kLL6bl6jGJyJnr3UE0tGgpWJ1F+zRCVAMasEdnUhUuxmAQ=="
       },
       "Acornima": {
         "type": "Transitive",

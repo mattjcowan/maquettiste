@@ -10,7 +10,7 @@
 //
 // Usage: node seed.mjs [--url http://127.0.0.1:8080] [--host maquettiste.localhost] [--token <t>] [--no-settings]
 //                      [--dry-run] [--compare <seeded project root>]
-// The token defaults to $MAQUETTISTE_EDITOR_TOKEN; without one the editor must treat the caller as a local peer.
+// The token defaults to $MAQUETTISTE_EDITOR_TOKEN; without one the editor must have no token set.
 import http from "node:http";
 import https from "node:https";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";

@@ -12,14 +12,21 @@ public sealed class GateTests
     private const string Index = "/api/model/index";
 
     [Theory]
-    [InlineData("127.0.0.1")]
-    [InlineData("::1")]
-    [InlineData("::ffff:127.0.0.1")]
-    public async Task A_loopback_peer_with_a_local_host_is_the_local_admin(string address)
+    [InlineData("127.0.0.1", "maquettiste.localhost:8080", null, null)]
+    [InlineData("::ffff:172.18.0.1", "maquettiste.localhost:8080", null, null)]
+    [InlineData("192.168.65.1", "maquettiste.localhost:8080", null, null)]
+    [InlineData("203.0.113.7", "editor.example.com", null, null)]
+    [InlineData("127.0.0.1", "192.168.1.20:8080", null, null)]
+    [InlineData("127.0.0.1", "maquettiste.localhost:8080", "X-Forwarded-For", "198.51.100.4")]
+    [InlineData("127.0.0.1", "maquettiste.localhost:8080", "Forwarded", "for=198.51.100.4")]
+    public async Task Without_a_token_every_request_is_the_local_admin(string remote, string hostHeader, string? header, string? value)
     {
         await using var host = EditorHost.Create();
+        var request = TestRequest.Local("GET", "/api/session").With(r => { r.Remote = IPAddress.Parse(remote); r.Host = hostHeader; });
+        if (header is not null)
+            request.Header(header, value!);
 
-        var response = await host.SendAsync(TestRequest.Local("GET", "/api/session").With(r => r.Remote = IPAddress.Parse(address)));
+        var response = await host.SendAsync(request);
 
         Assert.Equal(200, response.Status);
         Assert.Equal("local", response.Json["via"]!.GetValue<string>());
@@ -27,99 +34,95 @@ public sealed class GateTests
         Assert.Equal("admin", response.Json["user"]!["role"]!.GetValue<string>());
     }
 
-    [Theory]
-    [InlineData("localhost")]
-    [InlineData("localhost:8080")]
-    [InlineData("maquettiste.localhost:8080")]
-    [InlineData("127.0.0.1:8080")]
-    [InlineData("[::1]:8080")]
-    public async Task Every_local_host_name_is_accepted(string hostHeader)
+    [Fact]
+    public async Task Without_a_token_a_bearer_is_ignored()
     {
         await using var host = EditorHost.Create();
 
-        var response = await host.SendAsync(TestRequest.Local("GET", Index).With(r => r.Host = hostHeader));
+        var any = await host.SendAsync(TestRequest.FromElsewhere("GET", Index).Bearer("anything"));
+        var empty = await host.SendAsync(TestRequest.FromElsewhere("GET", Index).Bearer(""));
 
-        Assert.Equal(200, response.Status);
-    }
-
-    [Fact]
-    public async Task The_ipv4_mapped_gateway_is_local_only_when_listed_in_local_peers()
-    {
-        await using var listed = EditorHost.Create(v => v.Set("MAQUETTISTE_LOCAL_PEERS", "172.18.0.1"));
-        await using var unlisted = EditorHost.Create();
-        static TestRequest Gateway() => TestRequest.Local("GET", Index).With(r => r.Remote = IPAddress.Parse("::ffff:172.18.0.1"));
-
-        var admitted = await listed.SendAsync(Gateway());
-        var refused = await unlisted.SendAsync(Gateway());
-        var plain = await listed.SendAsync(TestRequest.Local("GET", Index).With(r => r.Remote = IPAddress.Parse("172.18.0.1")));
-
-        Assert.Equal(200, admitted.Status);
-        Assert.Equal(401, refused.Status);
-        Assert.Equal("unauthenticated", refused.ProblemCode);
-        Assert.Equal(200, plain.Status);
-    }
-
-    [Fact]
-    public async Task A_mapped_local_peers_entry_is_normalised_too()
-    {
-        await using var host = EditorHost.Create(v => v.Set("MAQUETTISTE_LOCAL_PEERS", "::ffff:172.18.0.1"));
-
-        var response = await host.SendAsync(TestRequest.Local("GET", Index).With(r => r.Remote = IPAddress.Parse("172.18.0.1")));
-
-        Assert.Equal(200, response.Status);
+        Assert.Equal(200, any.Status);
+        Assert.Equal(200, empty.Status);
     }
 
     [Theory]
-    [InlineData("editor.example.com")]
-    [InlineData("192.168.1.20:8080")]
-    [InlineData("localhost.example.com")]
-    public async Task A_local_peer_naming_another_host_is_not_local(string hostHeader)
+    [InlineData("/")]
+    [InlineData("/entities?sel=01J92P0V0FJ23CGSNKM7P1W5V7")]
+    public async Task Without_a_token_a_browser_from_anywhere_gets_the_app_not_the_sign_in_page(string path)
     {
         await using var host = EditorHost.Create();
 
-        var response = await host.SendAsync(TestRequest.Local("GET", Index).With(r => r.Host = hostHeader));
+        var page = await host.SendAsync(TestRequest.FromElsewhere("GET", path));
 
-        Assert.Equal(401, response.Status);
-        Assert.Equal("unauthenticated", response.ProblemCode);
-        Contract.AssertResponse(response, Index);
+        Assert.True(page.Routed);
+        Assert.DoesNotContain("action=\"/api/session\"", page.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Without_a_token_signing_in_answers_the_local_developer_and_sets_no_cookie()
+    {
+        await using var host = EditorHost.Create();
+
+        var json = await host.SendAsync(TestRequest.FromElsewhere("POST", "/api/session").WithJson(new { token = "anything" }));
+        var form = await host.SendAsync(TestRequest.FromElsewhere("POST", "/api/session")
+            .With(r => { r.Body = "token=&returnUrl=%2Fentities"u8.ToArray(); r.ContentType = "application/x-www-form-urlencoded"; }));
+
+        Assert.Equal(200, json.Status);
+        Assert.Equal("local", json.Json["via"]!.GetValue<string>());
+        Assert.Empty(json.Headers.SetCookie.ToString());
+        Assert.Equal(303, form.Status);
+        Assert.Equal("/entities", form.Headers.Location.ToString());
+        Assert.Empty(form.Headers.SetCookie.ToString());
     }
 
     [Theory]
-    [InlineData("X-Forwarded-For", "198.51.100.4")]
-    [InlineData("Forwarded", "for=198.51.100.4")]
-    [InlineData("X-Forwarded-Host", "editor.example.com")]
-    [InlineData("X-Real-IP", "198.51.100.4")]
-    public async Task A_local_peer_with_a_forwarding_header_is_not_local(string header, string value)
+    [InlineData("127.0.0.1", "maquettiste.localhost:8080")]
+    [InlineData("::1", "localhost:8080")]
+    [InlineData("203.0.113.7", "editor.example.com")]
+    public async Task With_a_token_every_caller_signs_in_the_loopback_one_included(string remote, string hostHeader)
+    {
+        await using var host = EditorHost.Create(EditorHost.WithToken);
+        TestRequest Request() => TestRequest.Local("GET", Index).With(r => { r.Remote = IPAddress.Parse(remote); r.Host = hostHeader; });
+
+        var without = await host.SendAsync(Request());
+        var with = await host.SendAsync(Request().Bearer(EditorHost.Token));
+
+        Assert.Equal(401, without.Status);
+        Assert.Equal("unauthenticated", without.ProblemCode);
+        Contract.AssertResponse(without, Index);
+        Assert.Equal(200, with.Status);
+    }
+
+    [Fact]
+    public async Task Setting_or_clearing_the_token_takes_effect_at_once()
     {
         await using var host = EditorHost.Create();
 
-        var response = await host.SendAsync(TestRequest.Local("GET", Index).Header(header, value));
+        var open = await host.GetAsync(Index);
+        host.Variables.Set("MAQUETTISTE_EDITOR_TOKEN", EditorHost.Token, isPublic: false);
+        var closed = await host.GetAsync(Index);
+        host.Variables.Set("MAQUETTISTE_EDITOR_TOKEN", "", isPublic: false);
+        var openAgain = await host.GetAsync(Index);
 
-        Assert.Equal(401, response.Status);
+        Assert.Equal(200, open.Status);
+        Assert.Equal(401, closed.Status);
+        Assert.Equal(200, openAgain.Status);
     }
 
     [Fact]
-    public async Task Local_trust_off_makes_every_caller_present_a_credential()
+    public async Task Hosted_mode_is_never_open_and_answers_503_for_the_model()
     {
-        await using var host = EditorHost.Create(v => v.Set("MAQUETTISTE_LOCAL_TRUST", "off"));
+        await using var noToken = EditorHost.Create(v => v.Set("MAQUETTISTE_MODE", "hosted").Set("MAQUETTISTE_EDITOR_TOKEN", ""));
+        await using var host = EditorHost.Create(v => EditorHost.WithToken(v.Set("MAQUETTISTE_MODE", "hosted")));
 
-        var local = await host.GetAsync(Index);
-        var bearer = await host.SendAsync(TestRequest.Local("GET", Index).Bearer(EditorHost.Token));
-
-        Assert.Equal(401, local.Status);
-        Assert.Equal(200, bearer.Status);
-    }
-
-    [Fact]
-    public async Task Hosted_mode_trusts_no_local_peer_and_answers_503_for_the_model()
-    {
-        await using var host = EditorHost.Create(v => v.Set("MAQUETTISTE_MODE", "hosted"));
-
-        var local = await host.GetAsync(Index);
+        var open = await noToken.GetAsync(Index);
+        var noCredential = await host.GetAsync(Index);
         var bearer = await host.SendAsync(TestRequest.FromElsewhere("GET", Index).Bearer(EditorHost.Token));
         var health = await host.GetAsync("/api/health");
 
-        Assert.Equal(401, local.Status);
+        Assert.Equal(401, open.Status);
+        Assert.Equal(401, noCredential.Status);
         Assert.Equal(503, bearer.Status);
         Assert.Equal("model-unavailable", bearer.ProblemCode);
         Contract.AssertResponse(bearer, Index);
@@ -127,29 +130,9 @@ public sealed class GateTests
     }
 
     [Fact]
-    public async Task Unparsable_local_peer_entries_are_ignored_and_logged_once()
+    public async Task A_bearer_token_admits_a_caller_and_a_wrong_one_is_refused()
     {
-        await using var host = EditorHost.Create(v => v.Set("MAQUETTISTE_LOCAL_PEERS", "not-an-ip, *, 172.18.0.1"));
-        static TestRequest Gateway() => TestRequest.Local("GET", Index).With(r => r.Remote = IPAddress.Parse("::ffff:172.18.0.1"));
-
-        var first = await host.SendAsync(Gateway());
-        var second = await host.SendAsync(Gateway());
-        var stranger = await host.SendAsync(TestRequest.Local("GET", Index).With(r => r.Remote = IPAddress.Parse("10.9.8.7")));
-
-        Assert.Equal(200, first.Status);
-        Assert.Equal(200, second.Status);
-        Assert.Equal(401, stranger.Status); // '*' trusts nobody (owner decision 3)
-        var warnings = host.Logs.Entries.Where(e => e.Level == LogLevel.Warning && e.Message.Contains("is not an IP address", StringComparison.Ordinal)).ToList();
-        Assert.Equal(2, warnings.Count);
-        Assert.Single(warnings, w => w.Message.Contains("'not-an-ip'", StringComparison.Ordinal));
-        Assert.Single(warnings, w => w.Message.Contains("'*'", StringComparison.Ordinal));
-        Assert.Single(host.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("MAQUETTISTE_LOCAL_PEERS=10.9.8.7", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task A_bearer_token_admits_a_remote_caller_and_a_wrong_one_is_refused_even_locally()
-    {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
 
         var remote = await host.SendAsync(TestRequest.FromElsewhere("GET", "/api/session").Bearer(EditorHost.Token));
         var wrongLocal = await host.SendAsync(TestRequest.Local("GET", Index).Bearer("guess"));
@@ -165,22 +148,9 @@ public sealed class GateTests
     }
 
     [Fact]
-    public async Task Without_a_configured_token_no_bearer_is_accepted()
-    {
-        await using var host = EditorHost.Create(v => v.Set("MAQUETTISTE_EDITOR_TOKEN", ""));
-
-        var response = await host.SendAsync(TestRequest.FromElsewhere("GET", Index).Bearer(""));
-        var any = await host.SendAsync(TestRequest.FromElsewhere("GET", Index).Bearer("anything"));
-
-        Assert.Equal(401, response.Status);
-        Assert.Equal(401, any.Status);
-        Assert.Equal("bad-token", any.ProblemCode);
-    }
-
-    [Fact]
     public async Task Json_sign_in_sets_a_session_cookie_that_admits_a_remote_browser()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
 
         var signIn = await host.SendAsync(TestRequest.FromElsewhere("POST", "/api/session").WithJson(new { token = EditorHost.Token }));
         var cookie = Cookie(signIn);
@@ -199,7 +169,7 @@ public sealed class GateTests
     [Fact]
     public async Task Editors_on_two_ports_of_one_host_keep_their_own_session_cookies()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
         TestRequest On(string port, string method, string path) => TestRequest.FromElsewhere(method, path).With(r => r.Host = "editor.example.com:" + port);
 
         // Browsers send every cookie of a host to each of its ports: a session on 8081 must not take the place of the one on 8080.
@@ -223,7 +193,7 @@ public sealed class GateTests
     [Fact]
     public async Task A_cookie_older_than_seven_days_is_refused()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
         var cookie = Cookie(await host.SendAsync(TestRequest.FromElsewhere("POST", "/api/session").WithJson(new { token = EditorHost.Token })));
 
         host.Clock.Advance(TimeSpan.FromDays(7) - TimeSpan.FromMinutes(1));
@@ -238,7 +208,7 @@ public sealed class GateTests
     [Fact]
     public async Task Rotating_the_token_ends_every_cookie_session()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
         var cookie = Cookie(await host.SendAsync(TestRequest.FromElsewhere("POST", "/api/session").WithJson(new { token = EditorHost.Token })));
 
         host.Variables.Set("MAQUETTISTE_EDITOR_TOKEN", "a-new-token");
@@ -252,7 +222,7 @@ public sealed class GateTests
     [Fact]
     public async Task A_wrong_token_is_401_and_five_failures_a_minute_are_429()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
         TestRequest Attempt() => TestRequest.FromElsewhere("POST", "/api/session").WithJson(new { token = "guess" });
 
         var failures = new List<TestResponse>();
@@ -279,7 +249,7 @@ public sealed class GateTests
     [Fact]
     public async Task The_sign_in_form_redirects_to_a_local_return_url_or_shows_the_page_again()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
         static TestRequest Form(string body) => TestRequest.FromElsewhere("POST", "/api/session")
             .With(r => { r.Body = System.Text.Encoding.UTF8.GetBytes(body); r.ContentType = "application/x-www-form-urlencoded"; });
 
@@ -301,7 +271,7 @@ public sealed class GateTests
     [Fact]
     public async Task An_unauthenticated_browser_gets_the_sign_in_page_and_other_requests_401()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
 
         var page = await host.SendAsync(TestRequest.FromElsewhere("GET", "/entities?sel=01J92P0V0FJ23CGSNKM7P1W5V7"));
         var head = await host.SendAsync(TestRequest.FromElsewhere("HEAD", "/"));
@@ -324,7 +294,7 @@ public sealed class GateTests
     [Fact]
     public async Task Anonymous_paths_reach_their_handlers_without_a_user()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
 
         var health = await host.SendAsync(TestRequest.FromElsewhere("GET", "/api/health"));
         var session = await host.SendAsync(TestRequest.FromElsewhere("GET", "/api/session"));
@@ -342,7 +312,7 @@ public sealed class GateTests
     [InlineData("PUT")]
     [InlineData("POST")]
     [InlineData("DELETE")]
-    public async Task A_foreign_origin_is_refused_for_state_changes_even_from_the_local_peer(string method)
+    public async Task A_foreign_origin_is_refused_for_state_changes_even_on_an_open_editor(string method)
     {
         await using var host = EditorHost.Create();
         var path = method == "POST" ? "/api/model/elements" : "/api/model/elements/" + EditorHost.InvoiceId;
@@ -428,18 +398,6 @@ public sealed class GateTests
     }
 
     [Fact]
-    public async Task A_local_host_from_an_unknown_peer_is_refused_and_the_peer_is_logged_once()
-    {
-        await using var host = EditorHost.Create();
-
-        var first = await host.SendAsync(TestRequest.Local("GET", Index).With(r => r.Remote = System.Net.IPAddress.Parse("192.168.65.1")));
-        await host.SendAsync(TestRequest.Local("GET", Index).With(r => r.Remote = System.Net.IPAddress.Parse("192.168.65.1")));
-
-        Assert.Equal(401, first.Status);
-        Assert.Single(host.Logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("MAQUETTISTE_LOCAL_PEERS=192.168.65.1", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public async Task The_host_paths_pass_through_untouched()
     {
         await using var host = EditorHost.Create();
@@ -456,16 +414,16 @@ public sealed class GateTests
     // ---------------------------------------------------------------- hooks
 
     [Theory]
-    [InlineData("127.0.0.1", "maquettiste.localhost:8080", null, null, "local")]
-    [InlineData("::ffff:172.18.0.1", "maquettiste.localhost:8080", null, null, "local")]
-    [InlineData("203.0.113.7", "editor.example.com", null, null, null)]
-    [InlineData("203.0.113.7", "editor.example.com", EditorHost.Token, null, "token")]
-    [InlineData("127.0.0.1", "maquettiste.localhost:8080", "guess", null, null)]
-    [InlineData("127.0.0.1", "maquettiste.localhost:8080", null, "http://evil.example", null)]
-    [InlineData("127.0.0.1", "maquettiste.localhost:8080", null, EditorHost.Origin, "local")]
-    public async Task Connect_admits_the_callers_the_gate_admits(string remote, string hostHeader, string? bearer, string? origin, string? expected)
+    [InlineData(false, "203.0.113.7", "editor.example.com", null, null, "local")]
+    [InlineData(false, "127.0.0.1", "maquettiste.localhost:8080", null, "http://evil.example", null)]
+    [InlineData(false, "127.0.0.1", "maquettiste.localhost:8080", null, EditorHost.Origin, "local")]
+    [InlineData(true, "127.0.0.1", "maquettiste.localhost:8080", null, null, null)]
+    [InlineData(true, "203.0.113.7", "editor.example.com", null, null, null)]
+    [InlineData(true, "203.0.113.7", "editor.example.com", EditorHost.Token, null, "token")]
+    [InlineData(true, "127.0.0.1", "maquettiste.localhost:8080", "guess", null, null)]
+    public async Task Connect_admits_the_callers_the_gate_admits(bool token, string remote, string hostHeader, string? bearer, string? origin, string? expected)
     {
-        await using var host = EditorHost.Create(v => v.Set("MAQUETTISTE_LOCAL_PEERS", "172.18.0.1"));
+        await using var host = EditorHost.Create(token ? EditorHost.WithToken : null);
         var request = TestRequest.Local("GET", "/_host/realtime").With(r => { r.Remote = IPAddress.Parse(remote); r.Host = hostHeader; });
         if (bearer is not null)
             request.Bearer(bearer);
@@ -478,9 +436,9 @@ public sealed class GateTests
     }
 
     [Fact]
-    public async Task Connect_follows_local_trust_off_and_the_session_cookie()
+    public async Task Connect_follows_the_session_cookie_once_a_token_is_set()
     {
-        await using var host = EditorHost.Create(v => v.Set("MAQUETTISTE_LOCAL_TRUST", "off"));
+        await using var host = EditorHost.Create(EditorHost.WithToken);
         var auth = host.Services.GetRequiredService<EditorAuth>();
         var cookie = Cookie(await host.SendAsync(TestRequest.FromElsewhere("POST", "/api/session").WithJson(new { token = EditorHost.Token })));
 
@@ -502,8 +460,8 @@ public sealed class GateTests
     [InlineData("job:01M3MNY0HTVJQSH4BX78RWN8F7", false, false)]
     public async Task Join_admits_identified_callers_to_editors_and_job_groups_only(string group, bool identified, bool expected)
     {
-        await using var host = EditorHost.Create();
-        var request = identified ? TestRequest.Local("GET", "/_host/realtime") : TestRequest.FromElsewhere("GET", "/_host/realtime");
+        await using var host = EditorHost.Create(EditorHost.WithToken);
+        var request = identified ? TestRequest.FromElsewhere("GET", "/_host/realtime").Bearer(EditorHost.Token) : TestRequest.FromElsewhere("GET", "/_host/realtime");
 
         var allowed = RealtimeHooks.Join(request.ToContext(host.Site, host.Services), host.Services.GetRequiredService<EditorAuth>(), group);
 
@@ -513,10 +471,10 @@ public sealed class GateTests
     [Fact]
     public async Task Ai_access_is_for_identified_callers_only()
     {
-        await using var host = EditorHost.Create();
+        await using var host = EditorHost.Create(EditorHost.WithToken);
         var auth = host.Services.GetRequiredService<EditorAuth>();
 
-        Assert.True(RealtimeHooks.Ai(TestRequest.Local("POST", "/_host/ai/chat").ToContext(host.Site, host.Services), auth));
+        Assert.True(RealtimeHooks.Ai(TestRequest.Local("POST", "/_host/ai/chat").Bearer(EditorHost.Token).ToContext(host.Site, host.Services), auth));
         Assert.True(RealtimeHooks.Ai(TestRequest.FromElsewhere("POST", "/_host/ai/chat").Bearer(EditorHost.Token).ToContext(host.Site, host.Services), auth));
         Assert.False(RealtimeHooks.Ai(TestRequest.FromElsewhere("POST", "/_host/ai/chat").ToContext(host.Site, host.Services), auth));
         Assert.False(RealtimeHooks.Ai(TestRequest.Local("POST", "/_host/ai/chat").Bearer("guess").ToContext(host.Site, host.Services), auth));

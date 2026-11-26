@@ -88,8 +88,9 @@ public sealed class ProjectAndModelTests
         await using var host = EditorHost.Create();
 
         var local = await host.GetAsync("/api/session");
-        var anonymous = await host.SendAsync(TestRequest.FromElsewhere("GET", "/api/session"));
         var signOut = await host.SendAsync(TestRequest.Local("DELETE", "/api/session"));
+        EditorHost.WithToken(host.Variables);
+        var anonymous = await host.SendAsync(TestRequest.FromElsewhere("GET", "/api/session"));
 
         Contract.AssertResponse(local, "/api/session");
         Assert.Equal("local", local.Json["via"]!.GetValue<string>());

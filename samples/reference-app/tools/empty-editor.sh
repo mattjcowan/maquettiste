@@ -4,15 +4,15 @@
 # and nothing under model/. Run from anywhere; the project folder must be new or a previous run of this script.
 #
 #   samples/reference-app/tools/empty-editor.sh <project dir>        # then:
-#   MAQUETTISTE_EDITOR_TOKEN=<token> node samples/reference-app/tools/seed.mjs --url http://127.0.0.1:<port> --compare <project dir>
+#   node samples/reference-app/tools/seed.mjs --url http://127.0.0.1:<port> --compare <project dir>
 #
 # Environment: MAQUETTISTE_IMAGE (default mattjcowan/maquettiste:dev), MAQUETTISTE_PORT (default 8080),
-# MAQUETTISTE_EDITOR_TOKEN (required: the container sees the host as a remote peer), COMPOSE_PROJECT_NAME (default nw-seed),
+# MAQUETTISTE_EDITOR_TOKEN (optional: set, the editor and seed.mjs use it; empty, nobody signs in), COMPOSE_PROJECT_NAME (default nw-seed),
 # MAQUETTISTE_UID/MAQUETTISTE_GID (default: the caller's ids; the user the editor runs as).
 # Stop with: docker compose -f docker/compose.yaml --project-directory <project dir> down -v
 set -eu
 [ $# -eq 1 ] || { echo "usage: $0 <project dir>" >&2; exit 2; }
-: "${MAQUETTISTE_EDITOR_TOKEN:?set MAQUETTISTE_EDITOR_TOKEN (for example \$(openssl rand -hex 24))}"
+MAQUETTISTE_EDITOR_TOKEN="${MAQUETTISTE_EDITOR_TOKEN:-}"
 repo="$(cd "$(dirname "$0")/../../.." && pwd)"
 mkdir -p "$1"
 project="$(cd "$1" && pwd)"

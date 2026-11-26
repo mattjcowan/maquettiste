@@ -5307,7 +5307,7 @@ project (the newest 50, each capped in size, oldest exchanges first out); pick o
 or **Clear conversation** to delete it.
 
 **Setting up the provider (in the host, never in Maquettiste).** Maquettiste never holds an AI key. An administrator of the
-host sets it up once, signed in to the host's management UI at `http://localhost:<port>/` (the same container and port as the
+host sets it up once, signed in to the host's management UI at `http://maquettiste-admin.localhost:<port>/` (the same container and port as the
 editor; with the Docker image, the user is `admin` and the first password is in `/data/config/bootstrap-password.txt`, see
 docker/README.md):
 
@@ -5318,8 +5318,8 @@ docker/README.md):
 
 **Settings › Assistant** shows whether the site has a provider ("configured" or "not configured"), the API it speaks
 ("OpenAI-compatible API" or "Anthropic API") and the model in use, with
-a link to the host's management UI when `MAQUETTISTE_HOST_AI_URL` is set. The compose file sets it to `http://localhost:<port>/`,
-where the host answers its management UI on the editor's own port (sign in as the host's administrator).
+a link to the host's management UI when `MAQUETTISTE_HOST_AI_URL` is set. The compose file sets it to `http://maquettiste-admin.localhost:<port>/`,
+where the host answers its admin app on the editor's own port (sign in as the host's administrator).
 The model must support tools (all current OpenAI and Anthropic models do; on Ollama, Llama 3.1+, Qwen 2.5+ and similar); with
 one that does not, the panel says "the site's model does not support tools; choose another in the host's AI settings".
 Other provider failures are worded by cause: a conversation too long for the model (start a new one), too many requests

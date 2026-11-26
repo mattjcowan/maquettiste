@@ -30,14 +30,15 @@ name:
 ## The assistant's AI provider
 
 The editor's assistant (docs/user-guide.md, "The assistant") uses the AI the host gives the site; Maquettiste never holds a key.
-It is one container: the image is static-site-hosting with the editor site in it, and the host's management UI answers on the
-same port under the host name `localhost` (`http://localhost:8080/`), while the editor answers under `maquettiste.localhost`.
+It is one container: the image is static-site-hosting with the editor site in it, and the host's admin app answers on the
+same port under the host name `maquettiste-admin.localhost` (`http://maquettiste-admin.localhost:8080/`, or
+`MAQUETTISTE_ADMIN_HOST`), while the editor answers under its own names (see "Host names" below).
 Sign in as `admin` with the password the host generated on first boot (it asks for a new one at the first sign-in):
 
     docker compose -f <maquettiste>/docker/compose.yaml --project-directory . exec maquettiste cat /data/config/bootstrap-password.txt
 
 Then add a provider and its key under **AI › providers**, and pick it and the model under **Sites ›
-maquettiste.localhost › AI**. The compose file passes `MAQUETTISTE_HOST_AI_URL` (default `http://localhost:${MAQUETTISTE_PORT:-8080}/`)
+maquettiste.localhost › AI**. The compose file passes `MAQUETTISTE_HOST_AI_URL` (default `http://maquettiste-admin.localhost:${MAQUETTISTE_PORT:-8080}/`)
 so Settings › Assistant links there.
 
 ## Which version is running
@@ -106,32 +107,38 @@ root-owned `.maquettiste/.cache` (it repairs it, runs as the host user and `gene
 root with no variables over a root-owned model folder and repository, as rootless Podman shows them (the editor stays root and
 its saves succeed).
 
-## Who is "local" (no sign-in)
+## Signing in
 
-A request is trusted as the local developer only when its `Host` is `localhost`, a loopback address or a `*.localhost` name, it carries no
-forwarding header, and its peer address is loopback or listed in `MAQUETTISTE_LOCAL_PEERS`. When that variable is empty the
-entrypoint sets it to the container's default gateway (read from `/proc/net/route`), which is where a browser's request arrives
-on Linux Docker Engine (for example `172.18.0.1`; measured). The chosen value is logged at start:
+Without `MAQUETTISTE_EDITOR_TOKEN` nobody signs in: every request is the local developer, whatever address it comes from. The
+compose file publishes the port on `127.0.0.1` only, so other machines cannot reach it.
 
-    docker compose -f <maquettiste>/docker/compose.yaml --project-directory . logs | grep "local peers"
-
-Anywhere else, such as Docker Desktop (macOS, Windows, or Linux with Desktop) or a rootless or proxied setup, the browser's
-requests may arrive from a different address, and you get the sign-in page. The editor then logs the address once:
-
-    docker compose ... logs | grep "not a local peer"
-    # maquettiste: a request for the local editor came from 192.168.65.1, which is not a local peer ... set MAQUETTISTE_LOCAL_PEERS=192.168.65.1
-
-Either set that address (a comma-separated list of IP addresses) and restart:
-
-    MAQUETTISTE_LOCAL_PEERS=192.168.65.1 docker compose ... up -d
-
-or set a token and sign in with it on the sign-in page:
+With a token set, everyone signs in, the local developer included: the browser shows the sign-in page, and scripts send
+`Authorization: Bearer <token>`. Set one when the editor is reachable from other machines:
 
     MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24) docker compose ... up -d
 
-Never use `*`: the editor ignores it (and any entry that is not an IP address) and logs a warning, because it would trust every
-peer. The Docker Desktop address has not been measured yet (no Docker Desktop machine was available); `192.168.65.1` above is
-only an example of the shape to expect.
+## Host names
+
+The host inside the image picks the app by the request's host name, so the names are settings:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `MAQUETTISTE_EDITOR_HOST` | `localhost,127.0.0.1` | More names the editor answers at, comma-separated. It always answers at `maquettiste.localhost` too. A name that is not local (`localhost`, `*.localhost`, `127.x.x.x`) is public: the editor then refuses to start without `MAQUETTISTE_EDITOR_TOKEN` |
+| `MAQUETTISTE_ADMIN_HOST` | `maquettiste-admin.localhost` | Where the host's admin app answers (AI providers, users). One name |
+| `MAQUETTISTE_TRUST_PROXY` | `false` | `true` makes the host use the `X-Forwarded-Host`, `-Proto` and `-For` headers a reverse proxy sends. Set it only when the proxy is the only way in: anyone else could send those headers too |
+
+Any other name never reaches the editor: the host answers it with a 404. That is also what stops DNS rebinding, a web page
+on another name that points its name at your machine, while the editor runs without a token.
+
+Several repositories on one machine: one container each, on its own port (`MAQUETTISTE_PORT=8081`, `8082`...), each opened at
+`http://localhost:<port>`.
+
+Behind a reverse proxy (nginx, Caddy, Traefik), with the proxy ending HTTPS:
+
+    MAQUETTISTE_EDITOR_HOST=localhost,models.example.com MAQUETTISTE_TRUST_PROXY=true \
+    MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24) docker compose ... up -d
+
+The proxy forwards to the container's port and sends the usual `X-Forwarded-*` headers. Publish the port only to the proxy.
 
 ## Build and test the image (maintainers)
 
@@ -139,8 +146,7 @@ only an example of the shape to expect.
     mkdir -p ../smoketmp && TMPDIR=$PWD/../smoketmp sh docker/smoke.sh      # offline checks; prints "smoke: all checks passed"
     docker/dev-billing.sh                                                  # the billing fixture on 127.0.0.1:8080; rerunnable
 
-Files: `Dockerfile` (multi-stage: engine packages, site zip, final image), `entrypoint.sh` (first-boot deploy, key seeding,
-local peers), `compose.yaml` (local mode), `closure/` (the offline NuGet closure the host builds `_functions/` from), `smoke.sh`,
+Files: `Dockerfile` (multi-stage: engine packages, site zip, final image), `entrypoint.sh` (first-boot deploy, key seeding), `compose.yaml` (local mode), `closure/` (the offline NuGet closure the host builds `_functions/` from), `smoke.sh`,
 `dev-billing.sh`.
 
 Two build arguments fill the OCI labels: `MAQUETTISTE_VERSION` (`.version`; it defaults to the `VersionPrefix` of
