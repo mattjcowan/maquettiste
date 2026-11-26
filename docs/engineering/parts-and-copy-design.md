@@ -143,7 +143,7 @@ enum member in a condition) is a reference, so its holder's save checks the bloc
 - Parts of a part end with several types; parts that only a derived entity of a part has.
 - `clear` on a link; a "copied from" link on a part kind (`links` inside a part entry).
 
-## 7. New public names, to confirm before release
+## 7. New public names (confirmed by the owner on 2026-11-26)
 
 - **File keys:** `copy` on an entity, with `attributes` (`attribute`, `onCopy`: `copy`, `reset`, `clear`, `original`), `links` (`end`,
   `onCopy`: `copy`, `original`) and `parts` (`end`, `onCopy`: `all`, `one`, `none`, `choose` with `condition`, `state`, `latestBy`, and
