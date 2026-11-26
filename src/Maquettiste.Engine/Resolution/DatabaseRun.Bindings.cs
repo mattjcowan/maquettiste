@@ -263,7 +263,8 @@ internal sealed partial class DatabaseRun
             var listed = ResolveListedColumns();
             ResolveDelete();
             ResolveKey(fields);
-            ResolveWriteFlags(fields, listed);
+            ResolveWriteFlags(fields, constants, listed);
+            CheckQueryParameters(fields);
             _b.Fields = fields;
             _b.Constants = constants;
             _b.Columns = Account(SourceColumns(), fields, constants, listed, write: _b.WriteTable is not null && ReferenceEquals(_b.WriteTable, _b.SourceTable));
@@ -760,7 +761,11 @@ internal sealed partial class DatabaseRun
             }
         }
 
-        private void ResolveWriteFlags(List<RBindingField> fields, Dictionary<string, BindingColumnStatus> listed)
+        /// <summary>
+        /// Which fields the insert and the update write. A field whose column a constant writes is read only: the constant's value is
+        /// written once, and the update finds its row by it, so the statements never name the column twice.
+        /// </summary>
+        private void ResolveWriteFlags(List<RBindingField> fields, List<RBindingConstant> constants, Dictionary<string, BindingColumnStatus> listed)
         {
             var generated = new List<RBindingField>();
             foreach (var field in fields)
@@ -778,11 +783,30 @@ internal sealed partial class DatabaseRun
                     field.InUpdate = field.InInsert;
                 }
 
+                if (column is not null && constants.Any(c => ReferenceEquals(c.WriteColumn, column)))
+                    (field.InInsert, field.InUpdate) = (false, false);
+
                 if (field.IsKey && field.IsGenerated && _b.Writes)
                     generated.Add(field);
             }
 
             _b.Generated = generated;
+        }
+
+        /// <summary>
+        /// MQ4121: a parameter of the source query with the name of one of the binding's fields (ignoring case, as many drivers match
+        /// parameter names). The statements name their parameters after the fields, so the select by key would take one value for both,
+        /// and code that passes a record's values by name would fill the query's parameter with the field.
+        /// </summary>
+        private void CheckQueryParameters(List<RBindingField> fields)
+        {
+            if (_b.SourceQuery is not { } query)
+                return;
+            foreach (var parameter in query.Parameters)
+            {
+                if (fields.FirstOrDefault(f => string.Equals(f.Name, parameter.Name, StringComparison.OrdinalIgnoreCase)) is { } field)
+                    Report("MQ4121", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' reads query '{query.Name}', whose parameter '{parameter.Name}' has the name of the binding's field '{field.Name}': the statements name their parameters after the fields, so one name would carry two values. Rename the query's parameter.", "/source");
+            }
         }
 
         // ---- accounting ------------------------------------------------------------------------------------------------------

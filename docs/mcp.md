@@ -488,7 +488,7 @@ reports a mapped column renamed or retyped (MQ4087) and provenance that does not
 `resync-binding` catches up in one batch; `map-by-name` maps unmapped attributes to free columns of the same loose name.
 `get_database_view` lists on each table, view and query its `boundBy` (the entities that read or write it, with their
 constants); `get_resolved_model` gives each entity record its resolved `bindings`; `preview_binding_sql` renders a
-binding's five statements for any dialect. `validate` reports MQ4044 to MQ4054 for them (MQ4047, a column nothing
+binding's five statements for any dialect. `validate` reports MQ4044 to MQ4054 and MQ4121 for them (MQ4047, a column nothing
 accounts for, is the "a mapping for every column" warning), and MQ4087 and MQ4088 for provenance. An attribute with no
 description of its own shows the comment of the column a binding maps it to, and its resolved record names that column
 in `descriptionColumn`. Deleting a table, view, query or database a binding names refuses with the entity among the

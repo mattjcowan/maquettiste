@@ -5,6 +5,25 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.26.1 (2026-11-26)
+
+Two fixes to the SQL the engine writes for an entity's binding. The file format does not change.
+
+- **A column is never written twice.** A binding can both filter on a column with a constant and show the column as a
+  field, as the billing notes do when a note also shows its `entity_type`. The insert used to name the column twice,
+  once for the field and once for the constant, which PostgreSQL refuses. Now the field is read but never written: the
+  insert writes the constant's value once, the update leaves the column alone, and both still find their row by it.
+- **MQ4121: a query parameter that shares a field's name.** A binding that reads a query names the query's parameters
+  and its fields' parameters the same way. When a parameter had a field's name, the read by key gave both one
+  placeholder, so one value filled both. `validate` now reports it as an error on the binding's source.
+
+**When you update:**
+
+- Generated inserts and updates change only for a binding with a field on a constant's column: the column is no longer
+  written twice.
+- If MQ4121 appears, rename the query's parameter, for example `customerId` to `forCustomerId`, and update the code
+  that passes it.
+
 ## 0.26.0 (2026-11-25)
 
 How the editor container signs people in and which names it answers at. The engine, the file format and generated output

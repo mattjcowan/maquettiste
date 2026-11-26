@@ -264,6 +264,7 @@ public static class RuleCatalog
         new("MQ4118", I, "A database holds a relation end with several types in a way it can't fully enforce: no foreign key, a key to a shared table, an id alone, a type column or keys per type with no check found, a one-to-one or a link table with no unique found, keys per type in a link table, or a table whose rows nothing tells apart; the message gives the check or unique to copy."),
         new("MQ4119", W, "Since the baseline, an entity's type code in a database changed, and a type column there holds codes of a relation with an end of several types; links stored with the old code no longer find their object."),
         new("MQ4120", W, "A mapping states how a relation with an end of several types is stored in a database, but names nothing that points at a placed type the relation covers there, so links to it aren't stored."),
+        new("MQ4121", E, "A binding reads a query with a parameter that has the name of one of the binding's fields (ignoring case): the statements name their parameters after the fields, so one name would carry two values."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule or calculation script error."),
