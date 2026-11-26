@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.27.0 (not released yet)
+## 0.27.0 (2026-11-26)
 
 A base entity and its subtypes can share one table through their bindings, templates can read the parts of a whole
 record and what a copy of it carries over, and a query's `entity` and `collections` are retired.
