@@ -21,7 +21,7 @@ public sealed record SessionUser(string Name, string DisplayName, string Role);
 /// <param name="ReturnUrl">Form posts only: a local path to redirect to.</param>
 public sealed record SignInRequest(string? Token, string? ReturnUrl);
 
-/// <summary><c>GET</c>, <c>POST</c> and <c>DELETE /api/session</c>: who the caller is, and token sign-in for non-local browsers (PD11).</summary>
+/// <summary><c>GET</c>, <c>POST</c> and <c>DELETE /api/session</c>: who the caller is, and token sign-in once a token is set (PD11).</summary>
 public static class SessionEndpoints
 {
     /// <summary>Who the caller is.</summary>
@@ -41,7 +41,7 @@ public static class SessionEndpoints
     /// <summary>
     /// Signs in with the editor token and sets the <c>mq_session</c> cookie, bound to the token's fingerprint. A JSON body answers 200 with
     /// the session; the sign-in page's form answers 303 to its <c>returnUrl</c> (a local path) or <c>/</c>. Five failures a minute from one
-    /// address answer 429.
+    /// address answer 429. On an open editor (no token set) it sets no cookie and answers the local developer's session (200), or 303 for the form.
     /// </summary>
     /// <param name="context">The request.</param>
     /// <param name="auth">The sign-in state.</param>
@@ -78,6 +78,10 @@ public static class SessionEndpoints
             }
         }
 
+        // An open editor (no token) has nothing to sign in to: the caller is already the local developer, whatever it sent.
+        if (EditorAuth.IsOpen(auth.VariablesFor(context)) && auth.Identify(context) is { } local)
+            return form ? new SeeOther(LocalPath(body?.ReturnUrl)) : Api.Json(Info(local, context, auth));
+
         if (!auth.CheckToken(context, body?.Token))
         {
             auth.RecordFailure(address);
@@ -93,7 +97,7 @@ public static class SessionEndpoints
         return Api.Json(Info(user, context, auth));
     });
 
-    /// <summary>Clears the session cookie. A local caller stays signed in, since local trust needs no cookie.</summary>
+    /// <summary>Clears the session cookie. On an open editor (no token set) the caller stays the local developer, who needs no cookie.</summary>
     /// <param name="context">The request.</param>
     /// <returns>204.</returns>
     [HttpDelete("/api/session")]

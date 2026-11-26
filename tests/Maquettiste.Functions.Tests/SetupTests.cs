@@ -3,7 +3,6 @@ using System.Text;
 using Maquettiste.Engine;
 using Maquettiste.Functions.Tests.Support;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using StaticSiteHost.Functions.Testing;
 
 namespace Maquettiste.Functions.Tests;
@@ -60,19 +59,6 @@ public sealed class SetupTests
         Assert.NotNull(host.Services.GetRequiredService<JobQueue>());
         Assert.NotNull(host.Services.GetRequiredService<GitStatusReader>());
         Assert.Null(host.Store.Current); // no I/O at registration: the model loads on first use
-    }
-
-    [Fact]
-    public void Configure_warns_once_when_a_token_is_set_while_local_trust_is_on()
-    {
-        var logs = new CapturingLoggers();
-        var data = new DirectoryInfo(Path.GetTempPath());
-
-        EditorSetup.Configure(new ServiceCollection(), new FakeSiteVariables().Set("MAQUETTISTE_EDITOR_TOKEN", "t"), data, logs.CreateLogger("f"));
-        EditorSetup.Configure(new ServiceCollection(), new FakeSiteVariables().Set("MAQUETTISTE_EDITOR_TOKEN", "t").Set("MAQUETTISTE_LOCAL_TRUST", "off"), data, logs.CreateLogger("f"));
-        EditorSetup.Configure(new ServiceCollection(), new FakeSiteVariables(), data, logs.CreateLogger("f"));
-
-        Assert.Single(logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("MAQUETTISTE_LOCAL_TRUST=off", StringComparison.Ordinal));
     }
 
     [Fact]

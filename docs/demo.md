@@ -77,6 +77,9 @@ services:
       MAQUETTISTE_UID: ${MAQUETTISTE_UID:-}                         # optional override; empty = the owner of .maquettiste/
       MAQUETTISTE_GID: ${MAQUETTISTE_GID:-}
       MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}
+      MAQUETTISTE_EDITOR_HOST: ${MAQUETTISTE_EDITOR_HOST:-}         # optional; empty = localhost,127.0.0.1 (docker/README.md, Host names)
+      MAQUETTISTE_ADMIN_HOST: ${MAQUETTISTE_ADMIN_HOST:-}           # optional; empty = maquettiste-admin.localhost
+      MAQUETTISTE_TRUST_PROXY: ${MAQUETTISTE_TRUST_PROXY:-}         # optional; true only behind a reverse proxy
       MAQUETTISTE_WORKSPACE: ${MAQUETTISTE_WORKSPACE:-}             # optional; empty = the branch in .git/HEAD
 volumes:
   maquettiste-host:
@@ -92,13 +95,11 @@ starts on a project with no settings.
 
 ```zsh
 cd $REPO
-export MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24)
-echo $MAQUETTISTE_EDITOR_TOKEN | pbcopy   # paste it on the sign-in page
 docker compose -f maquettiste.compose.yaml up -d
 until curl -fsS -H 'Host: maquettiste.localhost:8080' http://127.0.0.1:8080/api/health >/dev/null; do sleep 1; done; echo ready
 ```
 
-Open **http://maquettiste.localhost:8080**, paste the token into **Editor token**, **Sign in**. You see the project name in
+Open **http://maquettiste.localhost:8080**. There is no sign-in. You see the project name in
 the top bar with `v0.10.1 · maquettiste-demo` under it (the release and the branch), the **Domain model** explorer on the left and, in the centre, the first-run panel **Start the model** with New
 domain, New entity, New enum, New reference type, New diagram and New database. Leave it there for the talk.
 
@@ -406,16 +407,13 @@ MAQUETTISTE_PORT=8090 docker compose -f maquettiste.compose.yaml up -d
 # open http://maquettiste.localhost:8090 ; curl with -H 'Host: maquettiste.localhost:8090' http://127.0.0.1:8090/...
 ```
 
-**The Host header and `*.localhost`.** The host routes by name: the site is `maquettiste.localhost`, and local trust
-needs a `localhost` or `*.localhost` Host. Browsers resolve `maquettiste.localhost` to loopback; `curl` and scripts
-should call `127.0.0.1` with `-H 'Host: maquettiste.localhost:8080'`. Opening `http://127.0.0.1:8080` or
-`http://localhost:8080` in the browser reaches the host itself, which redirects to its own `/login` page (measured):
-that is not the editor, use the `maquettiste.localhost` URL.
+**The Host header and `*.localhost`.** The host routes by name: the site is `maquettiste.localhost`. Browsers resolve `maquettiste.localhost` to loopback; `http://localhost:8080` and
+`http://127.0.0.1:8080` open the editor too. The host's own admin app answers at `http://maquettiste-admin.localhost:8080`.
+Any other name gets a 404 (see the Docker README, "Host names").
 
-**The token.** The sign-in page appears whenever the container sees the browser as a remote peer (always under Docker
-Desktop). The token is whatever `MAQUETTISTE_EDITOR_TOKEN` held at `up`; a new shell loses it. `echo $MAQUETTISTE_EDITOR_TOKEN`,
-and if it is empty, set a new one and recreate the container (`... up -d` with the variable set; the model is untouched).
-"Your editor session ended" means the token changed: sign in again. Logs: `docker compose -f maquettiste.compose.yaml logs | grep -i "peer\|token"`.
+**A sign-in page appeared.** `MAQUETTISTE_EDITOR_TOKEN` was set in the shell that ran `up`. Unset it and recreate the
+container (`unset MAQUETTISTE_EDITOR_TOKEN`, then `... up -d`; the model is untouched), or paste the token. "Your editor
+session ended" means the token changed: sign in again.
 
 **An element landed in "Not in a domain".** It was created with nothing selected: set **Domain** in its editor, or
 right-click it › **Move to domain…**. Right-click **Shop** for New actions and the picker starts on Shop.
@@ -466,7 +464,6 @@ Engine - Community", not Docker Desktop), so it behaves like Linux, not like the
 - The 2026-09-29 rehearsal (image 0.1.0) needed ACLs for UID 1654 on the bind mounts. The current entrypoint needs neither
   ACLs nor variables on Linux: it runs as the owner of `.maquettiste/`, 1000:1000 there, and the
   files it writes are yours (`docker/smoke.sh` checks it).
-- The browser is a local peer there (the container's gateway), so the editor opens without the sign-in page even with a token set.
 - The rehearsal repository of 2026-09-29 is `shop-api-2` in the session scratchpad
   (`/tmp/claude-1000/-home-mjc-projects-github-com-mattjcowan-maquettiste/4bd3cdf0-05e3-4c41-8e17-843507f7abf8/scratchpad/demo/shop-api-2`),
   a fresh clone of `shop-api` at its baseline commit "shop-api before Maquettiste", on branch `maquettiste-demo`. The
@@ -506,7 +503,7 @@ minutes when you do it by hand.
 | TypeScript pack over reference types (throwaway copy: ProductStatus with 5 rows, Unit with none) | `type ProductStatus = 'DRAFT' \| ...`, `z.enum(productStatusValues)`, `string[]` for the empty one; second run unchanged; `tsc` passed | 1.3 s |
 | `compose down -v` | removed | 0.7 s |
 
-Not run: the interactive Claude Code session (3.2), the sign-in page (the browser is a local peer here), and anything on
+Not run: the interactive Claude Code session (3.2), the sign-in page (no token was set), and anything on
 macOS or Docker Desktop.
 
 ### First rehearsal, 2026-09-28

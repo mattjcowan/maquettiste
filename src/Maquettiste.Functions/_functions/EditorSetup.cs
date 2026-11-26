@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 using Maquettiste.Engine;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using StaticSiteHost.Functions;
 
 namespace Maquettiste.Functions;
@@ -18,17 +17,10 @@ public static class EditorSetup
     /// <param name="services">The functions' services.</param>
     /// <param name="variables">The site's variables.</param>
     /// <param name="data">The site's data folder, which is the model root (the compose file mounts <c>.maquettiste/</c> there).</param>
-    /// <param name="logger">The functions' logger.</param>
     [ConfigureServices]
-    public static void Configure(IServiceCollection services, ISiteVariables variables, DirectoryInfo data, ILogger logger)
+    public static void Configure(IServiceCollection services, ISiteVariables variables, DirectoryInfo data)
     {
         var settings = EditorSettings.From(variables, data);
-        if (variables.Get(EditorSettings.TokenVariable).Length > 0 && EditorSettings.LocalTrustOn(variables))
-        {
-            logger.LogWarning(
-                "maquettiste: an editor token is set while local trust is on; if this port is reachable through a reverse proxy that " +
-                "rewrites Host to a local name, set MAQUETTISTE_LOCAL_TRUST=off.");
-        }
 
         services.AddSingleton(settings);
         services.AddSingleton(settings.Engine);
@@ -63,12 +55,6 @@ public sealed class EditorSettings
 
     /// <summary>The variable naming the index cache root.</summary>
     public const string CacheVariable = "MAQUETTISTE_CACHE_DIR";
-
-    /// <summary>The variable listing the addresses trusted as the local developer.</summary>
-    public const string LocalPeersVariable = "MAQUETTISTE_LOCAL_PEERS";
-
-    /// <summary>The variable that turns local trust off.</summary>
-    public const string LocalTrustVariable = "MAQUETTISTE_LOCAL_TRUST";
 
     /// <summary>The variable naming the local developer.</summary>
     public const string LocalUserVariable = "MAQUETTISTE_LOCAL_USER";
@@ -126,10 +112,4 @@ public sealed class EditorSettings
     /// <returns>The mode.</returns>
     public static string ModeOf(ISiteVariables variables) =>
         string.Equals(variables.Get(ModeVariable).Trim(), "hosted", StringComparison.OrdinalIgnoreCase) ? "hosted" : "local";
-
-    /// <summary>Whether local trust is on: local mode and <c>MAQUETTISTE_LOCAL_TRUST</c> is not <c>off</c>.</summary>
-    /// <param name="variables">The variables.</param>
-    /// <returns><see langword="true"/> when a local peer is the local developer.</returns>
-    public static bool LocalTrustOn(ISiteVariables variables) =>
-        ModeOf(variables) == "local" && !string.Equals(variables.Get(LocalTrustVariable).Trim(), "off", StringComparison.OrdinalIgnoreCase);
 }

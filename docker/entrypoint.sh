@@ -1,11 +1,18 @@
 #!/bin/sh
 # The Maquettiste image's entrypoint (phase2-design.md section 6.2). Runs as app (UID 1654), or as the user picked below:
-#   1. checks the host volume is writable and defaults MAQUETTISTE_LOCAL_PEERS to the container's gateway;
+#   1. checks the host volume is writable;
 #   2. decides whether the bundled site zip must be deployed (a new volume, or an image newer than the last deploy);
-#   3. seeds a deploy key into the host's apikeys.json while the host is stopped (the host has no bootstrap key, 0.3.0 included; PD20);
+#   3. makes the deploy key once and hands it to the host as Bootstrap:ApiKey (PD20), names the admin host and the proxy trust;
 #   4. starts static-site-hosting, forwarding TERM and INT;
-#   5. deploys the zip through the host's own API when needed;
+#   5. deploys the zip through the host's own API when needed, then sets the names the editor answers at (site aliases);
 #   6. waits for the host and exits with its status.
+#
+# Host names (the host picks the app by the Host header):
+#   MAQUETTISTE_EDITOR_HOST  more names for the editor, comma-separated; default localhost,127.0.0.1. A name that is not local
+#                            (localhost, *.localhost, 127.x.x.x) is public and needs MAQUETTISTE_EDITOR_TOKEN
+#   MAQUETTISTE_ADMIN_HOST   the host's admin app (AI providers, users); default maquettiste-admin.localhost
+#   MAQUETTISTE_TRUST_PROXY  true when a reverse proxy is the only way in: the host then uses its X-Forwarded-* headers
+# The editor always answers at maquettiste.localhost, the site's own domain; any other name never reaches it.
 # Given a command (docker run <image> maquettiste ...), it runs that command instead.
 #
 # Started as root (compose's user: "0:0", or docker run --user 0:0), with or without a command, it picks the user to run as:
@@ -176,7 +183,7 @@ sites=/data/sites
 site_dir="$sites/$site"
 port=8080
 
-# ---------------------------------------------------------------- 1. volume and local peers
+# ---------------------------------------------------------------- 1. volume
 mkdir -p "$state/cache" "$site_dir" 2>/dev/null || true
 for dir in "$sites" "$site_dir" "$state"; do
   if [ ! -w "$dir" ]; then
@@ -185,18 +192,6 @@ for dir in "$sites" "$site_dir" "$state"; do
     exit 1
   fi
 done
-
-if [ -z "${MAQUETTISTE_LOCAL_PEERS:-}" ]; then
-  # The default route's gateway, little-endian hex in /proc/net/route (010011AC is 172.17.0.1). A browser's request through a
-  # 127.0.0.1 port binding reaches the container from this address.
-  hex=$(awk '$2 == "00000000" { print $3; exit }' /proc/net/route 2>/dev/null || true)
-  if [ -n "$hex" ]; then
-    MAQUETTISTE_LOCAL_PEERS=$(printf '%d.%d.%d.%d' "0x$(echo "$hex" | cut -c7-8)" "0x$(echo "$hex" | cut -c5-6)" \
-      "0x$(echo "$hex" | cut -c3-4)" "0x$(echo "$hex" | cut -c1-2)")
-    export MAQUETTISTE_LOCAL_PEERS
-    log "local peers: $MAQUETTISTE_LOCAL_PEERS (the container's gateway)"
-  fi
-fi
 
 log "WARNING: never delete or rename the site $site in the host's UI or API. Its data folder is the bind-mounted .maquettiste/," \
     "and the host deletes a site folder recursively, model included (recovery: git checkout -- .maquettiste)."
@@ -245,42 +240,45 @@ stop_host() {
   fi
 }
 
-# ---------------------------------------------------------------- 3. deploy key (host shim, PD20)
+# ---------------------------------------------------------------- 3. deploy key, admin host, proxy trust
+# A comma-separated list without spaces or empty entries.
+names() { printf '%s' "$1" | tr -d ' ' | tr ',' '\n' | grep -v '^$' | paste -sd, - || true; }
+admin_host=$(names "${MAQUETTISTE_ADMIN_HOST:-maquettiste-admin.localhost}")
+case "$admin_host" in *,*|'') log "MAQUETTISTE_ADMIN_HOST must name one host, not '$admin_host'"; exit 1 ;; esac
+SiteHosting__ManagementHosts__0="$admin_host"
+export SiteHosting__ManagementHosts__0
+editor_hosts=$(names "${MAQUETTISTE_EDITOR_HOST:-localhost,127.0.0.1}")
+public_hosts=$(printf '%s' "$editor_hosts" | tr ',' '\n' | grep -Eiv '^(localhost|.+\.localhost|127\.[0-9]+\.[0-9]+\.[0-9]+)$' \
+  | paste -sd, - || true)
+if [ -n "$public_hosts" ] && [ -z "${MAQUETTISTE_EDITOR_TOKEN:-}" ]; then
+  log "MAQUETTISTE_EDITOR_HOST names public hosts ($public_hosts), which need MAQUETTISTE_EDITOR_TOKEN: without a token the editor" \
+      "is open to everyone who reaches it. Set a token (for example \$(openssl rand -hex 24)) and start again."
+  exit 1
+fi
+case "${MAQUETTISTE_TRUST_PROXY:-}" in
+  true|1|yes) SiteHosting__TrustForwardedHeaders=true; export SiteHosting__TrustForwardedHeaders ;;
+  ''|false|0|no) ;;
+  *) log "MAQUETTISTE_TRUST_PROXY must be true or false, not '$MAQUETTISTE_TRUST_PROXY'"; exit 1 ;;
+esac
+log "the editor answers at $site${editor_hosts:+,$editor_hosts}; the host's admin app at $admin_host"
+
+# The key is made once and handed to the host as Bootstrap:ApiKey at every start (the host revokes a configured key whose setting
+# disappears). A volume from an image on host 0.4.0 holds a key the old shim wrote into the host's apikeys.json: it stays a plain
+# key there and keeps working, so it is not passed as Bootstrap:ApiKey (the host refuses a configured key whose id another key has).
 key_file="$state/deploy.key"
-if [ "$needs_deploy" = 1 ] && [ ! -s "$key_file" ]; then
-  if [ ! -f /data/config/users.json ]; then
-    log "first boot: starting the host once so it creates its administrator"
-    start_host
-    if ! wait_healthy; then
-      log "the host did not become healthy; see its log above"
-      stop_host
-      exit 1
-    fi
-    stop_host
-  fi
-
-  admin=$(jq -r '[.[] | select(.isBootstrap == true)][0].id // empty' /data/config/users.json)
-  if [ -z "$admin" ]; then
-    log "no bootstrap administrator in /data/config/users.json; cannot seed a deploy key"
-    exit 1
-  fi
-
+configured="$state/deploy.key.configured"
+if [ ! -s "$key_file" ]; then
   alnum() { LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "$1"; }
-  id=$(alnum 12)
-  secret=$(alnum 43)
-  hash=$(printf '%s' "$secret" | sha256sum | cut -c1-64)
-  now=$(date -u +%Y-%m-%dT%H:%M:%S.0000000+00:00)
-  keys=/data/config/apikeys.json
-  [ -s "$keys" ] || echo '[]' > "$keys"
-  jq --arg id "$id" --arg user "$admin" --arg hash "$hash" --arg display "sshost_${id}_••••••••" --arg now "$now" \
-    '. + [{ id: $id, userId: $user, name: "maquettiste-entrypoint", secretHash: $hash, display: $display, createdUtc: $now,
-            lastUsedUtc: null, expiresUtc: null, revoked: false }]' "$keys" > "$keys.tmp"
-  mv "$keys.tmp" "$keys"
   umask 077
-  printf 'sshost_%s_%s' "$id" "$secret" > "$key_file"
+  printf 'sshost_%s_%s' "$(alnum 12)" "$(alnum 43)" > "$key_file"
   chmod 600 "$key_file"
   umask 022
-  log "seeded a deploy key for the host's administrator ($key_file)"
+  : > "$configured"
+  log "made the deploy key ($key_file)"
+fi
+if [ -f "$configured" ]; then
+  Bootstrap__ApiKey=$(cat "$key_file")
+  export Bootstrap__ApiKey
 fi
 
 # ---------------------------------------------------------------- 4. the host
@@ -288,17 +286,13 @@ trap 'stop_host; exit 143' TERM
 trap 'stop_host; exit 130' INT
 start_host
 
-# ---------------------------------------------------------------- 5. first-boot or upgrade deploy
-if [ "$needs_deploy" = 1 ]; then
-  if wait_healthy; then
+# ---------------------------------------------------------------- 5. first-boot or upgrade deploy, then the editor's names
+api() { curl -sS -H "X-Api-Key: $(cat "$key_file")" -H "Host: $admin_host" "$@"; }
+if wait_healthy; then
+  if [ "$needs_deploy" = 1 ]; then
     log "deploying the editor site to $site (the first functions build restores from the local feed; up to a minute)"
-    set -- -sS --max-time 900 -o "$state/deploy.response" -w '%{http_code}' \
-      -H "X-Api-Key: $(cat "$key_file")" -H "Content-Type: application/zip" -H "X-Archive-Name: site.zip" \
-      --data-binary "@$opt/site.zip"
-    if [ -n "${SiteHosting__ManagementHosts__0:-}" ]; then
-      set -- "$@" -H "Host: $SiteHosting__ManagementHosts__0"
-    fi
-    status=$(curl "$@" "http://127.0.0.1:$port/api/v1/sites/$site/deploy" || echo "000")
+    status=$(api --max-time 900 -o "$state/deploy.response" -w '%{http_code}' -H "Content-Type: application/zip" \
+      -H "X-Archive-Name: site.zip" --data-binary "@$opt/site.zip" "http://127.0.0.1:$port/api/v1/sites/$site/deploy" || echo "000")
     if [ "$status" = 200 ]; then
       cp "$opt/site.sha256" "$state/deployed.sha256"
       log "deployed"
@@ -307,9 +301,18 @@ if [ "$needs_deploy" = 1 ]; then
       cat "$state/deploy.response" 2>/dev/null || true
       echo
     fi
-  else
-    log "the host did not become healthy; the deploy is retried at the next start"
   fi
+  # The names come from the environment, so they are set at every start: the list replaces the site's other domains.
+  aliases=$(printf '%s' "$editor_hosts" | tr ',' '\n' | grep -v '^$' | sed 's/.*/"&"/' | paste -sd, - || true)
+  status=$(api --max-time 30 -o "$state/aliases.response" -w '%{http_code}' -X PUT -H "Content-Type: application/json" \
+    -d "{\"aliases\":[${aliases}]}" "http://127.0.0.1:$port/api/v1/sites/$site/aliases" || echo "000")
+  if [ "$status" != 200 ]; then
+    log "the editor's other names could not be set (HTTP $status); it answers at $site only. The host answered:"
+    cat "$state/aliases.response" 2>/dev/null || true
+    echo
+  fi
+else
+  log "the host did not become healthy; the deploy and the editor's names are retried at the next start"
 fi
 
 # ---------------------------------------------------------------- 6. wait for the host

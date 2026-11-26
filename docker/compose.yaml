@@ -3,7 +3,8 @@
 #
 #   MAQUETTISTE_IMAGE=mattjcowan/maquettiste:dev docker compose -f <maquettiste>/docker/compose.yaml --project-directory . up -d
 #
-# then open http://maquettiste.localhost:8080 (no login from this machine).
+# then open http://maquettiste.localhost:8080 or http://localhost:8080 (no login unless MAQUETTISTE_EDITOR_TOKEN is set). The host's
+# admin app (AI providers, users) is at http://maquettiste-admin.localhost:8080.
 # Run `maquettiste init` first (docs/user-guide.md "The command line"): without .maquettiste/, Docker creates the mount folder.
 #
 # NEVER delete or rename the site maquettiste.localhost in the host's management UI or API: its data folder is the bind-mounted
@@ -30,17 +31,22 @@ services:
       MAQUETTISTE_REPO_ROOT: /repo
       MAQUETTISTE_UID: ${MAQUETTISTE_UID:-}                         # optional; empty = the owner of .maquettiste/
       MAQUETTISTE_GID: ${MAQUETTISTE_GID:-}                         # optional; empty = that owner's group
-      MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}       # optional; empty = local peers only
+      MAQUETTISTE_EDITOR_TOKEN: ${MAQUETTISTE_EDITOR_TOKEN:-}       # optional; empty = nobody signs in, set = everyone does
       # The workspace name shown under the project name (v0.5.3 · <workspace>) and in /api/project, to tell editors on other
       # ports apart. Empty = the branch in ./.git/HEAD, else a linked worktree's name (its git folder is not mounted). Set it
       # from the host, e.g. MAQUETTISTE_WORKSPACE="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || basename "$PWD")".
       MAQUETTISTE_WORKSPACE: ${MAQUETTISTE_WORKSPACE:-}
-      # The container's gateway is found at start; set this only where the browser's requests arrive from another address
-      # (an IP address list, never *). See docker/README.md for the Mac and other setups.
-      MAQUETTISTE_LOCAL_PEERS: ${MAQUETTISTE_LOCAL_PEERS:-}
-      # Where the host's management UI is (on this port with the Host localhost), linked from Settings > Assistant: the AI
-      # provider, its key and the model are set there (AI > providers; Sites > maquettiste.localhost > AI), never in Maquettiste.
-      MAQUETTISTE_HOST_AI_URL: ${MAQUETTISTE_HOST_AI_URL:-http://localhost:${MAQUETTISTE_PORT:-8080}/}
+      # Host names. The editor always answers at maquettiste.localhost, plus MAQUETTISTE_EDITOR_HOST (comma-separated). A name
+      # there that is not local (localhost, *.localhost, 127.x.x.x), such as a public name behind a reverse proxy, needs
+      # MAQUETTISTE_EDITOR_TOKEN. MAQUETTISTE_TRUST_PROXY=true makes the host use the proxy's X-Forwarded-* headers; set it only
+      # when the proxy is the only way in. Any other name never reaches the editor. MAQUETTISTE_ADMIN_HOST is where the host's
+      # admin app answers.
+      MAQUETTISTE_EDITOR_HOST: ${MAQUETTISTE_EDITOR_HOST:-localhost,127.0.0.1}
+      MAQUETTISTE_TRUST_PROXY: ${MAQUETTISTE_TRUST_PROXY:-false}
+      MAQUETTISTE_ADMIN_HOST: ${MAQUETTISTE_ADMIN_HOST:-maquettiste-admin.localhost}
+      # Where the host's admin app is, linked from Settings > Assistant: the AI provider, its key and the model are set there
+      # (AI > providers; Sites > maquettiste.localhost > AI), never in Maquettiste.
+      MAQUETTISTE_HOST_AI_URL: ${MAQUETTISTE_HOST_AI_URL:-http://${MAQUETTISTE_ADMIN_HOST:-maquettiste-admin.localhost}:${MAQUETTISTE_PORT:-8080}/}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
       interval: 10s

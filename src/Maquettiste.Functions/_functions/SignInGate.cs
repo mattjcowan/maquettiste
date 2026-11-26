@@ -63,7 +63,7 @@ public static class SignInGate
             }
         }
 
-        // 3. Anonymous paths go on without a user; a wrong bearer token is refused everywhere else, even from a local peer.
+        // 3. Anonymous paths go on without a user; a wrong bearer token is refused everywhere else.
         var anonymous = (HttpMethods.IsGet(method) && path.Equals("/api/health", StringComparison.OrdinalIgnoreCase))
             || ((HttpMethods.IsGet(method) || HttpMethods.IsPost(method)) && path.Equals("/api/session", StringComparison.OrdinalIgnoreCase))
             || ((HttpMethods.IsGet(method) || HttpMethods.IsHead(method)) && path.Equals(IconPath, StringComparison.OrdinalIgnoreCase));
@@ -160,7 +160,7 @@ public static class SignInGate
             <form method="post" action="/api/session">
             {{icon}}
             <h1>Sign in to Maquettiste</h1>
-            <p>This editor is not on your machine's loopback address, so it needs the editor token (MAQUETTISTE_EDITOR_TOKEN).</p>
+            <p>This editor has an editor token set (MAQUETTISTE_EDITOR_TOKEN). Enter it to sign in.</p>
             {{message}}
             <label for="token">Editor token</label>
             <input id="token" name="token" type="password" autocomplete="current-password" required autofocus>

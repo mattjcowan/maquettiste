@@ -16,7 +16,7 @@ Conventions every handler follows:
   503 `model-unavailable`, anything else 500 `internal` with the trace id, and the failure is logged.
 - Errors are RFC 9457 problems with a stable `code` (`Api.Problem`); bodies are read with `Api.ReadJsonAsync` (4 MB cap,
   JSON only); writes need `If-Match` (`Api.TryGetIfMatch`).
-- `SignInGate` (middleware, order 0) decides local trust, cookies and tokens before any handler runs.
+- `SignInGate` (middleware, order 0) decides the open editor (no token set), cookies and tokens before any handler runs.
 - Realtime events stay under `Api.MaxEventBytes` (the host refuses payloads over 256 KB).
 - The assistant (`AssistEndpoints.cs`, `AssistService.cs`; erratum E44) is the one place that talks to the host's `IAiChat`. Its
   handlers check the caller themselves (function calls bypass `[AiAccess]`), `POST /api/assist/chat` answers with server-sent events

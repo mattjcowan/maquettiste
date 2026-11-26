@@ -63,14 +63,15 @@ public sealed class BrandingEndpointTests
         var hash = project.Json["iconHash"]!.GetValue<string>();
         Assert.Equal(uploaded.Json["hash"]!.GetValue<string>(), hash);
 
-        // Anonymous: a caller from elsewhere without a token still gets the icon (the sign-in page and the tab need it).
+        // Anonymous: once a token is set, a caller without it still gets the icon (the sign-in page and the tab need it).
+        EditorHost.WithToken(host.Variables);
         var served = await host.SendAsync(TestRequest.FromElsewhere("GET", Icon));
         Assert.Equal(200, served.Status);
         Assert.Equal("image/svg+xml", served.ContentType);
         Assert.Equal("nosniff", served.Headers.XContentTypeOptions.ToString());
         Assert.Contains("sandbox", served.Headers.ContentSecurityPolicy.ToString(), StringComparison.Ordinal);
         Assert.Equal(stored, served.Text);
-        var cached = await host.GetAsync(Icon, r => r.Header("If-None-Match", "\"" + hash + "\""));
+        var cached = await host.SendAsync(TestRequest.Local("GET", Icon).Header("If-None-Match", "\"" + hash + "\""));
         Assert.Equal(304, cached.Status);
 
         // The sign-in page shows the icon and the colors.
@@ -121,6 +122,7 @@ public sealed class BrandingEndpointTests
         Assert.Equal("MQ8001", color.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
         Assert.Equal(422, missing.Status);
         Assert.Equal("MQ8002", missing.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
+        EditorHost.WithToken(host.Variables);
         var page = await host.SendAsync(TestRequest.FromElsewhere("GET", "/"));
         Assert.DoesNotContain("<img", page.Text, StringComparison.Ordinal);
     }

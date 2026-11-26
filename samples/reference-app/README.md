@@ -74,7 +74,7 @@ as further partial parts, so a fresh clone needs no committed stubs.
 The committed model can be reproduced by the editor's store (PD21). From the repository root, with the image built:
 
 ```sh
-export MAQUETTISTE_EDITOR_TOKEN=$(openssl rand -hex 24) MAQUETTISTE_PORT=8093
+export MAQUETTISTE_PORT=8093
 samples/reference-app/tools/empty-editor.sh tmp/nw-seed
 node samples/reference-app/tools/seed.mjs --url http://127.0.0.1:8093 --compare tmp/nw-seed
 docker compose -f docker/compose.yaml --project-directory tmp/nw-seed down -v

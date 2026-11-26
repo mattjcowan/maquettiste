@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# The Maquettiste editor image (phase2-design.md section 6): static-site-hosting 0.4.0 with the editor site zip, the engine package
+# The Maquettiste editor image (phase2-design.md section 6): static-site-hosting 0.10.2 with the editor site zip, the engine package
 # and its dependency closure in a local NuGet feed (offline first build), and an entrypoint that deploys the zip on first boot.
 # Build from the repository root with BuildKit (the default builder since Docker 23; the legacy builder drops the /data ownership
 # fix below, because /data is a declared volume of the base image):
@@ -69,11 +69,12 @@ RUN mkdir -p /out && cd src/editor && npm ci && npm run build \
  && node scripts/pack-site.mjs --out /out/site.zip --engine-version "$(cat /engine.version)"
 
 # ---------------------------------------------------------------- runtime
-# The runtime-functions image of static-site-hosting 0.4.0 (Ubuntu 24.04, .NET SDK 10.0.401, git, curl and setpriv; runs as app,
-# UID 1654; NUGET_PACKAGES=/data/nuget; VOLUME /data).
-FROM mattjcowan/static-site-hosting:0.4.0
+# The runtime-functions image of static-site-hosting 0.10.2 (Ubuntu 24.04, .NET SDK 10, git, curl and setpriv; runs as app,
+# UID 1654; NUGET_PACKAGES=/data/nuget; VOLUME /data). 0.10 brings site aliases, management hosts, forwarded-header trust and
+# Bootstrap:ApiKey, which the entrypoint uses.
+FROM mattjcowan/static-site-hosting:0.10.2
 USER root
-# jq edits the host's apikeys.json in the first-boot shim: the release's static binary for the target architecture, checked against
+# jq reads the host's JSON in docker/smoke.sh: the release's static binary for the target architecture, checked against
 # its published SHA-256, so the build installs no system package (an apt-get update fails whenever Ubuntu's servers cannot be
 # reached). The mkdir/chown makes the model mount's parents app-owned: Docker creates missing parents of a mount point as root, and
 # without this the host cannot write .staging/, releases/ or site.json on a new volume (phase2-design.md section 6.1).
