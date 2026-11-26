@@ -356,6 +356,7 @@ A resolved entity binding, as the resolved model's entity records carry it.
 | `columns` | list of [bindingColumnRecord](#bindingcolumnrecord) | never | Every source column with what accounts for it. |
 | `writeColumns` | list of [bindingColumnRecord](#bindingcolumnrecord) | never | Every write table column with what accounts for it, when the write table is not the source. |
 | `discriminatorValue` | any | left out when not set | The entity's type code the binding sets, a string or an integer; left out when unset. |
+| `discriminatorColumn` | [bindingDiscriminatorRecord](#bindingdiscriminatorrecord) | left out when not set | The type column the entity shares with its base or the entities derived from it in one table, named by the binding's `discriminatorColumn` or inherited from its nearest base's binding to the database; left out when there is none. |
 
 ### bindingConstantView
 
@@ -397,8 +398,21 @@ A column of a binding's source or write table and what accounts for it.
 | --- | --- | --- | --- |
 | `name` | string | never | The column's physical name. |
 | `key` | string | can be null | The column's key, for a table. Null otherwise. |
-| `status` | string | never | `field`, `constant`, `ignored`, `database`, `computed`, `identity`, `default`, `soft-delete` or `unaccounted`. |
+| `status` | string | never | `field`, `constant`, `discriminator` (the binding's type column), `ignored`, `database`, `computed`, `identity`, `default`, `soft-delete` or `unaccounted`. |
 | `field` | string | can be null | The name of the field that maps it, with status `field`. Null otherwise. |
+
+### bindingDiscriminatorRecord
+
+The type column of a resolved binding: one column a base entity and the entities derived from it share in one table.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `column` | string | never | The column's physical name in the source. |
+| `columnKey` | string | can be null | The source column's key, for a table source. Null otherwise. |
+| `writeColumn` | string | can be null | The key of the write table's column the insert writes the code into, or null. |
+| `base` | string | never | The id of the entity whose binding names the column: this binding's entity, or its nearest base that names one. |
+| `value` | any | never | The entity's type code, a string or an integer: what the insert writes. |
+| `codes` | list of any | never | The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that share the column in the same table (for the entity whose binding names the column, its whole hierarchy there). |
 
 ### entityCheckRecord
 
@@ -1737,6 +1751,17 @@ An entity bound to a table, view or query: what the database object's `boundBy` 
 | `reads` | boolean | never | Whether the binding reads the object (it is the binding's source). |
 | `writes` | boolean | never | Whether the binding writes the object (it is the binding's write table). |
 | `constants` | list of [bindingConstantView](#bindingconstantview) | never | The binding's constants: what tells several entities of one table apart. |
+| `discriminator` | [bindingDiscriminatorView](#bindingdiscriminatorview) | left out when not set | The type column the binding names or inherits from a base, with the entity's code and the codes its reads keep: the other way the rows of entities sharing one table are told apart. Left out when the binding has none. |
+
+### bindingDiscriminatorView
+
+A binding's type column, as a table's list of bindings shows it.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `column` | string | never | The column's physical name. |
+| `value` | any | never | The entity's type code, a string or an integer: what its insert writes. |
+| `codes` | list of any | never | The codes its reads, updates and deletes keep: its own and those of the entities derived from it that share the column in the same table. |
 
 ### referenceBindingView
 

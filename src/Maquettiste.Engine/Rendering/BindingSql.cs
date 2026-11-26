@@ -11,16 +11,18 @@ namespace Maquettiste.Engine;
 /// Renders the statements of a resolved entity binding as parameterised SQL for a dialect (erratum E43; engine-design.md section 7,
 /// "Bindings and materialize"), with the quoting, placeholder styles and dialect handling of <see cref="QuerySql"/>:
 /// <list type="bullet">
-/// <item><c>select</c>: every row, the columns the fields map aliased to the field names, filtered by the constants (and, with a soft
-/// delete, leaving out the deleted rows); a query source is wrapped as a derived table <c>FROM (&lt;query sql&gt;) q</c>.</item>
+/// <item><c>select</c>: every row, the columns the fields map aliased to the field names, filtered by the constants and the type codes
+/// (and, with a soft delete, leaving out the deleted rows); a query source is wrapped as a derived table <c>FROM (&lt;query sql&gt;) q</c>.</item>
 /// <item><c>select-by-key</c>: the same, for the row whose key fields equal their parameters.</item>
-/// <item><c>insert</c>: the written fields and the constants, without the columns the database fills; the generated key columns come
-/// back through <c>RETURNING</c> (PostgreSQL, SQLite), <c>OUTPUT INSERTED</c> (SQL Server), <c>RETURNING … INTO</c> (Oracle) or a
-/// second statement <c>SELECT LAST_INSERT_ID()</c> (MySQL, one identity key).</item>
-/// <item><c>update</c>: the updatable fields by key, the constants in the where clause; with nothing to set, a count of the matching
-/// rows.</item>
-/// <item><c>delete</c>: by key plus the constants, or the soft-delete update.</item>
+/// <item><c>insert</c>: the written fields, the constants and the type code, without the columns the database fills; the generated key
+/// columns come back through <c>RETURNING</c> (PostgreSQL, SQLite), <c>OUTPUT INSERTED</c> (SQL Server), <c>RETURNING … INTO</c> (Oracle)
+/// or a second statement <c>SELECT LAST_INSERT_ID()</c> (MySQL, one identity key).</item>
+/// <item><c>update</c>: the updatable fields by key, the constants and the type codes in the where clause; with nothing to set, a count
+/// of the matching rows.</item>
+/// <item><c>delete</c>: by key plus the constants and the type codes, or the soft-delete update.</item>
 /// </list>
+/// The type codes are those of <see cref="REntityBinding.DiscriminatorColumn"/>: <c>column = code</c> for one, <c>column IN (…)</c> for
+/// several.
 /// Parameters are named after the fields. A statement the binding does not have (a write of a read-only binding, a lookup by key
 /// without key fields) renders as the empty string.
 /// </summary>
@@ -125,6 +127,11 @@ public static class BindingSql
         private static string Equal(string column, object? value, Func<object?, string> literal) =>
             value is null ? column + " IS NULL" : column + " = " + literal(value);
 
+        /// <summary>The type codes a read, update or delete keeps, or <see langword="null"/> without a type column.</summary>
+        private string? Codes(string column) => _b.DiscriminatorColumn is not { Codes: { Count: > 0 } codes }
+            ? null
+            : codes.Count == 1 ? column + " = " + Literal(codes[0]) : column + " IN (" + string.Join(", ", codes.Select(Literal)) + ")";
+
         public void Select(bool byKey)
         {
             if (_b.SourceKind is null || (byKey && _b.Key.Count == 0))
@@ -159,6 +166,9 @@ public static class BindingSql
             var conditions = new List<string>();
             foreach (var constant in _b.Constants.Where(c => (c.SourceColumn ?? (object?)c.ViewColumn ?? c.QueryField) is not null))
                 conditions.Add(Equal(Column(constant.ColumnName), constant.Value, Literal));
+            if (_b.DiscriminatorColumn is { } typeColumn && (typeColumn.SourceColumn ?? (object?)typeColumn.ViewColumn ?? typeColumn.QueryField) is not null
+                && Codes(Column(typeColumn.ColumnName)) is { } kept)
+                conditions.Add(kept);
             if (_b.Delete == "soft" && _b.SoftDeleteColumn is { } soft && ReferenceEquals(soft.Table, _b.SourceTable))
                 conditions.Add(NotDeleted(Column(soft.Name)));
             if (byKey)
@@ -194,6 +204,12 @@ public static class BindingSql
                 values.Add(Literal(constant.Value));
             }
 
+            if (_b.DiscriminatorColumn is { WriteColumn: { } typeColumn } discriminator)
+            {
+                columns.Add(Q(typeColumn.Name));
+                values.Add(Literal(discriminator.Value));
+            }
+
             var generated = _b.Generated.Where(g => g.WriteColumn is not null).ToList();
             _sb.Append("INSERT INTO ").Append(Qualified(table));
             if (columns.Count > 0)
@@ -221,7 +237,7 @@ public static class BindingSql
             }
         }
 
-        /// <summary>The where clause of a write: the key fields' columns of the write table, then the constants.</summary>
+        /// <summary>The where clause of a write: the key fields' columns of the write table, then the constants, then the type codes.</summary>
         private string WriteWhere()
         {
             var conditions = new List<string>();
@@ -229,6 +245,8 @@ public static class BindingSql
                 conditions.Add(Q(key.WriteColumn!.Name) + " = " + Placeholder(key.Name));
             foreach (var constant in _b.Constants.Where(c => c.WriteColumn is not null))
                 conditions.Add(Equal(Q(constant.WriteColumn!.Name), constant.Value, Literal));
+            if (_b.DiscriminatorColumn is { WriteColumn: { } typeColumn } && Codes(Q(typeColumn.Name)) is { } kept)
+                conditions.Add(kept);
             return string.Join(" AND ", conditions);
         }
 

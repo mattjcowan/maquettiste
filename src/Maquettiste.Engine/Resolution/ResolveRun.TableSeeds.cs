@@ -570,11 +570,16 @@ internal sealed partial class ResolveRun
         return Cells(cells);
     }
 
-    /// <summary>An entity row through its binding: each field the seed gives a value for, then the binding's constants.</summary>
+    /// <summary>
+    /// An entity row through its binding: the entity's type code in its type column (first, as the insert writes it whatever a field on
+    /// the column holds), each field the seed gives a value for, then the binding's constants.
+    /// </summary>
     private static IReadOnlyDictionary<string, object?> ThroughBinding(RSeed seed, RSeedRow row, REntityBinding binding, Dictionary<string, RSeedRow> seedRowsById)
     {
         var given = new HashSet<string>(seed.Columns.Select(c => c.Name), StringComparer.Ordinal);
         var cells = new List<(RColumn, object?)>();
+        if (binding.DiscriminatorColumn is { WriteColumn: { } typeColumn } discriminator)
+            cells.Add((typeColumn, discriminator.Value));
         foreach (var field in binding.Fields)
         {
             if (field.WriteColumn is not { } column)

@@ -265,6 +265,11 @@ public static class RuleCatalog
         new("MQ4119", W, "Since the baseline, an entity's type code in a database changed, and a type column there holds codes of a relation with an end of several types; links stored with the old code no longer find their object."),
         new("MQ4120", W, "A mapping states how a relation with an end of several types is stored in a database, but names nothing that points at a placed type the relation covers there, so links to it aren't stored."),
         new("MQ4121", E, "A binding reads a query with a parameter that has the name of one of the binding's fields (ignoring case): the statements name their parameters after the fields, so one name would carry two values."),
+        new("MQ4122", E, "A binding's type column is not a column of its source, or of the table it writes: the column its discriminatorColumn names, or the one a derived entity's binding inherits from its nearest base's binding to the database."),
+        new("MQ4123", W, "A binding names a type column (discriminatorColumn), but no entity derived from its entity has a binding to the database that shares it in the same table, so the column tells no rows apart."),
+        new("MQ4124", E, "A binding has a constant on its type column, its own or the one it inherits from a base, or a soft delete that sets it: the column already holds the entity's type code."),
+        new("MQ4125", E, "Two entities that share a type column in one table have the same type code, so reads cannot tell their rows apart; or an entity's type code cannot fit the type column (the wrong type, too long, out of range)."),
+        new("MQ4126", E, "A derived entity's binding names a type column (discriminatorColumn) while a base's binding in the same table already names one: the column is inherited, so remove the key. A derived entity bound to another table may name its own."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule or calculation script error."),

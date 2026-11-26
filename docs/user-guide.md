@@ -1700,6 +1700,10 @@ line follow.
   when it is a view or a query. A write table other than the source matches each field's column by key, then by name.
 - `delete`: `"key"` (the default when the entity writes), `{ "soft": { "column": <column>, "value": <value> } }` (sets the
   column instead; reads then leave out the rows it marked) or `"none"`.
+- `discriminatorColumn`: on a base entity's binding, the column that holds each row's type when the base and the entities
+  derived from it share one table (see [A base and its subtypes in one table](#a-base-and-its-subtypes-in-one-table)).
+- `discriminatorValue`: the entity's type code in this database, a string or a whole number. Without it the code is the
+  entity's name.
 - `provenance`: `{ "columns": { "<column id>": "<name part>:<type part>" } }`, what each column of a table file looked
   like when an operation last followed it (see [Provenance and drift](#provenance-and-drift)). The engine writes it; you
   never need to, and removing it stops the drift report for that binding.
@@ -1720,6 +1724,83 @@ type, and updates and deletes find their row by key and type. The editor shows t
 for tools, the API's and the agent server's database view shows `boundBy` on each table, view and query, with each binding's
 constants.
 
+### A base and its subtypes in one table
+
+When entities derive from a base and all keep their rows in one table, name the type column once, on the base's binding,
+with `discriminatorColumn`. Every derived entity's binding to the same database then uses that column. Each entity's type
+code is its binding's `discriminatorValue`, or its name when there is none. Take a table `notes (id, kind, entity_id, body,
+created_at)` that holds `Note` and the notes derived from it:
+
+```json
+{
+  "kind": "entity",
+  "id": "01K6BND0000000000000000020",
+  "name": "Note",
+  "bindings": [
+    {
+      "id": "01K6BND0000000000000000024",
+      "database": "01J92P0V1QRN2181XM2ZWE02W4",
+      "source": "01K6BND0000000000000000001",
+      "discriminatorColumn": "kind",
+      "discriminatorValue": "note",
+      "fields": [
+        { "attribute": "01K6BND0000000000000000021", "column": "id" },
+        { "attribute": "01K6BND0000000000000000022", "column": "body" },
+        { "attribute": "01K6BND0000000000000000023", "column": "created_at" }
+      ],
+      "columns": [
+        { "column": "entity_id", "status": "ignored" },
+        { "column": "created_at", "status": "database" }
+      ]
+    }
+  ]
+}
+```
+
+```json
+{
+  "kind": "entity",
+  "id": "01K6BND0000000000000000030",
+  "name": "InvoiceNote",
+  "base": "01K6BND0000000000000000020",
+  "bindings": [
+    {
+      "id": "01K6BND0000000000000000032",
+      "database": "01J92P0V1QRN2181XM2ZWE02W4",
+      "source": "01K6BND0000000000000000001",
+      "discriminatorValue": "invoice",
+      "fields": [
+        { "attribute": "01K6BND0000000000000000021", "column": "id" },
+        { "attribute": "01K6BND0000000000000000031", "column": "entity_id" },
+        { "attribute": "01K6BND0000000000000000022", "column": "body" },
+        { "attribute": "01K6BND0000000000000000023", "column": "created_at" }
+      ],
+      "columns": [{ "column": "created_at", "status": "database" }]
+    }
+  ]
+}
+```
+
+- Reading `InvoiceNote` returns the rows with its code: `WHERE t.kind = 'invoice'`. When other entities derive from it and
+  keep their rows in the same table, reading it returns theirs too: `WHERE t.kind IN ('invoice', 'urgent')`.
+- Its updates and deletes find their row by key and by the same codes, so they never touch a row it cannot read.
+- Its insert writes its own code.
+- Reading the base returns every row of its hierarchy, subtypes included: `WHERE t.kind IN ('note', 'invoice', ...)`, its
+  own code and those of the entities derived from it in that table. Rows another entity keeps in the same table stay out.
+  Its updates and deletes find their row by key and the same codes. Its insert writes its own code. A base is saved only
+  when its binding writes, so give an abstract base `"write": "none"`.
+- A field on the type column is read but never written, as a field on a constant's column is. A soft delete may not set
+  the type column (MQ4124), since that would overwrite the code.
+- A derived entity that keeps its rows in the base's table inherits the column and may not name its own (MQ4126). A
+  derived entity bound to another table may name its own `discriminatorColumn` there; it and the entities below it in
+  that table then use it.
+
+Constants still work beside the type column, for a tenant for example. The database view's `boundBy` shows each binding's
+type column, code and filter codes beside its constants. A relation end with several types whose targets share the table
+picks each target's rows by its code too. Templates find the column and the codes on the
+binding: `discriminator_column` (with `column_name`, `value` and `codes`) in a template, and `discriminatorColumn` in the
+resolved model.
+
 ### A read-only entity over a query
 
 An entity can read a query of the database: its fields name the query's columns (its select list's names). The billing
@@ -1739,9 +1820,9 @@ query that returns rows."
 
 The engine renders each binding's five statements for any dialect: `select`, `select-by-key`, `insert`, `update` and
 `delete`. Parameters are named after the fields, and a query source keeps its own parameters' names, so none may share a
-field's name (MQ4121). Constants are literals, and a field on a column a constant writes is read but never written: the
-constant's value goes in once. The columns the database fills are never written, and a generated key comes back from
-the insert (`RETURNING`, `OUTPUT INSERTED`, or `SELECT LAST_INSERT_ID()` on MySQL):
+field's name (MQ4121). Constants and type codes are literals, and a field on a column a constant or the type column
+writes is read but never written: the value goes in once. The columns the database fills are never written, and a
+generated key comes back from the insert (`RETURNING`, `OUTPUT INSERTED`, or `SELECT LAST_INSERT_ID()` on MySQL):
 
 ```sh
 curl -s -H "Authorization: Bearer $TOKEN" \
@@ -1926,6 +2007,11 @@ writes no description, so the text stays in one place.
 | MQ4044 | error | the source is not a table, view or query of the binding's database, or is a query written as SQL text that writes tables or declares no columns, or the write table is not a table of it |
 | MQ4097 | warning | a SQL Server binding reads a query written as SQL text that cannot be a derived table there (it starts with `WITH`, or has an `ORDER BY` outside parentheses with no `OFFSET`, `FETCH` or `TOP`) |
 | MQ4121 | error | the source query has a parameter with the name of one of the binding's fields (ignoring case); rename the query's parameter, since the statements name their parameters after the fields |
+| MQ4122 | error | the type column is not a column of the source or of the write table: the one `discriminatorColumn` names, or the one a derived entity's binding takes from its base |
+| MQ4123 | warning | a binding names `discriminatorColumn`, but no entity derived from it has a binding to the database that shares the column in the same table |
+| MQ4124 | error | a constant or a soft delete is on the type column, which already holds the entity's type code |
+| MQ4125 | error | two entities that share the type column in one table have the same type code, or a type code does not fit the column |
+| MQ4126 | error | a derived entity's binding names `discriminatorColumn` while a base's binding in the same table already names one; remove the key, since the column is inherited |
 | MQ4045 | error | a field names nothing of the entity, a column the source does not have, a listed column of no table the binding uses, or maps an attribute or a column twice |
 | MQ4046 | error | a binding that writes maps no field for a key attribute |
 | MQ4047 | warning | a column of the source or write table is accounted for by nothing |

@@ -170,6 +170,10 @@ public sealed class ResolvedNullContractTests
         ["RRevisionLifecycle"] = "revisions: ResolvedRevisionTests",
         ["RRevisionAttribute"] = "revisions: ResolvedRevisionTests",
         ["RRevisionLink"] = "revisions: ResolvedRevisionTests",
+
+        // Subtypes in one table: no fixture model names a binding's type column, so that their golden output stays as it was;
+        // BindingSubtypeTests resolves it.
+        ["RBindingDiscriminator"] = "subtypes in one table: BindingSubtypeTests",
     };
 
     [Fact]

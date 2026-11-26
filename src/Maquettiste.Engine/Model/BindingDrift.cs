@@ -86,6 +86,31 @@ internal static class BindingDrift
 {
     private static readonly IReadOnlyList<ShapeColumn> NoColumns = [];
 
+    /// <summary>
+    /// The type column a binding names or inherits, read from files as the database run reads it: the binding's own
+    /// <c>discriminatorColumn</c>, else that of the binding to the same database of the entity's nearest base that names one.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="entity">The entity that holds the binding.</param>
+    /// <param name="binding">The binding.</param>
+    /// <returns>The column as the file writes it, or <see langword="null"/>.</returns>
+    public static string? TypeColumnOf(ModelSnapshot model, Entity entity, EntityBinding binding)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentNullException.ThrowIfNull(binding);
+        if (binding.DiscriminatorColumn is { } own)
+            return own;
+        var seen = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
+        for (var id = entity.Base; id is not null && seen.Add(id) && model.Get<Entity>(id) is { } e; id = e.Base)
+        {
+            if (e.Bindings.FirstOrDefault(b => string.Equals(b.Database, binding.Database, StringComparison.Ordinal)) is { DiscriminatorColumn: { } inherited })
+                return inherited;
+        }
+
+        return null;
+    }
+
     /// <summary>One binding's drift.</summary>
     /// <param name="model">The snapshot.</param>
     /// <param name="entity">The entity that holds the binding (its attributes name the fields).</param>
@@ -107,7 +132,7 @@ internal static class BindingDrift
         var stale = recorded.Count > 0 && !recorded.Keys.Any(ids.Contains);
         var reads = hasProvenance && !stale;
 
-        // What the binding names: its fields (by column), constants, listed columns and soft delete.
+        // What the binding names: its fields (by column), constants, type column, listed columns and soft delete.
         var mappedBy = new Dictionary<int, List<int>>();
         for (var i = 0; i < binding.Fields.Count; i++)
         {
@@ -122,6 +147,8 @@ internal static class BindingDrift
         var named = new HashSet<int>(mappedBy.Keys);
         foreach (var constant in binding.Constants)
             Name(named, columns, constant.Column);
+        if (TypeColumnOf(model, entity, binding) is { } typeColumn)
+            Name(named, columns, typeColumn);
         foreach (var listed in binding.Columns)
             Name(named, columns, listed.Column);
         if (binding.Delete?.Soft is { } soft && WritesSource(binding, table!))

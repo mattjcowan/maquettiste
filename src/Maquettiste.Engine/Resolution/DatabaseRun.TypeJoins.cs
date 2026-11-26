@@ -333,9 +333,10 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// The conditions that pick the rows of the entities a target stands for in a table that also holds other rows (decision 48): the TPH
-    /// discriminator holding their codes; else their bindings' constants, read from their files and resolved against the table by name or
-    /// key, as a binding does. One entity's constants are each a condition (a constant whose column isn't in the table gives none: MQ4048 or
-    /// MQ4049 reports it). Several entities each set one constant, on the same column, which then holds the union of their values. Otherwise
+    /// discriminator holding their codes; else their bindings' constants and the type column a binding names or inherits (holding the
+    /// entity's type code), read from their files and resolved against the table by name or key, as a binding does. One entity's constants
+    /// and type column are each a condition (a column that isn't in the table gives none: MQ4048, MQ4049 or MQ4122 reports it). Several
+    /// entities each set one constant or type column, on the same column, which then holds the union of their values. Otherwise
     /// <see langword="null"/>: nothing picks the rows (MQ4118 <c>rows-not-told-apart</c>).
     /// </summary>
     private List<RColumnCondition>? PickRows(Placement target, RTable table, List<Placement> stands, DependencySet? keys)
@@ -360,7 +361,12 @@ internal sealed partial class DatabaseRun
         var each = new List<List<RColumnCondition>>(rows.Count);
         foreach (var p in rows)
         {
-            if (!p.ViaBinding || !_bindingByEntity.TryGetValue(p.Entity.Id, out var bound) || bound.Binding.Constants.Count == 0)
+            if (!p.ViaBinding || !_bindingByEntity.TryGetValue(p.Entity.Id, out var bound))
+                return null;
+            // The type column the binding names or inherits tells its rows apart as a constant does: the column holds its code.
+            var owner = TypeColumnOwner(p.Entity);
+            var told = bound.Binding.Constants.Count + (owner is null ? 0 : 1);
+            if (told == 0 || (rows.Count > 1 && told != 1))
                 return null;
             keys?.Element(p.Entity.Id);
             var conditions = new List<RColumnCondition>();
@@ -370,8 +376,13 @@ internal sealed partial class DatabaseRun
                     conditions.Add(new RColumnCondition { Column = column, Values = [ResolutionValues.Plain(constant.Value)] });
             }
 
-            if (rows.Count > 1 && bound.Binding.Constants.Count != 1)
-                return null;
+            if (owner is not null)
+            {
+                keys?.Element(owner.Id);
+                if (BindingBuilder.FindTableColumn(table, _bindingByEntity[owner.Id].Binding.DiscriminatorColumn!) is { } typeColumn)
+                    conditions.Add(new RColumnCondition { Column = typeColumn, Values = [CodeOf(p.Entity)] });
+            }
+
             each.Add(conditions);
         }
 

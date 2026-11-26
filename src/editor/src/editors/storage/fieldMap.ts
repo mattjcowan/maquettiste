@@ -33,6 +33,9 @@ export interface Binding {
   columns?: BindingColumnEntry[];
   write?: BindingWrite;
   delete?: BindingDelete;
+  /** On a base entity's binding: the type column it shares with the entities derived from it in one table. */
+  discriminatorColumn?: string;
+  discriminatorValue?: string | number;
   description?: string;
   tags?: string[];
   properties?: Record<string, unknown>;
@@ -372,7 +375,8 @@ export function loose(name: string): string {
 
 // ------------------------------------------------------------------ statuses
 
-export type ColumnStatus = "field" | "constant" | "ignored" | "database" | "computed" | "identity" | "default" | "soft-delete" | "unaccounted";
+export type ColumnStatus =
+  "field" | "constant" | "discriminator" | "ignored" | "database" | "computed" | "identity" | "default" | "soft-delete" | "unaccounted";
 
 export interface ColumnRow {
   column: SourceColumn;
@@ -387,6 +391,7 @@ export interface ColumnRow {
 export const COLUMN_STATUS_LABELS: Record<ColumnStatus, string> = {
   field: "mapped",
   constant: "constant",
+  discriminator: "type column",
   ignored: "ignored",
   database: "filled by the database",
   computed: "computed",
@@ -415,8 +420,31 @@ export function attributeRows(binding: Binding, attributes: readonly StorageAttr
   });
 }
 
-/** Each source column with what accounts for it, as the engine's statuses say (field, constant, listed, then the column's own). */
-export function columnRows(binding: Binding, attributes: readonly StorageAttribute[], columns: readonly SourceColumn[]): ColumnRow[] {
+/**
+ * The type column a binding names or inherits, as the engine reads it: its own discriminatorColumn, else that of the binding to
+ * the same database of the entity's nearest base that names one (docs holds the entity and its bases by id).
+ */
+export function typeColumnOf(entityId: string, binding: Binding, docs: ReadonlyMap<string, Json>): string | undefined {
+  if (binding.discriminatorColumn) return binding.discriminatorColumn;
+  const seen = new Set([entityId]);
+  for (let id = docs.get(entityId)?.base as string | undefined; id && !seen.has(id); id = docs.get(id)?.base as string | undefined) {
+    seen.add(id);
+    const bound = ((docs.get(id)?.bindings as Binding[] | undefined) ?? []).find((b) => b.database === binding.database);
+    if (bound?.discriminatorColumn) return bound.discriminatorColumn;
+  }
+  return undefined;
+}
+
+/**
+ * Each source column with what accounts for it, as the engine's statuses say (field, constant, the type column, listed, then the
+ * column's own). typeColumn is the type column the binding names or inherits (typeColumnOf).
+ */
+export function columnRows(
+  binding: Binding,
+  attributes: readonly StorageAttribute[],
+  columns: readonly SourceColumn[],
+  typeColumn: string | undefined = binding.discriminatorColumn,
+): ColumnRow[] {
   const byRef = new Map(attributes.map((a) => [a.ref, a]));
   const soft = typeof binding.delete === "object" ? binding.delete.soft.column : null;
   return columns.map((column) => {
@@ -427,6 +455,7 @@ export function columnRows(binding: Binding, attributes: readonly StorageAttribu
     }
     const constant = (binding.constants ?? []).find((c) => findColumn(columns, c.column) === column);
     if (constant) return { column, status: "constant", constant };
+    if (typeColumn && findColumn(columns, typeColumn) === column) return { column, status: "discriminator" };
     const listed = (binding.columns ?? []).find((c) => findColumn(columns, c.column) === column);
     if (listed) return { column, status: listed.status };
     if (soft && findColumn(columns, soft) === column) return { column, status: "soft-delete" };
@@ -465,6 +494,7 @@ export function bindingProblems(
   attributes: readonly StorageAttribute[],
   source: BindingSource | undefined,
   names: { entity: string; database: string } = { entity: "the entity", database: "the database" },
+  typeColumn: string | undefined = binding.discriminatorColumn,
 ): MapProblem[] {
   const out: MapProblem[] = [];
   const subject = `The binding of entity '${names.entity}' to database '${names.database}'`;
@@ -538,7 +568,7 @@ export function bindingProblems(
         pointer: "/fields",
       });
   }
-  const unaccounted = columnRows(binding, attributes, source.columns).filter((r) => r.status === "unaccounted");
+  const unaccounted = columnRows(binding, attributes, source.columns, typeColumn).filter((r) => r.status === "unaccounted");
   if (unaccounted.length)
     out.push({
       rule: "MQ4047",
@@ -571,10 +601,18 @@ export interface NameMatch {
 
 /**
  * Map by name: every attribute without a field, matched to a free column of the same name (case and separators ignored, so
- * customerId reads customer_id). A column already mapped, constant or listed is not free; each column is proposed once.
+ * customerId reads customer_id). A column already mapped, constant, the type column or listed is not free; each column is proposed
+ * once.
  */
-export function matchByName(binding: Binding, attributes: readonly StorageAttribute[], columns: readonly SourceColumn[]): NameMatch[] {
+export function matchByName(
+  binding: Binding,
+  attributes: readonly StorageAttribute[],
+  columns: readonly SourceColumn[],
+  typeColumn: string | undefined = binding.discriminatorColumn,
+): NameMatch[] {
   const taken = new Set<string>();
+  const typed = typeColumn ? findColumn(columns, typeColumn) : undefined;
+  if (typed) taken.add(typed.key);
   for (const f of binding.fields ?? []) {
     const c = findColumn(columns, f.column);
     if (c) taken.add(c.key);

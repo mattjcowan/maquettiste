@@ -172,7 +172,9 @@ While only one end is bound, the section says "Bind both ends to a table to name
 
 Open the **SQL** section of the `Rental` binding. Each statement is the text a repository runs: parameters named after the
 fields, constants as literals (a field on a constant's column is read, never written), and the columns the database fills
-left out of inserts and updates. Switch the dialect to
+left out of inserts and updates. When a base entity and the entities derived from it share one table, the base's binding
+names the type column once (`discriminatorColumn` on the JSON tab), and each derived entity's statements filter on its type
+code and write it. Switch the dialect to
 see another database's form. Generation uses the same statements (the `csharp-dapper` pack builds a bound entity's
 repository from them).
 
@@ -203,7 +205,7 @@ maquettiste binding resync --database main Rental --keep-names          # catch 
   [Auto-map to existing tables](../user-guide.md#auto-map-to-existing-tables) and
   [Relationship storage](../user-guide.md#relationship-storage).
 - [Binding entities to tables, views and queries](../user-guide.md#binding-entities-to-tables-views-and-queries): the
-  file shape, several entities over one table, and a read-only entity over a query.
+  file shape, several entities over one table, a base and its subtypes in one table, and a read-only entity over a query.
 - [Materialize, both ways](../user-guide.md#materialize-both-ways),
   [Provenance and drift](../user-guide.md#provenance-and-drift),
   [Column comments as descriptions](../user-guide.md#column-comments-as-descriptions) and

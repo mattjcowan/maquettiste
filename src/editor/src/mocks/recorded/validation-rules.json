@@ -1649,6 +1649,46 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4122",
+    "defaultSeverity": "error",
+    "description": "A binding's type column is not a column of its source, or of the table it writes: the column its discriminatorColumn names, or the one a derived entity's binding inherits from its nearest base's binding to the database.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4123",
+    "defaultSeverity": "warning",
+    "description": "A binding names a type column (discriminatorColumn), but no entity derived from its entity has a binding to the database that shares it in the same table, so the column tells no rows apart.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4124",
+    "defaultSeverity": "error",
+    "description": "A binding has a constant on its type column, its own or the one it inherits from a base, or a soft delete that sets it: the column already holds the entity's type code.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4125",
+    "defaultSeverity": "error",
+    "description": "Two entities that share a type column in one table have the same type code, so reads cannot tell their rows apart; or an entity's type code cannot fit the type column (the wrong type, too long, out of range).",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4126",
+    "defaultSeverity": "error",
+    "description": "A derived entity's binding names a type column (discriminatorColumn) while a base's binding in the same table already names one: the column is inherited, so remove the key. A derived entity bound to another table may name its own.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",

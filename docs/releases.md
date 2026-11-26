@@ -5,6 +5,34 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.27.0 (not released yet)
+
+A base entity and its subtypes can share one table through their bindings.
+
+- **Subtypes in one table.** A base entity's binding names the type column once, with the new optional key
+  `discriminatorColumn`. Every derived entity's binding to the same database then uses that column. Its type code is its
+  binding's `discriminatorValue`, or its name when there is none, the same code a relation end with several types uses.
+  Reading a derived entity returns its own rows and those of the entities derived from it in the same table; its updates
+  and deletes find their row by key and the same codes; its insert writes its code. Reading the base returns every row of
+  its hierarchy, subtypes included, and never the rows of another entity in the same table; its insert writes its own
+  code. A field on the type column is read but never written. Before, such a table needed a constant on every derived
+  binding.
+- **Five new rules.** MQ4122: the type column is not a column of a binding's source or write table. MQ4123: a binding
+  names a type column no derived entity's binding shares in the same table (a warning). MQ4124: a constant or a soft
+  delete on the type column. MQ4125: two entities in one table with the same type code, or a code the column cannot hold.
+  MQ4126: a derived entity in its base's table names its own type column.
+- **Templates see it.** A resolved binding has `discriminator_column` (in the resolved model, `discriminatorColumn`): the
+  column, the entity whose binding names it, the code the insert writes and the codes the other statements filter on. A
+  column the binding accounts for this way has the status `discriminator`. A table's list of bindings (`boundBy`) shows
+  each binding's type column and codes beside its constants.
+- **Relation ends with several types use it.** When the targets of such an end share one table and only a type column
+  tells their rows apart, a link picks each target's rows by its code, and MQ4118 no longer says the rows are not told
+  apart.
+
+**When you update:** nothing changes until a binding names `discriminatorColumn`. A table whose subtypes are told apart
+by constants keeps working; to move it over, put `discriminatorColumn` on the base's binding and replace each derived
+binding's constant on that column with its `discriminatorValue`.
+
 ## 0.26.1 (2026-11-26)
 
 Two fixes to the SQL the engine writes for an entity's binding. The file format does not change.

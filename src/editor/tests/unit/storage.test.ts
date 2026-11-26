@@ -17,6 +17,7 @@ import {
   setWrite,
   storageAttributes,
   tableForEntity,
+  typeColumnOf,
   writes,
   type Binding,
   type BindingSource,
@@ -114,6 +115,27 @@ describe("the field map", () => {
     // A column a constant holds is not free.
     const taken = matchByName({ ...b, constants: [{ column: "body", value: "x" }] }, ATTRS, NOTES.columns);
     expect(taken.map((m) => m.column.name)).toEqual(["created_at"]);
+  });
+
+  it("accounts for the type column a binding names or takes from its base, as the engine's", () => {
+    const base: Binding = { id: "BB", database: "D", source: "T", discriminatorColumn: "entity_type" };
+    const derived: Binding = { id: "BD", database: "D", source: "T", discriminatorValue: "product" };
+    const docs = new Map<string, Record<string, unknown>>([
+      ["Note", { id: "Note", kind: "entity", bindings: [base] }],
+      ["ProductNote", { id: "ProductNote", kind: "entity", base: "Note", bindings: [derived] }],
+      ["Other", { id: "Other", kind: "entity", base: "Note", bindings: [{ ...derived, database: "E" }] }],
+    ]);
+    expect([typeColumnOf("Note", base, docs), typeColumnOf("ProductNote", derived, docs), typeColumnOf("Other", { ...derived, database: "E" }, docs)]).toEqual([
+      "entity_type",
+      "entity_type",
+      undefined,
+    ]);
+    const typeColumn = typeColumnOf("ProductNote", derived, docs);
+    expect(columnRows(derived, ATTRS, NOTES.columns, typeColumn).find((r) => r.column.name === "entity_type")?.status).toBe("discriminator");
+    expect(columnRows(base, ATTRS, NOTES.columns).find((r) => r.column.name === "entity_type")?.status).toBe("discriminator");
+    // The type column is not free for Map by name, and is no unaccounted column.
+    expect(matchByName(derived, [attr("a-type", "entityType")], NOTES.columns, typeColumn)).toEqual([]);
+    expect(bindingProblems(derived, ATTRS, NOTES, undefined, typeColumn).find((p) => p.rule === "MQ4047")?.message).not.toContain("entity_type");
   });
 
   it("starts a binding with the fields by name, and edits it gesture by gesture", () => {
