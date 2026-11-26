@@ -6194,6 +6194,7 @@
       "x-order": [
         "database",
         "name",
+        "table",
         "end",
         "columns",
         "referencedTable",
@@ -6206,6 +6207,10 @@
         },
         "name": {
           "description": "The foreign key's name.",
+          "type": "string"
+        },
+        "table": {
+          "description": "The key of the table that holds the foreign key.",
           "type": "string"
         },
         "end": {
@@ -6237,6 +6242,7 @@
       "required": [
         "database",
         "name",
+        "table",
         "end",
         "columns",
         "referencedTable",
@@ -6305,7 +6311,7 @@
           "type": "boolean"
         },
         "foreignKeys": {
-          "description": "The foreign keys that link the part's rows to their owner's, by database name, then table: usually one per database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table of its own.",
+          "description": "The foreign keys that link the part's rows to their owner's, by database name, then in the database's table order: usually one per database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table of its own.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/partForeignKeyRecord"

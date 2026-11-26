@@ -30,13 +30,15 @@ template that doesn't read it renders as before.
   two-ended relation between two parts' entities, both ends of one type, the end with max 1 is the one pointed at; when both have max 1, the
   one with min 1; else the first end. A many-to-many link orders nothing. The order is worked out from the model, the same for every database.
   **Deleting deepest first is the order reversed;** there is no second list.
-- **A circle.** When to-one links go round in a circle (a line points at its tax group and the tax group at its main line), a part on the
-  circle goes next: the earliest in walk order of a circle that waits on nothing else. That never puts a part before its owner, nor a part
-  that only points at the circle (an adjustment that points at a tax group) before the circle. Each part on the circle has `in_cycle` true, a
+- **A circle.** When to-one links go round in a circle (a line points at its tax group and the tax group at its main line), the parts of the
+  circle go together, in walk order, once nothing outside it holds them back; among the parts and circles free to go, the one holding the
+  earliest part in walk order goes first. That never puts a part before its owner, nor a part that only points at the circle (an adjustment
+  that points at a tax group) before the circle. The work is linear in the parts and links, even where compositions with two owners multiply
+  the parts. Each part on the circle has `in_cycle` true, a
   circle through the record itself included: one of its links has to be written empty and set after the rows are in. No finding: a circle is
   legal when one link is optional. A composition is never a link here, so a tree of parts of one kind is no circle.
 - **A limit.** A tree stops at 10,000 parts; only compositions with two owners (MQ3016) multiply the ways down that far. A copy block on such
-  an entity gets an MQ3047 warning, and its entries beyond the cut are not checked.
+  an entity gets an MQ3047 warning at `/copy`, and a part entry naming a composition's part end that the cut may hide is not checked.
 - **A part of its own kind.** When a part's entity is already on the way down (a folder in a folder), it is listed once with `is_recursive`
   true, and its own parts are not listed again. Its rows point at rows of the same kind; the team orders them by their own links.
 - **Several types.** A composition whose **part end** has several types is left out, with what lies below it, and its end can't be named in

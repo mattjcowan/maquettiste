@@ -42,9 +42,10 @@ internal sealed record PartNode(Relation Relation, int OwnerEnd, int PartEnd, st
 /// <see cref="Order"/> is safe for foreign keys: every part after its owner, and a part after the parts its to-one links point at (for a
 /// two-ended relation between two parts' entities, both ends of one type: the end with max 1, else the one with min 1, else the first end, is
 /// the one pointed at; a many-to-many link points at neither; a composition is never a link, since the walk already orders it). When links go
-/// round in a circle, a part on the circle goes next: the earliest in walk order of a circle that waits on nothing else, which never puts a part
-/// before its owner nor a part that only points at a circle before it. Each part on a circle is marked in <see cref="InCycle"/>, a circle through
-/// the record itself included. Deleting deepest first is the order reversed.
+/// round in a circle, the parts of the circle go together, in walk order, once nothing outside the circle holds them back, which never puts a
+/// part before its owner nor a part that only points at a circle before it. Among the parts or circles free to go, the one with the earliest part
+/// in walk order goes first. Each part on a circle is marked in <see cref="InCycle"/>, a circle through the record itself included. Deleting
+/// deepest first is the order reversed. The work is linear in the parts and the links between their entities.
 /// </para>
 /// <para>
 /// A tree stops at <see cref="MaxNodes"/> parts (<see cref="Truncated"/>); only a model with composition errors (MQ3016) or one that size gets there.
@@ -69,7 +70,7 @@ internal sealed class PartTree
         Truncated = truncated;
     }
 
-    /// <summary>Whether the walk stopped at <see cref="MaxNodes"/> parts, so parts further down are not listed.</summary>
+    /// <summary>Whether the walk stopped at <see cref="MaxNodes"/> parts with more to list, so some parts are left out.</summary>
     public bool Truncated { get; }
 
     /// <summary>The parts in walk order: depth first, each owner's parts by relation name, then id.</summary>
@@ -141,11 +142,13 @@ internal sealed class PartTree
     {
         var nodes = new List<PartNode>();
         var path = new List<string> { root.Id };
-        Walk(model, index, root, -1, 1, path, nodes);
+        var truncated = false;
+        Walk(model, index, root, -1, 1, path, nodes, ref truncated);
         if (nodes.Count == 0)
             return None;
 
-        // The edges: an owner before its part (the record is node n), and the part a to-one link points at before the part that holds it.
+        // The graph: parts 0..n-1, the record n, and one hub per link relation: a part a to-one link points at reaches the hub, and the hub the
+        // parts that hold the link. A hub stands for every pair of those parts, so the graph grows with the parts and links, not their product.
         var n = nodes.Count;
         var chains = new List<string>[n + 1];
         for (var i = 0; i < n; i++)
@@ -164,52 +167,58 @@ internal sealed class PartTree
             }
         }
 
-        var successors = new HashSet<int>[n + 1];
+        var edges = new List<List<int>>(n + 1);
         for (var i = 0; i <= n; i++)
-            successors[i] = [];
+            edges.Add([]);
         for (var i = 0; i < n; i++)
-            successors[nodes[i].Parent < 0 ? n : nodes[i].Parent].Add(i);
-        foreach (var (id, holders) in covered)
+            edges[nodes[i].Parent < 0 ? n : nodes[i].Parent].Add(i);
+        var links = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in covered.Keys.Order(StringComparer.Ordinal))
         {
             foreach (var relation in index.Touching.GetValueOrDefault(id) ?? [])
             {
                 // A composition is a tree edge, never a link: a part of its own kind gets no edge back to its owner.
-                if (relation.RelationKind == RelationKind.Composition || Pointed(relation) is not { } pointed)
+                if (relation.RelationKind == RelationKind.Composition || !links.Add(relation.Id) || Pointed(relation) is not { } pointed)
                     continue;
                 var (principal, dependent) = pointed;
-                if (!string.Equals(dependent.SingleEntity, id, StringComparison.Ordinal) || !covered.TryGetValue(principal.SingleEntity!, out var targets))
+                if (!covered.TryGetValue(principal.SingleEntity!, out var targets) || !covered.TryGetValue(dependent.SingleEntity!, out var holders))
                     continue;
-                foreach (var j in holders)
-                {
-                    foreach (var i in targets)
-                    {
-                        if (i != j)
-                            successors[i].Add(j);
-                    }
-                }
+                var hub = edges.Count;
+                edges.Add([.. holders]);
+                foreach (var t in targets)
+                    edges[t].Add(hub);
             }
         }
 
-        var (group, sizes) = Groups(n + 1, static _ => true, successors);
+        // A circle is a group of two or more parts (the record counting as one), a hub aside: a part that points at its own kind meets itself only
+        // through the hub. The order works on the parts alone, with the record placed before them.
+        var all = Components(edges, _ => true);
+        var members = new int[all.Count];
+        for (var v = 0; v <= n; v++)
+            members[all.Group[v]]++;
         var inCycle = new bool[n];
         for (var i = 0; i < n; i++)
-            inCycle[i] = sizes[group[i]] > 1;
-        return new PartTree(nodes, SortedOrder(n, successors), inCycle, nodes.Count >= MaxNodes);
+            inCycle[i] = members[all.Group[i]] > 1;
+        return new PartTree(nodes, SortedOrder(n, edges), inCycle, truncated);
     }
 
-    private static void Walk(ModelSnapshot model, Index index, Entity owner, int parent, int depth, List<string> path, List<PartNode> nodes)
+    private static void Walk(ModelSnapshot model, Index index, Entity owner, int parent, int depth, List<string> path, List<PartNode> nodes, ref bool truncated)
     {
         foreach (var (relation, ownerEnd, partEnd) in index.PartsOf(model, owner))
         {
             if (nodes.Count >= MaxNodes)
+            {
+                truncated = true; // a part is left out
                 return;
+            }
+
             var entityId = relation.Ends[partEnd].SingleEntity!;
             var recursive = path.Contains(entityId, StringComparer.Ordinal);
             nodes.Add(new PartNode(relation, ownerEnd, partEnd, entityId, owner.Id, parent, depth, recursive));
             if (recursive || model.Get<Entity>(entityId) is not { } part)
                 continue;
             path.Add(entityId);
-            Walk(model, index, part, nodes.Count - 1, depth + 1, path, nodes);
+            Walk(model, index, part, nodes.Count - 1, depth + 1, path, nodes, ref truncated);
             path.RemoveAt(path.Count - 1);
         }
     }
@@ -232,162 +241,145 @@ internal sealed class PartTree
     }
 
     /// <summary>
-    /// A stable Kahn sort of the parts; the record, node <paramref name="n"/>, is placed before them all, so its edges count for nothing. When
-    /// every part left waits, the parts left hold a circle that waits on nothing else: a group with no edge in from the other parts left, which
-    /// <see cref="Released"/> finds.
+    /// The parts in an order safe for foreign keys, in time linear in the graph: the strongly connected groups of the graph without the record,
+    /// in an order safe for the edges between groups, the group holding the earliest part in walk order first among those free to go; the parts
+    /// of a group together, in walk order. A part's owner is in an earlier group or in its own, where it comes earlier in walk order, so it is
+    /// placed first; a part that only points at a circle comes after the whole circle.
     /// </summary>
-    private static int[] SortedOrder(int n, HashSet<int>[] successors)
+    private static int[] SortedOrder(int n, List<List<int>> edges)
     {
-        var waiting = new int[n];
+        var groups = Components(edges, v => v != n);
+        var first = new int[groups.Count];
+        Array.Fill(first, int.MaxValue);
+        var parts = new List<int>[groups.Count];
+        for (var g = 0; g < groups.Count; g++)
+            parts[g] = [];
         for (var i = 0; i < n; i++)
         {
-            foreach (var s in successors[i])
-            {
-                if (s < n)
-                    waiting[s]++;
-            }
+            var g = groups.Group[i];
+            parts[g].Add(i); // in walk order, since i rises
+            first[g] = Math.Min(first[g], i);
         }
 
-        var ready = new SortedSet<int>();
-        var left = new SortedSet<int>(Enumerable.Range(0, n));
-        for (var i = 0; i < n; i++)
+        // A group of hubs alone places nothing: it goes as soon as it is free, so it never holds back the parts behind it.
+        for (var g = 0; g < groups.Count; g++)
         {
-            if (waiting[i] == 0)
-                ready.Add(i);
+            if (parts[g].Count == 0)
+                first[g] = -1;
         }
 
-        var order = new int[n];
-        for (var k = 0; k < n; k++)
+        var waiting = new int[groups.Count];
+        var next = new List<int>[groups.Count];
+        for (var g = 0; g < groups.Count; g++)
+            next[g] = [];
+        for (var v = 0; v < edges.Count; v++)
         {
-            var next = ready.Count > 0 ? ready.Min : Released(n, successors, left);
-            ready.Remove(next);
-            left.Remove(next);
-            order[k] = next;
-            foreach (var s in successors[next])
-            {
-                if (s < n && left.Contains(s) && --waiting[s] == 0)
-                    ready.Add(s);
-            }
-        }
-
-        return order;
-    }
-
-    /// <summary>
-    /// The part a circle releases when every part left waits: of the groups of parts left with no edge in from another group left, the earliest
-    /// part in walk order. Every part left waits, so such a group is a circle; its earliest part's owner comes earlier in walk order and so is
-    /// placed already or in the group, where it would be earlier still. A part that only points at a circle is never released before it.
-    /// </summary>
-    private static int Released(int n, HashSet<int>[] successors, SortedSet<int> left)
-    {
-        var (group, _) = Groups(n, left.Contains, successors);
-        var fed = new HashSet<int>();
-        foreach (var i in left)
-        {
-            foreach (var s in successors[i])
-            {
-                if (s < n && left.Contains(s) && group[s] != group[i])
-                    fed.Add(group[s]);
-            }
-        }
-
-        foreach (var i in left)
-        {
-            if (!fed.Contains(group[i]))
-                return i;
-        }
-
-        return left.Min;
-    }
-
-    /// <summary>
-    /// The strongly connected groups of the nodes below <paramref name="count"/> that <paramref name="included"/> keeps, over the edges between
-    /// them, by an iterative Kosaraju walk: each node's group (-1 when left out) and each group's size.
-    /// </summary>
-    private static (int[] Group, List<int> Sizes) Groups(int count, Func<int, bool> included, HashSet<int>[] successors)
-    {
-        var predecessors = new List<int>[count];
-        var next = new List<int>[count];
-        for (var i = 0; i < count; i++)
-        {
-            predecessors[i] = [];
-            next[i] = [];
-        }
-
-        for (var i = 0; i < count; i++)
-        {
-            if (!included(i))
+            if (v == n)
                 continue;
-            foreach (var s in successors[i].Order())
+            foreach (var w in edges[v])
             {
-                if (s < count && included(s))
-                {
-                    next[i].Add(s);
-                    predecessors[s].Add(i);
-                }
+                if (w == n || groups.Group[w] == groups.Group[v])
+                    continue;
+                next[groups.Group[v]].Add(groups.Group[w]);
+                waiting[groups.Group[w]]++;
             }
         }
 
-        // First pass: finishing order.
-        var visited = new bool[count];
-        var finished = new List<int>(count);
+        // Groups free to go, the one with the earliest part first.
+        var ready = new SortedSet<(int First, int Group)>();
+        for (var g = 0; g < groups.Count; g++)
+        {
+            if (waiting[g] == 0)
+                ready.Add((first[g], g));
+        }
+
+        var order = new List<int>(n);
+        while (ready.Count > 0)
+        {
+            var (_, g) = ready.Min;
+            ready.Remove(ready.Min);
+            order.AddRange(parts[g]);
+            foreach (var h in next[g])
+            {
+                if (--waiting[h] == 0)
+                    ready.Add((first[h], h));
+            }
+        }
+
+        return [.. order];
+    }
+
+    /// <summary>
+    /// The strongly connected groups of the nodes <paramref name="included"/> keeps, over the edges between them, by an iterative Tarjan walk in
+    /// time linear in the graph: each node's group (-1 when left out) and the number of groups.
+    /// </summary>
+    private static (int[] Group, int Count) Components(List<List<int>> edges, Func<int, bool> included)
+    {
+        var count = edges.Count;
+        var index = new int[count];
+        var low = new int[count];
+        var group = new int[count];
+        var onStack = new bool[count];
+        Array.Fill(index, -1);
+        Array.Fill(group, -1);
+        var stack = new Stack<int>();
+        var walk = new Stack<(int Node, int At)>();
+        var counter = 0;
+        var groups = 0;
         for (var start = 0; start < count; start++)
         {
-            if (visited[start] || !included(start))
+            if (index[start] >= 0 || !included(start))
                 continue;
-            var stack = new Stack<(int Node, int At)>();
-            visited[start] = true;
-            stack.Push((start, 0));
-            while (stack.Count > 0)
+            walk.Push((start, 0));
+            index[start] = low[start] = counter++;
+            stack.Push(start);
+            onStack[start] = true;
+            while (walk.Count > 0)
             {
-                var (node, at) = stack.Pop();
-                if (at < next[node].Count)
+                var (v, at) = walk.Pop();
+                if (at < edges[v].Count)
                 {
-                    stack.Push((node, at + 1));
-                    var s = next[node][at];
-                    if (!visited[s])
+                    walk.Push((v, at + 1));
+                    var w = edges[v][at];
+                    if (!included(w))
+                        continue;
+                    if (index[w] < 0)
                     {
-                        visited[s] = true;
-                        stack.Push((s, 0));
+                        index[w] = low[w] = counter++;
+                        stack.Push(w);
+                        onStack[w] = true;
+                        walk.Push((w, 0));
                     }
+                    else if (onStack[w])
+                    {
+                        low[v] = Math.Min(low[v], index[w]);
+                    }
+
+                    continue;
                 }
-                else
+
+                if (low[v] == index[v])
                 {
-                    finished.Add(node);
+                    int w;
+                    do
+                    {
+                        w = stack.Pop();
+                        onStack[w] = false;
+                        group[w] = groups;
+                    }
+                    while (w != v);
+                    groups++;
+                }
+
+                if (walk.Count > 0)
+                {
+                    var parent = walk.Peek().Node;
+                    low[parent] = Math.Min(low[parent], low[v]);
                 }
             }
         }
 
-        // Second pass: groups on the reversed edges, in reverse finishing order.
-        var group = new int[count];
-        Array.Fill(group, -1);
-        var sizes = new List<int>();
-        for (var k = finished.Count - 1; k >= 0; k--)
-        {
-            var start = finished[k];
-            if (group[start] >= 0)
-                continue;
-            var id = sizes.Count;
-            sizes.Add(0);
-            var pending = new Stack<int>();
-            pending.Push(start);
-            group[start] = id;
-            while (pending.Count > 0)
-            {
-                var node = pending.Pop();
-                sizes[id]++;
-                foreach (var p in predecessors[node])
-                {
-                    if (group[p] < 0)
-                    {
-                        group[p] = id;
-                        pending.Push(p);
-                    }
-                }
-            }
-        }
-
-        return (group, sizes);
+        return (group, groups);
     }
 
     /// <summary>

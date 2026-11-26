@@ -137,20 +137,22 @@ public sealed record EntityRecord(string Id, string Kind, string Name, string? P
 /// <param name="Depth">1 for a part of the record itself, 2 for a part of a part, and so on.</param>
 /// <param name="IsRecursive">Whether the part's entity is already on the way down, so its own parts are not listed again.</param>
 /// <param name="InCycle">Whether the part's to-one links go round in a circle with other parts or the record.</param>
-/// <param name="ForeignKeys">The foreign keys that link the part's rows to their owner's, by database name, then table: usually one per
-/// database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table of its own.</param>
+/// <param name="ForeignKeys">The foreign keys that link the part's rows to their owner's, by database name, then in the database's table order:
+/// usually one per database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table
+/// of its own.</param>
 public sealed record PartRecord(string Id, string Relation, string OwnerEnd, string End, string Entity, string Owner, string? Parent, int Depth,
     bool IsRecursive, bool InCycle, IReadOnlyList<PartForeignKeyRecord> ForeignKeys);
 
 /// <summary>The foreign key that links a part's rows to their owner's in one database (parts-and-copy-design.md).</summary>
 /// <param name="Database">The database's id.</param>
 /// <param name="Name">The foreign key's name.</param>
+/// <param name="Table">The key of the table that holds the foreign key.</param>
 /// <param name="End">The id of the relation end whose table holds the key: the part end, except for a one-to-one composition stored with the key
 /// in the owner's table; <see langword="null"/> when the key records none.</param>
 /// <param name="Columns">The keys of the key's columns in the table that holds it.</param>
 /// <param name="ReferencedTable">The key of the table the key refers to.</param>
 /// <param name="ReferencedColumns">The keys of the columns the key refers to.</param>
-public sealed record PartForeignKeyRecord(string Database, string Name, string? End, IReadOnlyList<string> Columns, string ReferencedTable,
+public sealed record PartForeignKeyRecord(string Database, string Name, string Table, string? End, IReadOnlyList<string> Columns, string ReferencedTable,
     IReadOnlyList<string> ReferencedColumns);
 
 /// <summary>What a copy of a whole record carries over, merged through the entity's bases (parts-and-copy-design.md); other elements by id.</summary>
@@ -1913,7 +1915,7 @@ public static class ResolvedRecords
         private PartRecord Part(RPart p) => new(p.Id, p.Relation.Id, p.OwnerEnd.Id, p.End.Id, p.Entity.Id, p.Owner.Id, p.Parent?.Id, p.Depth,
             p.IsRecursive, p.InCycle,
             [.. p.ForeignKeys.OrderBy(k => k.Key, StringComparer.Ordinal).SelectMany(k => k.Value.Select(fk => new PartForeignKeyRecord(DatabaseId(k.Key), fk.Name,
-                fk.End?.Id, [.. fk.Columns.Select(c => c.Key)], fk.ReferencedTable.Key, [.. fk.ReferencedColumns.Select(c => c.Key)])))]);
+                fk.Columns.Count > 0 ? fk.Columns[0].Table.Key : "", fk.End?.Id, [.. fk.Columns.Select(c => c.Key)], fk.ReferencedTable.Key, [.. fk.ReferencedColumns.Select(c => c.Key)])))]);
 
         private static CopyRecord Copy(RCopy c) => new(
             [.. c.Attributes.Select(CopyAttribute)],

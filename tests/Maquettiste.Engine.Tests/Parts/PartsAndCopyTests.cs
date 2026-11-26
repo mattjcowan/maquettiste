@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
+using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Engine.Tests.Loading;
@@ -178,9 +180,9 @@ public sealed class PartsAndCopyTests
             """));
         var parts = model.Entity("Invoice").Parts;
 
-        // Schedules are free first; then the circle releases the earliest part left in walk order, the lines, and their discounts follow.
-        Assert.Equal(["PaymentSchedule", "InvoiceLine", "LineDiscount", "TaxGroup"], parts.Select(p => p.Entity.Name));
-        Assert.Equal([false, true, false, true], parts.Select(p => p.InCycle));
+        // The circle holds the earliest part (the lines), so it goes first, whole and in walk order; the discounts follow their lines.
+        Assert.Equal(["InvoiceLine", "TaxGroup", "LineDiscount", "PaymentSchedule"], parts.Select(p => p.Entity.Name));
+        Assert.Equal([true, true, false, false], parts.Select(p => p.InCycle));
     }
 
     [Fact]
@@ -205,8 +207,69 @@ public sealed class PartsAndCopyTests
         });
         var parts = model.Entity("Invoice").Parts;
 
-        Assert.Equal(["PaymentSchedule", "InvoiceLine", "LineDiscount", "TaxGroup", "Adjustment"], parts.Select(p => p.Entity.Name));
-        Assert.Equal([false, true, false, true, false], parts.Select(p => p.InCycle));
+        Assert.Equal(["InvoiceLine", "TaxGroup", "LineDiscount", "Adjustment", "PaymentSchedule"], parts.Select(p => p.Entity.Name));
+        Assert.Equal([true, true, false, false, false], parts.Select(p => p.InCycle));
+    }
+
+    [Fact]
+    public void Parts_that_multiply_are_ordered_in_time_linear_in_their_number()
+    {
+        // Each level owns two parts of the next through two compositions (MQ3016, but such a model loads), and each part points at its owner's
+        // kind: depth 10 lists 2,046 parts with links between every part of one level and every part of the level above.
+        static (ModelSnapshot Model, Engine.Model.Entity Root) Levels(int depth)
+        {
+            var b = new ModelBuilder(seed: 61);
+            var levels = Enumerable.Range(0, depth + 1).Select(k => b.Entity("Level" + k).Key("id", "uuid")).ToList();
+            for (var k = 0; k < depth; k++)
+            {
+                b.Relation("a" + k, levels[k], levels[k + 1], fromMax: MaxCardinality.One, fromMin: 1, fromRole: "owner", toRole: "a" + k).Kind(RelationKind.Composition);
+                b.Relation("b" + k, levels[k], levels[k + 1], fromMax: MaxCardinality.One, fromMin: 1, fromRole: "owner", toRole: "b" + k).Kind(RelationKind.Composition);
+                b.Relation("up" + k, levels[k + 1], levels[k], toMax: MaxCardinality.One, fromRole: "below", toRole: "above");
+            }
+
+            var model = b.Build();
+            return (model, model.Get<Engine.Model.Entity>(levels[0].Id)!);
+        }
+
+        static TimeSpan Time(int depth)
+        {
+            var best = TimeSpan.MaxValue;
+            for (var run = 0; run < 3; run++)
+            {
+                var (model, root) = Levels(depth); // a new snapshot each time: nothing is reused between runs
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var tree = PartTree.Of(model, root);
+                best = clock.Elapsed < best ? clock.Elapsed : best;
+                Assert.Equal((1 << (depth + 1)) - 2, tree.Order.Count);
+                Assert.False(tree.Truncated);
+            }
+
+            return best;
+        }
+
+        Time(3); // warm up
+        var nine = Time(9);
+        var ten = Time(10);
+        Assert.True(ten < nine * 3 + TimeSpan.FromMilliseconds(100) && ten < TimeSpan.FromSeconds(2),
+            $"depth 9 took {nine.TotalMilliseconds:F0} ms, depth 10 took {ten.TotalMilliseconds:F0} ms");
+    }
+
+    [Fact]
+    public async Task A_relation_that_becomes_a_composition_keeps_a_copy_blocks_earlier_findings_known()
+    {
+        // The copy block already clears a required attribute (MQ3045) while contains is an association: making it a composition reaches the block
+        // only after the change, and its old finding must not refuse the save.
+        var (h, store) = await OpenAsync($$"""{"attributes":[{"attribute":"{{InvoiceNumber}}","onCopy":"clear"}]}""",
+            h => h.Write("model/relations/contains.json", h.Read("model/relations/contains.json").Replace("\"composition\"", "\"association\"", StringComparison.Ordinal)));
+        using var _ = h;
+        await using var __ = store;
+        Assert.Contains((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ3045");
+
+        var contains = store.Current!.GetDocument("01J92P0V1BWHG0REWKSTR292RS")!;
+        var text = h.Read("model/relations/contains.json").Replace("\"association\"", "\"composition\"", StringComparison.Ordinal);
+        var saved = await store.SaveAsync(contains.Element.Id, System.Text.Encoding.UTF8.GetBytes(text), contains.Hash, ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
     }
 
     [Fact]

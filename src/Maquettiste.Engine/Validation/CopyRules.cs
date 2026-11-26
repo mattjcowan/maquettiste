@@ -25,6 +25,10 @@ internal static class CopyRules
         var model = context.Model;
         CheckAttributes(model, entity, copy.Attributes ?? [], "/copy/attributes", report);
         CheckLinks(model, entity, copy.Links ?? [], report);
+        if (PartTree.Of(model, entity).Truncated)
+            report.Add("MQ3047", DiagnosticSeverity.Warning,
+                $"The parts of '{entity.Name}' pass {PartTree.MaxNodes.ToString("N0", CultureInfo.InvariantCulture)} and are listed only that far, so a part entry for an end beyond them is not checked; fix the compositions with two owners (MQ3016).",
+                "/copy");
         CheckParts(model, entity, copy.Parts ?? [], report);
     }
 
@@ -141,10 +145,6 @@ internal static class CopyRules
         if (entries.Count == 0)
             return;
         var tree = PartTree.Of(model, entity);
-        if (tree.Truncated)
-            report.Add("MQ3047", DiagnosticSeverity.Warning,
-                $"The parts of '{entity.Name}' pass {PartTree.MaxNodes.ToString("N0", CultureInfo.InvariantCulture)} and are listed only that far, so an end beyond them is not checked; fix the compositions with two owners (MQ3016).",
-                "/copy/parts");
         var seen = new HashSet<string>(StringComparer.Ordinal);
         for (var j = 0; j < entries.Count; j++)
         {
@@ -159,7 +159,10 @@ internal static class CopyRules
                 continue;
             }
 
-            if (!tree.Reaches(entry.End) && !tree.Truncated)
+            // Past the cut, only the part end of a composition (one type at it) may lie beyond: that one alone goes unchecked.
+            var partEnd = ValidationContext.CompositionEnds(relation) is { } composition && ReferenceEquals(relation.Ends[composition.Child], named)
+                && named.SingleEntity is not null;
+            if (!tree.Reaches(entry.End) && !(tree.Truncated && partEnd))
             {
                 report.Add("MQ3047", ValidationContext.CompositionEnds(relation) is { } ends && ReferenceEquals(relation.Ends[ends.Child], named) && named.HasSeveralTypes
                     ? $"End '{named.Role}' of composition '{relation.Name}' has several types, and the parts of a record list only parts of one type; remove the entry."

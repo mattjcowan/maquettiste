@@ -3874,7 +3874,7 @@ export interface components {
             isRecursive: boolean;
             /** @description Whether the part's to-one links go round in a circle with other parts or the record. */
             inCycle: boolean;
-            /** @description The foreign keys that link the part's rows to their owner's, by database then table; one per table when each derived type of the part has its own table. */
+            /** @description The foreign keys that link the part's rows to their owner's, by database name, then in the database's table order; one per table when each derived type of the part has its own table. */
             foreignKeys: components["schemas"]["PartForeignKeyRecord"][];
         };
         /** @description The foreign key that links a part's rows to their owner's in one database (parts-and-copy-design.md). */
@@ -3883,6 +3883,8 @@ export interface components {
             database: string;
             /** @description The foreign key's name. */
             name: string;
+            /** @description The key of the table that holds the foreign key. */
+            table: string;
             /** @description The id of the relation end whose table holds the key; the part end, except for a one-to-one composition stored with the key in the owner's table. */
             end: string | null;
             /** @description The keys of the key's columns in the table that holds it. */

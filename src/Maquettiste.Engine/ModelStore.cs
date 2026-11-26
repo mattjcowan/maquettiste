@@ -1220,7 +1220,10 @@ public sealed partial class ModelStore : IAsyncDisposable
         var report = scope.Count > 0
             ? await _services.Validator.ValidateAsync(candidate, new ValidationScope(scope, IncludeReferrers: true), null, ct).ConfigureAwait(false)
             : ValidationReport.From([]);
-        var existing = plan.ChangedIds.Concat(placements).Concat(followers).Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
+        // The copy blocks the change reaches only after it (a relation that became a composition on the way down) are validated after the change
+        // through the validator's peers; validating them before it too keeps their earlier findings known.
+        var existing = plan.ChangedIds.Concat(placements).Concat(followers).Concat(LaterCopyPeers(changed, before, candidate))
+            .Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
         var baseline = existing.Count > 0
             ? await _services.Validator.ValidateAsync(before, new ValidationScope(existing, IncludeReferrers: true), null, ct).ConfigureAwait(false)
             : ValidationReport.From([]);
@@ -1453,6 +1456,24 @@ public sealed partial class ModelStore : IAsyncDisposable
             foreach (var peer in Validation.CopyRules.Peers(before, element))
             {
                 if (candidate.GetDocument(peer) is not null)
+                    yield return peer;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The copy blocks a change reaches after it (parts-and-copy-design.md), worked out on the changed model, that the model before it holds: the
+    /// validator checks them after the change as peers, so the baseline checks them before it, and a finding they had already is no new error.
+    /// </summary>
+    private static IEnumerable<string> LaterCopyPeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        foreach (var id in changedIds)
+        {
+            if (candidate.GetDocument(id)?.Element is not { } element)
+                continue;
+            foreach (var peer in Validation.CopyRules.Peers(candidate, element))
+            {
+                if (before.GetDocument(peer) is not null)
                     yield return peer;
             }
         }

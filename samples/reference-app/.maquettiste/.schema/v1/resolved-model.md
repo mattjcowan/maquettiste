@@ -515,7 +515,7 @@ One part of a whole record: records of an entity owned through a composition, at
 | `depth` | integer | never | 1 for a part of the record itself, 2 for a part of a part, and so on. |
 | `isRecursive` | boolean | never | Whether the part's entity is already on the way down, so its own parts are not listed again. |
 | `inCycle` | boolean | never | Whether the part's to-one links go round in a circle with other parts or the record. |
-| `foreignKeys` | list of [partForeignKeyRecord](#partforeignkeyrecord) | never | The foreign keys that link the part's rows to their owner's, by database name, then table: usually one per database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table of its own. |
+| `foreignKeys` | list of [partForeignKeyRecord](#partforeignkeyrecord) | never | The foreign keys that link the part's rows to their owner's, by database name, then in the database's table order: usually one per database where the composition is stored with foreign keys, and one per table when each derived type of the part has a table of its own. |
 
 ### partForeignKeyRecord
 
@@ -525,6 +525,7 @@ The foreign key that links a part's rows to their owner's in one database.
 | --- | --- | --- | --- |
 | `database` | string | never | The database's id. |
 | `name` | string | never | The foreign key's name. |
+| `table` | string | never | The key of the table that holds the foreign key. |
 | `end` | string | can be null | The id of the relation end whose table holds the key: the part end, except for a one-to-one composition stored with the key in the owner's table; null when the key records none. |
 | `columns` | list of string | never | The keys of the key's columns in the table that holds it. |
 | `referencedTable` | string | never | The key of the table the key refers to. |

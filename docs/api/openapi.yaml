@@ -9783,14 +9783,14 @@ components:
           description: Whether the part's to-one links go round in a circle with other parts or the record.
         foreignKeys:
           type: array
-          description: The foreign keys that link the part's rows to their owner's, by database then table; one per table when each derived type of the part has its own table.
+          description: The foreign keys that link the part's rows to their owner's, by database name, then in the database's table order; one per table when each derived type of the part has its own table.
           items:
             $ref: '#/components/schemas/PartForeignKeyRecord'
     PartForeignKeyRecord:
       x-engine-record: Maquettiste.Engine.PartForeignKeyRecord
       description: The foreign key that links a part's rows to their owner's in one database (parts-and-copy-design.md).
       type: object
-      required: [database, name, end, columns, referencedTable, referencedColumns]
+      required: [database, name, table, end, columns, referencedTable, referencedColumns]
       properties:
         database:
           type: string
@@ -9798,6 +9798,9 @@ components:
         name:
           type: string
           description: The foreign key's name.
+        table:
+          type: string
+          description: The key of the table that holds the foreign key.
         end:
           type: [string, 'null']
           description: The id of the relation end whose table holds the key; the part end, except for a one-to-one composition stored with the key in the owner's table.
