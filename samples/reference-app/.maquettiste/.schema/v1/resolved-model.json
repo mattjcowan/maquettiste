@@ -752,7 +752,7 @@
           ]
         },
         "status": {
-          "description": "`field`, `constant`, `ignored`, `database`, `computed`, `identity`, `default`, `soft-delete` or `unaccounted`.",
+          "description": "`field`, `constant`, `discriminator` (the binding's type column), `ignored`, `database`, `computed`, `identity`, `default`, `soft-delete` or `unaccounted`.",
           "type": "string"
         },
         "field": {
@@ -790,6 +790,102 @@
       "required": [
         "column",
         "value"
+      ],
+      "additionalProperties": false
+    },
+    "bindingDiscriminatorRecord": {
+      "description": "The type column of a resolved binding: one column a base entity and the entities derived from it share in one table.",
+      "type": "object",
+      "x-order": [
+        "column",
+        "columnKey",
+        "writeColumn",
+        "base",
+        "value",
+        "codes"
+      ],
+      "properties": {
+        "column": {
+          "description": "The column's physical name in the source.",
+          "type": "string"
+        },
+        "columnKey": {
+          "description": "The source column's key, for a table source. Null otherwise.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "writeColumn": {
+          "description": "The key of the write table's column the insert writes the code into, or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base": {
+          "description": "The id of the entity whose binding names the column: this binding's entity, or its nearest base that names one.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The entity's type code, a string or an integer: what the insert writes.",
+          "not": {
+            "type": "null"
+          }
+        },
+        "codes": {
+          "description": "The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that share the column in the same table. Empty for the entity whose binding names the column, which reads every row.",
+          "type": "array",
+          "items": {
+            "not": {
+              "type": "null"
+            }
+          }
+        }
+      },
+      "required": [
+        "column",
+        "columnKey",
+        "writeColumn",
+        "base",
+        "value",
+        "codes"
+      ],
+      "additionalProperties": false
+    },
+    "bindingDiscriminatorView": {
+      "description": "A binding's type column, as a table's list of bindings shows it.",
+      "type": "object",
+      "x-order": [
+        "column",
+        "value",
+        "codes"
+      ],
+      "properties": {
+        "column": {
+          "description": "The column's physical name.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The entity's type code, a string or an integer: what its insert writes.",
+          "not": {
+            "type": "null"
+          }
+        },
+        "codes": {
+          "description": "The codes its reads, updates and deletes keep; empty for the entity whose binding names the column, which reads every row.",
+          "type": "array",
+          "items": {
+            "not": {
+              "type": "null"
+            }
+          }
+        }
+      },
+      "required": [
+        "column",
+        "value",
+        "codes"
       ],
       "additionalProperties": false
     },
@@ -925,7 +1021,8 @@
         "bindingId",
         "reads",
         "writes",
-        "constants"
+        "constants",
+        "discriminator"
       ],
       "properties": {
         "entityId": {
@@ -954,6 +1051,10 @@
           "items": {
             "$ref": "#/$defs/bindingConstantView"
           }
+        },
+        "discriminator": {
+          "description": "The type column the binding names or inherits from a base, with the entity's code and the codes its reads keep: the other way the rows of entities sharing one table are told apart. Left out when the binding has none.",
+          "$ref": "#/$defs/bindingDiscriminatorView"
         }
       },
       "required": [
@@ -2474,7 +2575,8 @@
         "fields",
         "columns",
         "writeColumns",
-        "discriminatorValue"
+        "discriminatorValue",
+        "discriminatorColumn"
       ],
       "properties": {
         "id": {
@@ -2551,6 +2653,10 @@
         },
         "discriminatorValue": {
           "description": "The entity's type code the binding sets, a string or an integer; left out when unset."
+        },
+        "discriminatorColumn": {
+          "description": "The type column the entity shares with its base or the entities derived from it in one table, named by the binding's `discriminatorColumn` or inherited from its nearest base's binding to the database; left out when there is none.",
+          "$ref": "#/$defs/bindingDiscriminatorRecord"
         }
       },
       "required": [

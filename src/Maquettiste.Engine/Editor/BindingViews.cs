@@ -11,7 +11,17 @@ namespace Maquettiste.Engine;
 /// <param name="Reads">Whether the binding reads the object (it is the binding's source).</param>
 /// <param name="Writes">Whether the binding writes the object (it is the binding's write table).</param>
 /// <param name="Constants">The binding's constants: what tells several entities of one table apart.</param>
-public sealed record BoundByView(string EntityId, string EntityName, string BindingId, bool Reads, bool Writes, IReadOnlyList<BindingConstantView> Constants);
+/// <param name="Discriminator">The type column the binding names or inherits from a base, with the entity's code and the codes its reads
+/// keep: the other way the rows of entities sharing one table are told apart. Left out when the binding has none.</param>
+public sealed record BoundByView(string EntityId, string EntityName, string BindingId, bool Reads, bool Writes, IReadOnlyList<BindingConstantView> Constants,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] BindingDiscriminatorView? Discriminator = null);
+
+/// <summary>A binding's type column, as a table's list of bindings shows it.</summary>
+/// <param name="Column">The column's physical name.</param>
+/// <param name="Value">The entity's type code, a string or an integer: what its insert writes.</param>
+/// <param name="Codes">The codes its reads, updates and deletes keep; empty for the entity whose binding names the column, which reads
+/// every row.</param>
+public sealed record BindingDiscriminatorView(string Column, object Value, IReadOnlyList<object> Codes);
 
 /// <summary>A constant column of a binding.</summary>
 /// <param name="Column">The column's physical name.</param>
@@ -34,10 +44,23 @@ public sealed record BindingConstantView(string Column, object? Value);
 /// <param name="WriteColumns">Every write table column with what accounts for it, when the write table is not the source.</param>
 /// <param name="DiscriminatorValue">The entity's type code the binding sets, a string or an integer (several-types-design.md decision 42);
 /// left out when unset.</param>
+/// <param name="DiscriminatorColumn">The type column the entity shares with its base or the entities derived from it in one table, named
+/// by the binding's <c>discriminatorColumn</c> or inherited from its nearest base's binding to the database; left out when there is none.</param>
 public sealed record EntityBindingRecord(string Id, string Database, string? SourceKind, string Source, string SourceName, string? WriteTable, string Delete,
     string? SoftDeleteColumn, object? SoftDeleteValue, IReadOnlyList<BindingConstantView> Constants, IReadOnlyList<BindingFieldRecord> Fields,
     IReadOnlyList<BindingColumnRecord> Columns, IReadOnlyList<BindingColumnRecord> WriteColumns,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? DiscriminatorValue = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? DiscriminatorValue = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] BindingDiscriminatorRecord? DiscriminatorColumn = null);
+
+/// <summary>The type column of a resolved binding: one column a base entity and the entities derived from it share in one table.</summary>
+/// <param name="Column">The column's physical name in the source.</param>
+/// <param name="ColumnKey">The source column's key, for a table source.</param>
+/// <param name="WriteColumn">The key of the write table's column the insert writes the code into, or <see langword="null"/>.</param>
+/// <param name="Base">The id of the entity whose binding names the column: this binding's entity, or its nearest base that names one.</param>
+/// <param name="Value">The entity's type code, a string or an integer: what the insert writes.</param>
+/// <param name="Codes">The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that
+/// share the column in the same table. Empty for the entity whose binding names the column, which reads every row.</param>
+public sealed record BindingDiscriminatorRecord(string Column, string? ColumnKey, string? WriteColumn, string Base, object Value, IReadOnlyList<object> Codes);
 
 /// <summary>One field of a resolved binding.</summary>
 /// <param name="Name">The field's name (the select's alias and the statements' parameter).</param>
@@ -65,8 +88,8 @@ public sealed record BindingFieldRecord(string Name, string Attribute, string? A
 /// <summary>A column of a binding's source or write table and what accounts for it.</summary>
 /// <param name="Name">The column's physical name.</param>
 /// <param name="Key">The column's key, for a table.</param>
-/// <param name="Status"><c>field</c>, <c>constant</c>, <c>ignored</c>, <c>database</c>, <c>computed</c>, <c>identity</c>, <c>default</c>,
-/// <c>soft-delete</c> or <c>unaccounted</c>.</param>
+/// <param name="Status"><c>field</c>, <c>constant</c>, <c>discriminator</c> (the binding's type column), <c>ignored</c>, <c>database</c>,
+/// <c>computed</c>, <c>identity</c>, <c>default</c>, <c>soft-delete</c> or <c>unaccounted</c>.</param>
 /// <param name="Field">The name of the field that maps it, with status <c>field</c>.</param>
 public sealed record BindingColumnRecord(string Name, string? Key, string Status, string? Field);
 
@@ -102,7 +125,8 @@ internal static class BindingViews
     public static IReadOnlyList<BoundByView> BoundBy(IReadOnlyList<REntityBinding> bindings, object target) =>
         [.. bindings.Select(b => new BoundByView(b.Entity.Id, b.Entity.Name, b.Id,
             ReferenceEquals(b.SourceTable, target) || ReferenceEquals(b.SourceView, target) || ReferenceEquals(b.SourceQuery, target),
-            ReferenceEquals(b.WriteTable, target), Constants(b)))];
+            ReferenceEquals(b.WriteTable, target), Constants(b),
+            b.DiscriminatorColumn is { } d ? new BindingDiscriminatorView(d.ColumnName, d.Value, [.. d.Codes]) : null))];
 
     public static IReadOnlyList<BindingConstantView> Constants(REntityBinding b) => [.. b.Constants.Select(c => new BindingConstantView(c.ColumnName, c.Value))];
 
@@ -117,13 +141,16 @@ internal static class BindingViews
         b.SoftDeleteColumn?.Name,
         b.SoftDeleteValue,
         Constants(b),
-        // holds and keyOf on the field forms of several-types-design.md decision 46, and the binding's discriminatorValue (section 19.8): each
-        // left out when null, so today's bindings keep their records.
+        // holds and keyOf on the field forms of several-types-design.md decision 46, the binding's discriminatorValue (section 19.8) and its
+        // type column: each left out when null, so today's bindings keep their records.
         [.. b.Fields.Select(f => new BindingFieldRecord(f.Name, f.AttributeRef, f.Attribute?.Id, f.Member?.Id, f.End?.Id, f.ColumnName, f.SourceColumn?.Key,
             f.WriteColumn?.Key, f.Type, f.Nullable, f.IsKey, f.IsGenerated, f.InInsert, f.InUpdate, f.Holds, f.KeyOf?.Id))],
         Columns(b.Columns),
         Columns(b.WriteColumns),
-        b.DiscriminatorValue);
+        b.DiscriminatorValue,
+        b.DiscriminatorColumn is { } d
+            ? new BindingDiscriminatorRecord(d.ColumnName, d.SourceColumn?.Key, d.WriteColumn?.Key, d.Base.Id, d.Value, [.. d.Codes])
+            : null);
 
     private static IReadOnlyList<BindingColumnRecord> Columns(IReadOnlyList<RBindingColumn> columns) =>
         [.. columns.Select(c => new BindingColumnRecord(c.Name, c.Column?.Key, c.Status, c.Field?.Name))];

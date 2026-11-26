@@ -50,10 +50,20 @@ public sealed record EntityBinding
     public BindingDelete? Delete { get; init; }
 
     /// <summary>
+    /// The type column a base entity shares with the entities derived from it in one table: a column key or physical name of the source
+    /// (and of the write table), written as <see cref="BindingConstant.Column"/> is. The binding of each derived entity to the same database
+    /// inherits it from its nearest base whose binding names one: the derived entity's type code (<see cref="DiscriminatorValue"/>, else its
+    /// name) then filters its reads, updates and deletes, and is the value its insert writes. The base's own reads, updates and deletes are
+    /// not filtered; its insert writes its own code. <see langword="null"/> (absent): no type column.
+    /// </summary>
+    [ElementRef(Keyed = true)]
+    public string? DiscriminatorColumn { get; init; }
+
+    /// <summary>
     /// The entity's type code in this database, a JSON string or integer (several-types-design.md decision 42): what a type column of a
-    /// relation end with several types holds for it, and its discriminator in a hierarchy. <see langword="null"/> (absent): the
-    /// <c>discriminatorValue</c> of the entity's mapping there, else the entity's name. The binding is the entity's mapping in its database
-    /// (erratum E43), which a mapping element there can't set.
+    /// relation end with several types holds for it, and its discriminator in a hierarchy (the value of the type column a base's
+    /// <see cref="DiscriminatorColumn"/> names). <see langword="null"/> (absent): the <c>discriminatorValue</c> of the entity's mapping
+    /// there, else the entity's name. The binding is the entity's mapping in its database (erratum E43), which a mapping element there can't set.
     /// </summary>
     public JsonElement? DiscriminatorValue { get; init; }
 

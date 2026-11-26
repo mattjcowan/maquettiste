@@ -4,7 +4,7 @@
 // the five statements of a binding for a dialect (simple SQL, not the engine's renderer), and the binding rules the editor
 // shows inline (MQ4044 to MQ4048, MQ4050 and MQ4058). It shares the field map model with the editor (editors/storage/fieldMap.ts).
 import type { DatabaseView, Diagnostic, MaterializeChange, MaterializePlan, MaterializeStatus, BindingSqlResult, TableView } from "@/api/types";
-import { bindingProblems, columnRows, findColumn, sourceOf, storageAttributes, writes, type Binding } from "@/editors/storage/fieldMap";
+import { bindingProblems, columnRows, findColumn, sourceOf, storageAttributes, typeColumnOf, writes, type Binding } from "@/editors/storage/fieldMap";
 import { applyCase, resolveDatabase, type PhysicalInput } from "./physical";
 import { sqlDialectOf, unwrapSqlText } from "@/model/sqlText";
 import { splitWith } from "./querySql";
@@ -631,7 +631,7 @@ function materializeAttributes(input: BindingInput, databaseId: string, request:
       continue;
     }
     const attributes = storageAttributes(id, docs);
-    const rows = columnRows(binding, attributes, source.columns);
+    const rows = columnRows(binding, attributes, source.columns, typeColumnOf(id, binding, docs));
     let chosen = rows.filter((r) => r.status === "unaccounted" || r.status === "identity" || r.status === "default").map((r) => r.column);
     if (named) {
       chosen = [];
@@ -937,7 +937,13 @@ export function bindingFindings(view: DatabaseView, docs: ReadonlyMap<string, Js
       const push = (rule: string, severity: Diagnostic["severity"], message: string, pointer: string) =>
         out.push({ rule, severity, message, elementId: String(e.id), filePath: pathOf(String(e.id)), jsonPointer: at(pointer), line: null, column: null });
       if (all.findIndex((x) => x.database === b.database) !== i) push("MQ4050", "error", `${String(e.name)} has a second binding to ${view.name}.`, "");
-      for (const p of bindingProblems(b, attributes, sourceOf(view, b.source), { entity: String(e.name), database: view.name }))
+      for (const p of bindingProblems(
+        b,
+        attributes,
+        sourceOf(view, b.source),
+        { entity: String(e.name), database: view.name },
+        typeColumnOf(String(e.id), b, docs),
+      ))
         push(p.rule, p.severity, p.message, p.pointer);
     });
   }

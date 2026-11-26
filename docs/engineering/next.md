@@ -242,6 +242,13 @@ Built since:
 - **Two fixes to the statements (0.26.1).** A field on a column a constant writes is read but never written, so an
   insert no longer names the column twice. A source query's parameter with a field's name is now MQ4121, since the
   select by key gave both one placeholder. Requested.
+- **Subtypes in one table (0.27.0).** The base entity's binding names the type column once (`discriminatorColumn`); each
+  derived binding's type code (its `discriminatorValue`, else its name) then filters reads, updates and deletes and is the
+  value an insert writes. Reading a derived entity also returns the rows of the entities derived from it in the same table.
+  The code is one value per entity per database: the same `discriminatorValue` serves relation ends with several types.
+  Reading the base returns every row, subtypes included; the base is saved only when its binding writes, its insert then
+  writes its own code, and its updates and deletes find their row by key alone. A field on the type column is read only.
+  MQ4122 to MQ4125 check the column and the codes. Requested.
 
 Left:
 
@@ -252,11 +259,6 @@ Left:
 Requested on 2026-11-26; the owner approved the order and the decisions the same day. The requesting team answered the
 design questions on 2026-11-26; their answers are folded in below.
 
-- **Subtypes in one table.** Build next, with a short design. The base entity's binding names the type column once; each
-  derived binding's `discriminatorValue` then filters reads, updates and deletes and is the value an insert writes.
-  Today a binding's `discriminatorValue` only gives the type code for relation ends with several types; the design keeps
-  the two jobs apart. Settled: reading the base returns every row, subtypes included; the base is saved only when its
-  binding writes, and its insert then writes its own value, as a subtype's does.
 - **The parts of a whole record.** Build next. The resolved model lists each entity's composition parts at every level,
   with the owning end, the linking columns and a foreign-key-safe order, so templates stop rebuilding the tree. Deleting
   deepest first is that order reversed.

@@ -77,7 +77,9 @@ public sealed class RelationStorageContractTests
 
         var binding = JsonNode.Parse(File.ReadAllText(Path.Combine(Fixtures.RepoRoot, "schemas", "v1", "entity.json")))!["properties"]!["bindings"]!["items"]!;
         var bindingOrder = Strings(binding["x-order"]);
-        Assert.Equal(Array.IndexOf(bindingOrder, "delete") + 1, Array.IndexOf(bindingOrder, "discriminatorValue"));
+        // A base's type column (discriminatorColumn) sits between delete and discriminatorValue.
+        Assert.Equal(Array.IndexOf(bindingOrder, "delete") + 2, Array.IndexOf(bindingOrder, "discriminatorValue"));
+        Assert.Equal(Array.IndexOf(bindingOrder, "delete") + 1, Array.IndexOf(bindingOrder, "discriminatorColumn"));
         Assert.Equal("""["string","integer"]""", binding["properties"]!["discriminatorValue"]!["type"]!.ToJsonString());
     }
 

@@ -363,6 +363,8 @@ internal sealed partial class Materializer
             Name(field.Column);
         foreach (var constant in binding.Constants)
             Name(constant.Column);
+        if (BindingDrift.TypeColumnOf(snapshot, entity, binding) is { } typeColumn)
+            Name(typeColumn);
         foreach (var listed in binding.Columns)
             Name(listed.Column);
         if (binding.Delete?.Soft is { } soft)

@@ -1003,7 +1003,7 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// Whether a target's table holds rows of entities it doesn't stand for, with nothing to tell them apart: no discriminator, and no binding
-    /// constants the join paths can read (<see cref="PickRows"/>, the same rule).
+    /// constants or type column the join paths can read (<see cref="PickRows"/>, the same rule).
     /// </summary>
     private bool RowsNotToldApart(TypeLinkEnd e, HashSet<string> covered, Placement target)
     {

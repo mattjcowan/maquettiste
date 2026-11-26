@@ -37,6 +37,7 @@ import {
   setField,
   setWrite,
   tableForEntity,
+  typeColumnOf,
   writeChoiceOf,
   writes,
   type Binding,
@@ -72,7 +73,7 @@ export function StorageTab(ctx: EditorContext) {
   const lookup = indexLookup(index.data);
   const overrides = useMemo(() => new Map([[id, json as Rec]]), [id, json]);
   const ids = useMemo(() => [id], [id]);
-  const { attributes } = useStorageAttributes(ids, overrides);
+  const { attributes, docs } = useStorageAttributes(ids, overrides);
   const attrs = attributes.get(id) ?? [];
   const databases = databasesOf(index.data);
   const mappings = relatedOf(index.data, id).mappings;
@@ -143,6 +144,7 @@ export function StorageTab(ctx: EditorContext) {
           binding={b}
           databaseName={lookup.nameOf(b.database) ?? b.database}
           attributes={attrs}
+          typeColumn={typeColumnOf(id, b, docs)}
           onEdit={(change) => edit(i, change)}
           onRemove={() => remove(i)}
         />
@@ -348,6 +350,7 @@ function BindingCard({
   binding,
   databaseName,
   attributes,
+  typeColumn,
   onEdit,
   onRemove,
 }: {
@@ -357,6 +360,8 @@ function BindingCard({
   binding: Binding;
   databaseName: string;
   attributes: StorageAttribute[];
+  /** The type column the binding names or inherits from a base's binding. */
+  typeColumn: string | undefined;
   onEdit: (change: (b: Binding) => void) => void;
   onRemove: () => void;
 }) {
@@ -366,9 +371,9 @@ function BindingCard({
   // While the database's tables load, no row can be judged: a column that has not arrived is not a missing one.
   const loading = pending && !source;
   const fieldRows = attributeRows(binding, attributes, columns);
-  const colRows = columnRows(binding, attributes, columns);
+  const colRows = columnRows(binding, attributes, columns, typeColumn);
   const validation = useValidation();
-  const local = source || !pending ? bindingProblems(binding, attributes, source, { entity: entityName, database: databaseName }) : [];
+  const local = source || !pending ? bindingProblems(binding, attributes, source, { entity: entityName, database: databaseName }, typeColumn) : [];
   const localRules = new Set(local.map((p) => p.rule));
   const server: MapProblem[] = (validation.data?.diagnostics ?? [])
     .filter((d) => d.elementId === entityId && (d.jsonPointer ?? "").startsWith(`/bindings/${index}`) && !localRules.has(d.rule) && d.severity !== "info")
@@ -612,7 +617,7 @@ function BindingCard({
           <tbody>
             {colRows.map((r) => {
               const listed = (binding.columns ?? []).find((c) => findColumn(columns, c.column) === r.column);
-              const free = r.status !== "field" && r.status !== "constant" && r.status !== "soft-delete";
+              const free = r.status !== "field" && r.status !== "constant" && r.status !== "discriminator" && r.status !== "soft-delete";
               return (
                 <tr key={r.column.key} data-testid={`column-row-${r.column.name}`} data-status={r.status}>
                   <td className="font-mono">{r.column.name}</td>
@@ -742,9 +747,10 @@ function BindingCard({
           binding={binding}
           attributes={attributes}
           source={source}
+          typeColumn={typeColumn}
           onClose={() => setMapping(false)}
           onApply={(refs) => {
-            const matches = matchByName(binding, attributes, columns).filter((m) => refs.includes(m.attribute.ref));
+            const matches = matchByName(binding, attributes, columns, typeColumn).filter((m) => refs.includes(m.attribute.ref));
             if (matches.length) onEdit((b) => applyMatches(b, matches, columns));
             setMapping(false);
           }}
@@ -905,16 +911,18 @@ function MapByNameDialog({
   binding,
   attributes,
   source,
+  typeColumn,
   onClose,
   onApply,
 }: {
   binding: Binding;
   attributes: StorageAttribute[];
   source: BindingSource;
+  typeColumn: string | undefined;
   onClose: () => void;
   onApply: (refs: string[]) => void;
 }) {
-  const matches = matchByName(binding, attributes, source.columns);
+  const matches = matchByName(binding, attributes, source.columns, typeColumn);
   const [off, setOff] = useState<Set<string>>(new Set());
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>

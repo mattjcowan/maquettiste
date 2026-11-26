@@ -66,6 +66,13 @@ public sealed class REntityBinding : RAnnotated
     /// </summary>
     public object? DiscriminatorValue { get; internal set; }
 
+    /// <summary>
+    /// The type column the entity shares with its base or the entities derived from it in one table: the column the binding's own
+    /// <c>discriminatorColumn</c> names, else the one it inherits from its nearest base whose binding to the database names one, with the
+    /// code its insert writes and the codes its reads, updates and deletes filter on; <see langword="null"/> when neither names one.
+    /// </summary>
+    public RBindingDiscriminator? DiscriminatorColumn { get; internal set; }
+
     /// <summary>The fields that map the entity's key attributes, in key order.</summary>
     public IReadOnlyList<RBindingField> Key { get; internal set; } = [];
 
@@ -102,6 +109,44 @@ public sealed class RBindingConstant
 
     /// <summary>The value: a string, a number or a bool; <see langword="null"/> is SQL NULL.</summary>
     public object? Value { get; internal set; }
+}
+
+/// <summary>
+/// The type column of a resolved binding: a column a base entity and the entities derived from it share in one table, holding each
+/// one's type code. It is resolved against the binding's own source and write table, like a constant.
+/// </summary>
+public sealed class RBindingDiscriminator
+{
+    /// <summary>The column as the file of <see cref="Base"/> writes it.</summary>
+    public string Column { get; internal set; } = "";
+
+    /// <summary>The physical name of the column in the source.</summary>
+    public string ColumnName { get; internal set; } = "";
+
+    /// <summary>The source column, when the source is a table.</summary>
+    public RColumn? SourceColumn { get; internal set; }
+
+    /// <summary>The source column, when the source is a view.</summary>
+    public RViewColumn? ViewColumn { get; internal set; }
+
+    /// <summary>The source column, when the source is a query.</summary>
+    public RQueryField? QueryField { get; internal set; }
+
+    /// <summary>The column of the write table the insert writes the code into, or <see langword="null"/>.</summary>
+    public RColumn? WriteColumn { get; internal set; }
+
+    /// <summary>The entity whose binding names the column: the binding's own entity, or its nearest base that names one.</summary>
+    public REntity Base { get; internal set; } = null!;
+
+    /// <summary>The entity's type code, a string or an integer: the value the insert writes.</summary>
+    public object Value { get; internal set; } = "";
+
+    /// <summary>
+    /// The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it whose bindings to the
+    /// database share the column and keep their rows in the same table, so reading an entity returns its subtypes' rows too. Empty on
+    /// the entity whose binding names the column: it reads, updates and deletes every row.
+    /// </summary>
+    public IReadOnlyList<object> Codes { get; internal set; } = [];
 }
 
 /// <summary>One entry of a resolved binding's field map.</summary>
@@ -152,10 +197,15 @@ public sealed class RBindingField
     /// <summary>Whether the database fills the column (identity, a key sequence, computed, or marked <c>database</c> or <c>computed</c>).</summary>
     public bool IsGenerated { get; internal set; }
 
-    /// <summary>Whether the insert statement writes the field (never when a constant writes its column: the constant's value goes in).</summary>
+    /// <summary>
+    /// Whether the insert statement writes the field (never when a constant or the type column writes its column: that value goes in).
+    /// </summary>
     public bool InInsert { get; internal set; }
 
-    /// <summary>Whether the update statement sets the field (written, not a key, not read-only or immutable, and no constant writes its column).</summary>
+    /// <summary>
+    /// Whether the update statement sets the field (written, not a key, not read-only or immutable, and neither a constant nor the type
+    /// column writes its column).
+    /// </summary>
     public bool InUpdate { get; internal set; }
 
     /// <summary>The built-in type keyword of the column, or <see langword="null"/> when unknown.</summary>
@@ -188,8 +238,9 @@ public sealed class RBindingColumn
     public RColumn? Column { get; internal set; }
 
     /// <summary>
-    /// <c>field</c>, <c>constant</c>, <c>ignored</c>, <c>database</c>, <c>computed</c>, <c>identity</c> (identity or a key
-    /// sequence), <c>default</c> (a column default), <c>soft-delete</c> or <c>unaccounted</c> (MQ4047).
+    /// <c>field</c>, <c>constant</c>, <c>discriminator</c> (the binding's type column), <c>ignored</c>, <c>database</c>,
+    /// <c>computed</c>, <c>identity</c> (identity or a key sequence), <c>default</c> (a column default), <c>soft-delete</c> or
+    /// <c>unaccounted</c> (MQ4047).
     /// </summary>
     public string Status { get; internal set; } = "unaccounted";
 

@@ -46,6 +46,8 @@ internal static class ContractCheck
         ["relationEndEntityRecord"] = "RelationTypeStorageTests.Each_row_of_the_binding_field_table",
         ["typeCodeRecord"] = "RelationTypeStorageTests.A_link_table_with_constants_and_an_attribute_column",
         ["stereotypeSubjectRecord"] = "StereotypeSubjectResolutionTests.Zero_carriers_give_no_subject_and_the_entry_as_written",
+        ["bindingDiscriminatorRecord"] = "BindingSubtypeTests.The_resolved_record_carries_the_type_column",
+        ["bindingDiscriminatorView"] = "BindingSubtypeTests.The_resolved_record_carries_the_type_column",
     };
 
     /// <summary>

@@ -277,6 +277,34 @@ public sealed partial class RelationTypeStorageTests
         Assert.Equal(!oneColumn, Kinds(model, Attached).Contains("rows-not-told-apart"));
     }
 
+    [Fact]
+    public async Task A_bound_target_picks_its_rows_by_the_type_column_its_base_names()
+    {
+        // As above, but Part's binding names the type column (discriminatorColumn) and PurchasedPart takes it from Part: no constants. The
+        // type column tells their rows apart from Gizmo's (a constant on the same column), so the step into items reads both codes there,
+        // and MQ4118 does not say the rows are not told apart.
+        const string Items = "01JST300000000000000000007";
+        string Bound(string id, string name, int key, string extra, string? @base = null) => EntityFile(id, name, @base,
+            attributes: (@base is null ? $$""","key":{"attributes":["{{N(P, 100 + key)}}"]},"attributes":[{"id":"{{N(P, 100 + key)}}","name":"id","type":"uuid"}],""" : ",")
+                + $$""" "bindings":[{"id":"{{N(P, 810 + key)}}","database":"{{Main}}","source":"{{Items}}","fields":[{"attribute":"{{N(P, 100 + (@base is null ? key : 1))}}","column":"id"}],"""
+                + extra + "}]");
+        var (model, validation) = await ResolveAsync(h =>
+        {
+            h.Write("model/entities/part.json", Bound(SPart, "Part", 1, """ "discriminatorColumn":"kind","discriminatorValue":"P" """));
+            h.Write("model/entities/purchased-part.json", Bound(N(P, 6), "PurchasedPart", 6, """ "discriminatorValue":"PP" """, SPart));
+            h.Write("model/entities/gizmo.json", Bound(N(P, 7), "Gizmo", 7, """ "constants":[{"column":"kind","value":"G"}] """));
+            Delete(h, "model/mappings/part.json");
+            Delete(h, "model/relations/filed.json");
+            h.Write("model/databases/main/tables/items.json", Table(Items, "items",
+                Column(Items, 1, "id", nullable: false) + "," + Column(Items, 2, "kind", "string", 2) + "," + Column(Items, 3, "sub", "string", 2)));
+            h.Write("model/mappings/attached.json", RelationMapping(Attached, Way3));
+        });
+        Assert.DoesNotContain(validation, d => d.Severity == DiagnosticSeverity.Error);
+        var toPart = NavigationOf(model, SComment, "attachedTo").TypeJoins["main"].Single(p => p.ToType?.Name == "Part");
+        Assert.Equal("comments(attached_id) > items(id) [attached_type in P,PP] [kind in P,PP] to=Part", Describe(toPart));
+        Assert.DoesNotContain("rows-not-told-apart", Kinds(model, Attached));
+    }
+
     [Theory]
     [InlineData("postgresql")]
     [InlineData("sqlserver")]

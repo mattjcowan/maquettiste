@@ -13852,6 +13852,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BindingConstantView'
+        discriminator:
+          $ref: '#/components/schemas/BindingDiscriminatorView'
+    BindingDiscriminatorView:
+      x-engine-record: Maquettiste.Engine.BindingDiscriminatorView
+      description: The type column a binding names or inherits from a base, with the entity's code and the codes its reads keep; left
+        out of a bound-by entry when the binding has none.
+      type: object
+      required: [column, value, codes]
+      properties:
+        column:
+          type: string
+        value:
+          type: [string, integer]
+          description: The entity's type code, what its insert writes.
+        codes:
+          type: array
+          description: The codes its reads, updates and deletes keep; empty for the entity whose binding names the column.
+          items:
+            type: [string, integer]
     ReferenceBindingView:
       x-engine-record: Maquettiste.Engine.ReferenceBindingView
       description: A reference type whose rows a table holds (its binding to the table's database).
@@ -13946,6 +13965,33 @@ components:
         discriminatorValue:
           type: [string, integer]
           description: The entity's type code the binding sets (several-types-design.md decision 42); left out when unset.
+        discriminatorColumn:
+          $ref: '#/components/schemas/BindingDiscriminatorRecord'
+    BindingDiscriminatorRecord:
+      x-engine-record: Maquettiste.Engine.BindingDiscriminatorRecord
+      description: The type column a base entity and the entities derived from it share in one table, named by the binding's
+        `discriminatorColumn` or inherited from its nearest base's binding to the database; left out of the binding when there is none.
+      type: object
+      required: [column, columnKey, writeColumn, base, value, codes]
+      properties:
+        column:
+          type: string
+          description: The column's physical name in the source.
+        columnKey:
+          type: [string, 'null']
+        writeColumn:
+          type: [string, 'null']
+          description: The key of the write table's column the insert writes the code into.
+        base:
+          $ref: '#/components/schemas/Ulid'
+        value:
+          type: [string, integer]
+          description: The entity's type code, what the insert writes.
+        codes:
+          type: array
+          description: The codes reads, updates and deletes filter on; empty for the entity whose binding names the column.
+          items:
+            type: [string, integer]
     BindingFieldRecord:
       x-engine-record: Maquettiste.Engine.BindingFieldRecord
       type: object
@@ -13998,7 +14044,7 @@ components:
           type: [string, 'null']
         status:
           type: string
-          enum: [field, constant, ignored, database, computed, identity, default, soft-delete, unaccounted]
+          enum: [field, constant, discriminator, ignored, database, computed, identity, default, soft-delete, unaccounted]
         field:
           type: [string, 'null']
     BindingSqlResult:

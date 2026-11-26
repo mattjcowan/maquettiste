@@ -9,8 +9,8 @@ namespace Maquettiste.Engine.Resolution;
 /// Entity bindings to one database (erratum E43, engine-design.md section 7, "Bindings and materialize"). An entity's binding is
 /// collected before anything is placed, so the entity is never projected here; the tables, views and queries a binding names get the
 /// entity's file among their dependency keys as they are created (they list the binding in <c>BoundBy</c>); and once the queries are
-/// resolved each binding resolves its source, constants, field map, accounted columns, write table and delete, and the rules MQ4044 to
-/// MQ4053 and MQ4058 report what it gets wrong with the JSON pointer of the binding's entry in the entity's file.
+/// resolved each binding resolves its source, type column, constants, field map, accounted columns, write table and delete, and the rules
+/// MQ4044 to MQ4053, MQ4058 and MQ4122 to MQ4125 report what it gets wrong with the JSON pointer of the binding's entry in the entity's file.
 /// </summary>
 internal sealed partial class DatabaseRun
 {
@@ -59,6 +59,58 @@ internal sealed partial class DatabaseRun
     }
 
     private static string Pointer(int index) => "/bindings/" + index.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The entity whose binding to this database gives the entity's type column: the entity itself when its binding names
+    /// <c>discriminatorColumn</c>, else its nearest base whose binding names one; <see langword="null"/> when none does.
+    /// </summary>
+    private REntity? TypeColumnOwner(REntity entity)
+    {
+        for (var e = entity; e is not null; e = e.Base)
+        {
+            if (_bindingByEntity.TryGetValue(e.Id, out var bound) && bound.Binding.DiscriminatorColumn is not null)
+                return e;
+        }
+
+        return null;
+    }
+
+    /// <summary>The bound entities that use each type column, by the entity whose binding names it, in entity order (built once).</summary>
+    private Dictionary<REntity, List<REntity>>? _typeColumnMembers;
+
+    /// <summary>The bound entities that use the type column the entity's binding names, itself included, in entity order.</summary>
+    private List<REntity> TypeColumnMembers(REntity owner)
+    {
+        if (_typeColumnMembers is null)
+        {
+            _typeColumnMembers = new Dictionary<REntity, List<REntity>>(ReferenceEqualityComparer.Instance);
+            foreach (var e in _boundEntities)
+            {
+                if (TypeColumnOwner(e) is not { } o)
+                    continue;
+                if (!_typeColumnMembers.TryGetValue(o, out var list))
+                    _typeColumnMembers[o] = list = [];
+                list.Add(e);
+            }
+        }
+
+        return _typeColumnMembers.TryGetValue(owner, out var members) ? members : [];
+    }
+
+    /// <summary>Whether an entity is another or derives from it.</summary>
+    private static bool DerivesFrom(REntity entity, REntity from)
+    {
+        for (var e = entity; e is not null; e = e.Base)
+        {
+            if (ReferenceEquals(e, from))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether two type codes are the same code: both text or both integers, with the same text.</summary>
+    private static bool SameCode(object a, object b) => (a is string) == (b is string) && string.Equals(CodeText(a), CodeText(b), StringComparison.Ordinal);
 
     /// <summary>
     /// Adds the files of the entities bound to an object (its id or key) to its dependency keys: its <c>BoundBy</c> lists them. A binding
@@ -259,6 +311,7 @@ internal sealed partial class DatabaseRun
             ResolveSource();
             ResolveWrite();
             var fields = ResolveFields();
+            ResolveTypeColumn();
             var constants = ResolveConstants();
             var listed = ResolveListedColumns();
             ResolveDelete();
@@ -646,6 +699,14 @@ internal sealed partial class DatabaseRun
                 }
 
                 constant.WriteColumn = WriteColumnFor(c.Column, constant.ColumnName, constant.SourceColumn);
+                if (_b.DiscriminatorColumn is { } typeColumn
+                    && ((found is not null && HasSourceColumn(typeColumn) && constant.ColumnName == typeColumn.ColumnName)
+                        || (constant.WriteColumn is not null && ReferenceEquals(constant.WriteColumn, typeColumn.WriteColumn))))
+                {
+                    var whose = ReferenceEquals(typeColumn.Base, entity) ? "the type column the binding names" : $"the type column the binding inherits from base '{typeColumn.Base.Name}'";
+                    Report("MQ4124", $"Constant column '{constant.ColumnName}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' is {whose}, which already holds the entity's type code: remove the constant, and set discriminatorValue if the code should be another.", at + "/column");
+                }
+
                 if (_b.Writes && constant.WriteColumn is null && (found is not null || _b.SourceKind is null))
                 {
                     Report("MQ4049", $"Constant column '{c.Column}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' is not a column of the table it writes ('{_b.WriteTable!.Name}'), so an insert cannot set it: name a column of that table, or write nowhere (write \"none\").", at + "/column");
@@ -659,6 +720,111 @@ internal sealed partial class DatabaseRun
             }
 
             return constants;
+        }
+
+        private static bool HasSourceColumn(RBindingDiscriminator d) => (d.SourceColumn ?? (object?)d.ViewColumn ?? d.QueryField) is not null;
+
+        // ---- type column -----------------------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// The type column the entity shares with its base or the entities derived from it in one table: the column the binding's
+        /// <c>discriminatorColumn</c> names, else the one its nearest base's binding to the database names, resolved against this binding's
+        /// source and write table like a constant (MQ4122 when either lacks it). The insert writes the entity's type code; the reads, updates
+        /// and deletes of a derived entity filter on its code and those of the entities derived from it that keep their rows in the same
+        /// table, and those of the entity that names the column filter on nothing. MQ4123 for a column no derived entity shares, MQ4125
+        /// for a code another entity sharing the column in the same table already has, or one the column cannot hold.
+        /// </summary>
+        private void ResolveTypeColumn()
+        {
+            if (run.TypeColumnOwner(entity) is not { } owner)
+                return;
+            var own = ReferenceEquals(owner, entity);
+            var text = run._bindingByEntity[owner.Id].Binding.DiscriminatorColumn!;
+            var d = new RBindingDiscriminator { Column = text, ColumnName = text, Base = owner, Value = run.CodeOf(entity) };
+            _b.DiscriminatorColumn = d;
+            var named = own ? $"names type column '{text}'" : $"inherits type column '{text}' from the binding of base '{owner.Name}'";
+            var codeAt = file.DiscriminatorValue is not null ? "/discriminatorValue" : "";
+            // A derived binding that reads (or writes) what the base's binding reads (or writes) leaves a missing column to the base's report.
+            var ownerFile = run._bindingByEntity[owner.Id].Binding;
+            var found = FindSourceColumn(text);
+            if (found is { } column)
+            {
+                (d.ColumnName, d.SourceColumn, d.ViewColumn, d.QueryField) = (column.Name, column.Table, column.View, column.Query);
+                CheckCodeFit(d.Value, column.Type, column.Table?.Length, column.Name, codeAt);
+            }
+            else if (_b.SourceKind is not null && (own || !string.Equals(KeyOf(file.Source), KeyOf(ownerFile.Source), StringComparison.Ordinal)))
+            {
+                Report("MQ4122", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' {named}, which {_b.SourceKind} '{_b.SourceName}' does not have, so its reads cannot tell the types' rows apart.", own ? "/discriminatorColumn" : "/source");
+            }
+
+            d.WriteColumn = WriteColumnFor(text, d.ColumnName, d.SourceColumn);
+            if (_b.Writes && d.WriteColumn is null && (found is not null || _b.SourceKind is null)
+                && (own || !string.Equals(HostOf(file), HostOf(ownerFile), StringComparison.Ordinal)))
+            {
+                Report("MQ4122", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' {named}, which is not a column of the table it writes ('{_b.WriteTable!.Name}'), so an insert cannot write its type code: name a column of that table, or write nowhere (write \"none\").",
+                    own ? "/discriminatorColumn" : file.Write?.Table is not null ? "/write/table" : "/source");
+            }
+            else if (d.WriteColumn is { } writeColumn && !ReferenceEquals(writeColumn, d.SourceColumn))
+            {
+                CheckCodeFit(d.Value, PhysicalType(writeColumn), writeColumn.Length, writeColumn.Name, codeAt);
+            }
+
+            // The entities that share the column in the same table: a derived entity reads its own rows and those of the entities
+            // derived from it; the entity that names the column reads every row.
+            var host = HostOf(file);
+            var codes = new List<object> { d.Value };
+            var shared = false;
+            var members = run.TypeColumnMembers(owner);
+            foreach (var other in members)
+            {
+                if (ReferenceEquals(other, entity))
+                    continue;
+                shared = true;
+                if (own || !DerivesFrom(other, entity) || !string.Equals(HostOf(run._bindingByEntity[other.Id].Binding), host, StringComparison.Ordinal))
+                    continue;
+                _deps.Element(other.Id);
+                var code = run.CodeOf(other);
+                if (!codes.Exists(c => SameCode(c, code)))
+                    codes.Add(code);
+            }
+
+            d.Codes = own ? [] : codes;
+            if (own && !shared)
+                Report("MQ4123", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' names type column '{text}', but no entity derived from '{entity.Name}' has a binding to the database that shares it, so the column tells no rows apart: remove discriminatorColumn, or bind the derived entities.", "/discriminatorColumn");
+
+            // Two entities that share the column in one table with one code: reported on the later one, in entity order.
+            foreach (var other in members)
+            {
+                if (ReferenceEquals(other, entity))
+                    break;
+                if (!string.Equals(HostOf(run._bindingByEntity[other.Id].Binding), host, StringComparison.Ordinal) || !SameCode(run.CodeOf(other), d.Value))
+                    continue;
+                Report("MQ4125", $"Entities '{other.Name}' and '{entity.Name}' share type column '{d.ColumnName}' in '{HostName(file)}' and both have type code {QuotedCode(d.Value)}, so reads cannot tell their rows apart: set a different discriminatorValue on one.", codeAt);
+                break;
+            }
+        }
+
+        /// <summary>What holds a binding's rows, by key or id: the table it writes, else (writing nowhere) its source.</summary>
+        private string HostOf(EntityBinding binding) => KeyOf(HostKey(binding));
+
+        /// <summary>A table's key for any way a binding names it; another source's id as written.</summary>
+        private string KeyOf(string key) => FindTable(key)?.Table.Key ?? key;
+
+        private string HostName(EntityBinding binding)
+        {
+            var key = HostKey(binding);
+            return FindTable(key)?.Table.Name ?? (views.TryGetValue(key, out var v) ? v.Name : queries.TryGetValue(key, out var q) ? q.Name : key);
+        }
+
+        private static string HostKey(EntityBinding binding) => binding.Write is { None: true } ? binding.Source : binding.Write?.Table ?? binding.Source;
+
+        private static string QuotedCode(object code) => code is string ? "'" + code + "'" : CodeText(code);
+
+        /// <summary>MQ4125: a type code the type column cannot hold (type, length, range).</summary>
+        private void CheckCodeFit(object value, string? type, int? length, string column, string pointer)
+        {
+            if (type is not null && FitProblem(value, type, length, nullable: true) is { } problem)
+                Report("MQ4125", $"The type code {QuotedCode(value)} of entity '{entity.Name}' in database '{run._db.Name}' {problem} (type column '{column}' is {type}): set a discriminatorValue the column can hold.", pointer);
         }
 
         /// <summary>MQ4051: a constant whose value does not fit its column (type, length, range, null).</summary>
@@ -762,8 +928,8 @@ internal sealed partial class DatabaseRun
         }
 
         /// <summary>
-        /// Which fields the insert and the update write. A field whose column a constant writes is read only: the constant's value is
-        /// written once, and the update finds its row by it, so the statements never name the column twice.
+        /// Which fields the insert and the update write. A field whose column a constant or the type column writes is read only: that
+        /// value is written once, and the update finds its row by it, so the statements never name the column twice.
         /// </summary>
         private void ResolveWriteFlags(List<RBindingField> fields, List<RBindingConstant> constants, Dictionary<string, BindingColumnStatus> listed)
         {
@@ -783,7 +949,7 @@ internal sealed partial class DatabaseRun
                     field.InUpdate = field.InInsert;
                 }
 
-                if (column is not null && constants.Any(c => ReferenceEquals(c.WriteColumn, column)))
+                if (column is not null && (constants.Any(c => ReferenceEquals(c.WriteColumn, column)) || ReferenceEquals(_b.DiscriminatorColumn?.WriteColumn, column)))
                     (field.InInsert, field.InUpdate) = (false, false);
 
                 if (field.IsKey && field.IsGenerated && _b.Writes)
@@ -833,6 +999,10 @@ internal sealed partial class DatabaseRun
                 {
                     entry.Status = "constant";
                     entry.Constant = constant;
+                }
+                else if (_b.DiscriminatorColumn is { } d && (write && column is not null ? ReferenceEquals(d.WriteColumn, column) : HasSourceColumn(d) && d.ColumnName == name))
+                {
+                    entry.Status = "discriminator";
                 }
                 else if (listed.TryGetValue(name, out var status))
                 {
