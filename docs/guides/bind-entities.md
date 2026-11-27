@@ -187,8 +187,9 @@ Some teams keep a subtype's own columns in a table of its own. Take a billing mo
 1. Bind `Payment` to `payments`, and name `kind` as its type column (`discriminatorColumn`).
 2. Bind `CardPayment`, which derives from `Payment`, to `card_payments`. Map only `last4`: the base's binding maps `id` and
    `amount`.
-3. On the binding's JSON tab, set `baseForeignKey` to the id of the foreign key of `card_payments` that references
-   `payments`.
+3. In the binding's **Base table** section, pick the foreign key of `card_payments` that references `payments`. (It is
+   `baseForeignKey` on the JSON tab.) The section shows `payment_id` joining `payments.id`, and the field map stops offering
+   what `Payment`'s binding stores.
 
 ```json
 "bindings": [{
@@ -229,7 +230,9 @@ keeps the notes in order.
 
 1. Give `Quote` a list attribute `notes`, typed by a value object `QuoteNote` with `text` and `author`.
 2. Bind `Quote` to `quotes` as usual. Do not map `notes` as a field.
-3. On the binding's JSON tab, add a `childTables` entry for `notes`:
+3. In the binding's **Child tables** section, pick `notes`, press **Add child table**, then pick `quote_notes` as its table:
+   the owner key, the order column and the members are filled from the names. The result, on the JSON tab, is a `childTables`
+   entry for `notes`:
 
 ```json
 "childTables": [{

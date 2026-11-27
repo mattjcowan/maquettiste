@@ -2,7 +2,7 @@
 // from, each database's materialize status and source columns, and the batches that apply a storage gesture as one undo
 // step (a materialize operation, or updates of several entities).
 import { useMemo } from "react";
-import { useQueries, useQuery, type QueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
 import { applyBatchResult, invalidateResolved, keys, loadElement, tableDetailQuery, useDatabaseView, useElements, useIndex } from "@/api/queries";
 import type { BatchRequest, ElementSummary, MaterializeStatus, ModelJson, TableView } from "@/api/types";
@@ -11,6 +11,7 @@ import { indexLookup } from "@/model/index";
 import { endCoversEntity } from "@/model/endTypes";
 import { clone } from "@/lib/json";
 import { baseChain } from "@/editors/related";
+import { referenceReader, referrersOf, WALK_LIMITS } from "@/editors/refWalk";
 import { sourcesOf, storageAttributes, tableSource, type BindingSource, type StorageAttribute } from "./fieldMap";
 
 type Json = Record<string, unknown>;
@@ -35,29 +36,39 @@ export function useStorageAttributes(entityIds: readonly string[], overrides?: R
     return [...ids];
   }, [entityIds, lookup]);
   const docs1 = useElements(first);
-  const voIds = useMemo(() => {
+  // The value objects the attributes use, and those they use in turn (value objects nest): a fixed number of rounds, each reads only what the
+  // last one named.
+  const round = (from: Iterable<{ json: unknown }>, known: ReadonlySet<string>): string[] => {
     const out = new Set<string>();
-    for (const doc of docs1.byId.values()) {
+    for (const doc of from) {
       const json = doc.json as Json;
-      if (json.kind !== "entity") continue;
+      if (json.kind !== "entity" && json.kind !== "value-object") continue;
       for (const a of (json.attributes as { type?: unknown }[] | undefined) ?? []) {
         const ref = typeof a.type === "object" && a.type ? (a.type as { ref?: string }).ref : undefined;
-        if (ref && lookup.byId.get(ref)?.kind === "value-object") out.add(ref);
+        if (ref && !known.has(ref) && lookup.byId.get(ref)?.kind === "value-object") out.add(ref);
       }
     }
     return [...out].sort();
-  }, [docs1.byId, lookup]);
+  };
+  const voIds = useMemo(() => round(docs1.byId.values(), new Set()), [docs1.byId, lookup]); // eslint-disable-line react-hooks/exhaustive-deps -- round reads only the index
   const docs2 = useElements(voIds);
+  const voIds3 = useMemo(() => round(docs2.byId.values(), new Set(voIds)), [docs2.byId, voIds, lookup]); // eslint-disable-line react-hooks/exhaustive-deps
+  const docs3 = useElements(voIds3);
+  const voIds4 = useMemo(() => round(docs3.byId.values(), new Set([...voIds, ...voIds3])), [docs3.byId, voIds, voIds3, lookup]); // eslint-disable-line react-hooks/exhaustive-deps
+  const docs4 = useElements(voIds4);
+  const voIds5 = useMemo(() => round(docs4.byId.values(), new Set([...voIds, ...voIds3, ...voIds4])), [docs4.byId, voIds, voIds3, voIds4, lookup]); // eslint-disable-line react-hooks/exhaustive-deps
+  const docs5 = useElements(voIds5);
   return useMemo(() => {
     const docs = new Map<string, Json>();
     // Names of the entities at the far end of a relation, from the index (their documents are not needed).
     for (const e of lookup.ofKind("entity")) docs.set(e.id, { kind: "entity", id: e.id, name: e.name });
-    for (const d of [...docs1.byId.values(), ...docs2.byId.values()]) docs.set(String((d.json as Json).id), d.json as Json);
+    for (const d of [...docs1.byId.values(), ...docs2.byId.values(), ...docs3.byId.values(), ...docs4.byId.values(), ...docs5.byId.values()])
+      docs.set(String((d.json as Json).id), d.json as Json);
     for (const [id, json] of overrides ?? []) docs.set(id, json);
     const attributes = new Map<string, StorageAttribute[]>();
     for (const id of entityIds) attributes.set(id, storageAttributes(id, docs));
-    return { docs, attributes, pending: docs1.pending || docs2.pending };
-  }, [lookup, docs1, docs2, overrides, entityIds]);
+    return { docs, attributes, pending: docs1.pending || docs2.pending || docs3.pending || docs4.pending || docs5.pending };
+  }, [lookup, docs1, docs2, docs3, docs4, docs5, overrides, entityIds]);
 }
 
 /** ["tables", db, "materialize"]: under the database's tables key, so a model change that reshapes tables refetches it. */
@@ -253,4 +264,40 @@ export function removeBindings(services: AppServices, ids: readonly string[], da
     else delete json.bindings;
     return json;
   });
+}
+
+/**
+ * The columns (ids) that relationships' attributes use in a database, for the relations of the entity that carry attributes and are
+ * stored by a foreign key (a relation mapping with `foreignKey` and no junction table): the binding's table counts them as the
+ * relationship's (status `relation`). Reads only those relations' mappings, found through where-used, one element at a time.
+ */
+export function useRelationColumns(entityId: string, database: string, docs: ReadonlyMap<string, Json>): ReadonlySet<string> | undefined {
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
+  const qc = useQueryClient();
+  const relations = useMemo(
+    () =>
+      [...docs.values()]
+        .filter((d) => d.kind === "relation" && Array.isArray(d.attributes) && (d.attributes as unknown[]).length > 0)
+        .map((d) => String(d.id))
+        .sort()
+        .slice(0, WALK_LIMITS.relations),
+    [docs],
+  );
+  const query = useQuery({
+    queryKey: ["relation-columns", entityId, database, relations.join(","), index.dataUpdatedAt],
+    enabled: relations.length > 0,
+    queryFn: async () => {
+      const read = referenceReader(qc);
+      const out = new Set<string>();
+      for (const refs of await Promise.all(relations.map(read)))
+        for (const id of referrersOf(refs, (x) => lookup.byId.get(x)?.kind, "mapping")) {
+          const doc = (await qc.fetchQuery({ queryKey: keys.element(id), queryFn: () => loadElement(id), staleTime: 0 })).json as Json;
+          if (doc.database !== database || !doc.foreignKey || doc.junctionTable) continue;
+          for (const a of (doc.attributes as { column?: string }[] | undefined) ?? []) if (a.column) out.add(a.column);
+        }
+      return out;
+    },
+  });
+  return query.data;
 }

@@ -268,6 +268,9 @@ describe("the bindable attributes", () => {
       ["e1", "id", "own", true, true],
       ["e2.m1", "totalAmount", "member", false, true],
       ["e2.m2", "totalCurrency", "member", false, true],
+      // A value object, and a list, may also be held whole in one JSON column: an optional row.
+      ["e2", "total", "own", false, false],
+      ["e3", "lines", "own", false, false],
       ["e4", "label", "own", false, false],
       ["s1", "updatedAt", "virtual", false, true],
       ["rc", "buyerId", "relation", false, true],

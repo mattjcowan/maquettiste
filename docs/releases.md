@@ -66,7 +66,9 @@ one.
   derived entity's rows as its base's now needs `baseForeignKey` on the derived bindings. Resolution no longer reads that
   convention for bound entities.
 - A relationship with attributes whose mapping names `foreignKey` is now the foreign-key shape, where it was refused before.
-- There is no editor screen for `baseForeignKey`, `childTables` or a relationship's attribute columns yet: use the JSON tab.
+- The Storage tab has a Base table section (`baseForeignKey`), a Child tables section (`childTables`), deep field paths and the
+  new column statuses in the field map, and a SQL preview with the probe, the tables above and each child table; a
+  relationship's Storage tab has a column for each attribute on its foreign key. The JSON tab still edits the same keys.
 - A binding that maps a value object attribute whole to a JSON column no longer gets MQ4058 for its members. One whose value
   object holds nested value objects now gets MQ4058 for their members when no field maps them.
 - A field `attributeId.memberId` that names a nested value object or a list, refused before (MQ4045), now maps a JSON column;

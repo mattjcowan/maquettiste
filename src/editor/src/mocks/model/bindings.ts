@@ -4,7 +4,21 @@
 // the five statements of a binding for a dialect (simple SQL, not the engine's renderer), and the binding rules the editor
 // shows inline (MQ4044 to MQ4048, MQ4050 and MQ4058). It shares the field map model with the editor (editors/storage/fieldMap.ts).
 import type { DatabaseView, Diagnostic, MaterializeChange, MaterializePlan, MaterializeStatus, BindingSqlResult, TableView } from "@/api/types";
-import { bindingProblems, columnRows, findColumn, sourceOf, storageAttributes, typeColumnOf, writes, type Binding } from "@/editors/storage/fieldMap";
+import {
+  bindingProblems,
+  columnRows,
+  findColumn,
+  sourceOf,
+  storageAttributes,
+  typeColumnOf,
+  writes,
+  type Binding,
+  type ChildTable,
+} from "@/editors/storage/fieldMap";
+import { baseProblems, boundBaseOf } from "@/editors/storage/baseTable";
+import { bindingShape } from "@/editors/storage/bindingShape";
+import { childAttribute, childProblems, itemAttributes } from "@/editors/storage/childTables";
+import { columnIds, plainTable, tableDocColumns, type TableDoc } from "@/editors/storage/tableDoc";
 import { applyCase, resolveDatabase, type PhysicalInput } from "./physical";
 import { sqlDialectOf, unwrapSqlText } from "@/model/sqlText";
 import { splitWith } from "./querySql";
@@ -881,12 +895,43 @@ export function bindingSql(input: PhysicalInput, entityId: string, bindingId: st
       : soft
         ? `UPDATE ${target} SET ${quote(findColumn(source.columns, soft.column)?.name ?? soft.column)} = ${literal(soft.value ?? null)}\nWHERE ${where.join(" AND ")}`
         : `DELETE FROM ${target}\nWHERE ${where.join(" AND ")}`;
+  // The probe, the tables above (table per type, each the base's own statements) and the child tables, as the engine's preview shows them.
+  // With a base foreign key the key is the foreign key's columns, named after the base's key attributes.
+  const joined = bindingShape(entityId, binding, input.docs, (id) => input.docs.get(id) as TableDoc | undefined).joined;
+  const probeKeys = keys.length
+    ? keys.map((k) => ({ column: k.column, name: k.name }))
+    : joined.map((j) => ({ column: j.name, name: j.attribute ?? j.referenced }));
+  const exists = probeKeys.length
+    ? statement(
+        `SELECT COUNT(*)\nFROM ${from}\nWHERE ${[...filters, ...probeKeys.map((k, i) => `${alias}.${quote(k.column)} = ${p(k.name, i)}`)].join(" AND ")}`,
+        probeKeys.map((k) => k.name),
+      )
+    : undefined;
+  const bases: NonNullable<BindingSqlResult["preview"]>["bases"] = [];
+  for (let at = { entity: entityId, binding }, level = 1; at.binding.baseForeignKey && level <= 16; level++) {
+    const base = boundBaseOf(at.entity, binding.database, input.docs);
+    if (!base) break;
+    const own = bindingSql(input, base.entityId, base.binding.id, dialect, placeholder)?.preview;
+    bases.push({
+      level,
+      entityId: base.entityId,
+      bindingId: base.binding.id,
+      insert: own?.insert ?? null,
+      update: own?.update ?? null,
+      delete: own?.delete ?? null,
+    });
+    at = { entity: base.entityId, binding: base.binding };
+  }
+  const childTables = (binding.childTables ?? []).map((entry) => childSql(input, entityId, binding, entry, writing, fields, p));
   return {
     preview: {
       entityId,
       bindingId,
       database: binding.database,
       dialect: (dialect ?? view.dialect) as "postgresql",
+      ...(exists ? { exists } : {}),
+      ...(bases.length ? { bases } : {}),
+      ...(childTables.length ? { childTables } : {}),
       select: statement(select, []),
       selectByKey: keys.length
         ? statement(
@@ -919,11 +964,89 @@ export function bindingSql(input: PhysicalInput, entityId: string, bindingId: st
   };
 }
 
+/** One child table entry's three statements (the rows of one owner, one row, the rows of one owner), simply built. */
+function childSql(
+  input: PhysicalInput,
+  entityId: string,
+  binding: Binding,
+  entry: ChildTable,
+  writing: boolean,
+  ownFields: { name: string; column: string }[],
+  p: (name: string, i: number) => string,
+): NonNullable<NonNullable<BindingSqlResult["preview"]>["childTables"]>[number] {
+  const table = input.docs.get(plainTable(entry.table) ?? "") as TableDoc | undefined;
+  const columns = tableDocColumns(table);
+  const attribute = childAttribute(entityId, entry.attribute, input.docs);
+  const items = itemAttributes(attribute, input.docs);
+  const nameOf = (key: string) => findColumn(columns, key)?.name ?? key;
+  const fk = table?.foreignKeys?.find((k) => k.id === entry.ownerForeignKey);
+  const owner = (fk?.columns ?? []).map((c, i) => {
+    const referenced = fk?.referencesColumns?.[i];
+    const field = referenced ? ownFields.find((f) => f.column === nameOfOwner(input, binding, referenced)) : undefined;
+    return { column: nameOf(columnIds(table, [c])[0]), parameter: `owner${field ? field.name[0].toUpperCase() + field.name.slice(1) : "Id"}` };
+  });
+  const attrName = attribute?.name ?? "";
+  const fieldParam = (ref: string) => {
+    const item = items.find((a) => a.ref === ref);
+    const rest = item && item.name.startsWith(attrName) && item.name.length > attrName.length ? item.name.slice(attrName.length) : "value";
+    return rest[0].toLowerCase() + rest.slice(1);
+  };
+  const fields = (entry.fields ?? []).map((f) => ({ column: nameOf(f.column), parameter: fieldParam(f.attribute) }));
+  const constants = (entry.constants ?? []).map((c) => ({ column: nameOf(c.column), value: c.value ?? null }));
+  const where = [
+    ...owner.map((o, i) => `${quote(o.column)} = ${p(o.parameter, i)}`),
+    ...constants.map((c) => `${quote(c.column)} ${c.value === null ? "IS NULL" : `= ${literal(c.value)}`}`),
+  ];
+  const target = quote(table?.name ?? entry.table);
+  const order = entry.orderColumn ? nameOf(entry.orderColumn) : null;
+  const statement = (sql: string, parameters: string[]) => ({ sql, parameters });
+  const insertColumns = [...owner.map((o) => o.column), ...(order ? [order] : []), ...fields.map((f) => f.column), ...constants.map((c) => c.column)];
+  const insertValues = [
+    ...owner.map((o, i) => p(o.parameter, i)),
+    ...(order ? [p("position", owner.length)] : []),
+    ...fields.map((f, i) => p(f.parameter, owner.length + i)),
+    ...constants.map((c) => literal(c.value)),
+  ];
+  return {
+    id: entry.id,
+    attributeId: entry.attribute,
+    attributeName: attrName,
+    select: statement(
+      `SELECT ${fields.map((f) => `t.${quote(f.column)} AS ${quote(f.parameter)}`).join(", ") || "*"}\nFROM ${target} t\nWHERE ${where.join(" AND ")}${order ? `\nORDER BY t.${quote(order)}` : ""}`,
+      owner.map((o) => o.parameter),
+    ),
+    insert: writing
+      ? statement(`INSERT INTO ${target} (${insertColumns.map(quote).join(", ")})\nVALUES (${insertValues.join(", ")})`, [
+          ...owner.map((o) => o.parameter),
+          ...(order ? ["position"] : []),
+          ...fields.map((f) => f.parameter),
+        ])
+      : null,
+    delete: writing
+      ? statement(
+          `DELETE FROM ${target}\nWHERE ${where.join(" AND ")}`,
+          owner.map((o) => o.parameter),
+        )
+      : null,
+  };
+}
+
+/** The name of a column of the table the binding keeps its rows in, from a reference (id or name). */
+function nameOfOwner(input: PhysicalInput, binding: Binding, ref: string): string {
+  const table = input.docs.get(plainTable(typeof binding.write === "object" ? binding.write.table : binding.source) ?? "") as TableDoc | undefined;
+  return table?.columns?.find((c) => c.id === ref || c.name === ref)?.name ?? ref;
+}
+
 // ------------------------------------------------------------------ the binding rules
 
 /** The binding rules over every entity bound to the database (resolver findings, as the engine adds them to every validate). */
 export function bindingFindings(view: DatabaseView, docs: ReadonlyMap<string, Json>, pathOf: (id: string) => string | null): Diagnostic[] {
   const out: Diagnostic[] = [];
+  // The columns relationships' attributes use through a foreign key mapping (status `relation`): their binding needs no field for them.
+  const relationColumns = new Set<string>();
+  for (const d of docs.values())
+    if (d.kind === "mapping" && d.database === view.id && d.foreignKey && !d.junctionTable)
+      for (const a of arr(d.attributes)) if (typeof a.column === "string") relationColumns.add(a.column);
   // Only the entities bound to this database are checked: on a large model most entities have no binding, and their storage
   // attributes (inheritance and stereotypes walked) are not needed.
   for (const e of entities(docs)
@@ -937,14 +1060,37 @@ export function bindingFindings(view: DatabaseView, docs: ReadonlyMap<string, Js
       const push = (rule: string, severity: Diagnostic["severity"], message: string, pointer: string) =>
         out.push({ rule, severity, message, elementId: String(e.id), filePath: pathOf(String(e.id)), jsonPointer: at(pointer), line: null, column: null });
       if (all.findIndex((x) => x.database === b.database) !== i) push("MQ4050", "error", `${String(e.name)} has a second binding to ${view.name}.`, "");
-      for (const p of bindingProblems(
-        b,
-        attributes,
-        sourceOf(view, b.source),
-        { entity: String(e.name), database: view.name },
-        typeColumnOf(String(e.id), b, docs),
-      ))
+      const shape = bindingShape(String(e.id), b, docs, (id) => docs.get(id) as TableDoc | undefined);
+      const extras = { ...shape.extras, relationColumns };
+      for (const p of [
+        ...bindingProblems(
+          b,
+          attributes,
+          sourceOf(view, b.source),
+          { entity: String(e.name), database: view.name },
+          typeColumnOf(String(e.id), b, docs),
+          extras,
+        ),
+        ...baseProblems(b, shape.base, shape.host),
+      ])
         push(p.rule, p.severity, p.message, p.pointer);
+      (b.childTables ?? []).forEach((entry, j) => {
+        const child = docs.get(plainTable(entry.table) ?? "") as TableDoc | undefined;
+        const attribute = childAttribute(String(e.id), entry.attribute, docs);
+        for (const p of childProblems(
+          entry,
+          attribute,
+          itemAttributes(attribute, docs),
+          tableDocColumns(child),
+          child,
+          shape.host,
+          b,
+          true,
+          { entity: String(e.name), table: child?.name ?? entry.table },
+          !!b.baseForeignKey,
+        ))
+          push(p.rule, p.severity, p.message, `/childTables/${j}${p.pointer}`);
+      });
     });
   }
   // MQ4011: a relation of the foreign-key shape whose ends are both bound to tables of the database names no foreign key there

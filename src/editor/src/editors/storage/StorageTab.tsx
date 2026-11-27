@@ -4,7 +4,7 @@
 // with no binding is domain only. Every gesture is one save of the entity and one undo step.
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, Plus, Trash2, TriangleAlert, X } from "lucide-react";
+import { Plus, Trash2, TriangleAlert } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
 import { applyBatchResult, useElements, useIndex, useValidation } from "@/api/queries";
 import type { ElementSummary, EntityDoc } from "@/api/types";
@@ -32,10 +32,10 @@ import {
   newBinding,
   retarget,
   setColumnStatus,
-  setConstants,
   setDelete,
   setField,
   setWrite,
+  storedByChild,
   tableForEntity,
   typeColumnOf,
   writeChoiceOf,
@@ -45,12 +45,30 @@ import {
   type ColumnStatus,
   type ListedStatus,
   type MapProblem,
+  type ProblemExtras,
   type StorageAttribute,
 } from "./fieldMap";
-import { commitMaterialize, databasesOf, useBindingSources, useMaterializeStatuses, useStorageAttributes } from "./useStorage";
+export { ConstantsGrid } from "./ConstantsGrid";
+import { ConstantsGrid } from "./ConstantsGrid";
+import { baseProblems, boundBaseOf } from "./baseTable";
+import { bindingShape } from "./bindingShape";
+import { BaseTableSection, ChildTablesSection, Problems } from "./StorageShapes";
+import { plainTable, type TableDoc } from "./tableDoc";
+import { commitMaterialize, databasesOf, useBindingSources, useMaterializeStatuses, useRelationColumns, useStorageAttributes } from "./useStorage";
 import { STORAGE_LABELS } from "./labels";
 import { derivedOf } from "@/editors/refWalk";
-import { codeValue, isIntegerColumn, readCodes, retypeCode, sameCode, setTypeCode, setTypeColumn, typeColumnRole, type TypeColumnRole } from "./typeColumn";
+import {
+  codeValue,
+  hostOf,
+  isIntegerColumn,
+  readCodes,
+  retypeCode,
+  sameCode,
+  setTypeCode,
+  setTypeColumn,
+  typeColumnRole,
+  type TypeColumnRole,
+} from "./typeColumn";
 
 type Rec = Record<string, unknown>;
 
@@ -400,15 +418,45 @@ function BindingCard({
   const columns = source?.columns ?? [];
   // While the database's tables load, no row can be judged: a column that has not arrived is not a missing one.
   const loading = pending && !source;
-  const fieldRows = attributeRows(binding, attributes, columns);
-  const colRows = columnRows(binding, attributes, columns, typeColumn);
+  // Table per type and child tables: what the base's binding and the child tables store is not this field map's.
+  const hostKey = plainTable(hostOf(binding));
+  const baseKey = (() => {
+    const b = boundBaseOf(entityId, binding.database, hierarchyDocs);
+    return b ? plainTable(hostOf(b.binding)) : undefined;
+  })();
+  const tableDocs = useElements([hostKey, baseKey].filter((k): k is string => !!k));
+  const shape = useMemo(
+    () => bindingShape(entityId, binding, hierarchyDocs, (id) => tableDocs.byId.get(id)?.json as TableDoc | undefined),
+    [entityId, binding, hierarchyDocs, tableDocs.byId],
+  );
+  const { base, host: hostDoc, baseHost: baseHostDoc, baseAttributes: baseAttrs } = shape;
+  const { baseStored = new Set<string>(), childStored = new Set<string>() } = shape.extras;
+  const offered = attributes.filter((a) => !baseStored.has(a.ref) && !storedByChild(a.ref, childStored));
+  const relationColumns = useRelationColumns(entityId, binding.database, hierarchyDocs);
+  const extras: ProblemExtras = { ...shape.extras, ...(relationColumns ? { relationColumns } : {}) };
+  const fieldRows = attributeRows(binding, offered, columns);
+  const colRows = columnRows(binding, attributes, columns, typeColumn, extras);
   const validation = useValidation();
-  const local = source || !pending ? bindingProblems(binding, attributes, source, { entity: entityName, database: databaseName }, typeColumn) : [];
+  const names = { entity: entityName, database: databaseName };
+  const local = source || !pending ? [...bindingProblems(binding, attributes, source, names, typeColumn, extras), ...baseProblems(binding, base, hostDoc)] : [];
   const localRules = new Set(local.map((p) => p.rule));
-  const server: MapProblem[] = (validation.data?.diagnostics ?? [])
-    .filter((d) => d.elementId === entityId && (d.jsonPointer ?? "").startsWith(`/bindings/${index}`) && !localRules.has(d.rule) && d.severity !== "info")
-    .map((d) => ({ rule: d.rule, severity: d.severity === "error" ? "error" : "warning", message: d.message, pointer: d.jsonPointer ?? "" }));
-  const problems = [...local, ...server];
+  const at = `/bindings/${index}`;
+  const mine = (validation.data?.diagnostics ?? []).filter(
+    (d) => d.elementId === entityId && ((d.jsonPointer ?? "") === at || (d.jsonPointer ?? "").startsWith(`${at}/`)) && d.severity !== "info",
+  );
+  const asProblem = (d: (typeof mine)[number]): MapProblem => ({
+    rule: d.rule,
+    severity: d.severity === "error" ? "error" : "warning",
+    message: d.message,
+    pointer: d.jsonPointer ?? "",
+  });
+  const inChild = (d: (typeof mine)[number]) => (d.jsonPointer ?? "").startsWith(`${at}/childTables/`);
+  const inBase = (d: (typeof mine)[number]) => (d.jsonPointer ?? "").startsWith(`${at}/baseForeignKey`);
+  const server: MapProblem[] = mine.filter((d) => !localRules.has(d.rule) && !inChild(d) && !inBase(d)).map(asProblem);
+  const baseLocal = local.filter((p) => p.pointer === "/baseForeignKey");
+  const baseServer = mine.filter((d) => inBase(d) && !baseLocal.some((p) => p.rule === d.rule)).map(asProblem);
+  const childServer = mine.filter(inChild).map(asProblem);
+  const problems = [...local.filter((p) => p.pointer !== "/baseForeignKey"), ...server];
   const [mapping, setMapping] = useState(false);
   // Attributes from the source's columns (materialize-attributes): every column nothing in the binding names, or one column.
   const services = useServices();
@@ -501,22 +549,7 @@ function BindingCard({
 
       {source?.changesData ? <ChangesDataNote source={source} /> : null}
 
-      {problems.length ? (
-        <ul className="flex flex-col gap-0.5 text-12" data-testid="binding-problems">
-          {problems.map((p, i) => (
-            <li key={i} className={cn("flex gap-1", p.severity === "error" ? "text-danger" : "text-warning")} data-rule={p.rule}>
-              {p.severity === "error" ? (
-                <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              ) : (
-                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              )}
-              <span>
-                <span className="font-mono">{p.rule}</span> {p.message}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <Problems problems={problems} testid="binding-problems" />
 
       <ConstantsGrid dom={dom} binding={binding} columns={columns} onEdit={onEdit} />
 
@@ -528,6 +561,35 @@ function BindingCard({
         columns={columns}
         codes={typeRole.role === "none" ? [] : readCodes(entityId, binding, derived, hierarchyDocs)}
         walkCut={walkCut}
+        onEdit={onEdit}
+      />
+
+      {base || binding.baseForeignKey ? (
+        <BaseTableSection
+          dom={dom}
+          binding={binding}
+          base={base ?? { entityId: "", name: "its base", binding: { id: "", database: binding.database, source: "" } }}
+          baseAttributes={baseAttrs}
+          host={hostDoc}
+          baseHost={baseHostDoc}
+          storedNames={baseAttrs.filter((a) => a.expected && !a.json && a.origin !== "relation").map((a) => a.name)}
+          problems={[...baseLocal, ...baseServer]}
+          onEdit={onEdit}
+        />
+      ) : null}
+
+      <ChildTablesSection
+        dom={dom}
+        entityId={entityId}
+        entityName={entityName}
+        binding={binding}
+        bindingIndex={index}
+        docs={hierarchyDocs}
+        baseBinding={base?.binding}
+        host={hostDoc}
+        tables={sources.filter((s) => s.kind === "table" && !s.projected).map((s) => ({ id: s.id, name: s.name, schema: s.schema }))}
+        server={childServer}
+        databaseName={databaseName}
         onEdit={onEdit}
       />
 
@@ -559,6 +621,22 @@ function BindingCard({
         >
           Field map
         </SectionTitle>
+        {baseStored.size ? (
+          <p className="text-12 text-secondary" data-testid="field-map-base-stored">
+            Stored by {base?.name ?? "the base"}&apos;s binding, not mapped here:{" "}
+            {attributes
+              .filter((a) => baseStored.has(a.ref) && !a.json)
+              .map((a) => a.name)
+              .join(", ") || "the inherited attributes"}
+            .
+          </p>
+        ) : null}
+        {childStored.size ? (
+          <p className="text-12 text-secondary" data-testid="field-map-child-stored">
+            Stored in child tables, not mapped here:{" "}
+            {[...childStored].map((id) => attributes.find((a) => a.ref === id)?.name ?? nameOfAttribute(hierarchyDocs, entityId, id)).join(", ")}.
+          </p>
+        ) : null}
         <table className="w-full text-13" aria-label={`Fields of ${entityName} in ${databaseName}`} data-testid="binding-fields">
           <thead className="text-left text-11 text-secondary">
             <tr>
@@ -573,6 +651,11 @@ function BindingCard({
                 <td className="font-mono">
                   {r.attribute.name}
                   {r.attribute.isKey ? <span className="ml-1 rounded-[4px] bg-app px-1 font-sans text-11">key</span> : null}
+                  {r.attribute.json ? (
+                    <span className="ml-1 font-sans text-11 text-secondary" data-testid="field-json">
+                      as one JSON column
+                    </span>
+                  ) : null}
                   {originLabel(r.attribute) ? (
                     <span className="ml-1 font-sans text-11 text-secondary" title={originTitle(r.attribute)} data-testid="field-origin">
                       {originLabel(r.attribute)}
@@ -612,7 +695,13 @@ function BindingCard({
                 >
                   {loading
                     ? "Loading…"
-                    : { mapped: "mapped", "missing-column": "no such column", unmapped: "not mapped", optional: "not mapped (optional)" }[r.status]}
+                    : {
+                        mapped: "mapped",
+                        "missing-column": "no such column",
+                        unmapped: "not mapped",
+                        optional: "not mapped (optional)",
+                        whole: "held whole above",
+                      }[r.status]}
                 </td>
               </tr>
             ))}
@@ -658,7 +747,13 @@ function BindingCard({
           <tbody>
             {colRows.map((r) => {
               const listed = (binding.columns ?? []).find((c) => findColumn(columns, c.column) === r.column);
-              const free = r.status !== "field" && r.status !== "constant" && r.status !== "discriminator" && r.status !== "soft-delete";
+              const free =
+                r.status !== "field" &&
+                r.status !== "constant" &&
+                r.status !== "discriminator" &&
+                r.status !== "soft-delete" &&
+                r.status !== "relation" &&
+                r.status !== "base-key";
               return (
                 <tr key={r.column.key} data-testid={`column-row-${r.column.name}`} data-status={r.status}>
                   <td className="font-mono">{r.column.name}</td>
@@ -832,15 +927,24 @@ function originTitle(a: StorageAttribute): string {
   }
 }
 
+/** An attribute's name from the documents at hand (a child table's attribute is no field of the map). */
+function nameOfAttribute(docs: ReadonlyMap<string, Rec>, entityId: string, id: string): string {
+  for (let at: string | undefined = entityId, guard = 0; at && guard < 64; at = docs.get(at)?.base as string | undefined, guard++) {
+    const hit = ((docs.get(at)?.attributes as { id: string; name: string }[] | undefined) ?? []).find((a) => a.id === id);
+    if (hit) return hit.name;
+  }
+  return id;
+}
+
 function statusText(status: ColumnStatus, attribute: string | undefined, value: unknown): string {
   if (status === "field") return `mapped by ${attribute ?? "?"}`;
+  if (status === "base-key") return `key ${attribute ?? ""} from the base`.replace("  ", " ");
   if (status === "constant") return `constant ${value === undefined || value === null ? "NULL" : JSON.stringify(value)}`;
   return COLUMN_STATUS_LABELS[status];
 }
 
 // ------------------------------------------------------------------ constants
 
-/** The constants grid of a binding. A relation mapping's "Rows of this relation" reuses it, with its own title and empty text. */
 /**
  * The type column of a hierarchy kept in one table. A base's binding names the column and its own code; a derived entity's binding
  * reads the column from its bases (read-only) and sets its own code, which defaults to the entity's name. Left out of an entity
@@ -970,111 +1074,6 @@ function TypeColumnSection({
   );
 }
 
-export function ConstantsGrid({
-  dom,
-  binding,
-  columns,
-  onEdit,
-  title = "Constants",
-  emptyText = "None: every row of the source is this entity's.",
-  skipPrimaryKey = false,
-}: {
-  dom: string;
-  binding: Binding;
-  columns: BindingSource["columns"];
-  onEdit: (change: (b: Binding) => void) => void;
-  title?: string;
-  emptyText?: string;
-  /** A new constant starts on the first free column that is not a primary key (a relation's link table does; an entity's source doesn't). */
-  skipPrimaryKey?: boolean;
-}) {
-  const constants = binding.constants ?? [];
-  const set = (next: typeof constants) => onEdit((b) => setConstants(b, next));
-  const free = columns.filter(
-    (c) => !constants.some((k) => findColumn(columns, k.column) === c) && !(binding.fields ?? []).some((f) => findColumn(columns, f.column) === c),
-  );
-  return (
-    <section className="flex flex-col gap-1">
-      <SectionTitle
-        actions={
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={!free.length}
-            data-testid="binding-add-constant"
-            onClick={() => set([...constants, { column: ((skipPrimaryKey ? free.find((c) => !c.isPrimaryKey) : undefined) ?? free[0]).key, value: "" }])}
-          >
-            <Plus /> Add constant
-          </Button>
-        }
-      >
-        {title}
-      </SectionTitle>
-      {constants.length ? (
-        <table className="w-full text-13" aria-label="Constant columns" data-testid="binding-constants">
-          <thead className="text-left text-11 text-secondary">
-            <tr>
-              <th className="font-medium">Column</th>
-              <th className="font-medium">Value</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {constants.map((k, i) => (
-              <tr key={`${k.column}:${i}`} data-testid="constant-row">
-                <td className="w-56 py-0.5">
-                  <Select
-                    aria-label={`Column of constant ${i + 1}`}
-                    className="h-6"
-                    value={findColumn(columns, k.column)?.key ?? k.column}
-                    onChange={(e) => set(constants.map((x, j) => (j === i ? { ...x, column: e.target.value } : x)))}
-                  >
-                    {!findColumn(columns, k.column) ? <option value={k.column}>{`${k.column} (not found)`}</option> : null}
-                    {columns.map((c) => (
-                      <option key={c.key} value={c.key}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
-                </td>
-                <td className="py-0.5">
-                  <Input
-                    id={`${dom}-constant-${i}`}
-                    aria-label={`Value of constant ${i + 1}`}
-                    className="h-6 font-mono"
-                    placeholder="NULL"
-                    key={`${i}:${String(k.value ?? "")}`}
-                    defaultValue={k.value === undefined || k.value === null ? "" : String(k.value)}
-                    onBlur={(e) => {
-                      const value = constantValue(e.target.value);
-                      if (value !== (k.value ?? null)) set(constants.map((x, j) => (j === i ? { column: x.column, value } : x)));
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                    }}
-                  />
-                </td>
-                <td className="w-6">
-                  <Button
-                    size="icon-row"
-                    variant="ghost"
-                    label={`Remove the constant on ${findColumn(columns, k.column)?.name ?? k.column}`}
-                    onClick={() => set(constants.filter((_, j) => j !== i))}
-                  >
-                    <X />
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p className="text-12 text-secondary">{emptyText}</p>
-      )}
-    </section>
-  );
-}
-
 // ------------------------------------------------------------------ Map by name
 
 function MapByNameDialog({
@@ -1144,11 +1143,20 @@ function MapByNameDialog({
 function SqlDisclosure({ entityId, bindingId }: { entityId: string; bindingId: string }) {
   const [open, setOpen] = useState(false);
   const [dialect, setDialect] = useState("");
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
   const sql = useQuery({
     queryKey: ["preview", "binding-sql", entityId, bindingId, dialect],
     queryFn: () => endpoints.getBindingSql(entityId, bindingId, dialect || null),
     enabled: open,
   });
+  const preview = sql.data?.preview;
+  const statement = (testid: string, label: string, st: { sql: string } | null | undefined, none: string) => (
+    <div key={testid} data-testid={testid}>
+      <p className="font-medium text-secondary">{label}</p>
+      {st ? <pre className="overflow-auto rounded-control bg-app p-1 font-mono text-12">{st.sql}</pre> : <p className="text-secondary">{none}</p>}
+    </div>
+  );
   return (
     <details className="text-12" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)} data-testid="binding-sql">
       <summary className="cursor-pointer select-none font-medium text-secondary">SQL</summary>
@@ -1162,7 +1170,7 @@ function SqlDisclosure({ entityId, bindingId }: { entityId: string; bindingId: s
           ))}
         </Select>
         {sql.isPending ? <p className="text-secondary">Rendering…</p> : null}
-        {sql.data && !sql.data.preview ? (
+        {sql.data && !preview ? (
           <ul className="text-danger">
             {sql.data.diagnostics.slice(0, 5).map((d, i) => (
               <li key={i}>
@@ -1171,23 +1179,37 @@ function SqlDisclosure({ entityId, bindingId }: { entityId: string; bindingId: s
             ))}
           </ul>
         ) : null}
-        {sql.data?.preview
-          ? STATEMENTS.map(([key, label]) => {
-              const statement = sql.data.preview![key];
-              return (
-                <div key={key} data-testid={`binding-sql-${key}`}>
-                  <p className="font-medium text-secondary">{label}</p>
-                  {statement ? (
-                    <pre className="overflow-auto rounded-control bg-app p-1 font-mono text-12">{statement.sql}</pre>
-                  ) : (
-                    <p className="text-secondary">
-                      None: the binding does not {key === "insert" || key === "update" ? "write" : key === "delete" ? "delete" : "read by key"}.
-                    </p>
-                  )}
-                </div>
-              );
-            })
-          : null}
+        {preview ? (
+          <>
+            {STATEMENTS.map(([key, label]) =>
+              statement(
+                `binding-sql-${key}`,
+                label,
+                preview[key],
+                `None: the binding does not ${key === "insert" || key === "update" ? "write" : key === "delete" ? "delete" : "read by key"}.`,
+              ),
+            )}
+            {preview.exists ? statement("binding-sql-exists", "Exists (is there a row with the key in this table)", preview.exists, "") : null}
+            {(preview.bases ?? []).map((b) => (
+              <div key={b.bindingId} className="flex flex-col gap-1 border-l-2 border-default pl-2" data-testid="binding-sql-base" data-level={b.level}>
+                <p className="font-semibold">
+                  Table above, level {b.level}: the binding of {lookup.nameOf(b.entityId) ?? b.entityId}
+                </p>
+                {statement(`binding-sql-base-${b.level}-insert`, "Insert", b.insert, "None: the base's binding does not write.")}
+                {statement(`binding-sql-base-${b.level}-update`, "Update", b.update, "None.")}
+                {statement(`binding-sql-base-${b.level}-delete`, "Delete", b.delete, "None.")}
+              </div>
+            ))}
+            {(preview.childTables ?? []).map((c) => (
+              <div key={c.id} className="flex flex-col gap-1 border-l-2 border-default pl-2" data-testid="binding-sql-child" data-attribute={c.attributeName}>
+                <p className="font-semibold">Child table of {c.attributeName}</p>
+                {statement(`binding-sql-child-${c.attributeName}-select`, "Select (the rows of one owner, in order)", c.select, "None.")}
+                {statement(`binding-sql-child-${c.attributeName}-insert`, "Insert (one row)", c.insert, "None: the binding does not write.")}
+                {statement(`binding-sql-child-${c.attributeName}-delete`, "Delete (the rows of one owner)", c.delete, "None: the binding does not write.")}
+              </div>
+            ))}
+          </>
+        ) : null}
       </div>
     </details>
   );
