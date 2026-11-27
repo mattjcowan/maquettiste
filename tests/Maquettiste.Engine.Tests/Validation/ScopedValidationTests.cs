@@ -170,6 +170,42 @@ public sealed class ScopedValidationTests
     }
 
     [Fact]
+    public async Task A_value_object_or_a_stereotype_save_rejudges_the_columns_bound_through_its_attributes()
+    {
+        // 0.28.0: a binding maps total.currency (a member of the value object Money) and region (an attribute the stereotype Regional adds)
+        // to columns whose defaults are no stored codes of their enum: the value object's and the stereotype's saves bring the table, as
+        // the entity's, the enum's and the table's do.
+        var b = new ModelBuilder(seed: 3304);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var currency = b.Enum("Currency").Member("Euro", 0, "EUR").Member("Dollar", 1, "USD");
+        var money = b.ValueObject("Money").Attr("amount", "decimal").Attr("currency", currency);
+        const string regional = "01K9X3S0000000000000000040";
+        b.Add(new Stereotype
+        {
+            Id = regional, Key = "regional", Name = "Regional", AppliesTo = ["entity"],
+            Attributes = [new ModelAttribute { Id = "01K9X3S0000000000000000041", Name = "region", Type = new TypeRef { Ref = currency.Id } }],
+        });
+        var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("total", money).Stereotype("regional");
+        var table = b.Table("invoices", db).Column("id", "uuid", nullable: false).Column("currency", "string", length: 3).Column("region", "string", length: 3)
+            .PrimaryKey("id")
+            .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { Default = Json("GBP") }, t.Columns[2] with { Default = Json("CHF") }] });
+        invoice.Bind(new EntityBinding
+        {
+            Id = "", Database = db.Id, Source = table.Id,
+            Fields =
+            [
+                new BindingField { Attribute = invoice.AttrId("id"), Column = "id" },
+                new BindingField { Attribute = invoice.AttrId("total") + "." + money.AttrId("currency"), Column = "currency" },
+                new BindingField { Attribute = "01K9X3S0000000000000000041", Column = "region" },
+            ],
+        });
+        var model = b.Build();
+
+        Assert.Equal(2, (await Validate(model)).Diagnostics.Count(d => d.Rule == "MQ7014"));
+        await AssertEveryParticipantSees(model, "MQ7014", money.Id, regional, invoice.Id, currency.Id, table.Id);
+    }
+
+    [Fact]
     public async Task Removing_a_code_from_a_seed_rejudges_a_typed_column_default()
     {
         // A column typed by a reference type defaults to the code I; no reference reaches the seed's row from the default
@@ -190,7 +226,8 @@ public sealed class ScopedValidationTests
                 rows.Add(new SeedRow { Id = "01K9X3S0000000000000000012", Values = [Json("I"), Json("Issued")] });
             b.Add(new Seed { Id = "01K9X3S0000000000000000010", Name = "invoiceStates", Target = state.Id, Columns = ["code", "label"], Rows = rows });
             b.Table("invoice_events", db).Column("id", "uuid", nullable: false).Column("state", "string", nullable: false, length: 1).PrimaryKey("id")
-                .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { TypeRef = new TypeRef { Ref = state.Id }, Default = Json("I") }] });
+                .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { Default = Json("I") }] })
+                .BindTyped("InvoiceEvent", ("state", state.Id));
             return b.Build();
         }
 
@@ -212,8 +249,8 @@ public sealed class ScopedValidationTests
             var status = b.Enum("Status").Member("Draft", 0).Member("Issued", 1);
             if (withVoid)
                 status.Member("Void", 2);
-            var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).Column("status", "int32", nullable: false).PrimaryKey("id")
-                .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { TypeRef = new TypeRef { Ref = status.Id } }] });
+            var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).Column("status", "int32", nullable: false).PrimaryKey("id");
+            events.BindTyped("InvoiceEvent", ("status", status.Id));
             var seed = new Seed
             {
                 Id = "01K9X3S0000000000000000020", Name = "events", Target = events.Id, Columns = [events.ColumnId("id"), events.ColumnId("status")],
@@ -233,7 +270,8 @@ public sealed class ScopedValidationTests
     [Fact]
     public async Task Removing_an_enum_member_rejudges_a_table_that_gets_the_typed_column_through_an_implied_stereotype()
     {
-        // The table lists lifecycle, which implies stateful, whose column is typed by the enum; the enum's save brings the table seed.
+        // The table lists lifecycle, which implies stateful, whose column a binding maps to an attribute of the enum; the enum's save brings
+        // the table seed.
         static (ModelSnapshot Model, string EnumId, string SeedId) Build(bool withVoid)
         {
             const string statusColumn = "01K9X3S0000000000000000031";
@@ -245,10 +283,11 @@ public sealed class ScopedValidationTests
             b.Add(new Stereotype
             {
                 Id = b.NewId(), Key = "stateful", Name = "Stateful", AppliesTo = ["table"],
-                Columns = [new Column { Id = statusColumn, Name = "status", Type = "int32", Nullable = false, TypeRef = new TypeRef { Ref = status.Id } }],
+                Columns = [new Column { Id = statusColumn, Name = "status", Type = "int32", Nullable = false }],
             });
             b.Stereotype("lifecycle").AppliesTo("table").Implies("stateful");
             var events = b.Table("invoice_events", db).Column("id", "int32", nullable: false).PrimaryKey("id").Stereotype("lifecycle");
+            events.BindTyped("InvoiceEvent", ("status", status.Id));
             var seed = new Seed
             {
                 Id = "01K9X3S0000000000000000030", Name = "events", Target = events.Id, Columns = [events.ColumnId("id"), events.Id + "." + statusColumn],

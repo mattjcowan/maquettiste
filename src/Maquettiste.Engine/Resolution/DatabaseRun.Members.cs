@@ -136,9 +136,9 @@ internal sealed partial class DatabaseRun
                 MemberOrigin = OriginOf(t, m),
             };
             ApplyColumnFile(t, c, column);
-            var scalar = TypeColumn(t, c, column);
+            TypeColumn(t, c);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c, scalar));
+            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c));
 
             if (names is not null)
             {

@@ -94,10 +94,42 @@ internal sealed class SchemaRegistry : ISchemaRegistry
             }
         }
 
+        if (fileName is "table.json" or "stereotype.json")
+            RemovedColumnTypeRefs(document, diagnostics, elementId, path);
         if (diagnostics.Count == 0)
             diagnostics.Add(RuleCatalog.Create("MQ1002", "The document does not match its schema.", elementId, path, ""));
         diagnostics.Sort(Diagnostic.Order);
         return diagnostics;
+    }
+
+    /// <summary>
+    /// A column's <c>typeRef</c>, removed in 0.28.0: storage never names the model, so a column states only its physical type, and the
+    /// type of its values comes from the attribute a binding maps to it. Each column of a table or stereotype that still has the key is
+    /// reported once as MQ4082 (an error) in place of the schema's failures on the key; the file still fails to load, so nothing drops the
+    /// key without the team seeing it.
+    /// </summary>
+    private static void RemovedColumnTypeRefs(JsonElement document, List<Diagnostic> diagnostics, string? elementId, string path)
+    {
+        if (document.ValueKind != JsonValueKind.Object || !document.TryGetProperty("columns", out var columns) || columns.ValueKind != JsonValueKind.Array)
+            return;
+        var i = 0;
+        foreach (var column in columns.EnumerateArray())
+        {
+            if (column.ValueKind == JsonValueKind.Object && column.TryGetProperty("typeRef", out _))
+            {
+                var at = "/columns/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var key = at + "/typeRef";
+                diagnostics.RemoveAll(d => d.Rule == "MQ1002" && d.JsonPointer is { } pointer
+                    && (pointer == key || pointer.StartsWith(key + "/", StringComparison.Ordinal)
+                        || (pointer == at && d.Message.Contains("typeRef", StringComparison.Ordinal))));
+                var name = column.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+                diagnostics.Add(RuleCatalog.Create("MQ4082",
+                    $"{key} Column '{name ?? at}' has typeRef, which was removed in 0.28.0: a table states only its columns' physical types and never names an enum, a reference type or a scalar type. Remove typeRef; to type the column's values, bind the column to an attribute typed by the enum, reference type or scalar type.",
+                    elementId, path, key));
+            }
+
+            i++;
+        }
     }
 
     /// <summary>

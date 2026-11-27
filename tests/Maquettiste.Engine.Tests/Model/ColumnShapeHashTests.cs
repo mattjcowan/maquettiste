@@ -68,18 +68,6 @@ public sealed class ColumnShapeHashTests
     }
 
     [Fact]
-    public void A_typeRef_change_moves_the_type_part()
-    {
-        var plain = Number();
-        var typed = Number(c => c with { TypeRef = new TypeRef { Ref = "01K6SHA0000000000000000003" } });
-        var other = Number(c => c with { TypeRef = new TypeRef { Ref = "01K6SHA0000000000000000004" } });
-
-        Assert.NotEqual(ColumnShapeHash.TypePart(plain), ColumnShapeHash.TypePart(typed));
-        Assert.NotEqual(ColumnShapeHash.TypePart(typed), ColumnShapeHash.TypePart(other));
-        Assert.Equal(ColumnShapeHash.NamePart(plain.Name), ColumnShapeHash.NamePart(typed.Name));
-    }
-
-    [Fact]
     public void An_inherited_column_hashes_its_redefined_entry()
     {
         var b = new ModelBuilder(seed: 43);

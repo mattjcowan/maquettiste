@@ -272,7 +272,7 @@ public sealed class SchemaDifferTests
     }
 
     [Fact]
-    public void Typing_a_designed_column_by_a_lookup_type_changes_its_reference_state()
+    public void A_designed_column_bound_to_a_lookup_type_changes_its_reference_state()
     {
         // next-phase-2-design.md section 3.2 (D21), decision 8: the snapshot captures the reference state of every column with a
         // reference type, not only of a projected reference column; the column keeps its physical type, so only that state changes.
@@ -281,7 +281,7 @@ public sealed class SchemaDifferTests
         var typed = Model((customer, _, _, _) =>
         {
             var name = customer.Col("a-name");
-            name.TypeRef = new RType { Kind = "reference", Name = state.Name, Builtin = "string", ReferenceType = state };
+            name.BoundType = new RType { Kind = "reference", Name = state.Name, Builtin = "string", ReferenceType = state };
             name.ReferenceType = state;
             name.CodeType = "string";
             name.Strategy = "lookup-table";

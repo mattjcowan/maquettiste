@@ -135,9 +135,6 @@ internal static class ReferenceBindingRules
                 continue;
             }
 
-            // A binding's field says what the column holds, so the column states no type of its own (next-phase-2-design.md section 3.2).
-            if (column.TypeRef is not null)
-                report.Add("MQ4082", $"Column '{column.Name}' of table '{table.Name}' names the type it holds (typeRef), and the binding of reference type '{type.Name}' fills it with field '{name}': the binding says what the column holds, so remove the column's typeRef.", at + "/column", binding.Id);
             if (Fill(column, "field '" + name + "'", filled, table, at + "/column", binding, report) is false)
                 continue;
             if (field.Attribute == "code")
@@ -159,7 +156,7 @@ internal static class ReferenceBindingRules
 
             if (Fill(column, "a constant", filled, table, at, binding, report) is not false)
                 constants[column.Id] = constant.Value;
-            if (constant.Value is { } value && ColumnTypeRules.ValueProblem(context, column, value, null) is { } problem)
+            if (constant.Value is { } value && ColumnTypeRules.ValueProblem(context, table, column, value, null) is { } problem)
                 report.Add("MQ7014", $"The constant the binding of reference type '{type.Name}' writes into column '{column.Name}' of table '{table.Name}' is not one of the values the column's type holds: {problem}.", pointer + "/constants/" + Str(j), binding.Id);
         }
 

@@ -155,9 +155,11 @@ public sealed class BindingProvenanceTests
     }
 
     [Fact]
-    public async Task An_event_status_typed_by_a_reference_type_becomes_one_attribute()
+    public async Task An_event_status_becomes_one_plain_attribute()
     {
         // 3.2's first copy, with InvoiceState bound to invoice_states and invoice_events declaring fk_event_state from status to its code.
+        // Since 0.28.0 a table names no type of the model, so status becomes a string attribute (the team may retype it by InvoiceState),
+        // and the key makes no relation, since no entity is bound to invoice_states.
         await using var repo = E2ERepo.Create(demo: false);
         Write(repo, TablesFolder + "invoice-states.json", "table.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{States}}","name":"invoice_states","database":"{{Main}}",
@@ -182,7 +184,7 @@ public sealed class BindingProvenanceTests
              "schema":"{{BillingSchema}}","columns":[
               {"id":"01K9X3C0000000000000000002","name":"id","type":"uuid","nullable":false},
               {"id":"01K9X3C0000000000000000003","name":"invoice_id","type":"uuid","nullable":false},
-              {"id":"{{EventsStatus}}","name":"status","type":"string","typeRef":{"ref":"{{InvoiceState}}"},"length":1,"nullable":false},
+              {"id":"{{EventsStatus}}","name":"status","type":"string","length":1,"nullable":false},
               {"id":"01K9X3C0000000000000000005","name":"occurred_at","type":"datetimeoffset","nullable":false}],
              "primaryKey":{"columns":["01K9X3C0000000000000000002"]},
              "foreignKeys":[{"id":"01K9X3C0000000000000000006","name":"fk_event_state","columns":["{{EventsStatus}}"],"referencesTable":"{{States}}"}] }
@@ -194,13 +196,13 @@ public sealed class BindingProvenanceTests
 
         Assert.True(plan.Valid, string.Join("; ", plan.Diagnostics.Select(d => d.Rule + " " + d.Message)));
         Assert.Contains(plan.Notes, n => n.Contains("fk_event_state", StringComparison.Ordinal)
-            && n.Contains("attribute 'status' of entity 'InvoiceEvent' is typed by 'InvoiceState'", StringComparison.Ordinal));
+            && n.Contains("which no entity is bound to: no relation is made for it", StringComparison.Ordinal));
         AssertSaved(await ApplyAsync(repo, $$"""{ "op": "materialize-entities", "database": "{{Main}}", "tables": ["{{Events}}"], "package": "{{Billing}}" }"""));
 
         var snapshot = await repo.Store.GetSnapshotAsync(Ct);
         var events = snapshot.All<Entity>().Single(e => e.Name == "InvoiceEvent");
         var status = Assert.Single(events.Attributes, a => a.Name == "status");
-        Assert.Equal((InvoiceState, true, (int?)null), (status.Type.Ref, status.Required, status.Length));
+        Assert.Equal(("string", true, (int?)1), (status.Type.Builtin, status.Required, status.Length));
         Assert.DoesNotContain(snapshot.All<Relation>(), r => r.Name == "fk_event_state" || r.Ends.Any(e => e.Entity == events.Id));
         Assert.DoesNotContain(snapshot.All<Mapping>(), m => m.ForeignKey == "01K9X3C0000000000000000006");
         var binding = Assert.Single(events.Bindings);

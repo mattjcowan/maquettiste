@@ -767,8 +767,7 @@ internal static class ExprSites
     /// <summary>
     /// An attribute or value object member as an override entry makes its column: of the entry's <c>type</c> when it sets one (an enum
     /// or a code keeps its type, since the entry sets only how its column stores it), nullable as the entry says, fixed-length when the
-    /// entry makes it so, with the entry's scale; as the resolver applies the entry. A <c>typeRef</c> on such an entry is MQ4082, and the
-    /// resolver ignores it.
+    /// entry makes it so, with the entry's scale; as the resolver applies the entry.
     /// </summary>
     private static ExprMember Overridden(ExprMember member, Column entry) => member with
     {
@@ -1222,13 +1221,15 @@ internal static class ExprSites
         scope.AddReferenceType(type.Id, type.Name, codes);
     }
 
-    /// <summary>A table's or stereotype's columns; one that states no type and whose attribute gives none is unknown (MQ3103 where read).</summary>
+    /// <summary>
+    /// A table's or stereotype's columns, each of its physical type: a table carries its own definition, so a check never reads the type
+    /// a binding gives a column (0.28.0). One that states no type and whose attribute gives none is unknown (MQ3103 where read).
+    /// </summary>
     private static void Columns(ExprScope scope, ModelSnapshot model, IReadOnlyList<Column> columns)
     {
         foreach (var column in columns)
         {
-            var type = column.TypeRef is { } typeRef ? TypeOf(model, typeRef)
-                : column.Type is { } keyword ? ExprType.FromBuiltin(keyword)
+            var type = column.Type is { } keyword ? ExprType.FromBuiltin(keyword)
                 : column.Attribute is { } attribute && AttributeOf(model, attribute) is { } a ? TypeOf(model, a.Type)
                 : new ExprType("unknown", null);
             var fixedLength = column.FixedLength || (column.NativeType?.StartsWith("char(", StringComparison.OrdinalIgnoreCase) ?? false);

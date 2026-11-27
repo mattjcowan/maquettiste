@@ -1046,9 +1046,10 @@ export interface paths {
         /**
          * The attributes and columns that use a reference type, with their effective storage
          * @description reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage
-         *     choice per database. `columns` lists the designed, imported, extra and inherited columns whose own `typeRef` names the
-         *     type (next-phase-2-design.md 3.2), with their table, database, domain, required, the effective storage choice in that
-         *     database and the bound table; projected columns are covered by their attributes.
+         *     choice per database. `columns` lists the own and inherited columns of designed and imported tables that bindings map to
+         *     attributes of the type (their bound type, next-phase-2-design.md 3.2, from bindings since 0.28.0), with their table,
+         *     database, domain, required, the effective storage choice in that database and the bound table; projected columns are
+         *     covered by their attributes.
          */
         get: operations["getReferenceTypeUsage"];
         put?: never;
@@ -3041,19 +3042,17 @@ export interface components {
                 };
             }[];
             /**
-             * @description The designed, imported, extra and inherited columns whose own `typeRef` names the type (next-phase-2-design.md 3.2),
-             *     ordinal by table id then column id. Projected columns are covered by their attributes in `usages`.
+             * @description The own and inherited columns of designed and imported tables whose bound type is the type (bindings map them to
+             *     attributes of the type), ordinal by table id then column id. Projected columns are covered by their attributes in
+             *     `usages`.
              */
             columns: {
-                /**
-                 * @description The table id: the table file's id, or a synthesized table's key (`<entityId>@<databaseId>`) for an overlay's
-                 *     extra column or a column a synthesized table inherits.
-                 */
+                /** @description The table file's id. */
                 table: string;
                 /** @description The column id; a keyed id (`<tableKey>.<memberId>`) for an inherited column. */
                 column: string;
                 database: components["schemas"]["Ulid"];
-                /** @description The table's package (a synthesized table without one, its entity's or relation's); null at the root. */
+                /** @description The table's package; null at the root. */
                 domain?: components["schemas"]["Ulid"] | null;
                 /** @description Whether the column is not nullable. */
                 required: boolean;
@@ -4045,7 +4044,7 @@ export interface components {
             /** @description The key of the column whose comment `description` shows, when the attribute has no description of its own: the first commented column its entity's bindings map it to, bindings in database name order. */
             descriptionColumn: string | null;
         };
-        /** @description An attribute's resolved type, or a column's `typeRef`; the named type by id. */
+        /** @description An attribute's resolved type, or a column's bound type; the named type by id. */
         TypeRecord: {
             /** @enum {string} */
             kind: "builtin" | "enum" | "value-object" | "scalar" | "reference";
@@ -6432,11 +6431,12 @@ export interface components {
             /** @description Where an inherited column comes from; null for the table's own. Always sent by this engine; absent in recordings made before. */
             memberOrigin?: components["schemas"]["MemberOriginView"] | null;
             /**
-             * @description The enum, reference type or scalar type the column's own entry names (its `typeRef`), or null. A projected column has
-             *     none: its attribute (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in
-             *     recordings made before.
+             * @description Derived from bindings, like a table's bound-by list (0.28.0): the enum, reference type or scalar type of the attribute
+             *     the bindings map to the column, when they all agree; else null. A projected column has none: its attribute
+             *     (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in recordings made
+             *     before.
              */
-            typeRef?: components["schemas"]["TypeRecord"] | null;
+            boundType?: components["schemas"]["TypeRecord"] | null;
             /**
              * @description `pii` or `secret`: the column's own; else a projected column's attribute's own; else the strongest own value of the
              *     attributes bindings map to it; null when none says. Always sent by this engine; absent in recordings made before.
@@ -9689,10 +9689,6 @@ export interface components {
         };
         /** @description A column's type keyword: a built-in scalar type, or range or multirange (PostgreSQL's built-in range types, with a subtype; multirange needs PostgreSQL 14 or later). Elsewhere a range column is stored as the dialect's text type (MQ4056). */
         columnType: components["schemas"]["builtinType"] | ("range" | "multirange");
-        /** @description The logical type of a column: an enum, a reference type or a scalar type, beside the column's physical type keyword. */
-        columnTypeRef: {
-            ref: components["schemas"]["id"];
-        };
         /**
          * @description The type of a range or multirange column's bounds: one of the keywords PostgreSQL has a built-in range for (int4range, int8range, numrange, daterange, tsrange, tstzrange).
          * @enum {unknown}
@@ -9712,8 +9708,6 @@ export interface components {
             /** @description Overlay: the synthesized column key this column overrides. */
             attribute?: string;
             type?: components["schemas"]["columnType"];
-            /** @description Designed, imported, extra and contributed columns: the enum, reference type or scalar type whose values the column holds. Not on an overlay entry of a projected column, whose attribute types it, nor on a column a reference type's binding fills with a field (MQ4082). */
-            typeRef?: components["schemas"]["columnTypeRef"];
             /** @description The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013). */
             subtype?: components["schemas"]["rangeSubtype"];
             length?: components["schemas"]["length"];

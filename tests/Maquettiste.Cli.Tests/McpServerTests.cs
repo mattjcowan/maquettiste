@@ -935,9 +935,9 @@ public sealed class McpReadTests
     [Fact]
     public async Task Reference_type_usage_answers_columns()
     {
-        // next-phase-2-design.md section 3.2 (D24): reference_type_usage answers columns beside usages, the designed column whose
-        // typeRef names the type with its table, database, required and no storage choice or bound table (the billing project states
-        // none, and the type has no binding).
+        // next-phase-2-design.md section 3.2 (D24): reference_type_usage answers columns beside usages, the designed column an entity's
+        // binding maps to its attribute of the type, with its table, database, required and no storage choice or bound table (the billing
+        // project states none, and the type has no binding).
         var ct = TestContext.Current.CancellationToken;
         using var repo = CliRepo.Billing();
         const string state = "01K9X3A0000000000000000001", events = "01K9X3C0000000000000000001", status = "01K9X3C0000000000000000003";
@@ -948,14 +948,22 @@ public sealed class McpReadTests
         repo.Write(".maquettiste/model/databases/main/tables/invoice-events.json", $$"""
             { "kind": "table", "id": "{{events}}", "name": "invoice_events", "database": "01J92P0V1QRN2181XM2ZWE02W4",
               "columns": [ { "id": "01K9X3C0000000000000000002", "name": "id", "type": "uuid", "nullable": false },
-                           { "id": "{{status}}", "name": "status", "type": "string", "typeRef": { "ref": "{{state}}" }, "length": 1 } ],
+                           { "id": "{{status}}", "name": "status", "type": "string", "length": 1 } ],
               "primaryKey": { "columns": ["01K9X3C0000000000000000002"] } }
+            """);
+        repo.Write(".maquettiste/model/entities/invoice-event.json", $$"""
+            { "kind": "entity", "id": "01K9X3D0000000000000000001", "name": "InvoiceEvent", "key": { "attributes": ["01K9X3D0000000000000000002"] },
+              "attributes": [ { "id": "01K9X3D0000000000000000002", "name": "id", "type": "uuid", "required": true },
+                              { "id": "01K9X3D0000000000000000003", "name": "status", "type": { "ref": "{{state}}" } } ],
+              "bindings": [ { "id": "01K9X3D0000000000000000004", "database": "01J92P0V1QRN2181XM2ZWE02W4", "source": "{{events}}",
+                "fields": [ { "attribute": "01K9X3D0000000000000000002", "column": "01K9X3C0000000000000000002" },
+                            { "attribute": "01K9X3D0000000000000000003", "column": "{{status}}" } ] } ] }
             """);
         await using var session = await McpSession.StartAsync(repo, ct);
 
         var usage = await session.OkAsync("reference_type_usage", new { id = state });
 
-        Assert.Empty(usage["usages"]!.AsArray());
+        Assert.Equal("01K9X3D0000000000000000003", (string?)Assert.Single(usage["usages"]!.AsArray())!["attribute"]);
         var column = Assert.Single(usage["columns"]!.AsArray())!;
         Assert.Equal(
             new JsonObject

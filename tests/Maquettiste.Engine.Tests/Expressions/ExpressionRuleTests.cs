@@ -59,10 +59,10 @@ public sealed class ExpressionRuleTests
     internal const string KgId = "01K9EXR0000000000000000R05";
 
     /// <summary>
-    /// The reference type Unit, whose codes are text (one seed row, <c>kg</c>), and a unit column of products typed int32: with
-    /// <paramref name="typeRef"/> the column is typed by Unit, else Product gains a unit attribute of Unit that its binding maps to it.
+    /// The reference type Unit, whose codes are text (one seed row, <c>kg</c>), and a unit column of products typed int32 that Product's
+    /// binding maps to its unit attribute of Unit, so the column's bound type is Unit.
     /// </summary>
-    internal static void IntegerUnitColumn(TempRepo repo, bool typeRef)
+    internal static void IntegerUnitColumn(TempRepo repo)
     {
         repo.WriteFile(".maquettiste/model/reference-types/unit.json", """
             {
@@ -84,16 +84,22 @@ public sealed class ExpressionRuleTests
               "rows": [ { "id": "{{KgId}}", "values": ["kg", "Kilogram"] } ]
             }
             """);
-        var column = new JsonObject { ["id"] = UnitColumnId, ["name"] = "unit", ["type"] = "int32" };
-        if (typeRef)
-            column["typeRef"] = new JsonObject { ["ref"] = "01K9EXR0000000000000000R01" };
+        BoundColumn(repo, new JsonObject { ["id"] = UnitColumnId, ["name"] = "unit", ["type"] = "int32" }, UnitAttributeId, "01K9EXR0000000000000000R01");
+    }
+
+    /// <summary>
+    /// Adds a column to products and an attribute of the same name, typed by an enum, a reference type or a scalar type, to Product,
+    /// whose binding maps it to the column: the binding way to give a column a type (0.28.0).
+    /// </summary>
+    internal static void BoundColumn(TempRepo repo, JsonObject column, string attributeId, string typeId)
+    {
+        var columnId = (string)column["id"]!;
+        var name = (string)column["name"]!;
         Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(column));
-        if (typeRef)
-            return;
         Edit(repo, EntityPath, e =>
         {
-            e["attributes"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{UnitAttributeId}}", "name": "unit", "type": { "ref": "01K9EXR0000000000000000R01" } }"""));
-            ((JsonObject)e["bindings"]![0]!)["fields"]!.AsArray().Add(JsonNode.Parse($$"""{ "attribute": "{{UnitAttributeId}}", "column": "{{UnitColumnId}}" }"""));
+            e["attributes"]!.AsArray().Add(new JsonObject { ["id"] = attributeId, ["name"] = name, ["type"] = new JsonObject { ["ref"] = typeId } });
+            ((JsonObject)e["bindings"]![0]!)["fields"]!.AsArray().Add(new JsonObject { ["attribute"] = attributeId, ["column"] = columnId });
         });
     }
 
@@ -160,14 +166,15 @@ public sealed class ExpressionRuleTests
     }
 
     [Fact]
-    public async Task MQ3103_a_code_its_column_cannot_store()
+    public async Task MQ3103_a_code_against_a_column_of_another_physical_type()
     {
-        // Unit's codes are text; a column typed by Unit but stored as int32 cannot hold kg, so the check cannot lower.
+        // A table's check reads its columns' physical types only (0.28.0): unit is an int32 column, whatever the binding maps to it, so
+        // comparing it with the code kg does not type.
         using var repo = Repo();
-        IntegerUnitColumn(repo, typeRef: true);
+        IntegerUnitColumn(repo);
         TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["{{UnitColumnId}}"] }, { "ref": "{{KgId}}" }] }""");
-        await AssertRuleAsync(repo, "MQ3103", "/checks/0/condition/args/1");
-        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3103" && d.Message.Contains("the code's type does not match the column", StringComparison.Ordinal));
+        await AssertRuleAsync(repo, "MQ3103", "/checks/0/condition");
+        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3103" && d.Message.Contains("Cannot compare int32 with code", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -228,18 +235,10 @@ public sealed class ExpressionRuleTests
     }
 
     [Fact]
-    public async Task MQ3108_alone_for_text_that_names_an_enum_member_and_a_constraint()
+    public async Task MQ3108_alone_for_text_that_names_a_constraint()
     {
         // Text can name any enum, reference type or constraint, so its site looks up each name the text writes, as text-to-trees does.
         using var repo = Repo();
-        repo.WriteFile(".maquettiste/model/enums/product-status.json", """
-            {
-              "kind": "enum",
-              "id": "01K9EXR0000000000000000N01",
-              "name": "ProductStatus",
-              "members": [ { "id": "01K9EXR0000000000000000N02", "name": "Active" }, { "id": "01K9EXR0000000000000000N03", "name": "Retired" } ]
-            }
-            """);
         repo.WriteFile(".maquettiste/model/constraints/positive-amount.json", """
             {
               "kind": "constraint",
@@ -249,14 +248,7 @@ public sealed class ExpressionRuleTests
               "condition": { "op": "gt", "args": [{ "path": ["01K9EXR0000000000000000K02"] }, { "value": 0 }] }
             }
             """);
-        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(new JsonObject
-        {
-            ["id"] = "01K9EXR0000000000000000C03",
-            ["name"] = "status",
-            ["type"] = "string",
-            ["typeRef"] = new JsonObject { ["ref"] = "01K9EXR0000000000000000N01" },
-        }));
-        TableCheck(repo, """{ "text": "status = ProductStatus.Active and satisfies PositiveAmount(amount: price)" }""");
+        TableCheck(repo, """{ "text": "price > 0 and satisfies PositiveAmount(amount: price)" }""");
         var diagnostics = await ValidateAsync(repo);
         Assert.Equal(["MQ3108"], diagnostics.Where(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)).Select(d => d.Rule));
     }
@@ -282,7 +274,7 @@ public sealed class ExpressionRuleTests
     {
         // The binding maps unit, typed by Unit (text codes), to an int32 column: the check's kg cannot be written there.
         using var repo = Repo();
-        IntegerUnitColumn(repo, typeRef: false);
+        IntegerUnitColumn(repo);
         KgOnly(repo);
         await AssertRuleAsync(repo, "MQ3110", "/bindings/0/checks/0");
         Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3110" && d.Message.Contains("the code's type does not match the column", StringComparison.Ordinal));

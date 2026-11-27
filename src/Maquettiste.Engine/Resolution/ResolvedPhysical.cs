@@ -697,17 +697,19 @@ public sealed class RColumn : RAnnotated
 
     /// <summary>
     /// The column type keyword: a built-in keyword, <c>range</c> or <c>multirange</c> (a designed or extra column only), or
-    /// <c>reference</c> (a projected column of an attribute typed by a reference type only). A designed column typed by a reference
-    /// type (<see cref="TypeRef"/>) keeps its physical keyword; templates test <see cref="ReferenceType"/> for "holds codes".
+    /// <c>reference</c> (a projected column of an attribute typed by a reference type only). A designed column keeps its physical
+    /// keyword, whatever its <see cref="BoundType"/>; templates test <see cref="ReferenceType"/> for "holds codes".
     /// </summary>
     public string Type { get; internal set; } = "";
 
     /// <summary>
-    /// The type the column's own entry names (its <c>typeRef</c>: an enum, a reference type or a scalar type; next-phase-2-design.md
-    /// section 3.2), for a designed, imported, extra or inherited column; <see langword="null"/> for a projected column (its
-    /// attribute's type) and for a column whose entry names none.
+    /// Derived from bindings, like a table's bound-by list (0.28.0): the enum, reference type or scalar type of the attribute the entities'
+    /// bindings map to this column of a designed or imported table (own or inherited), set only when every binding field that maps the
+    /// column maps an attribute of that one type. <see langword="null"/> for a column no binding maps, for one whose bindings disagree,
+    /// and for a projected column (its attribute types it). It is information only: binding an entity never changes storage, so the
+    /// column's physical type, facets and <see cref="ReferenceType"/> are its table's own, and packs render nothing from it.
     /// </summary>
-    public RType? TypeRef { get; internal set; }
+    public RType? BoundType { get; internal set; }
 
     /// <summary>The bound type of a range or multirange column (<c>int32</c>, ..., <c>datetimeoffset</c>); otherwise <see langword="null"/>.</summary>
     public string? Subtype { get; internal set; }
@@ -817,10 +819,10 @@ public sealed class RColumn : RAnnotated
     public int Position { get; internal set; }
 
     /// <summary>
-    /// For a column typed by a reference type: the reference type. A projected reference column (<see cref="Type"/>
-    /// <c>reference</c>) and a designed, imported, extra or inherited column whose <see cref="TypeRef"/> names a reference type both
-    /// have it, with <see cref="CodeType"/>, <see cref="Strategy"/> and <see cref="ReferenceBinding"/>, so packs render the same
-    /// objects for both. The code's length rides along in <see cref="Length"/> when the column states none.
+    /// For a projected reference column (<see cref="Type"/> <c>reference</c>): the reference type, with <see cref="CodeType"/>,
+    /// <see cref="Strategy"/> and <see cref="ReferenceBinding"/>, from which packs render its key or CHECK. Its code length rides along in
+    /// <see cref="Length"/> when its entry states none. A column of a table file has none, even when its <see cref="BoundType"/> is a
+    /// reference type: binding an entity never changes storage.
     /// </summary>
     public RReferenceType? ReferenceType { get; internal set; }
 

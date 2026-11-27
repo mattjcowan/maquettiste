@@ -192,12 +192,11 @@ public sealed class ModelLoaderTests
     }
 
     [Fact]
-    public async Task A_column_typeRef_and_sensitive_round_trip_in_canonical_form()
+    public async Task A_column_sensitive_round_trips_in_canonical_form()
     {
-        // next-phase-2-design.md section 3.2 (D20): a column's typeRef is the object form only and follows type; sensitive follows comment.
+        // next-phase-2-design.md section 3.2 (D20): sensitive follows comment.
         using var h = new LoaderHarness();
         var b = new ModelBuilder(5);
-        var state = b.Enum("InvoiceState").Member("Draft", code: "D").Member("Issued", code: "I");
         var db = b.Database("main", Dialect.PostgreSql);
         var events = b.Table("invoice_events", db).Column("id", "uuid", nullable: false).Column("status", "string", nullable: false, length: 1)
             .Edit(t => t with
@@ -205,7 +204,7 @@ public sealed class ModelLoaderTests
                 Columns =
                 [
                     t.Columns[0],
-                    t.Columns[1] with { TypeRef = new TypeRef { Ref = state.Id }, Comment = "The invoice state code.", Sensitive = Sensitivity.Pii },
+                    t.Columns[1] with { Comment = "The invoice state code.", Sensitive = Sensitivity.Pii },
                 ],
             });
         await b.WriteToAsync(h.Repo.ModelRoot, Ct);
@@ -214,14 +213,38 @@ public sealed class ModelLoaderTests
 
         Assert.Empty(model.LoadDiagnostics);
         var status = model.Get<Table>(events.Id)!.Columns[1];
-        Assert.Equal(new TypeRef { Ref = state.Id }, status.TypeRef);
         Assert.Equal(Sensitivity.Pii, status.Sensitive);
         var text = h.Read("model/databases/main/tables/invoice-events.json");
-        var keys = new[] { "\"type\": \"string\"", "\"typeRef\": {", $"\"ref\": \"{state.Id}\"", "\"length\": 1", "\"comment\":", "\"sensitive\": \"pii\"" }
+        var keys = new[] { "\"type\": \"string\"", "\"length\": 1", "\"comment\":", "\"sensitive\": \"pii\"" }
             .Select(k => text.IndexOf(k, StringComparison.Ordinal)).ToList();
         Assert.DoesNotContain(-1, keys);
         Assert.Equal(keys.Order(), keys);
         Assert.Equal(text, Canonical(model.Get<Table>(events.Id)!, "model/databases/main/tables/invoice-events.json"));
+    }
+
+    [Fact]
+    public async Task A_column_typeRef_was_removed_and_is_MQ4082()
+    {
+        // 0.28.0: a table names no type of the model. A file that still types a column fails to load with one MQ4082 per column, in place
+        // of the schema's failure on the key, and the message says how to type the column's values now.
+        using var h = new LoaderHarness();
+        var b = new ModelBuilder(5);
+        var state = b.Enum("InvoiceState").Member("Draft", code: "D").Member("Issued", code: "I");
+        var db = b.Database("main", Dialect.PostgreSql);
+        var events = b.Table("invoice_events", db).Column("id", "uuid", nullable: false).Column("status", "string", nullable: false, length: 1);
+        await b.WriteToAsync(h.Repo.ModelRoot, Ct);
+        const string File = "model/databases/main/tables/invoice-events.json";
+        var text = h.Read(File);
+        var at = text.IndexOf("\"type\": \"string\"", StringComparison.Ordinal);
+        h.Write(File, text[..at] + "\"typeRef\": { \"ref\": \"" + state.Id + "\" },\n        " + text[at..]);
+
+        var model = (await LoadAsync(h.NewLoader())).Snapshot;
+
+        var d = Assert.Single(model.LoadDiagnostics);
+        Assert.Equal(("MQ4082", "/columns/1/typeRef", DiagnosticSeverity.Error), (d.Rule, d.JsonPointer, d.Severity));
+        Assert.Contains("Column 'status' has typeRef, which was removed in 0.28.0", d.Message, StringComparison.Ordinal);
+        Assert.Contains("bind the column to an attribute typed by the enum, reference type or scalar type", d.Message, StringComparison.Ordinal);
+        Assert.Null(model.Get<Table>(events.Id));
     }
 
     [Fact]

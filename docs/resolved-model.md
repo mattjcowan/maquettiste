@@ -1774,7 +1774,7 @@ One resolved column.
 | `category` | string | can be null | As `tableView.category`, from the column's own entry. Null when not set. |
 | `properties` | map of any | never | As `tableView.properties`, from the column's own entry. |
 | `generation` | map of [generationHints](#generationhints) | never | As `tableView.generation`, from the column's own entry. |
-| `typeRef` | [typeRecord](#typerecord) | can be null | The enum, reference type or scalar type the column's own entry names, or null; a projected column has none, its attribute (`attributeId`) types it. |
+| `boundType` | [typeRecord](#typerecord) | can be null | Derived from bindings, like a table's bound-by list: the enum, reference type or scalar type of the attribute the entities' bindings map to the column, when they all agree, or null; a projected column has none, its attribute (`attributeId`) types it. |
 | `sensitive` | string | can be null | `pii` or `secret`: the column's own; else a projected column's attribute's own; else the strongest own value of the attributes bindings map to it; null when none says. |
 | `memberOrigin` | [memberOriginView](#memberoriginview) | can be null | Where an inherited column comes from; null for the table's own. |
 

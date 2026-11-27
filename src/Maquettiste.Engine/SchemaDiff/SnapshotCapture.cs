@@ -221,8 +221,8 @@ internal static class SnapshotCapture
         ComputedStored = column.ComputedStored,
         Collation = column.Collation,
         Comment = column.Comment,
-        // Every column with a reference type: a projected reference column, or a designed, imported, extra or inherited column its
-        // typeRef types (next-phase-2-design.md section 3.2).
+        // A projected reference column. A column of a table file has none, whatever the bindings map to it: binding an entity never
+        // changes storage, so it never changes what a snapshot captures.
         ReferenceType = column.ReferenceType?.Id,
         Strategy = column.ReferenceType is not null ? column.Strategy : null,
         ReferenceTable = column.ReferenceBinding?.Table.Key,

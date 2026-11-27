@@ -199,9 +199,10 @@ imported when a field is `json` (a `JsonElement`). The SQL is what the engine re
 matches column aliases without regard to case), and converts to the result:
 
 - The method returns `<Name>Row`, a `sealed partial record` with one property per field (`pascal` of its name), typed by
-  the field's type and nullability. A field that reads a column of a table file typed by an enum (the column's `typeRef`)
-  is that enum, nullable as the field, converted as an entity's enum attribute is (a stored code through
-  `<Enum>Codes.Parse`, a stored number cast). A field that reads a column typed by a reference type keeps the code's
+  the field's type and nullability. A field that reads a column whose bound type is an enum (a binding maps the column to
+  an attribute of the enum; `column.bound_type`) is that enum, nullable as the field, converted as an entity's enum
+  attribute is (a stored code through `<Enum>Codes.Parse`, a stored number cast). A field that reads a column whose bound
+  type is a reference type keeps the code's
   type, and the record's summary says so with a cref to the type's record ("Status holds a code of
   `<see cref="global::Billing.InvoiceState"/>`.").
 - To read a query's rows as an entity, bind the entity to the query: its binding's `source` names the query and each field

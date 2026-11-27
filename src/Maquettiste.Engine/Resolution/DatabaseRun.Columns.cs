@@ -377,9 +377,8 @@ internal sealed partial class DatabaseRun
                 Nullable = column.Nullable ?? true,
             };
             ApplyColumnFile(t, c, column);
-            var scalar = TypeColumn(t, c, column);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c, scalar));
+            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c));
             t.Columns.Add(c);
             t.ByKey[column.Id] = c;
             _run.Register(c);

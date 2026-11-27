@@ -280,8 +280,9 @@ public sealed partial class AgentToolsTests
     public async Task Reference_type_usage_lists_columns()
     {
         // next-phase-2-design.md section 3.2 (D24): the assistant's reference_type_usage answers columns beside usages: the designed
-        // column invoice_events.status typed by InvoiceState, required, with no storage choice (the billing project states none) and
-        // the table its binding names in main; the bound table's own code column states no typeRef, so it is not listed.
+        // column invoice_events.status, which InvoiceEvent's binding maps to its attribute of InvoiceState, required, with no storage
+        // choice (the billing project states none) and the table the type's binding names in main; the bound table's own code column is
+        // mapped by no entity's binding, so it is not listed.
         const string state = "01K9X3A0000000000000000001", states = "01K9X3B0000000000000000001", events = "01K9X3C0000000000000000001";
         const string status = "01K9X3C0000000000000000003";
         await using var r = EditorRepo.Create(packs: false);
@@ -307,15 +308,24 @@ public sealed partial class AgentToolsTests
             {"kind":"table","id":"{{events}}","name":"invoice_events","database":"{{EditorRepo.MainDatabaseId}}",
              "package":"{{EditorRepo.BillingPackageId}}","columns":[
               {"id":"01K9X3C0000000000000000002","name":"id","type":"uuid","nullable":false},
-              {"id":"{{status}}","name":"status","type":"string","typeRef":{"ref":"{{state}}"},"length":1,"nullable":false}],
+              {"id":"{{status}}","name":"status","type":"string","length":1,"nullable":false}],
              "primaryKey":{"columns":["01K9X3C0000000000000000002"]} }
+            """);
+        await CreateAsync($$"""
+            {"kind":"entity","id":"01K9X3D0000000000000000001","name":"InvoiceEvent","package":"{{EditorRepo.BillingPackageId}}",
+             "key":{"attributes":["01K9X3D0000000000000000002"]},
+             "attributes":[{"id":"01K9X3D0000000000000000002","name":"id","type":"uuid","required":true},
+               {"id":"01K9X3D0000000000000000003","name":"status","type":{"ref":"{{state}}"},"required":true}],
+             "bindings":[{"id":"01K9X3D0000000000000000004","database":"{{EditorRepo.MainDatabaseId}}","source":"{{events}}",
+               "fields":[{"attribute":"01K9X3D0000000000000000002","column":"01K9X3C0000000000000000002"},
+                 {"attribute":"01K9X3D0000000000000000003","column":"{{status}}"}]}]}
             """);
 
         var answer = await Catalog(r).CallAsync("reference_type_usage", JsonSerializer.SerializeToElement(new { id = state }), Ct);
 
         Assert.False(answer.IsError, answer.Text);
         var usage = JsonNode.Parse(answer.Text)!;
-        Assert.Empty(usage["usages"]!.AsArray());
+        Assert.Equal("01K9X3D0000000000000000003", (string?)Assert.Single(usage["usages"]!.AsArray())!["attribute"]);
         var column = Assert.Single(usage["columns"]!.AsArray())!;
         Assert.Equal(
             new JsonObject

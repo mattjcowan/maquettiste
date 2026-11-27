@@ -1209,7 +1209,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
         var followers = FormerFactFollowers(changed, before, candidate).Concat(FormerActorPeers(changed, before, candidate))
             .Concat(FormerTypeCodePeers(changed, before, candidate)).Concat(FormerRevisionPeers(changed, before, candidate)).Concat(FormerCopyPeers(changed, before, candidate))
-            .Concat(FormerOperationPeers(changed, before, candidate)).ToList();
+            .Concat(FormerOperationPeers(changed, before, candidate)).Concat(FormerBoundColumnPeers(changed, before, candidate)).ToList();
         // A dry run counts the deletes too: what a deleted element had shows as removed.
         if ((preview is null ? plan.ChangedIds.Count : changed.Count) == 0 && placements.Count == 0 && followers.Count == 0)
             return [];
@@ -1223,6 +1223,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         // The copy blocks the change reaches only after it (a relation that became a composition on the way down) are validated after the change
         // through the validator's peers; validating them before it too keeps their earlier findings known.
         var existing = plan.ChangedIds.Concat(placements).Concat(followers).Concat(LaterCopyPeers(changed, before, candidate))
+            .Concat(LaterBoundColumnPeers(changed, before, candidate))
             .Distinct(StringComparer.Ordinal).Where(id => before.TryGetEntry(id, out _)).ToList();
         var baseline = existing.Count > 0
             ? await _services.Validator.ValidateAsync(before, new ValidationScope(existing, IncludeReferrers: true), null, ct).ConfigureAwait(false)
@@ -1472,6 +1473,44 @@ public sealed partial class ModelStore : IAsyncDisposable
             if (candidate.GetDocument(id)?.Element is not { } element)
                 continue;
             foreach (var peer in Validation.CopyRules.Peers(candidate, element))
+            {
+                if (before.GetDocument(peer) is not null)
+                    yield return peer;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The documents whose findings depended on the bound types a changed element decided before the change (0.28.0, a binding removed
+    /// or moved away from a table), worked out on the model before it, that the changed model still holds: validated after the change, so
+    /// findings that came from the binding clear or appear on the save.
+    /// </summary>
+    private static IEnumerable<string> FormerBoundColumnPeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        foreach (var id in changedIds)
+        {
+            if (before.GetDocument(id)?.Element is not { } element)
+                continue;
+            foreach (var peer in Validation.ModelValidator.BoundColumnPeers(before, element))
+            {
+                if (candidate.GetDocument(peer) is not null)
+                    yield return peer;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The documents whose findings depend on the bound types a changed element decides after the change (a table a binding now reaches),
+    /// worked out on the changed model, that the model before it holds: the validator checks them after the change as peers, so the
+    /// baseline checks them before it, and an error they had already is no new error.
+    /// </summary>
+    private static IEnumerable<string> LaterBoundColumnPeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        foreach (var id in changedIds)
+        {
+            if (candidate.GetDocument(id)?.Element is not { } element)
+                continue;
+            foreach (var peer in Validation.ModelValidator.BoundColumnPeers(candidate, element))
             {
                 if (before.GetDocument(peer) is not null)
                     yield return peer;

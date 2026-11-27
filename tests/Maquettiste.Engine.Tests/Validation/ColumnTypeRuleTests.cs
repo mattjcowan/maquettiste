@@ -7,14 +7,15 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Validation;
 
 /// <summary>
-/// The column type rules (next-phase-2-design.md section 3.2, D22): MQ4082 (a misplaced <c>typeRef</c>), MQ4083 (a typed column that cannot
-/// hold its type's values), MQ4084 (a declared foreign key from a column typed by a reference type that does not point at the type's bound
-/// table), MQ4085 (a column and an attribute that state different sensitivities) and MQ7014 (a value written into a typed column that is
-/// not one of its type's stored values or codes), each with a failing and a passing case.
+/// The column type rules (next-phase-2-design.md section 3.2, D22) on a column's bound type, the type of the attribute the bindings map to
+/// it (0.28.0): MQ4083 (a column that cannot hold its bound type's values), MQ4084 (a declared foreign key from a column whose bound type
+/// is a reference type that does not point at the type's bound table), MQ4085 (a column and an attribute that state different
+/// sensitivities) and MQ7014 (a value written into such a column that is not one of its type's stored values or codes), each with a
+/// failing and a passing case. MQ4082, the removed <c>typeRef</c> key, is read with the file (<c>ModelLoaderTests</c>).
 /// </summary>
 public sealed class ColumnTypeRuleTests
 {
-    private static readonly string[] Rules = ["MQ4082", "MQ4083", "MQ4084", "MQ4085", "MQ7014"];
+    private static readonly string[] Rules = ["MQ4083", "MQ4084", "MQ4085", "MQ7014"];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -24,7 +25,7 @@ public sealed class ColumnTypeRuleTests
     /// A billing-like model: the reference type <c>InvoiceState</c> (a string code of the given length, rows D Draft and I
     /// Issued, a demo seed adding P Paid), the enum <c>Status</c> (Draft 0 D, Issued 1 I, Void 2 without a code), the scalar type
     /// <c>Money</c> (decimal(12,2)) and a designed table <c>invoice_events</c> whose <c>state</c>, <c>status</c> and <c>amount</c> columns
-    /// they type.
+    /// the entity <c>InvoiceEvent</c>'s binding maps to attributes of those types.
     /// </summary>
     private sealed class Fixture
     {
@@ -45,8 +46,8 @@ public sealed class ColumnTypeRuleTests
             Address = B.ValueObject("Address").Attr("street", "string");
             Events = B.Table("invoice_events", Main).Column("id", "uuid", nullable: false).Column("state", "string", nullable: false, length: 1)
                 .Column("status", "int32").Column("amount", "decimal").PrimaryKey("id")
-                .Edit(t => Typed(t, ("state", State.Id), ("status", Status.Id), ("amount", Money.Id)))
                 .Edit(editEvents ?? (t => t));
+            Events.BindTyped("InvoiceEvent", ("state", State.Id), ("status", Status.Id), ("amount", Money.Id));
             more?.Invoke(this);
             B.Add(State);
             B.Add(new Seed
@@ -86,12 +87,6 @@ public sealed class ColumnTypeRuleTests
         }
     }
 
-    /// <summary>Gives a table's columns, by name, the typeRef of a type id.</summary>
-    private static Table Typed(Table table, params (string Column, string TypeId)[] types) => table with
-    {
-        Columns = [.. table.Columns.Select(c => types.FirstOrDefault(t => t.Column == c.Name) is { Column: not null } t ? c with { TypeRef = new TypeRef { Ref = t.TypeId } } : c)],
-    };
-
     private static Table EditColumn(Table table, string name, Func<Column, Column> edit) => table with
     {
         Columns = [.. table.Columns.Select(c => c.Name == name ? edit(c) : c)],
@@ -100,9 +95,9 @@ public sealed class ColumnTypeRuleTests
     private static IEnumerable<(string Rule, string Pointer)> At(IEnumerable<Diagnostic> findings) => findings.Select(d => (d.Rule, d.JsonPointer!)).Order();
 
     [Fact]
-    public async Task Columns_typed_by_an_enum_a_reference_type_and_a_scalar_type_are_clean()
+    public async Task Columns_bound_to_attributes_of_an_enum_a_reference_type_and_a_scalar_type_are_clean()
     {
-        // The passing case of MQ4082, MQ4083 and MQ7014: each column fits its type, and its default is a stored value or code.
+        // The passing case of MQ4083 and MQ7014: each column fits its bound type, and its default is a stored value or code.
         var f = new Fixture(editEvents: t => EditColumn(EditColumn(t, "state", c => c with { Default = J("D") }), "status", c => c with { Default = J(2) }));
         Assert.Empty(await f.FindingsAsync());
     }
@@ -113,60 +108,12 @@ public sealed class ColumnTypeRuleTests
         static async Task<List<Diagnostic>> WithDefault(long value) => await new Fixture(more: x =>
         {
             var access = x.B.Enum("Access").Flags().Member("Read", 1).Member("Write", 2).Member("Delete", 4);
-            x.Events.Column("access", "int32").Edit(t => EditColumn(Typed(t, ("access", access.Id)), "access", c => c with { Default = J(value) }));
+            x.Events.Column("access", "int32").Edit(t => EditColumn(t, "access", c => c with { Default = J(value) }));
+            x.Events.BindTyped("EventAccess", ("access", access.Id));
         }).FindingsAsync();
 
         Assert.Empty(await WithDefault(3));
         Assert.Contains("8 is not a value of a member of enum Access nor a combination of them", Assert.Single(await WithDefault(8)).Message, StringComparison.Ordinal);
-    }
-
-    // ---- MQ4082 ----
-
-    [Fact]
-    public async Task A_typeRef_naming_a_value_object_or_on_an_overlay_entry_is_MQ4082()
-    {
-        var f = new Fixture(more: x =>
-        {
-            x.Events.Column("address", "json").Edit(t => Typed(t, ("address", x.Address.Id)));
-            var invoice = x.B.Entity("Invoice").Key("id", "uuid").Attr("number", "string");
-            x.B.Table("invoices", x.Main).OverlayFor(invoice).Overlay(invoice.AttrId("number"), "invoice_number")
-                .Edit(t => t with { Columns = [t.Columns[0] with { TypeRef = new TypeRef { Ref = x.State.Id } }] });
-        });
-
-        var found = await f.FindingsAsync();
-
-        Assert.Equal([("MQ4082", "/columns/0/typeRef"), ("MQ4082", "/columns/4/typeRef/ref")], At(found));
-        Assert.All(found, d => Assert.Equal(DiagnosticSeverity.Error, d.Severity));
-        Assert.Contains("value object 'Address'", found.Single(d => d.JsonPointer!.EndsWith("/ref", StringComparison.Ordinal)).Message, StringComparison.Ordinal);
-        Assert.Contains("overrides a projected column", found.Single(d => d.JsonPointer == "/columns/0/typeRef").Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task MQ4082_on_a_binding_field_is_reported_on_the_reference_type()
-    {
-        // The table invoice_states holds the rows of InvoiceState; its code column also names the type, which the binding already says.
-        var f = new Fixture(more: x =>
-        {
-            var table = x.B.Table("invoice_states", x.Main).Column("code", "string", nullable: false, length: 1).Column("label", "string", nullable: false, length: 40)
-                .PrimaryKey("code").Edit(t => Typed(t, ("code", x.State.Id)));
-            x.State = x.State with
-            {
-                Bindings =
-                [
-                    new ReferenceTypeBinding
-                    {
-                        Id = x.B.NewId(), Database = x.Main.Id, Table = table.Id,
-                        Fields = [new BindingField { Attribute = "code", Column = table.ColumnId("code") }, new BindingField { Attribute = "label", Column = table.ColumnId("label") }],
-                    },
-                ],
-            };
-        });
-
-        var finding = Assert.Single(await f.FindingsAsync());
-
-        Assert.Equal(("MQ4082", "/bindings/0/fields/0/column", f.State.Bindings[0].Id), (finding.Rule, finding.JsonPointer, finding.ElementId));
-        Assert.Equal(f.B.Build().GetDocument(f.State.Id)!.Path, finding.FilePath);
-        Assert.Contains("the binding says what the column holds", finding.Message, StringComparison.Ordinal);
     }
 
     // ---- MQ4083 ----
@@ -180,9 +127,9 @@ public sealed class ColumnTypeRuleTests
             var named = x.B.Enum("Named").Member("Draft", 0, "draft").Member("Issued", 1);
             x.Events.Column("code_number", "int32").Column("wide", "int16").Column("named", "string", length: 3).Column("stamp", "uuid")
                 .Column("price", "int64").Column("narrow", "decimal")
-                .Edit(t => Typed(t, ("code_number", x.State.Id), ("wide", wide.Id), ("named", named.Id), ("stamp", x.Status.Id), ("price", x.Money.Id),
-                    ("narrow", x.Money.Id)))
                 .Edit(t => EditColumn(t, "narrow", c => c with { Precision = 10 }));
+            x.Events.BindTyped("EventDetail", ("code_number", x.State.Id), ("wide", wide.Id), ("named", named.Id), ("stamp", x.Status.Id), ("price", x.Money.Id),
+                ("narrow", x.Money.Id));
         });
 
         var found = await f.FindingsAsync();
@@ -202,24 +149,25 @@ public sealed class ColumnTypeRuleTests
         Assert.Contains("member 'Huge' has value 70000, outside the range of int16", found.Single(d => d.JsonPointer == "/columns/5/type").Message, StringComparison.Ordinal);
         Assert.Contains("its precision 10 is smaller than the type's 12", found.Single(d => d.JsonPointer == "/columns/9/precision").Message, StringComparison.Ordinal);
 
-        // Leaving the facet out lets the column take it from its type.
+        // A column that states no length is not judged on it: the conventions' default length applies, never the type's.
         var fixedUp = new Fixture(codeLength: 2, editEvents: t => EditColumn(t, "state", c => c with { Length = null }));
         Assert.Empty(await fixedUp.FindingsAsync());
     }
 
     [Fact]
-    public async Task An_inherited_typed_column_is_judged_on_the_table()
+    public async Task An_inherited_column_with_a_bound_type_is_judged_on_the_table()
     {
-        // A stereotype's column typed by InvoiceState, one character long while the codes have two: the table that carries the stereotype
-        // gets the finding where 3.1 places member findings (its stereotypes entry).
+        // A stereotype's column a binding maps to an attribute of InvoiceState, one character long while the codes have two: the table that
+        // carries the stereotype gets the finding where 3.1 places member findings (its stereotypes entry).
         var f = new Fixture(codeLength: 2, editEvents: t => EditColumn(t, "state", c => c with { Length = null }), more: x =>
         {
             x.B.Add(new Stereotype
             {
                 Id = x.B.NewId(), Key = "stateful", Name = "Stateful", AppliesTo = ["table"],
-                Columns = [new Column { Id = x.B.NewId(), Name = "lifecycle", Type = "string", Length = 1, TypeRef = new TypeRef { Ref = x.State.Id }, Default = J("Z") }],
+                Columns = [new Column { Id = x.B.NewId(), Name = "lifecycle", Type = "string", Length = 1, Default = J("Z") }],
             });
             x.Events.Stereotype("stateful");
+            x.Events.BindTyped("EventLifecycle", ("lifecycle", x.State.Id));
         });
 
         var found = await f.FindingsAsync();
@@ -227,6 +175,19 @@ public sealed class ColumnTypeRuleTests
         Assert.Equal([("MQ4083", "/stereotypes/0"), ("MQ7014", "/stereotypes/0")], At(found));
         Assert.All(found, d => Assert.Equal(f.Events.Id, d.ElementId));
         Assert.Contains("Column 'lifecycle' holds codes of reference type 'InvoiceState'", found.Single(d => d.Rule == "MQ4083").Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_column_whose_bindings_disagree_has_no_bound_type()
+    {
+        // A second entity maps status to an attribute of Money, which an int32 column cannot hold: the two bindings disagree, so the column
+        // has no bound type and nothing judges it against either type.
+        var f = new Fixture(more: x => x.Events.BindTyped("EventAmount", ("status", x.Money.Id)));
+        Assert.Empty(await f.FindingsAsync());
+
+        // A column no binding maps has only its physical type: a default that is no code of InvoiceState passes.
+        var unbound = new Fixture(more: x => x.Events.Column("free", "string", length: 1).Edit(t => EditColumn(t, "free", c => c with { Default = J("Z") })));
+        Assert.Empty(await unbound.FindingsAsync());
     }
 
     // ---- MQ4084 ----
@@ -361,15 +322,16 @@ public sealed class ColumnTypeRuleTests
                     new SeedRow { Id = "01K9X3C0000000000000000103", Values = [J("8f9619ff-8b86-d011-b42d-00c04fc964ff"), J("P"), J(9)] },
                 ],
             });
-            var invoiceEvent = x.B.Entity("InvoiceEvent").Key("id", "uuid");
-            invoiceEvent.Bind(new EntityBinding
+            var audit = x.B.Entity("InvoiceEventAudit").Key("id", "uuid");
+            audit.Bind(new EntityBinding
             {
                 Id = "", Database = x.Main.Id, Source = x.Events.Id,
                 Constants = [new BindingConstant { Column = "state", Value = J("X") }],
-                Fields = [new BindingField { Attribute = invoiceEvent.AttrId("id"), Column = "id" }],
+                Fields = [new BindingField { Attribute = audit.AttrId("id"), Column = "id" }],
             });
             var kinds = x.B.Table("event_kinds", x.Main).Column("code", "string", nullable: false, length: 8).Column("label", "string", nullable: false, length: 40)
-                .Column("status", "string", length: 8).PrimaryKey("code").Edit(t => Typed(t, ("status", x.Status.Id)));
+                .Column("status", "string", length: 8).PrimaryKey("code");
+            kinds.BindTyped("EventKindRow", ("status", x.Status.Id));
             states = kinds.Id;
             var kind = new ReferenceType
             {
@@ -393,7 +355,7 @@ public sealed class ColumnTypeRuleTests
 
         Assert.Equal(
             [
-                ("MQ7014", "/bindings/0/constants/0"), // InvoiceEvent's constant X
+                ("MQ7014", "/bindings/0/constants/0"), // InvoiceEventAudit's constant X
                 ("MQ7014", "/bindings/0/constants/0"), // EventKind's constant Draft (a name, the member's code is D)
                 ("MQ7014", "/columns/1/default"),
                 ("MQ7014", "/columns/2/default"),

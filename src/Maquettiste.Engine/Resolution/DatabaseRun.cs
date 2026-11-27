@@ -225,9 +225,9 @@ internal sealed partial class DatabaseRun
                 Nullable = column.Nullable ?? true,
             };
             ApplyColumnFile(t, c, column);
-            var scalar = TypeColumn(t, c, column);
+            TypeColumn(t, c);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c, scalar));
+            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c));
             t.Columns.Add(c);
             t.ByKey.TryAdd(column.Id, c);
             _run.Register(c);
@@ -361,50 +361,36 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>
-    /// Types a designed, imported, extra or inherited column by the enum, reference type or scalar type its own entry's <c>typeRef</c>
-    /// names (next-phase-2-design.md section 3.2), before <see cref="ApplyFacetDefaults"/>: sets <see cref="RColumn.TypeRef"/>, fills
-    /// the facets the column leaves out from the type (a reference type's code length and an enum's longest stored code in a string
-    /// column; a scalar type's length, precision and scale in a column of its base), and for a reference type sets
-    /// <see cref="RColumn.ReferenceType"/>, <see cref="RColumn.CodeType"/> and <see cref="RColumn.Strategy"/>, as a projected
-    /// reference column has them. The column keeps its own physical type. The table depends on the type as a projected column's does.
-    /// A type that is none of the three (a value object, MQ4082; a dangling id, MQ2001) types nothing.
+    /// Gives a column of a designed or imported table, own or inherited, its bound type (0.28.0): the enum, reference type or scalar type
+    /// of the attribute the entities' bindings map to it, when they all agree (<see cref="BoundColumnTypes"/>). Sets
+    /// <see cref="RColumn.BoundType"/> only, as information: a table carries its own definition and binding an entity never changes
+    /// storage, so the bound type sets no <see cref="RColumn.ReferenceType"/> (no pack key or CHECK, no captured reference state, no value
+    /// map), fills no facet and no native type. The table depends on the bound entities, the elements that declare the mapped
+    /// attributes, and the type.
     /// </summary>
-    /// <returns>The scalar type whose native type for the dialect applies when the column sets no <c>nativeType</c> (its base is the
-    /// column's type), else <see langword="null"/>.</returns>
-    private RScalarType? TypeColumn(TableBuild t, RColumn c, Column column)
+    private void TypeColumn(TableBuild t, RColumn c)
     {
-        if (column.TypeRef is not { Ref: not null } typeRef)
-            return null;
-        var type = _run.TypeOf(typeRef, t.Deps, out _);
+        if (t.Source is not { } file)
+            return;
+        var bound = BoundColumnTypes.Of(_run.Model);
+        if (bound.TypeOf(file.Id, c.Id) is not { } typeId)
+            return;
+        foreach (var use in bound.UsesOf(file.Id, c.Id))
+            t.Deps.Element(use.EntityId).Element(use.OwnerId);
+        var type = _run.TypeOf(new TypeRef { Ref = typeId }, t.Deps, out _);
         switch (type)
         {
             case { Enum: { } e }:
                 t.Deps.AddRange(_run.DepsOf(e).ToList());
-                c.TypeRef = type;
-                if (c.Type == "string")
-                    c.Length ??= StringLength(e);
-                return null;
-            case { ReferenceType: { } reference }:
-                t.Deps.Element(reference.Id).Add(ResolveRun.ReferenceDataKey);
-                c.TypeRef = type;
-                c.ReferenceType = reference;
-                c.CodeType = reference.Code.Type;
-                c.Strategy = _run.StorageChoice(reference.Id, _db.Id)?.Strategy;
-                if (c.Type == "string")
-                    c.Length ??= reference.Code.Length;
-                return null;
+                c.BoundType = type;
+                break;
+            case { ReferenceType: not null }:
+                c.BoundType = type;
+                break;
             case { Scalar: { } scalar }:
                 t.Deps.AddRange(_run.DepsOf(scalar).ToList());
-                c.TypeRef = type;
-                if (!string.Equals(c.Type, scalar.Base, StringComparison.Ordinal))
-                    return null;
-                c.Length ??= scalar.Length;
-                c.Precision ??= scalar.Precision;
-                c.Scale ??= scalar.Scale;
-                _columnScalars[c] = scalar;
-                return scalar;
-            default:
-                return null;
+                c.BoundType = type;
+                break;
         }
     }
 
@@ -857,8 +843,8 @@ internal sealed partial class DatabaseRun
     /// <summary>
     /// The native type the type map gives a designed or extra column: a range or multirange column's comes from the map's
     /// <c>&lt;keyword&gt;:&lt;subtype&gt;</c> entry (<see cref="DialectTypeMaps.RangeKey"/>), else its <c>text</c> entry, as a dialect
-    /// without range types stores the text form (MQ4056); any other column's from its keyword, or from the scalar type its
-    /// <c>typeRef</c> names when <see cref="TypeColumn"/> found the scalar's native type applies (next-phase-2-design.md section 3.2).
+    /// without range types stores the text form (MQ4056); any other column's from its keyword (or from a scalar type the caller passes,
+    /// whose native type then applies).
     /// </summary>
     private string ColumnNativeType(RColumn c, RScalarType? scalar = null) =>
         !BuiltinTypes.IsRange(c.Type) ? NativeType(c.Type, c.Length, c.Precision, c.Scale, scalar, c.FixedLength, c.Unicode)

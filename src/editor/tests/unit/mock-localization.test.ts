@@ -90,12 +90,23 @@ describe("mock localization (locales scenario)", () => {
     expect(csvSame.json.changed).toEqual([]);
   });
 
-  it("lists typed columns with their domain, storage and bound table, null when missing, as the server does", async () => {
+  it("lists bound columns with their domain, storage and bound table, null when missing, as the server does", async () => {
     const model = mock.backend.model;
-    const tables = [...model.docs()].filter(([, json]) => json.kind === "table" && Array.isArray(json.columns));
-    const [tableId, table] = tables.find(([, json]) => (json.columns as Json[]).length >= 2)!;
-    const [boundId] = tables.find(([id]) => id !== tableId)!;
-    const database = table.database as string;
+    const [boundId, existing] = [...model.docs()].find(([, json]) => json.kind === "table")!;
+    const database = existing.database as string;
+    // A designed table of its own, so no other binding of the fixture maps its columns.
+    const tableId = "01J92P0V3KEVENTS000000000T";
+    const table: Json = {
+      id: tableId,
+      kind: "table",
+      name: "typed_rows",
+      database,
+      columns: [
+        { id: "01J92P0V3KEVENTS000000000E", name: "term", type: "string", length: 8 },
+        { id: "01J92P0V3KEVENTS000000000F", name: "state", type: "string", length: 8 },
+      ],
+    };
+    expect(model.create(table).outcome).toBe("saved");
     const type = (id: string, name: string, extra: Json) => {
       const created = model.create({ id, kind: "reference-type", name, code: { id: `${id.slice(0, 25)}B` }, label: { id: `${id.slice(0, 25)}C` }, ...extra });
       expect(created.outcome, JSON.stringify(created.diagnostics)).toBe("saved");
@@ -107,8 +118,30 @@ describe("mock localization (locales scenario)", () => {
       storage: { [database]: { strategy: "lookup-table" } },
       bindings: [{ id: "01J92P0V3KSTATES000000000D", database, table: boundId }],
     });
-    const typed = (table.columns as Json[]).map((c, i) => (i === 0 ? { ...c, typeRef: { ref: plain } } : i === 1 ? { ...c, typeRef: { ref: stored } } : c));
-    expect(model.save(tableId, { ...table, columns: typed }, model.get(tableId)!.hash).outcome).toBe("saved");
+    // An entity bound to the table maps its first two columns to attributes of the two types: their bound types (0.28.0).
+    const [first, second] = table.columns as Json[];
+    const bound = model.create({
+      id: "01J92P0V3KEVENTS000000000A",
+      kind: "entity",
+      name: "TypedRow",
+      key: { attributes: ["01J92P0V3KEVENTS000000000B"] },
+      attributes: [
+        { id: "01J92P0V3KEVENTS000000000B", name: "term", type: { ref: plain }, required: true },
+        { id: "01J92P0V3KEVENTS000000000C", name: "state", type: { ref: stored } },
+      ],
+      bindings: [
+        {
+          id: "01J92P0V3KEVENTS000000000D",
+          database,
+          source: tableId,
+          fields: [
+            { attribute: "01J92P0V3KEVENTS000000000B", column: first.id },
+            { attribute: "01J92P0V3KEVENTS000000000C", column: second.id },
+          ],
+        },
+      ],
+    });
+    expect(bound.outcome, JSON.stringify(bound.diagnostics)).toBe("saved");
     const rowOf = async (typeId: string) => {
       const usage = await call("GET", `/api/reference-types/${typeId}/usage`, "/api/reference-types/{id}/usage");
       return (usage.json.columns as Json[]).find((c) => c.table === tableId)!;

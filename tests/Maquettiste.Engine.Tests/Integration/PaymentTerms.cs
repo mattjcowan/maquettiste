@@ -8,8 +8,8 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// The shared setup of the reference-type refactor tests (next-phase-2-design.md section 3.5, "Tests"), over a billing copy
 /// (<see cref="E2ERepo"/>): the reference type <c>PaymentTerm</c> (codes <c>net30</c>, <c>net60</c> and <c>due</c>; a string code of
 /// length 8), which types <c>Invoice.paymentTerm</c> (default <c>net30</c>), so <c>invoices.payment_term</c> in <c>main</c> holds its codes;
-/// and <c>CreditTerm</c> (codes <c>net30</c> and <c>n90</c>), which types <c>Customer.creditTerm</c> and the column <c>term</c> added to the
-/// notes table. The settings declare the strategies <c>lookup-table</c>, <c>check</c> and <c>native</c> and choose <c>lookup-table</c>.
+/// and <c>CreditTerm</c> (codes <c>net30</c> and <c>n90</c>), which types <c>Customer.creditTerm</c> and <c>InvoiceNote.term</c>, which
+/// InvoiceNote's binding maps to the column <c>term</c> added to the notes table, so the column holds its codes. The settings declare the strategies <c>lookup-table</c>, <c>check</c> and <c>native</c> and choose <c>lookup-table</c>.
 /// </summary>
 internal static class PaymentTerms
 {
@@ -25,6 +25,8 @@ internal static class PaymentTerms
     public const string N90 = "01KACT00000000000000000012";
     public const string CustomerCreditTerm = "01KACT00000000000000000021";
     public const string NotesTerm = "01KACT00000000000000000022";
+    public const string InvoiceNoteTerm = "01KACT00000000000000000023";
+    public const string InvoiceNote = "01K6BND0000000000000000010";
     public const string NotesTable = "01K6BND0000000000000000001";
 
     /// <summary>The invoices table's key in main (a synthesized table with an overlay).</summary>
@@ -89,8 +91,13 @@ internal static class PaymentTerms
             { "id": "{{CustomerCreditTerm}}", "name": "creditTerm", "type": { "ref": "{{CreditTerm}}" } }
             """)));
         await repo.EditAsync(NotesTable, e => e["columns"]!.AsArray().Add(JsonNode.Parse($$"""
-            { "id": "{{NotesTerm}}", "name": "term", "type": "string", "length": 8, "typeRef": { "ref": "{{CreditTerm}}" } }
+            { "id": "{{NotesTerm}}", "name": "term", "type": "string", "length": 8 }
             """)));
+        await repo.EditAsync(InvoiceNote, e =>
+        {
+            e["attributes"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{InvoiceNoteTerm}}", "name": "term", "type": { "ref": "{{CreditTerm}}" } }"""));
+            e["bindings"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse($$"""{ "attribute": "{{InvoiceNoteTerm}}", "column": "{{NotesTerm}}" }"""));
+        });
         await repo.RestartAsync();
     }
 

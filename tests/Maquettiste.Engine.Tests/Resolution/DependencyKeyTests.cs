@@ -80,10 +80,11 @@ public sealed class DependencyKeyTests
     }
 
     [Fact]
-    public void A_typed_column_table_depends_on_the_type_and_reference_data()
+    public void A_bound_column_table_depends_on_the_binding_and_the_type()
     {
-        // next-phase-2-design.md section 3.2 (D21): a designed column's typeRef adds the type's keys to its table as a projected column's
-        // do: the element key, s:referenceData for a reference type, and the enum's and scalar type's keys.
+        // next-phase-2-design.md section 3.2 (D21): a designed column's bound type adds the type's keys to its table (the element key, and
+        // the enum's and scalar type's keys) and the entity whose binding gives the column its type. It holds no codes for the database,
+        // so its table does not read the reference data.
         var f = Create();
         var state = new ReferenceType
         {
@@ -93,23 +94,17 @@ public sealed class DependencyKeyTests
         f.B.Add(state);
         var money = f.B.ScalarType("Money", "decimal").Decimal(12, 2);
         var plain = f.B.Table("plain_events", f.Db).Column("id", "uuid");
-        var events = f.B.Table("invoice_events", f.Db).Column("status", "string").Column("kind", "string").Column("amount", "decimal")
-            .Edit(t => t with
-            {
-                Columns =
-                [
-                    t.Columns[0] with { TypeRef = new TypeRef { Ref = state.Id } },
-                    t.Columns[1] with { TypeRef = new TypeRef { Ref = f.Status.Id } },
-                    t.Columns[2] with { TypeRef = new TypeRef { Ref = money.Id } },
-                ],
-            });
+        var events = f.B.Table("invoice_events", f.Db).Column("id", "uuid", nullable: false).Column("status", "string").Column("kind", "string")
+            .Column("amount", "decimal").PrimaryKey("id");
+        var binder = events.BindTyped("InvoiceEvent", ("status", state.Id), ("kind", f.Status.Id), ("amount", money.Id));
         var db = ResolutionKit.Resolve(f.B).Db("main");
 
         var table = db.Table("invoice_events");
         Assert.Contains($"e:{state.Id}", table.Dependencies);
-        Assert.Contains("s:referenceData", table.Dependencies);
+        Assert.DoesNotContain("s:referenceData", table.Dependencies);
         Assert.Contains($"e:{f.Status.Id}", table.Dependencies);
         Assert.Contains($"e:{money.Id}", table.Dependencies);
+        Assert.Contains($"e:{binder.Id}", table.Dependencies);
         Assert.All(table.Columns, c => Assert.Same(table.Dependencies, c.Dependencies));
         var untyped = db.Table("plain_events");
         Assert.DoesNotContain("s:referenceData", untyped.Dependencies);
@@ -158,8 +153,8 @@ public sealed class DependencyKeyTests
         // of a unit reading the attribute alone; a sensitive added to the column changes it.
         var f = Create();
         var notes = f.B.Table("notes", f.Db).Column("id", "uuid", nullable: false).Column("body", "text").Column("status", "string")
-            .PrimaryKey("id")
-            .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "status" ? c with { TypeRef = new TypeRef { Ref = f.Status.Id } } : c)] });
+            .PrimaryKey("id");
+        notes.BindTyped("NoteStatus", ("status", f.Status.Id));
         var note = f.B.Entity("Note").Key("id", "uuid").Attr("body", "text");
         var other = f.B.Entity("OtherNote").Key("id", "uuid").Attr("body", "text", a => a.Description("Kept elsewhere."));
         foreach (var entity in new[] { note, other })

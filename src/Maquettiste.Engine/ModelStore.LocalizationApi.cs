@@ -101,14 +101,13 @@ public sealed record SeedBatchImportResult(IReadOnlyList<ImportPreview> Items, S
 public sealed record ReferenceTypeUse(string Attribute, string Owner, string? Domain, bool Collection, bool Required, IReadOnlyDictionary<string, StorageChoice> Storage);
 
 /// <summary>
-/// One column whose own <c>typeRef</c> names a reference type (next-phase-2-design.md section 3.2): a designed, imported, extra or
-/// inherited column. Projected columns are covered by their attributes (<see cref="ReferenceTypeUse"/>).
+/// One column whose bound type is a reference type: a column of a designed or imported table, own or inherited, that the entities'
+/// bindings map to attributes of the type (0.28.0). Projected columns are covered by their attributes (<see cref="ReferenceTypeUse"/>).
 /// </summary>
-/// <param name="Table">The table id: the table file's id, or a synthesized table's key (<c>&lt;entityId&gt;@&lt;databaseId&gt;</c>) for
-/// an overlay's extra column or a column a synthesized table inherits.</param>
+/// <param name="Table">The table file's id.</param>
 /// <param name="Column">The column id (a keyed id for an inherited column).</param>
 /// <param name="Database">The database id.</param>
-/// <param name="Domain">The table's package (a synthesized table without one: its entity's or relation's), or <see langword="null"/>.</param>
+/// <param name="Domain">The table's package, or <see langword="null"/>.</param>
 /// <param name="Required">Whether the column is not nullable.</param>
 /// <param name="Storage">The type's effective storage choice in the database, or <see langword="null"/> for template-defined.</param>
 /// <param name="BoundTable">The table of the type's binding in the database, or <see langword="null"/>.</param>
@@ -117,8 +116,8 @@ public sealed record ReferenceTypeColumnUse(string Table, string Column, string 
 
 /// <summary>The body of <c>GET /api/reference-types/{id}/usage</c>.</summary>
 /// <param name="Usages">The attributes typed by the type, ordinal by owner then attribute id.</param>
-/// <param name="Columns">The designed, imported, extra and inherited columns whose <c>typeRef</c> names the type, ordinal by table id
-/// then column id.</param>
+/// <param name="Columns">The columns of designed and imported tables whose bound type is the type (the bindings map them to attributes of
+/// the type), ordinal by table id then column id.</param>
 public sealed record ReferenceTypeUsage(IReadOnlyList<ReferenceTypeUse> Usages, IReadOnlyList<ReferenceTypeColumnUse> Columns);
 
 /// <summary>The API and MCP reads and writes of reference-types-seeds-localization.md section 3.9.</summary>
@@ -619,8 +618,8 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
-    /// The attributes typed by a reference type, with their effective storage per database, and the columns whose own <c>typeRef</c>
-    /// names it (next-phase-2-design.md section 3.2, decision 11). The read takes the shared resolved snapshot
+    /// The attributes typed by a reference type, with their effective storage per database, and the columns whose bound type is the
+    /// type (the bindings map them to attributes of the type; next-phase-2-design.md section 3.2, decision 11, since 0.28.0). The read takes the shared resolved snapshot
     /// (<see cref="ResolvedAsync"/>) and resolves on its own only when validation errors leave that without a model.
     /// </summary>
     /// <param name="referenceTypeId">The reference type id.</param>
@@ -662,12 +661,12 @@ public sealed partial class ModelStore
             {
                 foreach (var column in table.Columns)
                 {
-                    if (column.TypeRef?.ReferenceType is not { } typed || !string.Equals(typed.Id, referenceTypeId, StringComparison.Ordinal))
+                    if (column.BoundType?.ReferenceType is not { } typed || !string.Equals(typed.Id, referenceTypeId, StringComparison.Ordinal))
                         continue;
                     var choice = typed.Storage.GetValueOrDefault(database.Name);
                     var domain = table.Package ?? table.Entity?.Package ?? table.Relation?.Package;
                     columns.Add(new ReferenceTypeColumnUse(table.Id, column.Id, database.Id, domain?.Id, !column.Nullable,
-                        choice?.Strategy is null ? null : ToStorageChoice(choice), column.ReferenceBinding?.Table.Id));
+                        choice?.Strategy is null ? null : ToStorageChoice(choice), typed.Bindings.GetValueOrDefault(database.Name)?.Table.Id));
                 }
             }
         }

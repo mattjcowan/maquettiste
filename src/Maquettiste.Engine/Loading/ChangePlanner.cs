@@ -678,11 +678,6 @@ internal sealed partial class ChangePlanner
         // A diagram member without its element means nothing: drop the member.
         if (referrerKind == ElementKind.Diagram && segments.Length == 3 && segments[0] == "members" && segments[2] == "element")
             pointer = "/members/" + segments[1];
-        // A column's typeRef ({ "ref": ... }, the object form only) without its type means nothing: drop the whole typeRef, and the
-        // column keeps its physical type (next-phase-2-design.md section 3.2).
-        if (referrerKind is ElementKind.Table or ElementKind.Stereotype && segments.Length >= 4 && segments[^1] == "ref" && segments[^2] == "typeRef"
-            && segments[^4] == "columns")
-            pointer = pointer[..pointer.LastIndexOf('/')];
         // A convention package entry is the package id or { package, schema }: without its package the entry goes; without its
         // schema it becomes the package id (erratum E26).
         if (referrerKind == ElementKind.Database && segments.Length == 3 && segments[0] == "packages")

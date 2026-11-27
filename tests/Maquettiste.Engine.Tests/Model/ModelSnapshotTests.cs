@@ -165,34 +165,6 @@ public sealed class ModelSnapshotTests
     }
 
     [Fact]
-    public void A_column_typeRef_is_indexed_as_a_type_reference()
-    {
-        // next-phase-2-design.md section 3.2 (D20): Column.TypeRef has type TypeRef, so the index walks it as a type reference held by
-        // the column, as it walks an attribute's type.
-        var b = new ModelBuilder(seed: 9);
-        var state = b.Enum("InvoiceState").Member("Draft", code: "D");
-        var money = b.ScalarType("Money", "decimal");
-        var main = b.Database("main", Dialect.PostgreSql);
-        var events = b.Table("invoice_events", main).Column("status", "string", length: 1).Column("amount", "decimal").Column("note", "text")
-            .Edit(t => t with
-            {
-                Columns =
-                [
-                    t.Columns[0] with { TypeRef = new TypeRef { Ref = state.Id } },
-                    t.Columns[1] with { TypeRef = new TypeRef { Ref = money.Id } },
-                    t.Columns[2],
-                ],
-            });
-        var model = b.Build();
-
-        var toState = Assert.Single(model.ReferencesTo(state.Id));
-        Assert.Equal((events.Id, events.ColumnId("status"), "/columns/0/typeRef/ref", "typeRef"), (toState.FromElementId, toState.FromId, toState.JsonPointer, toState.Field));
-        var toMoney = Assert.Single(model.ReferencesTo(money.Id));
-        Assert.Equal((events.ColumnId("amount"), "/columns/1/typeRef/ref"), (toMoney.FromId, toMoney.JsonPointer));
-        Assert.DoesNotContain(model.ReferencesFrom(events.Id), r => r.FromId == events.ColumnId("note"));
-    }
-
-    [Fact]
     public void A_primary_key_with_an_id_is_a_key_sub_element()
     {
         // next-phase-2-design.md section 3.1 (D1): a primary key may carry an id, which makes it a key sub-element as a unique

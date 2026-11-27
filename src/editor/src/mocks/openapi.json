@@ -5103,7 +5103,7 @@
         ],
         "operationId": "getReferenceTypeUsage",
         "summary": "The attributes and columns that use a reference type, with their effective storage",
-        "description": "reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage\nchoice per database. `columns` lists the designed, imported, extra and inherited columns whose own `typeRef` names the\ntype (next-phase-2-design.md 3.2), with their table, database, domain, required, the effective storage choice in that\ndatabase and the bound table; projected columns are covered by their attributes.\n",
+        "description": "reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage\nchoice per database. `columns` lists the own and inherited columns of designed and imported tables that bindings map to\nattributes of the type (their bound type, next-phase-2-design.md 3.2, from bindings since 0.28.0), with their table,\ndatabase, domain, required, the effective storage choice in that database and the bound table; projected columns are\ncovered by their attributes.\n",
         "x-maquettiste-role": "viewer",
         "responses": {
           "200": {
@@ -11935,7 +11935,7 @@
           },
           "columns": {
             "type": "array",
-            "description": "The designed, imported, extra and inherited columns whose own `typeRef` names the type (next-phase-2-design.md 3.2),\nordinal by table id then column id. Projected columns are covered by their attributes in `usages`.\n",
+            "description": "The own and inherited columns of designed and imported tables whose bound type is the type (bindings map them to\nattributes of the type), ordinal by table id then column id. Projected columns are covered by their attributes in\n`usages`.\n",
             "items": {
               "type": "object",
               "required": [
@@ -11947,7 +11947,7 @@
               "properties": {
                 "table": {
                   "type": "string",
-                  "description": "The table id: the table file's id, or a synthesized table's key (`<entityId>@<databaseId>`) for an overlay's\nextra column or a column a synthesized table inherits.\n"
+                  "description": "The table file's id."
                 },
                 "column": {
                   "type": "string",
@@ -11957,7 +11957,7 @@
                   "$ref": "#/components/schemas/Ulid"
                 },
                 "domain": {
-                  "description": "The table's package (a synthesized table without one, its entity's or relation's); null at the root.",
+                  "description": "The table's package; null at the root.",
                   "oneOf": [
                     {
                       "$ref": "#/components/schemas/Ulid"
@@ -15348,7 +15348,7 @@
       },
       "TypeRecord": {
         "x-engine-record": "Maquettiste.Engine.TypeRecord",
-        "description": "An attribute's resolved type, or a column's `typeRef`; the named type by id.",
+        "description": "An attribute's resolved type, or a column's bound type; the named type by id.",
         "type": "object",
         "required": [
           "kind",
@@ -23862,8 +23862,8 @@
               }
             ]
           },
-          "typeRef": {
-            "description": "The enum, reference type or scalar type the column's own entry names (its `typeRef`), or null. A projected column has\nnone: its attribute (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in\nrecordings made before.\n",
+          "boundType": {
+            "description": "Derived from bindings, like a table's bound-by list (0.28.0): the enum, reference type or scalar type of the attribute\nthe bindings map to the column, when they all agree; else null. A projected column has none: its attribute\n(`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in recordings made\nbefore.\n",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/TypeRecord"
@@ -34450,22 +34450,6 @@
           }
         ]
       },
-      "columnTypeRef": {
-        "description": "The logical type of a column: an enum, a reference type or a scalar type, beside the column's physical type keyword.",
-        "type": "object",
-        "x-order": [
-          "ref"
-        ],
-        "properties": {
-          "ref": {
-            "$ref": "#/components/schemas/id"
-          }
-        },
-        "required": [
-          "ref"
-        ],
-        "additionalProperties": false
-      },
       "rangeSubtype": {
         "description": "The type of a range or multirange column's bounds: one of the keywords PostgreSQL has a built-in range for (int4range, int8range, numrange, daterange, tsrange, tstzrange).",
         "enum": [
@@ -34504,7 +34488,6 @@
           "pluralName",
           "attribute",
           "type",
-          "typeRef",
           "subtype",
           "length",
           "precision",
@@ -34557,10 +34540,6 @@
           },
           "type": {
             "$ref": "#/components/schemas/columnType"
-          },
-          "typeRef": {
-            "description": "Designed, imported, extra and contributed columns: the enum, reference type or scalar type whose values the column holds. Not on an overlay entry of a projected column, whose attribute types it, nor on a column a reference type's binding fills with a field (MQ4082).",
-            "$ref": "#/components/schemas/columnTypeRef"
           },
           "subtype": {
             "description": "The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013).",

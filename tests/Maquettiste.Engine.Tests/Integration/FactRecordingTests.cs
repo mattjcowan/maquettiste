@@ -1099,53 +1099,45 @@ public sealed class FactRecordingTests
         return (typeId, stateColumnId);
     }
 
+    /// <summary>
+    /// Types the notes table's <c>state</c> column the binding way (0.28.0): InvoiceNote gains (or retypes) the attribute <c>state</c> of
+    /// the given type, and its binding maps it to the column.
+    /// </summary>
+    private static Task<SaveResult> BindStateAsync(E2ERepo repo, string typeId, string columnId) =>
+        repo.EditAsync("01K6BND0000000000000000010", e =>
+        {
+            const string attributeId = "01K6BND00000000000000000S2";
+            var attributes = e["attributes"]!.AsArray();
+            if (attributes.FirstOrDefault(a => (string?)a!["id"] == attributeId) is JsonObject existing)
+            {
+                existing["type"] = new JsonObject { ["ref"] = typeId };
+                return;
+            }
+
+            attributes.Add(new JsonObject { ["id"] = attributeId, ["name"] = "state", ["type"] = new JsonObject { ["ref"] = typeId } });
+            e["bindings"]![0]!["fields"]!.AsArray().Add(new JsonObject { ["attribute"] = attributeId, ["column"] = columnId });
+        });
+
     [Fact]
-    public async Task Typing_a_designed_column_by_a_bound_reference_type_records_a_conversion()
+    public async Task Binding_a_designed_column_to_an_attribute_of_a_reference_type_records_no_fact()
     {
-        // next-phase-2-design.md section 3.2 (D21), decision 8: the snapshot captures the column's reference state once its typeRef names
-        // a reference type, so typing it by a type bound to a table changes that state: a change-type fact whose conversion says how
-        // values that are not codes are handled, as a change of a projected reference column's storage already records.
-        await using var repo = E2ERepo.Create(demo: false);
-        var (typeId, columnId) = await AddStateColumnAndBoundTypeAsync(repo);
-
-        var saved = await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().First(c => (string?)c!["id"] == columnId)!["typeRef"] = new JsonObject { ["ref"] = typeId });
-
-        var fact = Assert.Single(saved.Facts!);
-        Assert.Equal(("change-type", "pending"), (fact.Fact, fact.State));
-        Assert.Equal(["conversion"], fact.Missing);
-        var recorded = Assert.IsType<Migration>((await repo.Store.GetElementAsync(fact.Id, Ct))!.Element);
-        Assert.Equal(("column", NotesTableId, columnId), (recorded.Object!.Kind, recorded.Object.Table, recorded.Object.Key));
-        Assert.Equal(((string?)null, "01K9X3B0000000000000000001"), (recorded.From!.ReferenceTable, recorded.To!.ReferenceTable));
-        Assert.Equal((recorded.From.Type, recorded.From.Length), (recorded.To.Type, recorded.To.Length));
-    }
-
-    [Fact]
-    public async Task Binding_the_reference_type_of_a_typed_column_records_a_conversion()
-    {
-        // next-phase-2-design.md section 3.2, decision 14: the type-side edit. A column typed by a reference type bound nowhere captures no
-        // reference table; saving the type with a binding to a table in main reaches the column's table through its e:<type> key, and
-        // the recording run links the binding, so the column's captured reference table changes: one change-type asking for a conversion.
+        // 0.28.0: binding an entity never changes storage. The column's bound type is information for validation and templates; its
+        // captured reference state comes from its table alone, so binding it to an attribute of a type bound to a table records nothing,
+        // and neither does binding the type itself to a table afterwards.
         await using var repo = E2ERepo.Create(demo: false);
         var (typeId, columnId) = await AddStateColumnAndBoundTypeAsync(repo);
         JsonNode? bindings = null;
         Assert.Empty((await repo.EditAsync(typeId, e => { bindings = e["bindings"]!.DeepClone(); e.Remove("bindings"); })).Facts!);
-        Assert.Empty((await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().First(c => (string?)c!["id"] == columnId)!["typeRef"] = new JsonObject { ["ref"] = typeId })).Facts!);
 
-        var bound = await repo.EditAsync(typeId, e => e["bindings"] = bindings!.DeepClone());
-
-        var fact = Assert.Single(bound.Facts!);
-        Assert.Equal(("change-type", "pending"), (fact.Fact, fact.State));
-        Assert.Equal(["conversion"], fact.Missing);
-        var recorded = Assert.IsType<Migration>((await repo.Store.GetElementAsync(fact.Id, Ct))!.Element);
-        Assert.Equal(("column", NotesTableId, columnId), (recorded.Object!.Kind, recorded.Object.Table, recorded.Object.Key));
-        Assert.Equal(((string?)null, "01K9X3B0000000000000000001"), (recorded.From!.ReferenceTable, recorded.To!.ReferenceTable));
+        Assert.Empty((await BindStateAsync(repo, typeId, columnId)).Facts!);
+        Assert.Empty((await repo.EditAsync(typeId, e => e["bindings"] = bindings!.DeepClone())).Facts!);
+        Assert.Empty(FactPaths(repo));
     }
 
     [Fact]
     public async Task Retyping_between_types_with_one_storage_records_no_fact()
     {
-        // next-phase-2-design.md section 3.2 (D21), decision 8: changing typeRef between two types the templates store alike (here no
-        // strategy and no binding in main) changes no captured storage, so it records no fact; 3.5's value maps cover moving codes.
+        // 0.28.0: changing the type of the attribute a binding maps to a column changes no captured storage, so it records no fact.
         await using var repo = E2ERepo.Create(demo: false);
         var (_, columnId) = await AddStateColumnAndBoundTypeAsync(repo);
         const string draftId = "01K9X3C0000000000000000001", stageId = "01K9X3C0000000000000000004";
@@ -1161,19 +1153,20 @@ public sealed class FactRecordingTests
                 """);
         }
 
-        Assert.Empty((await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().First(c => (string?)c!["id"] == columnId)!["typeRef"] = new JsonObject { ["ref"] = draftId })).Facts!);
-        var retyped = await repo.EditAsync(NotesTableId, e => e["columns"]!.AsArray().First(c => (string?)c!["id"] == columnId)!["typeRef"] = new JsonObject { ["ref"] = stageId });
+        Assert.Empty((await BindStateAsync(repo, draftId, columnId)).Facts!);
+        var retyped = await BindStateAsync(repo, stageId, columnId);
 
         Assert.Empty(retyped.Facts!);
         Assert.Empty(FactPaths(repo));
     }
 
     [Fact]
-    public async Task Materializing_a_projected_reference_column_records_no_conversion()
+    public async Task Materializing_a_projected_reference_column_records_its_conversion()
     {
-        // next-phase-2-design.md section 3.2 (D25), decisions 8 and 12: materialize-tables writes the stored column's typeRef, so the
-        // column keeps the reference state its projection had (the bound table invoice_states): the write records its rekey and no
-        // change-type asking for a conversion.
+        // 0.28.0: the stored table carries its own definition, a plain string column. The entity's binding maps it to the reference typed
+        // attribute, which gives the column its bound type but no reference state (binding never changes storage), so the column loses
+        // the reference state its projection had (the bound table invoice_states): the write records its rekey and a change-type that asks
+        // how values that are not codes convert.
         await using var repo = E2ERepo.Create(demo: false);
         var (typeId, _) = await AddStateColumnAndBoundTypeAsync(repo);
         var added = await repo.EditAsync(E2ERepo.CustomerId, e => e["attributes"]!.AsArray().Add(new JsonObject
@@ -1184,11 +1177,12 @@ public sealed class FactRecordingTests
 
         var result = await ApplyAsync(repo, Materialize(E2ERepo.CustomerId));
 
-        var fact = Assert.Single(result.Facts!);
-        Assert.Equal(("rekey", "complete"), (fact.Fact, fact.State));
+        Assert.Equal([("rekey", "complete"), ("change-type", "pending")], result.Facts!.Select(f => (f.Fact, f.State)));
         var stored = (await repo.Store.GetSnapshotAsync(Ct)).All<Table>().Single(t => t.Database == E2ERepo.MainDatabaseId && t.Name == "customers");
-        Assert.Equal(typeId, stored.Columns.Single(c => c.Name == "state").TypeRef?.Ref);
-        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+        Assert.Contains(stored.Columns, c => c.Name == "state");
+        var resolved = await repo.Store.Services.Resolver.ResolveAsync(await repo.Store.GetSnapshotAsync(Ct), null, Ct);
+        Assert.Equal(typeId, resolved.Databases.Single(d => d.Id == E2ERepo.MainDatabaseId).Tables.Single(t => t.Name == "customers").Columns
+            .Single(c => c.Name == "state").BoundType?.ReferenceType?.Id);
     }
 
     [Fact]
@@ -1837,15 +1831,16 @@ public sealed class FactRecordingTests
 
     private const string ArchiveDatabaseId = "01KAPD00000000000000000001";
     private const string ArchiveSchemaId = "01KAPD00000000000000000002";
-    private const string ArchiveTermsId = "01KAPD00000000000000000003";
-    private const string ArchiveTermColumnId = "01KAPD00000000000000000005";
+    private const string ArchivedTermId = "01KAPD00000000000000000003";
+    private const string ArchivedTermAttributeId = "01KAPD00000000000000000005";
     private const string EmptyDatabaseId = "01KAPD00000000000000000011";
     private const string BoundDatabaseId = "01KAPD00000000000000000021";
     private const string BoundTermsId = "01KAPD00000000000000000023";
 
     /// <summary>
-    /// Adds <c>archive</c> (no convention), whose designed table <c>terms</c> has a column <c>term</c> typed by PaymentTerm, and
-    /// <c>empty</c>, a database with nothing in it; then restarts the store.
+    /// Adds <c>archive</c> (no convention), where a mapping places the entity <c>ArchivedTerm</c>, whose <c>term</c> of PaymentTerm makes a
+    /// reference column of the table the database makes for it (main ignores the entity), and <c>empty</c>, a database with nothing in
+    /// it; then restarts the store. A column of a table file would hold no codes: binding an entity never changes storage.
     /// </summary>
     private static async Task AddArchiveAndEmptyAsync(E2ERepo repo, bool holder = true)
     {
@@ -1855,11 +1850,15 @@ public sealed class FactRecordingTests
             """);
         if (holder)
         {
-            await repo.CreateElementAsync($$"""
-                { "kind": "table", "id": "{{ArchiveTermsId}}", "name": "terms", "database": "{{ArchiveDatabaseId}}", "schema": "{{ArchiveSchemaId}}",
-                  "columns": [ { "id": "01KAPD00000000000000000004", "name": "id", "type": "uuid", "nullable": false },
-                               { "id": "{{ArchiveTermColumnId}}", "name": "term", "type": "string", "length": 8, "typeRef": { "ref": "{{PaymentTerms.PaymentTerm}}" } } ],
-                  "primaryKey": { "columns": [ "01KAPD00000000000000000004" ] } }
+            // One change, so main never gets a table for the entity.
+            await PaymentTerms.ApplyAsync(repo, $$"""
+                { "op": "create", "element": { "kind": "entity", "id": "{{ArchivedTermId}}", "name": "ArchivedTerm", "key": { "attributes": [ "01KAPD00000000000000000004" ] },
+                  "attributes": [ { "id": "01KAPD00000000000000000004", "name": "id", "type": "uuid", "required": true },
+                                  { "id": "{{ArchivedTermAttributeId}}", "name": "term", "type": { "ref": "{{PaymentTerms.PaymentTerm}}" } } ] } },
+                { "op": "create", "element": { "kind": "mapping", "id": "01KAPD00000000000000000006", "name": "ArchivedTerm in archive",
+                  "database": "{{ArchiveDatabaseId}}", "entity": "{{ArchivedTermId}}" } },
+                { "op": "create", "element": { "kind": "mapping", "id": "01KAPD00000000000000000007", "name": "ArchivedTerm not in main",
+                  "database": "{{E2ERepo.MainDatabaseId}}", "entity": "{{ArchivedTermId}}", "ignore": true } }
                 """);
         }
 
@@ -1881,7 +1880,7 @@ public sealed class FactRecordingTests
 
         var result = await PaymentTerms.ApplyAsync(repo, RenameNet30);
 
-        // main stores the codes in invoices.payment_term, archive in terms.term; empty stores none and gets no fact.
+        // main stores the codes in invoices.payment_term, archive in archived_terms.term; empty stores none and gets no fact.
         Assert.Equal([E2ERepo.MainDatabaseId, ArchiveDatabaseId], result.Facts!.Select(f => f.Database).Order(StringComparer.Ordinal));
         Assert.All(result.Facts!, f => Assert.Equal(("value-map", "complete"), (f.Fact, f.State)));
         Assert.Equal("maps PaymentTerm codes net30 -> net-30 in 1 column", result.Facts!.Single(f => f.Database == E2ERepo.MainDatabaseId).Summary);
@@ -1895,10 +1894,11 @@ public sealed class FactRecordingTests
         Assert.Equal([("net30", "net-30")], main.Values.Select(v => (v.From, v.To)));
         Assert.Empty(main.Collections);
         var archive = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, ArchiveDatabaseId));
-        Assert.Equal((ArchiveTermsId, ArchiveTermColumnId, "terms"), (archive.Objects[0].Table, archive.Objects[0].Key, archive.Objects[0].TableName));
+        Assert.Equal((ArchivedTermId + "@" + ArchiveDatabaseId, ArchivedTermAttributeId, "archived_terms"), (archive.Objects[0].Table, archive.Objects[0].Key, archive.Objects[0].TableName));
         Assert.Empty(await PaymentTerms.ValueMapsAsync(repo, EmptyDatabaseId));
         Assert.DoesNotContain(result.Items.SelectMany(i => i.Diagnostics), d => d.Rule == "MQ4114");
-        Assert.Equal(0, (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
+        var validation = await repo.Store.ValidateAsync(ValidationScope.All, Ct);
+        Assert.True(validation.Errors == 0, string.Join("; ", validation.Diagnostics.Where(d => d.Severity == Diagnostics.DiagnosticSeverity.Error).Select(d => d.Rule + " " + d.Message)));
     }
 
     [Fact]
@@ -1963,6 +1963,45 @@ public sealed class FactRecordingTests
     }
 
     [Fact]
+    public async Task Rename_code_maps_a_column_whose_declared_key_points_at_the_bound_code_column()
+    {
+        // 0.28.0: in bound, PaymentTerm's rows live in payment_terms, and orders declares a foreign key from its term into their code: the
+        // table says the column holds the codes, so the rename maps it there. A column a binding maps to an attribute of the type, with no
+        // declared key, would get no value map: binding never changes storage.
+        await using var repo = PaymentTerms.Create();
+        await PaymentTerms.AddAsync(repo);
+        const string Schema = "01KAPD00000000000000000022", Orders = "01KAPD00000000000000000027", OrdersTerm = "01KAPD00000000000000000029";
+        await repo.CreateElementAsync($$"""
+            { "kind": "database", "id": "{{BoundDatabaseId}}", "name": "bound", "dialect": "postgresql", "version": "16", "defaultSchema": "bound",
+              "schemas": [ { "id": "{{Schema}}", "name": "bound" } ], "byConvention": "none" }
+            """);
+        await repo.CreateElementAsync($$"""
+            { "kind": "table", "id": "{{BoundTermsId}}", "name": "payment_terms", "database": "{{BoundDatabaseId}}", "schema": "{{Schema}}",
+              "columns": [ { "id": "01KAPD00000000000000000024", "name": "code", "type": "string", "length": 8, "nullable": false },
+                           { "id": "01KAPD00000000000000000025", "name": "label", "type": "string", "length": 64, "nullable": false } ],
+              "primaryKey": { "columns": [ "01KAPD00000000000000000024" ] } }
+            """);
+        await repo.EditAsync(PaymentTerms.PaymentTerm, e => e["bindings"] = JsonNode.Parse($$"""
+            [ { "id": "01KAPD00000000000000000026", "database": "{{BoundDatabaseId}}", "table": "{{BoundTermsId}}",
+                "fields": [ { "attribute": "code", "column": "01KAPD00000000000000000024" }, { "attribute": "label", "column": "01KAPD00000000000000000025" } ] } ]
+            """));
+        await repo.CreateElementAsync($$"""
+            { "kind": "table", "id": "{{Orders}}", "name": "orders", "database": "{{BoundDatabaseId}}", "schema": "{{Schema}}",
+              "columns": [ { "id": "01KAPD00000000000000000028", "name": "id", "type": "uuid", "nullable": false },
+                           { "id": "{{OrdersTerm}}", "name": "term", "type": "string", "length": 8 } ],
+              "primaryKey": { "columns": [ "01KAPD00000000000000000028" ] },
+              "foreignKeys": [ { "id": "01KAPD00000000000000000030", "name": "fk_orders_term", "columns": [ "{{OrdersTerm}}" ], "referencesTable": "{{BoundTermsId}}" } ] }
+            """);
+        await repo.RestartAsync();
+
+        var result = await PaymentTerms.ApplyAsync(repo, RenameNet30);
+
+        var bound = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, BoundDatabaseId));
+        Assert.Equal((Orders, OrdersTerm, "orders"), (Assert.Single(bound.Objects).Table, bound.Objects[0].Key, bound.Objects[0].TableName));
+        Assert.Contains(result.Facts!, f => f.Database == BoundDatabaseId && f.Fact == "value-map");
+    }
+
+    [Fact]
     public async Task A_merge_records_its_value_map_before_the_strategy_change_type()
     {
         // CreditTerm is stored with check in main, PaymentTerm with the project's lookup-table: the merged columns change strategy.
@@ -1974,13 +2013,15 @@ public sealed class FactRecordingTests
             """);
 
         var facts = (await repo.Store.GetSnapshotAsync(Ct)).All<Migration>().OrderBy(f => f.Id, StringComparer.Ordinal).ToList();
-        Assert.Equal([MigrationFact.ValueMap, MigrationFact.ChangeType, MigrationFact.ChangeType], facts.Select(f => f.Fact));
+        // notes.term, which InvoiceNote's binding maps to an attribute of CreditTerm, holds no codes for the database: binding never
+        // changes storage, so only customers.credit_term is mapped and changes strategy.
+        Assert.Equal([MigrationFact.ValueMap, MigrationFact.ChangeType], facts.Select(f => f.Fact));
         var map = facts[0];
         Assert.Equal((PaymentTerms.PaymentTerm, PaymentTerms.CreditTerm), (map.ReferenceType, map.FromReferenceType));
         Assert.Equal(("CreditTerm", "PaymentTerm"), (map.From!.Name, map.To!.Name));
         Assert.Equal([("n90", "net60")], map.Values.Select(v => (v.From, v.To)));
-        Assert.Equal([("customers", "credit_term"), ("notes", "term")], map.Objects.Select(o => (o.TableName!, o.Name!)).Order());
-        Assert.Equal("maps CreditTerm codes n90 -> net60 into PaymentTerm in 2 columns", result.Facts!.Single(f => f.Fact == "value-map").Summary);
+        Assert.Equal([("customers", "credit_term")], map.Objects.Select(o => (o.TableName!, o.Name!)));
+        Assert.Equal("maps CreditTerm codes n90 -> net60 into PaymentTerm in 1 column", result.Facts!.Single(f => f.Fact == "value-map").Summary);
         // Each strategy change converts mapped codes: it follows the value map on its table.
         foreach (var change in facts.Skip(1))
         {

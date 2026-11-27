@@ -9,8 +9,8 @@ namespace Maquettiste.Packs.Tests;
 /// The shared setup of the reference-type refactor tests (next-phase-2-design.md section 3.5, "Tests") over a billing copy with the
 /// sql-ddl pack: the reference type <c>PaymentTerm</c> (codes <c>net30</c>, <c>net60</c> and <c>due</c>; a string code of length 8),
 /// which types <c>Invoice.paymentTerm</c> (default <c>net30</c>), so <c>invoices.payment_term</c> in
-/// <c>main</c> holds its codes; and <c>CreditTerm</c> (codes <c>net30</c> and <c>n90</c>), which types <c>Customer.creditTerm</c> and the
-/// column <c>term</c> added to the notes table. The settings declare the strategies <c>lookup-table</c>, <c>check</c> and <c>native</c>
+/// <c>main</c> holds its codes; and <c>CreditTerm</c> (codes <c>net30</c> and <c>n90</c>), which types <c>Customer.creditTerm</c> and
+/// <c>InvoiceNote.term</c>, which InvoiceNote's binding maps to the column <c>term</c> added to the notes table. The settings declare the strategies <c>lookup-table</c>, <c>check</c> and <c>native</c>
 /// and choose one for the project. Elements are created and refactored through a model store, as an agent would.
 /// </summary>
 internal static class PaymentTerms
@@ -19,6 +19,8 @@ internal static class PaymentTerms
     public const string InvoiceId = "01J92P0V0FJ23CGSNKM7P1W5V7";
     public const string CustomerId = "01J92P0V0ETQKXXP951CMMNHH3";
     public const string NotesTable = "01K6BND0000000000000000001";
+    public const string InvoiceNote = "01K6BND0000000000000000010";
+    public const string InvoiceNoteTerm = "01KACT00000000000000000023";
     public const string PaymentTerm = "01KAPT00000000000000000001";
     public const string PaymentTermSeed = "01KAPT00000000000000000010";
     public const string Due = "01KAPT00000000000000000013";
@@ -78,8 +80,13 @@ internal static class PaymentTerms
                 e["attributes"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{AcceptedTerms}}", "name": "acceptedTerms", "type": { "ref": "{{PaymentTerm}}" }, "collection": true }"""));
         });
         await EditAsync(store, NotesTable, e => e["columns"]!.AsArray().Add(JsonNode.Parse($$"""
-            { "id": "01KACT00000000000000000022", "name": "term", "type": "string", "length": 8, "typeRef": { "ref": "{{CreditTerm}}" } }
+            { "id": "01KACT00000000000000000022", "name": "term", "type": "string", "length": 8 }
             """)));
+        await EditAsync(store, InvoiceNote, e =>
+        {
+            e["attributes"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{InvoiceNoteTerm}}", "name": "term", "type": { "ref": "{{CreditTerm}}" } }"""));
+            e["bindings"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "attribute": "01KACT00000000000000000023", "column": "01KACT00000000000000000022" }"""));
+        });
     }
 
     /// <summary>Applies a batch of operations (JSON objects) through a model store and asserts it saved.</summary>

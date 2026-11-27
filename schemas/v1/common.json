@@ -408,18 +408,6 @@
         }
       ]
     },
-    "columnTypeRef": {
-      "description": "The logical type of a column: an enum, a reference type or a scalar type, beside the column's physical type keyword.",
-      "type": "object",
-      "x-order": ["ref"],
-      "properties": {
-        "ref": {
-          "$ref": "#/$defs/id"
-        }
-      },
-      "required": ["ref"],
-      "additionalProperties": false
-    },
     "sensitivity": {
       "description": "Whether a value is personal data (pii) or a secret.",
       "enum": ["pii", "secret"]
@@ -703,7 +691,6 @@
         "pluralName",
         "attribute",
         "type",
-        "typeRef",
         "subtype",
         "length",
         "precision",
@@ -756,10 +743,6 @@
         },
         "type": {
           "$ref": "#/$defs/columnType"
-        },
-        "typeRef": {
-          "description": "Designed, imported, extra and contributed columns: the enum, reference type or scalar type whose values the column holds. Not on an overlay entry of a projected column, whose attribute types it, nor on a column a reference type's binding fills with a field (MQ4082).",
-          "$ref": "#/$defs/columnTypeRef"
         },
         "subtype": {
           "description": "The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013).",

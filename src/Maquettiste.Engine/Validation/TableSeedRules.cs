@@ -8,7 +8,7 @@ namespace Maquettiste.Engine.Validation;
 /// The rules of a seed whose target is a table (2026-10-07, table seeds): MQ7107 (a table file and its own columns), MQ7108 (no
 /// column the database or the engine fills), MQ7109 (each cell fits its column), MQ7111 (a foreign key names a seeded row, in every environment the
 /// row is loaded in), MQ7112 (one row per key), MQ7113 (one source for a table's rows), MQ7114 (a row key), MQ7121 (every seed of
-/// the table finds its rows by the same key) and MQ7014 (a cell of a column typed by an enum or a reference type holds one of its
+/// the table finds its rows by the same key) and MQ7014 (a cell of a column whose bound type is an enum or a reference type holds one of its
 /// stored values or codes, a code wherever the row is loaded; next-phase-2-design.md section 3.2), or MQ7019 in its place for a former
 /// code of the reference type (section 3.5). A stable id column takes no cell
 /// (MQ7108), and the first seed's row key can derive stable ids (MQ7125; section 3.4). A foreign key of the table may stand for its
@@ -179,9 +179,9 @@ internal static class TableSeedRules
                     continue;
                 if (Fit(cell, column) is { } problem)
                     report.Add("MQ7109", $"Row {row.Id}, column '{column.Name}': {problem}.", rowPointer + "/values/" + Str(k), row.Id);
-                if (ColumnTypeRules.FormerCodeProblem(context, column, cell, seed) is { } former)
+                if (ColumnTypeRules.FormerCodeProblem(context, table, column, cell, seed) is { } former)
                     report.Add("MQ7019", $"Row {row.Id}, column '{column.Name}' names a former code: {former}.", rowPointer + "/values/" + Str(k), row.Id);
-                else if (ColumnTypeRules.ValueProblem(context, column, cell, seed) is { } wrong)
+                else if (ColumnTypeRules.ValueProblem(context, table, column, cell, seed) is { } wrong)
                     report.Add("MQ7014", $"Row {row.Id}, column '{column.Name}': {wrong}.", rowPointer + "/values/" + Str(k), row.Id);
             }
 

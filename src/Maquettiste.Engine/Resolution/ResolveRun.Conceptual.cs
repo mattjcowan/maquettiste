@@ -1336,8 +1336,8 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
-    /// The resolved type a type reference names (an attribute's type, or a column's <c>typeRef</c>, next-phase-2-design.md section
-    /// 3.2); the named element joins <paramref name="deps"/>.
+    /// The resolved type a type reference names (an attribute's type, or a column's bound type); the named element joins
+    /// <paramref name="deps"/>.
     /// </summary>
     internal RType TypeOf(TypeRef type, DependencySet deps, out RScalarType? scalar)
     {
