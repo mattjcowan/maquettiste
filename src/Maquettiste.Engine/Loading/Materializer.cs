@@ -683,18 +683,25 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         return binding;
     }
 
-    /// <summary>What a binding field names for a projected column: an attribute, a member, or a to-one end; null when none fits.</summary>
+    /// <summary>What a binding field names for a projected column: an attribute, a member to any depth, or a to-one end; null when none fits.</summary>
     private static string? FieldTarget(REntity entity, string path, ResolvedModel resolved)
     {
         var segments = path.Split('.');
         if (entity.Attributes.FirstOrDefault(a => a.Id == segments[0]) is { } attribute)
         {
-            if (segments.Length == 1)
+            if (segments.Length == 1 || attribute.Collection)
                 return attribute.Collection ? null : path;
-            if (segments.Length == 2 && attribute.Type.ValueObject is { } vo && vo.Attributes.FirstOrDefault(m => m.Id == segments[1]) is { Collection: false } member
-                && member.Type.Kind != "value-object")
-                return path;
-            return null;
+            // A member of an embedded value object, to any depth; one that is itself a value object or a list is a JSON column
+            // (retire-projection-design.md section 6).
+            var current = attribute;
+            for (var i = 1; i < segments.Length; i++)
+            {
+                if (current.Collection || current.Type.ValueObject is not { } vo || vo.Attributes.FirstOrDefault(m => m.Id == segments[i]) is not { } member)
+                    return null;
+                current = member;
+            }
+
+            return path;
         }
 
         if (segments.Length == 2)

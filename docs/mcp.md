@@ -493,7 +493,10 @@ constants); `get_resolved_model` gives each entity record its resolved `bindings
 binding's five statements for any dialect. `validate` reports MQ4044 to MQ4054 and MQ4121 for them (MQ4047, a column nothing
 accounts for, is the "a mapping for every column" warning), MQ4122 to MQ4126 for a type column a base shares with its
 subtypes in one table (`discriminatorColumn` on the base's binding), MQ4128 to MQ4136 for a subtype in a table of its own joined to
-its base's (`baseForeignKey` on its binding), and MQ4087 and MQ4088 for provenance. An attribute with no
+its base's (`baseForeignKey` on its binding), MQ4137 to MQ4144 for an attribute kept in a table of its own (`childTables` on
+the binding; `preview_binding_sql` adds each entry's select, insert and delete, labelled by its attribute), and MQ4087 and MQ4088
+for provenance. A field's path may walk value objects to any depth (`attributeId.memberId.memberId`); a path that ends at a nested
+value object or a list maps a JSON column. An attribute with no
 description of its own shows the comment of the column a binding maps it to, and its resolved record names that column
 in `descriptionColumn`. Deleting a table, view, query or database a binding names refuses with the entity among the
 referrers; with `remove-references` or `delete-dependents` the binding is removed and the entity stays.

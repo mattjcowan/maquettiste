@@ -1,0 +1,38 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01K6BFX0000000000000000103",
+  "name": "PostalAddress",
+  "package": "01K6BFX0000000000000000001",
+  "description": "A postal address, with notes for the courier and where it is on the map.",
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000104",
+      "name": "street",
+      "type": "string",
+      "length": 120,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000105",
+      "name": "city",
+      "type": "string",
+      "length": 80,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000106",
+      "name": "deliveryNotes",
+      "type": "string",
+      "length": 200,
+      "collection": true
+    },
+    {
+      "id": "01K6BFX0000000000000000107",
+      "name": "geo",
+      "type": {
+        "ref": "01K6BFX0000000000000000100"
+      }
+    }
+  ]
+}

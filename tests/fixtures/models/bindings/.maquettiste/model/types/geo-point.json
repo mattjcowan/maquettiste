@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01K6BFX0000000000000000100",
+  "name": "GeoPoint",
+  "package": "01K6BFX0000000000000000001",
+  "description": "A point on the map, in degrees.",
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000101",
+      "name": "latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000102",
+      "name": "longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "required": true
+    }
+  ]
+}

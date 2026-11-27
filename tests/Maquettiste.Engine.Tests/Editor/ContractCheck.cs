@@ -51,6 +51,7 @@ internal static class ContractCheck
         ["copyLinkRecord"] = "PartsAndCopyTests.The_copy_resolves_its_entries_fills_in_the_rest_and_leaves_out_a_kind_with_its_parts",
         ["copyPartRecord"] = "PartsAndCopyTests.The_copy_resolves_its_entries_fills_in_the_rest_and_leaves_out_a_kind_with_its_parts",
         ["copyChoiceRecord"] = "PartsAndCopyTests.The_copy_resolves_its_entries_fills_in_the_rest_and_leaves_out_a_kind_with_its_parts",
+        ["bindingBaseChildRecord"] = "BindingChildTableTests.A_bases_child_table_reaches_the_derived_binding_with_the_derived_entitys_onCopy",
     };
 
     /// <summary>

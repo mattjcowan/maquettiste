@@ -277,6 +277,15 @@ Built since:
   `exists` probes a row. Type-column membership and several types read it. MQ4128 to MQ4136. A relation mapping's
   `attributes[].column` also works on the foreign-key shape. `csharp-dapper` builds the repository. Child tables and
   deeper field paths follow in the same pull request. [The design](retire-projection-design.md).
+- **Child tables and field paths of any depth (0.29.0, pull request 1 of "Retiring projection", unreleased).** A binding
+  keeps a list attribute, or a single value object, in a table of its own (`childTables`: the attribute, the table, the
+  owner foreign key on the owning table's primary or unique key, fields, an integer order column for a list, constants,
+  columns). Each entry renders its select by owner (ordered), delete by owner and insert of one row; writes replace the rows,
+  after the owner's insert, and a delete removes them first unless the key cascades. Inherited attributes work with a table
+  per type and with one table per hierarchy; a copy carries the rows as the attribute's `onCopy` says. Field paths walk
+  nested value objects to any depth, and a path that ends at a nested value object or a list maps a JSON column. MQ4137 to
+  MQ4144; MQ4058 counts nested members. `csharp-dapper` loads and writes the rows in one unit, its bases' too, and its delete
+  checks the row first. No editor screen yet (part 3). [The design](retire-projection-design.md), section 5.
 - **Queries stop naming entities: removal (0.28.0).** `entity`, `collections` and a select field's `attribute` are gone
   from the query format, the resolved model, the SQL renderer (`query_collection_sql` too), `csharp-dapper` and the
   editor. A file that still has one does not load: MQ4127 is now an error at load that no setting changes, naming the

@@ -28,6 +28,9 @@ namespace Maquettiste.Engine;
 /// statement of the table that holds its column: a binding with bases leaves it to the base's.</item>
 /// <item><c>exists</c>: a count of the rows of the binding's own source with the key, filtered as its reads are, joining no base: the probe
 /// that tells whether a base's row is one of this entity's when the base's table has no type column.</item>
+/// <item>A child table entry (<see cref="RBindingChildTable"/>, retire-projection-design.md section 5) renders its own <c>select</c> (the rows of
+/// one owner, ordered by the order column), <c>delete</c> (the rows of one owner) and <c>insert</c> (one row): writes replace an attribute's
+/// rows, after the owner's insert and before the owner's delete.</item>
 /// </list>
 /// The type codes are those of <see cref="REntityBinding.DiscriminatorColumn"/>: <c>column = code</c> for one, <c>column IN (…)</c> for
 /// several. A base of a binding (<see cref="RBindingBase"/>) renders its table's <c>insert</c>, <c>update</c> and <c>delete</c> for the
@@ -67,6 +70,47 @@ public static partial class BindingSql
         ArgumentNullException.ThrowIfNull(level);
         ArgumentNullException.ThrowIfNull(statement);
         return Render(new Writer(level.Binding, level, dialect, options), statement);
+    }
+
+    /// <summary>The statements a child table entry renders, in order.</summary>
+    public static IReadOnlyList<string> ChildStatements { get; } = ["select", "insert", "delete"];
+
+    /// <summary>
+    /// Renders one statement of a binding's child table entry (retire-projection-design.md section 5): <c>select</c>, the rows of one owner, the
+    /// fields aliased to their names, filtered by the entry's constants and ordered by its order column; <c>delete</c>, the rows of one owner;
+    /// <c>insert</c>, one row, with the owner's key, the position, the fields not generated and the constants. The owner's values are parameters
+    /// named after the owner's fields (<c>ownerId</c>), the position <c>position</c>, the fields after their names. A read-only binding's entry
+    /// renders only its select; the binding's other statements render as the empty string.
+    /// </summary>
+    /// <param name="child">One of a binding's <see cref="REntityBinding.ChildTables"/>.</param>
+    /// <param name="statement"><c>select</c>, <c>insert</c> or <c>delete</c>; the binding's other statements render as the empty string.</param>
+    /// <param name="dialect">A dialect name, or <see langword="null"/> for the binding's database's.</param>
+    /// <param name="options">The options, or <see langword="null"/> for <see cref="QuerySqlOptions.Default"/>.</param>
+    /// <returns>The statement, empty when the entry does not have it.</returns>
+    /// <exception cref="ArgumentException">The statement, the dialect or an option is not one this renderer knows.</exception>
+    public static QuerySqlText Render(RBindingChildTable child, string statement, string? dialect = null, QuerySqlOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        ArgumentNullException.ThrowIfNull(statement);
+        var writer = new Writer(child.Binding, null, dialect, options);
+        switch (statement)
+        {
+            case "select":
+                writer.ChildSelect(child);
+                break;
+            case "insert":
+                writer.ChildInsert(child);
+                break;
+            case "delete":
+                writer.ChildDelete(child);
+                break;
+            case "select-by-key" or "update" or "exists":
+                break;
+            default:
+                throw new ArgumentException($"'{statement}' is not a binding statement (select, select-by-key, insert, update, delete, exists).", nameof(statement));
+        }
+
+        return writer.Result();
     }
 
     /// <summary>The parameter names of a statement in placeholder order (the template helper <c>binding_sql_parameters</c>).</summary>
@@ -424,6 +468,72 @@ public static partial class BindingSql
 
             _sb.Append("UPDATE ").Append(Qualified(table)).Append(" SET ").Append(string.Join(", ", sets))
                 .Append('\n').Append("WHERE ").Append(WriteWhere());
+        }
+
+        /// <summary>Whether a child table entry can render: its table and owner foreign key resolve, and a field of the binding fills each owner column.</summary>
+        private static bool Renders(RBindingChildTable child) =>
+            child.Table is not null && child.OwnerForeignKey is not null && child.Owner.Count > 0 && child.Owner.All(o => o.Field is not null);
+
+        /// <summary>The where clause of a child table entry's select and delete: the owner's columns, then the constants.</summary>
+        private string ChildWhere(RBindingChildTable child, string? alias)
+        {
+            string Column(string name) => alias is null ? Q(name) : Q(alias) + "." + Q(name);
+            var conditions = child.Owner.Select(o => Column(o.Column.Name) + " = " + Placeholder(o.Parameter)).ToList();
+            conditions.AddRange(child.Constants.Where(c => c.SourceColumn is not null).Select(c => Equal(Column(c.ColumnName), c.Value, Literal)));
+            return string.Join(" AND ", conditions);
+        }
+
+        public void ChildSelect(RBindingChildTable child)
+        {
+            var fields = child.Fields.Where(f => f.Attribute is not null && f.SourceColumn is not null).ToList();
+            if (!Renders(child) || fields.Count == 0)
+                return;
+            _sb.Append("SELECT ").Append(string.Join(", ", fields.Select(f => Q("t") + "." + Q(f.ColumnName) + " AS " + Q(f.Name))));
+            _sb.Append('\n').Append("FROM ").Append(Qualified(child.Table!)).Append(' ').Append(Q("t"));
+            _sb.Append('\n').Append("WHERE ").Append(ChildWhere(child, "t"));
+            if (child.OrderColumn is { } order)
+                _sb.Append('\n').Append("ORDER BY ").Append(Q("t")).Append('.').Append(Q(order.Name));
+        }
+
+        public void ChildDelete(RBindingChildTable child)
+        {
+            if (!child.Writes || !Renders(child))
+                return;
+            _sb.Append("DELETE FROM ").Append(Qualified(child.Table!)).Append('\n').Append("WHERE ").Append(ChildWhere(child, null));
+        }
+
+        public void ChildInsert(RBindingChildTable child)
+        {
+            if (!child.Writes || !Renders(child))
+                return;
+            var columns = new List<string>();
+            var values = new List<string>();
+            foreach (var owner in child.Owner)
+            {
+                columns.Add(Q(owner.Column.Name));
+                values.Add(Placeholder(owner.Parameter));
+            }
+
+            if (child is { OrderColumn: { } order, OrderParameter: { } position })
+            {
+                columns.Add(Q(order.Name));
+                values.Add(Placeholder(position));
+            }
+
+            foreach (var field in child.Fields.Where(f => f.InInsert && f.WriteColumn is not null))
+            {
+                columns.Add(Q(field.WriteColumn!.Name));
+                values.Add(Placeholder(field.Name));
+            }
+
+            foreach (var constant in child.Constants.Where(c => c.WriteColumn is not null))
+            {
+                columns.Add(Q(constant.WriteColumn!.Name));
+                values.Add(Literal(constant.Value));
+            }
+
+            _sb.Append("INSERT INTO ").Append(Qualified(child.Table!)).Append(" (").Append(string.Join(", ", columns)).Append(')')
+                .Append('\n').Append("VALUES (").Append(string.Join(", ", values)).Append(')');
         }
 
         public void Delete()

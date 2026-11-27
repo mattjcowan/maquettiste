@@ -30,7 +30,26 @@ internal sealed partial class ResolveRun
             var parts = tree is null || tree.Nodes.Count == 0 ? [] : Parts(r, tree, keysByRelation);
             r.Parts = new KeyedList<RPart>(parts, keys);
             if (anyCopy && SubjectCoverage.Chain(Model, source).Any(b => Model.Get<Entity>(b)?.Copy is not null))
+            {
                 r.Copy = Copy(r, source, parts, keys);
+                // A child table's rows go with the copied owner as its attribute's onCopy says (retire-projection-design.md section 5): the
+                // binding already depends on the files of the entity and its bases, which hold the copy blocks.
+                foreach (var binding in r.Bindings.Values)
+                {
+                    foreach (var child in binding.ChildTables)
+                    {
+                        if (child.Attribute is { } attribute && r.Copy.Attributes.FirstOrDefault(a => a.Attribute.Id == attribute.Id) is { } rule)
+                            child.OnCopy = rule.OnCopy;
+                    }
+
+                    // A base's child tables (table per type) follow the derived entity's own merged block, which may override the base's.
+                    foreach (var inherited in binding.Bases.SelectMany(l => l.ChildTables))
+                    {
+                        if (inherited.ChildTable.Attribute is { } attribute && r.Copy.Attributes.FirstOrDefault(a => a.Attribute.Id == attribute.Id) is { } rule)
+                            inherited.OnCopy = rule.OnCopy;
+                    }
+                }
+            }
         }
     }
 

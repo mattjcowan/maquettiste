@@ -1139,7 +1139,7 @@
   {
     "id": "MQ4045",
     "defaultSeverity": "error",
-    "description": "A binding names what it cannot resolve: a field attribute that is neither an attribute of the entity, a value object member nor a to-one relation end the entity holds (endId, endId.type or endId.entityId on an end with several types); a column its source does not have; a listed or soft-delete column of no table it uses; or an attribute or column mapped twice.",
+    "description": "A binding names what it cannot resolve: a field attribute that is neither an attribute of the entity, a value object member nor a to-one relation end the entity holds (endId, endId.type or endId.entityId on an end with several types); a column its source does not have; a listed or soft-delete column of no table it uses; an attribute or column mapped twice, or a value object mapped both whole and member by member; or a path that ends at a nested value object or list mapped to a column that is not JSON.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1740,6 +1740,70 @@
     "id": "MQ4136",
     "defaultSeverity": "warning",
     "description": "A binding's base foreign key does not cascade on delete while the base's binding deletes by key: deleting the entity through the base fails, since its own table's row still points at the base's row. Give the foreign key onDelete cascade.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4137",
+    "defaultSeverity": "error",
+    "description": "A binding's child table stores an attribute that is not the entity's, is neither a list nor a value object, is stored by another child table entry or mapped by a field of the binding, or is inherited and stored by the binding of the base whose table the binding joins.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4138",
+    "defaultSeverity": "error",
+    "description": "A binding's child table is not a table of the binding's database, or its owner foreign key is not a foreign key of that table referencing the owning table (the binding's write table, else its source) on its primary key or a unique key; a binding that reads a view or a query and writes none owns no rows.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4139",
+    "defaultSeverity": "error",
+    "description": "A binding's child table names an owner foreign key whose referenced columns no field of the binding maps, so a row cannot know its owner; or a field of the entry maps a column of the owner foreign key.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4140",
+    "defaultSeverity": "error",
+    "description": "A field of a binding's child table names no member path of the entry's attribute (each path starts with the attribute; a list of single values maps the attribute itself), maps a path ending at a value object or list to a column that is not JSON, maps a path twice or both whole and member by member, or shares a parameter's name; or a field, constant or listed column names a column the child table does not have, two fields map one column, or a constant names a column the entry already uses (it is left out of the statements).",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4141",
+    "defaultSeverity": "error",
+    "description": "A binding's child table names an order column that the child table does not have, that is not an integer column, that belongs to the owner foreign key or that a field maps, or names one for a single value object (at most one row).",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4142",
+    "defaultSeverity": "error",
+    "description": "Two child table entries store different attributes in one table through one owner foreign key, and no constant column tells their rows apart (both entries need a constant on one column, with different values): each entry's delete would remove the other's rows.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4143",
+    "defaultSeverity": "warning",
+    "description": "A child table's owner foreign key references a unique key, not the primary key, whose field the binding updates, and the foreign key does not cascade on update: changing the value leaves the child rows pointing at the old one, or the database refuses it.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4144",
+    "defaultSeverity": "warning",
+    "description": "A single value object's child table has no primary key or unique constraint whose columns are exactly the owner foreign key's columns (with the entry's constant columns), so nothing keeps an owner to one row.",
     "family": "MQ41xx",
     "familyLabel": "Migrations, bindings and queries",
     "canBeOff": true

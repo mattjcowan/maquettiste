@@ -4201,7 +4201,7 @@
         ],
         "operationId": "getBindingSql",
         "summary": "The statements of one entity binding for a dialect",
-        "description": "Renders an entity's binding to a database (erratum E43) as parameterised SQL for the database's dialect, or the one\nnamed: `select` (every row, the constants as a filter, soft-deleted rows left out; a query source is a derived table),\n`selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys\ncome back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the\nwhere clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a\nread-only binding has no insert, update or delete). `exists` is the probe on the binding's own source by key. A binding\nwith bases (table per type) also has `bases`, nearest first, each with its `level` and that table's `insert`, `update`\nand `delete` for the entity. Parameters are named after the fields. A model with errors returns\n`preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.\n",
+        "description": "Renders an entity's binding to a database (erratum E43) as parameterised SQL for the database's dialect, or the one\nnamed: `select` (every row, the constants as a filter, soft-deleted rows left out; a query source is a derived table),\n`selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys\ncome back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the\nwhere clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a\nread-only binding has no insert, update or delete). `exists` is the probe on the binding's own source by key. A binding\nwith bases (table per type) also has `bases`, nearest first, each with its `level` and that table's `insert`, `update`\nand `delete` for the entity. A binding with child tables also has `childTables`, in file order, each labelled by its\nattribute with its `select` (the rows of one owner, ordered by the order column), `insert` (one row) and `delete` (the\nrows of one owner). Parameters are named after the fields. A model with errors returns\n`preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetBindingSqlAsync(entityId, bindingId, dialect, options)",
         "parameters": [
@@ -22927,6 +22927,130 @@
             "items": {
               "$ref": "#/components/schemas/BindingBaseRecord"
             }
+          },
+          "childTables": {
+            "type": "array",
+            "description": "The attributes stored in a table of their own (retire-projection-design.md section 5), in file order; left out when there are none.",
+            "items": {
+              "$ref": "#/components/schemas/BindingChildTableRecord"
+            }
+          }
+        }
+      },
+      "BindingChildTableRecord": {
+        "x-engine-record": "Maquettiste.Engine.BindingChildTableRecord",
+        "description": "An attribute a binding stores in a table of its own, a list (one row per item) or a single value object (at most one row). Writes replace its rows, delete the owner's rows, then insert the items in order.",
+        "type": "object",
+        "required": [
+          "id",
+          "attribute",
+          "isList",
+          "table",
+          "ownerForeignKey",
+          "owner",
+          "orderColumn",
+          "constants",
+          "fields",
+          "columns",
+          "writes",
+          "onCopy"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "attribute": {
+            "type": "string",
+            "description": "The attribute's id, as the file writes it."
+          },
+          "isList": {
+            "type": "boolean"
+          },
+          "table": {
+            "type": "string",
+            "description": "The child table's key."
+          },
+          "ownerForeignKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The id of the foreign key that ties a row to its owner; null when it does not fit."
+          },
+          "owner": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BindingOwnerColumnRecord"
+            }
+          },
+          "orderColumn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The key of the column holding a list item's position."
+          },
+          "constants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BindingConstantView"
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BindingFieldRecord"
+            }
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BindingColumnRecord"
+            }
+          },
+          "writes": {
+            "type": "boolean"
+          },
+          "onCopy": {
+            "type": "string",
+            "enum": [
+              "copy",
+              "clear",
+              "reset"
+            ],
+            "description": "What a copy of the owner does with the rows; copy copies them, clear and reset leave none."
+          }
+        }
+      },
+      "BindingOwnerColumnRecord": {
+        "x-engine-record": "Maquettiste.Engine.BindingOwnerColumnRecord",
+        "description": "One column of a child table's owner foreign key.",
+        "type": "object",
+        "required": [
+          "column",
+          "referencedColumn",
+          "field",
+          "parameter"
+        ],
+        "properties": {
+          "column": {
+            "type": "string",
+            "description": "The child table column's key."
+          },
+          "referencedColumn": {
+            "type": "string",
+            "description": "The key of the owning table's column it references."
+          },
+          "field": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the binding's field on the referenced column."
+          },
+          "parameter": {
+            "type": "string",
+            "description": "The statements' parameter for the owner's value (ownerId)."
           }
         }
       },
@@ -22973,6 +23097,40 @@
           },
           "discriminatorColumn": {
             "$ref": "#/components/schemas/BindingDiscriminatorRecord"
+          },
+          "childTables": {
+            "type": "array",
+            "description": "The base's binding's child tables as the derived entity uses them, each with the derived entity's merged onCopy; left out when the base's binding has none.",
+            "items": {
+              "$ref": "#/components/schemas/BindingBaseChildRecord"
+            }
+          }
+        }
+      },
+      "BindingBaseChildRecord": {
+        "x-engine-record": "Maquettiste.Engine.BindingBaseChildRecord",
+        "description": "A child table of a base's binding, as a derived entity (table per type) uses it.",
+        "type": "object",
+        "required": [
+          "id",
+          "attribute",
+          "onCopy"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "attribute": {
+            "type": "string"
+          },
+          "onCopy": {
+            "type": "string",
+            "enum": [
+              "copy",
+              "clear",
+              "reset"
+            ],
+            "description": "What a copy of the derived entity does with the rows, its own merged onCopy for the attribute."
           }
         }
       },
@@ -23120,6 +23278,13 @@
           "keyOf": {
             "type": "string",
             "description": "The entity of an `endId.entityId` field (`holds` is `key`); left out otherwise."
+          },
+          "memberPath": {
+            "type": "array",
+            "description": "The ids of the value object members the path walks below the attribute, for a member of a nested value object; left out for a path of one member or none.",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -23155,6 +23320,8 @@
               "default",
               "soft-delete",
               "relation",
+              "owner",
+              "order",
               "unaccounted"
             ]
           },
@@ -23286,6 +23453,67 @@
             "items": {
               "$ref": "#/components/schemas/BindingBaseSqlPreview"
             }
+          },
+          "childTables": {
+            "type": "array",
+            "description": "With child tables, each entry's statements, in file order, labelled by its attribute; left out without child tables.",
+            "items": {
+              "$ref": "#/components/schemas/BindingChildSqlPreview"
+            }
+          }
+        }
+      },
+      "BindingChildSqlPreview": {
+        "x-engine-record": "Maquettiste.Engine.BindingChildSqlPreview",
+        "description": "The statements of one child table entry.",
+        "type": "object",
+        "required": [
+          "id",
+          "attributeId",
+          "attributeName",
+          "select",
+          "insert",
+          "delete"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "attributeId": {
+            "type": "string"
+          },
+          "attributeName": {
+            "type": "string"
+          },
+          "select": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BindingStatement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "insert": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BindingStatement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delete": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BindingStatement"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -33236,6 +33464,7 @@
                 "constants",
                 "fields",
                 "columns",
+                "childTables",
                 "write",
                 "delete",
                 "discriminatorColumn",
@@ -33297,7 +33526,7 @@
                   "default": []
                 },
                 "fields": {
-                  "description": "The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key or, on an end with several types, its id; endId.type for that end's type code and endId.entityId for its key per type) and the source column it reads.",
+                  "description": "The field map: an attribute of the entity (attributeId.memberId for a value object member, attributeId.memberId.memberId and deeper for a member of a nested value object, a path ending at a nested value object or list for a JSON column, a relation end id for a to-one navigation's key or, on an end with several types, its id; endId.type for that end's type code and endId.entityId for its key per type) and the source column it reads.",
                   "type": "array",
                   "items": {
                     "title": "Binding field",
@@ -33308,7 +33537,7 @@
                     ],
                     "properties": {
                       "attribute": {
-                        "description": "An attribute id of the entity, attributeId.memberId, or the id of a relation end the entity holds, which a to-one navigation leads to: endId maps its key column, or on an end with several types its id column; endId.type maps the column that holds the linked object's type code, and endId.entityId the column that points at a linked object of that entity (a column per type).",
+                        "description": "An attribute id of the entity, attributeId.memberId (deeper for a member of a value object nested in it: attributeId.memberId.memberId; a path that ends at a nested value object or list maps a JSON column), or the id of a relation end the entity holds, which a to-one navigation leads to: endId maps its key column, or on an end with several types its id column; endId.type maps the column that holds the linked object's type code, and endId.entityId the column that points at a linked object of that entity (a column per type).",
                         "type": "string",
                         "minLength": 1
                       },
@@ -33353,6 +33582,150 @@
                     "required": [
                       "column",
                       "status"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "default": []
+                },
+                "childTables": {
+                  "description": "The attributes stored in a table of their own: a list (collection), one row per item, or a single value object, at most one row. Writes replace an attribute's rows: delete the owner's rows, then insert the items in order. An insert writes the owner first; a delete removes the child rows first (or relies on the foreign key's cascade); a soft delete leaves them. A binding that writes none reads its child tables and writes none (MQ4137 to MQ4141).",
+                  "type": "array",
+                  "items": {
+                    "title": "Binding child table",
+                    "type": "object",
+                    "x-order": [
+                      "id",
+                      "attribute",
+                      "table",
+                      "ownerForeignKey",
+                      "fields",
+                      "orderColumn",
+                      "constants",
+                      "columns"
+                    ],
+                    "properties": {
+                      "id": {
+                        "$ref": "#/components/schemas/id"
+                      },
+                      "attribute": {
+                        "description": "The id of an attribute of the entity: a list, or a single value object. An inherited one only when the base's binding does not store it.",
+                        "$ref": "#/components/schemas/id"
+                      },
+                      "table": {
+                        "description": "The id of the child table, a table of the binding's database.",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "ownerForeignKey": {
+                        "description": "The id of a foreign key of the child table that references the owning table (the binding's write table, else its source) on its primary key or a unique key; with a unique key, the binding maps a field for each of that key's columns. Its columns are not mapped as fields.",
+                        "$ref": "#/components/schemas/id"
+                      },
+                      "fields": {
+                        "description": "The field map, with paths as the binding's fields write them, each starting with the attribute: attributeId.memberId, deeper for a nested value object, a path ending at a nested value object or list for a JSON column. For a list of a scalar, an enum or a reference type, one field whose path is the attribute itself, naming the value column.",
+                        "type": "array",
+                        "items": {
+                          "title": "Binding child table field",
+                          "type": "object",
+                          "x-order": [
+                            "attribute",
+                            "column"
+                          ],
+                          "properties": {
+                            "attribute": {
+                              "description": "The path: the attribute's id, then member ids separated by dots.",
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "column": {
+                              "description": "A column of the child table: its key or physical name.",
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "attribute",
+                            "column"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "default": []
+                      },
+                      "orderColumn": {
+                        "description": "Lists only: an integer column of the child table holding each item's position, from 0; reads are ordered by it.",
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "constants": {
+                        "description": "Columns of the child table with a fixed value: a filter on every read and a value on every insert, so several attributes can share one table.",
+                        "type": "array",
+                        "items": {
+                          "title": "Binding child table constant",
+                          "type": "object",
+                          "x-order": [
+                            "column",
+                            "value"
+                          ],
+                          "properties": {
+                            "column": {
+                              "description": "A column of the child table: its key or physical name.",
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "value": {
+                              "description": "The value; absent or null is SQL NULL.",
+                              "type": [
+                                "string",
+                                "number",
+                                "boolean",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "column"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "default": []
+                      },
+                      "columns": {
+                        "description": "The child table's other columns, each accounted for: ignored, filled by the database (a child row's own generated id) or computed.",
+                        "type": "array",
+                        "items": {
+                          "title": "Binding child table column",
+                          "type": "object",
+                          "x-order": [
+                            "column",
+                            "status"
+                          ],
+                          "properties": {
+                            "column": {
+                              "description": "A column of the child table: its key or physical name.",
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "status": {
+                              "enum": [
+                                "ignored",
+                                "database",
+                                "computed"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "column",
+                            "status"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "default": []
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "attribute",
+                      "table",
+                      "ownerForeignKey"
                     ],
                     "additionalProperties": false
                   },

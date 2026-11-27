@@ -380,36 +380,48 @@ internal static class ColumnTypeRules
         for (var i = 0; i < entity.Bindings.Count; i++)
         {
             var binding = entity.Bindings[i];
-            var tables = BindingTables(context.Model, binding);
-            if (tables.Count == 0)
-                continue;
             var pointer = Ptr.At("/bindings", i);
-            for (var j = 0; j < binding.Fields.Count; j++)
+            if (BindingTables(context.Model, binding) is { Count: > 0 } tables)
+                CheckFields(context, entity, binding, tables, binding.Fields, binding.Constants, pointer, report);
+            for (var k = 0; k < binding.ChildTables.Count; k++)
             {
-                var field = binding.Fields[j];
-                if (FieldAttribute(context, entity, field.Attribute) is not { Sensitive: { } own } attribute)
-                    continue;
-                foreach (var (_, column) in Columns(tables, field.Column))
-                {
-                    if (column.Sensitive is not { } theirs || theirs == own)
-                        continue;
-                    report.Add("MQ4085", $"Attribute '{attribute.Name}' of entity '{entity.Name}' states sensitive '{Text(own)}', but column '{column.Name}', which the binding maps it to, states '{Text(theirs)}': state it on one side, and the other shows it.", Ptr.At(pointer + "/fields", j), binding.Id);
-                    break;
-                }
+                // A child table's fields and constants (retire-projection-design.md section 5), against the child table.
+                var child = binding.ChildTables[k];
+                if (context.Model.Get<Table>(child.Table) is { Origin: not TableOrigin.Synthesized } file && file.Database == binding.Database)
+                    CheckFields(context, entity, binding, [MemberRules.WithMembers(context.Model, file)], child.Fields, child.Constants, Ptr.At(pointer + "/childTables", k), report);
             }
+        }
+    }
 
-            for (var j = 0; j < binding.Constants.Count; j++)
+    /// <summary>MQ4085 for each field and MQ7014 for each constant of a binding or of one of its child tables, against its tables.</summary>
+    private static void CheckFields(ValidationContext context, Entity entity, EntityBinding binding, List<Table> tables, IReadOnlyList<BindingField> fields,
+        IReadOnlyList<BindingConstant> constants, string pointer, Report report)
+    {
+        for (var j = 0; j < fields.Count; j++)
+        {
+            var field = fields[j];
+            if (FieldAttribute(context, entity, field.Attribute) is not { Sensitive: { } own } attribute)
+                continue;
+            foreach (var (_, column) in Columns(tables, field.Column))
             {
-                var constant = binding.Constants[j];
-                if (constant.Value is not { } value)
+                if (column.Sensitive is not { } theirs || theirs == own)
                     continue;
-                foreach (var (table, column) in Columns(tables, constant.Column))
-                {
-                    if (ValueProblem(context, table, column, value, null) is not { } problem)
-                        continue;
-                    report.Add("MQ7014", $"The constant the binding of entity '{entity.Name}' writes into column '{column.Name}' is not one of the values the column's type holds: {problem}.", Ptr.At(pointer + "/constants", j), binding.Id);
-                    break;
-                }
+                report.Add("MQ4085", $"Attribute '{attribute.Name}' of entity '{entity.Name}' states sensitive '{Text(own)}', but column '{column.Name}', which the binding maps it to, states '{Text(theirs)}': state it on one side, and the other shows it.", Ptr.At(pointer + "/fields", j), binding.Id);
+                break;
+            }
+        }
+
+        for (var j = 0; j < constants.Count; j++)
+        {
+            var constant = constants[j];
+            if (constant.Value is not { } value)
+                continue;
+            foreach (var (table, column) in Columns(tables, constant.Column))
+            {
+                if (ValueProblem(context, table, column, value, null) is not { } problem)
+                    continue;
+                report.Add("MQ7014", $"The constant the binding of entity '{entity.Name}' writes into column '{column.Name}' is not one of the values the column's type holds: {problem}.", Ptr.At(pointer + "/constants", j), binding.Id);
+                break;
             }
         }
     }
@@ -455,10 +467,16 @@ internal static class ColumnTypeRules
         if (dot <= 0)
             return null;
         var ownerId = reference[..dot];
-        var memberId = reference[(dot + 1)..];
-        var owner = flat.FirstOrDefault(f => string.Equals(f.Attribute.Id, ownerId, StringComparison.Ordinal))?.Attribute;
-        return owner is null ? null
-            : AttributeRules.Resolve(context.Model, owner.Type).ValueObject?.Attributes.FirstOrDefault(m => string.Equals(m.Id, memberId, StringComparison.Ordinal));
+        var current = flat.FirstOrDefault(f => string.Equals(f.Attribute.Id, ownerId, StringComparison.Ordinal))?.Attribute;
+        // A member of a value object, to any depth (retire-projection-design.md section 6).
+        foreach (var memberId in reference[(dot + 1)..].Split('.'))
+        {
+            if (current is null)
+                return null;
+            current = AttributeRules.Resolve(context.Model, current.Type).ValueObject?.Attributes.FirstOrDefault(m => string.Equals(m.Id, memberId, StringComparison.Ordinal));
+        }
+
+        return current;
     }
 
     private static string Label(Column column, string key) => column.Name.Length > 0 ? column.Name : key;

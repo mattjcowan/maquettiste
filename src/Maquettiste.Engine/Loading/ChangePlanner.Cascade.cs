@@ -1746,7 +1746,7 @@ internal sealed partial class ChangePlanner
                     var sub = DocumentReader.Scan(document.Json).Ids.Where(x => x.Pointer == op.Pointer).Select(x => x.Id).FirstOrDefault();
                     var subKind = sub is not null && _snapshot.TryGetEntry(sub, out var entry) ? entry.Kind : null;
                     var because = document.Element.Kind is ElementKind.Entity or ElementKind.ReferenceType && op.Pointer.StartsWith("/bindings/", StringComparison.Ordinal)
-                        ? (subKind == "binding" ? "the binding" : "this entry of its binding") + " needs " + Label(op.Reference.ToId)
+                        ? (subKind == "binding" ? (op.Pointer.Contains("/childTables/", StringComparison.Ordinal) ? "the binding's child table entry" : "the binding") : "this entry of its binding") + " needs " + Label(op.Reference.ToId)
                             + (document.Element.Kind == ElementKind.Entity ? "; the entity stays" : "; the reference type stays")
                         : TriggerPointPart(op.Reference.JsonPointer) is { } point && point.Entry == op.Pointer
                             // The last entry of a narrowing list takes its trigger point with it (trigger-points-design.md section 9).

@@ -730,6 +730,35 @@
       ],
       "additionalProperties": false
     },
+    "bindingBaseChildRecord": {
+      "description": "A child table of a base's binding, as a derived entity (table per type) uses it.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "attribute",
+        "onCopy"
+      ],
+      "properties": {
+        "id": {
+          "description": "The id of the base's binding's child table entry.",
+          "type": "string"
+        },
+        "attribute": {
+          "description": "The attribute's id, as the base's file writes it.",
+          "type": "string"
+        },
+        "onCopy": {
+          "description": "What a copy of the derived entity does with the rows: its own merged `onCopy` for the attribute, else `copy`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "attribute",
+        "onCopy"
+      ],
+      "additionalProperties": false
+    },
     "bindingBaseRecord": {
       "description": "One table above a binding's own (table per type): the base's binding that reads and writes it, and how the table below joins it.",
       "type": "object",
@@ -740,7 +769,8 @@
         "foreignKey",
         "columns",
         "referencedColumns",
-        "discriminatorColumn"
+        "discriminatorColumn",
+        "childTables"
       ],
       "properties": {
         "binding": {
@@ -776,6 +806,13 @@
         "discriminatorColumn": {
           "description": "The table's type column, with the derived entity's code and the codes its statements keep; left out without one.",
           "$ref": "#/$defs/bindingDiscriminatorRecord"
+        },
+        "childTables": {
+          "description": "The base's binding's child tables as the derived entity uses them, each with the derived entity's merged `onCopy`; left out when the base's binding has none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingBaseChildRecord"
+          }
         }
       },
       "required": [
@@ -785,6 +822,107 @@
         "foreignKey",
         "columns",
         "referencedColumns"
+      ],
+      "additionalProperties": false
+    },
+    "bindingChildTableRecord": {
+      "description": "An attribute a binding stores in a table of its own: a list, one row per item, or a single value object, at most one row. Writes replace its rows: delete the owner's rows, then insert the items in order.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "attribute",
+        "isList",
+        "table",
+        "ownerForeignKey",
+        "owner",
+        "orderColumn",
+        "constants",
+        "fields",
+        "columns",
+        "writes",
+        "onCopy"
+      ],
+      "properties": {
+        "id": {
+          "description": "The entry's id.",
+          "type": "string"
+        },
+        "attribute": {
+          "description": "The attribute's id, as the file writes it.",
+          "type": "string"
+        },
+        "isList": {
+          "description": "Whether the attribute is a list (one row per item); false for a single value object (at most one row).",
+          "type": "boolean"
+        },
+        "table": {
+          "description": "The child table's key, as the file writes it when it does not resolve.",
+          "type": "string"
+        },
+        "ownerForeignKey": {
+          "description": "The id of the foreign key that ties a row to its owner (its name for a key without an id), or null when it does not fit.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner": {
+          "description": "The owner foreign key's columns, each with the owning table's column it references, the field whose value fills it and the statements' parameter.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingOwnerColumnRecord"
+          }
+        },
+        "orderColumn": {
+          "description": "The key of the column holding a list item's position, or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "constants": {
+          "description": "The entry's constants.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingConstantView"
+          }
+        },
+        "fields": {
+          "description": "The field map: a list of single values maps the attribute itself (named `value`); a value object's members are named after their path below the attribute.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingFieldRecord"
+          }
+        },
+        "columns": {
+          "description": "Every column of the child table with what accounts for it (`owner` and `order` besides a binding's statuses).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingColumnRecord"
+          }
+        },
+        "writes": {
+          "description": "Whether the entry writes its rows (the binding writes).",
+          "type": "boolean"
+        },
+        "onCopy": {
+          "description": "What a copy of the owner does with the rows: `copy` copies them; `clear` and `reset` leave none.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "attribute",
+        "isList",
+        "table",
+        "ownerForeignKey",
+        "owner",
+        "orderColumn",
+        "constants",
+        "fields",
+        "columns",
+        "writes",
+        "onCopy"
       ],
       "additionalProperties": false
     },
@@ -966,7 +1104,8 @@
         "inInsert",
         "inUpdate",
         "holds",
-        "keyOf"
+        "keyOf",
+        "memberPath"
       ],
       "properties": {
         "name": {
@@ -1050,6 +1189,13 @@
         "keyOf": {
           "description": "The entity of an `endId.entityId` field (`holds` is `key`); left out otherwise.",
           "type": "string"
+        },
+        "memberPath": {
+          "description": "The ids of the value object members the path walks below the attribute, outermost first, for a member of a nested value object (`attributeId.memberId.memberId`); left out for a path of one member or none.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -1067,6 +1213,44 @@
         "isGenerated",
         "inInsert",
         "inUpdate"
+      ],
+      "additionalProperties": false
+    },
+    "bindingOwnerColumnRecord": {
+      "description": "One column of a child table's owner foreign key.",
+      "type": "object",
+      "x-order": [
+        "column",
+        "referencedColumn",
+        "field",
+        "parameter"
+      ],
+      "properties": {
+        "column": {
+          "description": "The child table column's key.",
+          "type": "string"
+        },
+        "referencedColumn": {
+          "description": "The key of the owning table's column it references.",
+          "type": "string"
+        },
+        "field": {
+          "description": "The name of the binding's field on the referenced column, or null when none maps it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parameter": {
+          "description": "The statements' parameter for the owner's value (`ownerId`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "column",
+        "referencedColumn",
+        "field",
+        "parameter"
       ],
       "additionalProperties": false
     },
@@ -2829,7 +3013,8 @@
         "discriminatorColumn",
         "baseForeignKey",
         "key",
-        "bases"
+        "bases",
+        "childTables"
       ],
       "properties": {
         "id": {
@@ -2927,6 +3112,13 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/bindingBaseRecord"
+          }
+        },
+        "childTables": {
+          "description": "The attributes stored in a table of their own, in file order; left out when there are none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingChildTableRecord"
           }
         }
       },

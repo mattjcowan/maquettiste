@@ -370,6 +370,8 @@ internal sealed partial class Materializer
         {
             foreach (var relationColumn in BindingDrift.RelationAttributeColumnsOf(snapshot, sourceTable!))
                 Name(relationColumn);
+            foreach (var childColumn in BindingDrift.ChildColumnsOf(binding, sourceTable!))
+                Name(childColumn);
         }
         foreach (var listed in binding.Columns)
             Name(listed.Column);
@@ -377,8 +379,11 @@ internal sealed partial class Materializer
             Name(soft.Column);
 
         var mapped = binding.Fields.Select(f => f.Attribute).ToHashSet(StringComparer.Ordinal);
+        // An attribute a child table stores has no column in the source (retire-projection-design.md section 5), nor do its members.
+        var stored = binding.ChildTables.Select(c => c.Attribute).ToHashSet(StringComparer.Ordinal);
         // A binding with a base foreign key maps only what the entity adds below its bound base (table per type): the base's binding maps the rest.
-        var open = Candidates(entity, binding.BaseForeignKey is null ? null : BoundBase(entity, binding.Database)).Where(c => !mapped.Contains(c.Ref)).ToList();
+        var open = Candidates(entity, binding.BaseForeignKey is null ? null : BoundBase(entity, binding.Database))
+            .Where(c => !mapped.Contains(c.Ref) && !stored.Contains(c.Ref.Split('.')[0])).ToList();
         var matches = new List<(FieldCandidate, ShapeColumn)>();
         for (var i = 0; i < columns.Count && open.Count > 0; i++)
         {
@@ -416,12 +421,27 @@ internal sealed partial class Materializer
                 return;
             if (attribute.Type.Ref is { } typeId && snapshot.Get<ValueObject>(typeId) is { } valueObject)
             {
-                foreach (var member in valueObject.Attributes.Where(m => !m.Collection && (m.Type.Ref is null || snapshot.Get<ValueObject>(m.Type.Ref) is null)))
-                    result.Add(new FieldCandidate(attribute.Id + "." + member.Id, attribute.Name + Casing.Pascal(member.Name), false));
+                Members(attribute.Id, attribute.Name, valueObject, 0);
                 return;
             }
 
             result.Add(new FieldCandidate(attribute.Id, attribute.Name, false));
+        }
+
+        // A value object stands for its members, to any depth (retire-projection-design.md section 6); a list member has no column of its own.
+        void Members(string path, string name, ValueObject valueObject, int depth)
+        {
+            foreach (var member in valueObject.Attributes.Where(m => !m.Collection))
+            {
+                if (member.Type.Ref is { } nestedId && snapshot.Get<ValueObject>(nestedId) is { } nested)
+                {
+                    if (depth < 16)
+                        Members(path + "." + member.Id, name + Casing.Pascal(member.Name), nested, depth + 1);
+                    continue;
+                }
+
+                result.Add(new FieldCandidate(path + "." + member.Id, name + Casing.Pascal(member.Name), false));
+            }
         }
 
         foreach (var level in chain.AsEnumerable().Reverse())

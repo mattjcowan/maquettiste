@@ -291,13 +291,17 @@ end
 # A bound entity's repository reads into a private Row class whose properties are the binding's field names (the select's
 # aliases and the statements' parameters), so Dapper maps both ways without renaming.
 
-# Whether a field's row property is nullable: the column is, or the attribute (or value object member) is optional.
+# Whether a field's row property is nullable: the column is, or the attribute (or a value object member on its path) is optional.
 func bind_nullable(f)
   if f.nullable
     ret true
   end
   if f.member
-    ret !f.member.required || !f.attribute.required
+    $optional = !f.attribute.required
+    for m in f.members
+      $optional = $optional || !m.required
+    end
+    ret $optional
   end
   if f.attribute
     ret !f.attribute.required
@@ -305,12 +309,27 @@ func bind_nullable(f)
   ret false
 end
 
+# Whether a child table field's row property is nullable: the column is, or a value object member on its path is optional (a row
+# is one item, so the attribute's own required does not count).
+func child_nullable(f)
+  $optional = f.nullable
+  for m in f.members
+    $optional = $optional || !m.required
+  end
+  ret $optional
+end
+
+# The C# type of a row property for a column type keyword (JSON, range and multirange held as text), nullable or not.
+func row_type_of(k, nullable)
+  $k = k ? k : "string"
+  $t = ($k == "json" || range_type($k)) ? "string" : (type_of $k "csharp")
+  ret nullable ? $t + "?" : $t
+end
+
 # The C# type of a field's row property: its column's type keyword (JSON, range and multirange held as text), nullable as
 # bind_nullable says.
 func bind_row_type(f)
-  $k = f.type ? f.type : "string"
-  $t = ($k == "json" || range_type($k)) ? "string" : (type_of $k "csharp")
-  ret bind_nullable(f) ? $t + "?" : $t
+  ret row_type_of(f.type, bind_nullable(f))
 end
 
 # The fields of the entity's binding that hold a to-one relation's key: the entity class carries a property for each.

@@ -10,7 +10,7 @@ namespace Maquettiste.Engine.Resolution;
 /// collected before anything is placed, so the entity is never projected here; the tables, views and queries a binding names get the
 /// entity's file among their dependency keys as they are created (they list the binding in <c>BoundBy</c>); and once the queries are
 /// resolved each binding resolves its source, type column, constants, field map, accounted columns, write table and delete, and the rules
-/// MQ4044 to MQ4053, MQ4058, MQ4122 to MQ4126, MQ4128 to MQ4134 and MQ4136 report what it gets wrong with the JSON pointer of the binding's entry in
+/// MQ4044 to MQ4053, MQ4058, MQ4122 to MQ4126, MQ4128 to MQ4134, MQ4136 and (for its child tables, DatabaseRun.ChildTables.cs) MQ4137 to MQ4141 report what it gets wrong with the JSON pointer of the binding's entry in
 /// the entity's file. A binding with a base foreign key (table per type) is built after its base's, whose resolved binding it reads.
 /// </summary>
 internal sealed partial class DatabaseRun
@@ -47,6 +47,8 @@ internal sealed partial class DatabaseRun
                 AddBinder(binding.Source, entity.Id);
                 if (binding.Write?.Table is { } table)
                     AddBinder(table, entity.Id);
+                foreach (var child in binding.ChildTables)
+                    AddBinder(child.Table, entity.Id);
             }
         }
 
@@ -298,7 +300,7 @@ internal sealed partial class DatabaseRun
             _run.Register(binding);
             built.Add(binding);
             AddBindingChecks(entity, file, index, binding);
-            foreach (var target in new object?[] { binding.SourceTable, binding.SourceView, binding.SourceQuery, binding.WriteTable })
+            foreach (var target in new object?[] { binding.SourceTable, binding.SourceView, binding.SourceQuery, binding.WriteTable }.Concat(binding.ChildTables.Select(c => c.Table)))
             {
                 if (target is null)
                     continue;
@@ -327,6 +329,38 @@ internal sealed partial class DatabaseRun
         }
 
         ShowBoundSensitivity(built);
+        CheckSharedChildTables(built);
+    }
+
+    /// <summary>
+    /// MQ4142: two child table entries, of any bindings to this database, that store different attributes in one table through one owner foreign
+    /// key, with no constant column on which their values differ: an owner's rows of both are the same rows, so each entry's delete removes the
+    /// other's. Reported on the later entry, in entity order. Entries of one attribute (a hierarchy's entities in one table) share their rows.
+    /// </summary>
+    private void CheckSharedChildTables(List<REntityBinding> bindings)
+    {
+        var seen = new List<RBindingChildTable>();
+        foreach (var binding in bindings)
+        {
+            for (var k = 0; k < binding.ChildTables.Count; k++)
+            {
+                var child = binding.ChildTables[k];
+                if (child is not { Table: { } table, OwnerForeignKey: { } key, Attribute: { } attribute })
+                    continue;
+                var clash = seen.Find(o => ReferenceEquals(o.Table, table) && ReferenceEquals(o.OwnerForeignKey, key) && o.Attribute!.Id != attribute.Id && !ConstantsDiffer(o, child));
+                if (clash is not null)
+                {
+                    _run.AddDiagnostic("MQ4142", $"Child table {k.ToString(CultureInfo.InvariantCulture)} of the binding of entity '{binding.Entity.Name}' to database '{_db.Name}' stores attribute '{attribute.Name}' in table '{table.Name}' by owner foreign key '{key.Name}', as the binding of entity '{clash.Binding.Entity.Name}' stores '{clash.Attribute!.Name}', and no constant column tells their rows apart: each one's delete would remove the other's rows. Give both entries a constant on one column, with different values.",
+                        binding.Entity.Id, Pointer(binding.Index) + "/childTables/" + k.ToString(CultureInfo.InvariantCulture) + "/constants");
+                }
+
+                seen.Add(child);
+            }
+        }
+
+        static bool ConstantsDiffer(RBindingChildTable a, RBindingChildTable b) =>
+            a.Constants.Any(x => x.SourceColumn is { } column && b.Constants.FirstOrDefault(y => ReferenceEquals(y.SourceColumn, column)) is { } y
+                && !((x.Value is string) == (y.Value is string) && string.Equals(Convert.ToString(x.Value, CultureInfo.InvariantCulture), Convert.ToString(y.Value, CultureInfo.InvariantCulture), StringComparison.Ordinal) && (x.Value is null) == (y.Value is null)));
     }
 
     /// <summary>
@@ -395,7 +429,7 @@ internal sealed partial class DatabaseRun
     {
         foreach (var binding in bindings)
         {
-            foreach (var field in binding.Fields)
+            foreach (var field in binding.ChildTables.Count == 0 ? binding.Fields : binding.Fields.Concat(binding.ChildTables.SelectMany(c => c.Fields)))
             {
                 if ((field.Member ?? field.Attribute)?.Sensitive is not { } value)
                     continue;
@@ -409,7 +443,7 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>The resolution of one binding.</summary>
-    private sealed class BindingBuilder(
+    private sealed partial class BindingBuilder(
         DatabaseRun run,
         REntity entity,
         EntityBinding file,
@@ -455,6 +489,8 @@ internal sealed partial class DatabaseRun
             _b.WriteColumns = _b.WriteTable is { } writeTable && !ReferenceEquals(writeTable, _b.SourceTable)
                 ? Account([.. writeTable.Columns.Select(c => (c.Name, (RColumn?)c, (string?)c.Type))], accounted, constants, listed, write: true)
                 : [];
+            if (file.ChildTables.Count > 0)
+                _b.ChildTables = ResolveChildTables(fields);
             ReportUnaccounted();
             ReportUnmapped();
             ReportDrift();
@@ -689,7 +725,10 @@ internal sealed partial class DatabaseRun
             static string Columns(IReadOnlyList<RColumn> columns) => string.Join(", ", columns.Select(c => "'" + c.Name + "'"));
         }
 
-        private RBindingBase Level(REntityBinding binding, RForeignKey key) => new() { Derived = _b, Binding = binding, ForeignKey = key };
+        private RBindingBase Level(REntityBinding binding, RForeignKey key) => new()
+        {
+            Derived = _b, Binding = binding, ForeignKey = key, ChildTables = [.. binding.ChildTables.Select(c => new RBindingBaseChild { ChildTable = c })],
+        };
 
         /// <summary>A key field the base foreign key gives: the base's key field's name and attribute, on the foreign key's column.</summary>
         private RBindingField KeyField(RBindingField baseField, RColumn column)
@@ -841,6 +880,7 @@ internal sealed partial class DatabaseRun
             var fields = new List<RBindingField>();
             var attributes = new Dictionary<string, int>(StringComparer.Ordinal);
             var columns = new Dictionary<string, int>(StringComparer.Ordinal);
+            var paths = new Dictionary<string, int>(StringComparer.Ordinal);
             var perTypeBase = run.IsPerType(entity) ? run.BoundBase(entity) : null;
             for (var i = 0; i < file.Fields.Count; i++)
             {
@@ -854,8 +894,13 @@ internal sealed partial class DatabaseRun
                 }
                 else if (!attributes.TryAdd(f.Attribute, i))
                     Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' twice (fields {attributes[f.Attribute].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", at + "/attribute");
+                else if (field is { Attribute: not null, End: null } && paths.Keys.FirstOrDefault(p => p.StartsWith(f.Attribute + ".", StringComparison.Ordinal) || f.Attribute.StartsWith(p + ".", StringComparison.Ordinal)) is { } overlap)
+                    // A value object held whole (a JSON column) and member by member (retire-projection-design.md section 6).
+                    Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' both whole and member by member (fields {paths[overlap].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}): map the value object to one JSON column, or each member to a column.", at + "/attribute");
                 else if (perTypeBase is not null && MapsInherited(field, perTypeBase))
                     Report("MQ4132", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' maps {(field.End is null ? "an attribute" : "the key of a relation end")} that base '{perTypeBase.Name}' has, but the binding joins the base's table by its base foreign key, so the base's binding maps it there: remove the field.", at + "/attribute");
+                if (field is { Attribute: not null, End: null })
+                    paths.TryAdd(f.Attribute, i);
 
                 if (FindSourceColumn(f.Column) is { } column)
                 {
@@ -865,6 +910,9 @@ internal sealed partial class DatabaseRun
                     field.Nullable = column.Nullable;
                     if (!columns.TryAdd(column.Name, i))
                         Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps column '{column.Name}' twice (fields {columns[column.Name].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", at + "/column");
+                    // A path that ends at a nested value object or a list holds it whole: a JSON column (retire-projection-design.md section 6).
+                    else if (field.Member is { } whole && (whole.Collection || whole.Type.Kind == "value-object") && column.Type is { } type && type != "json")
+                        Report("MQ4045", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' holds a {(whole.Collection ? "list" : "value object")} whole, but column '{column.Name}' is {type}: a path that ends at a value object or a list maps a JSON column.", at + "/column");
                 }
                 else
                 {
@@ -895,18 +943,18 @@ internal sealed partial class DatabaseRun
             var dot = reference.IndexOf('.', StringComparison.Ordinal);
             if (dot > 0 && entity.Attributes.FirstOrDefault(a => a.Id == reference[..dot]) is { } owner)
             {
-                var memberId = reference[(dot + 1)..];
-                var member = owner.Type is { Kind: "value-object", ValueObject: { } vo } && !owner.Collection ? vo.Attributes.FirstOrDefault(m => m.Id == memberId) : null;
-                if (member is null || member.Collection || member.Type.Kind == "value-object")
+                // A member of an embedded value object, to any depth (retire-projection-design.md section 6): a path that ends at a nested value
+                // object or a list maps a JSON column.
+                if (MemberChain(owner, reference[(dot + 1)..].Split('.'), listHead: false) is not { } chain)
                 {
                     field.Name = reference;
                     return false;
                 }
 
-                _deps.Element(owner.Type.ValueObject!.Id);
                 field.Attribute = owner;
-                field.Member = member;
-                field.Name = owner.Name + Casing.Pascal(member.Name);
+                field.Member = chain[^1];
+                field.Members = chain;
+                field.Name = owner.Name + string.Concat(chain.Select(m => Casing.Pascal(m.Name)));
                 return true;
             }
 
@@ -1331,7 +1379,8 @@ internal sealed partial class DatabaseRun
                 field.IsGenerated = marked || (column is not null && (column.Identity || column.Computed is not null || (column.Sequence is not null && column.IsPrimaryKey)));
                 field.InInsert = _b.Writes && column is not null && !field.IsGenerated && field.Attribute is not null;
                 var target = field.Member ?? field.Attribute;
-                field.InUpdate = field.InInsert && !field.IsKey && !(target is { ReadOnly: true } or { Immutable: true }) && !(field.Attribute is { ReadOnly: true } or { Immutable: true });
+                field.InUpdate = field.InInsert && !field.IsKey && !(target is { ReadOnly: true } or { Immutable: true }) && !(field.Attribute is { ReadOnly: true } or { Immutable: true })
+                    && !field.Members.Any(m => m.ReadOnly || m.Immutable);
                 if (field.End is not null)
                 {
                     field.InInsert = _b.Writes && column is not null && !field.IsGenerated;
@@ -1440,9 +1489,11 @@ internal sealed partial class DatabaseRun
 
         /// <summary>
         /// MQ4058: the stored attributes of the entity that no field maps, so the entity reads them from nowhere, once per binding with
-        /// the names (the editor's field map reports the same). An attribute counts when it is stored: own, inherited or a stereotype's
-        /// virtual one, and not a collection or a derived attribute that is not stored (a stored derivation counts). A value object
-        /// attribute counts as each of its members a field can map. A field naming the attribute maps it, even when its column is
+        /// the names. An attribute counts when it is stored: own, inherited or a stereotype's
+        /// virtual one, and not a collection, a derived attribute that is not stored (a stored derivation counts) or an attribute a child
+        /// table stores. A value object attribute counts as each of its members a field can map, to any depth; a field on the attribute,
+        /// or on a nested value object, stores it whole, and one with no member a field can map is skipped, as a list is
+        /// (retire-projection-design.md sections 5 and 6). A field naming the attribute maps it, even when its column is
         /// wrong (MQ4045's). Every binding is checked, whatever it writes or deletes; the to-one relation ends a binding can map are
         /// not attributes and are left out. A source that is nothing of the database is MQ4044's, so it reports nothing here.
         /// </summary>
@@ -1453,20 +1504,21 @@ internal sealed partial class DatabaseRun
             var mapped = file.Fields.Select(f => f.Attribute).ToHashSet(StringComparer.Ordinal);
             // What the tables above the binding's own store (table per type): the attributes of the nearest base whose table it joins.
             var above = run.UpperLevels(entity).FirstOrDefault() ?? (file.BaseForeignKey is not null ? run.BoundBase(entity) : null);
+            // An attribute a child table stores is that entry's to report (retire-projection-design.md section 5).
+            var stored = file.ChildTables.Select(c => c.Attribute).ToHashSet(StringComparer.Ordinal);
             var names = new List<string>();
             foreach (var attribute in entity.Attributes)
             {
-                if (attribute.Collection || attribute.Derived is { Stored: false })
+                if (attribute.Collection || attribute.Derived is { Stored: false } || stored.Contains(attribute.Id))
                     continue;
                 if (above is not null && above.Attributes.Any(a => a.Id == attribute.Id))
                     continue;
                 if (attribute.Type is { Kind: "value-object", ValueObject: { } valueObject })
                 {
-                    foreach (var member in valueObject.Attributes)
-                    {
-                        if (!member.Collection && member.Type.Kind != "value-object" && !mapped.Contains(attribute.Id + "." + member.Id))
-                            names.Add(attribute.Name + Casing.Pascal(member.Name));
-                    }
+                    // A field on the attribute itself stores the whole value object (a JSON column); else each member, to any depth, a
+                    // nested value object stored whole by a field on its path. One with no member a field can map is skipped, as a list is.
+                    if (!mapped.Contains(attribute.Id))
+                        UnmappedMembers(mapped, attribute.Id, attribute.Name, valueObject, names, 0);
                 }
                 else if (!mapped.Contains(attribute.Id))
                 {
@@ -1476,6 +1528,33 @@ internal sealed partial class DatabaseRun
 
             if (names.Count > 0)
                 Report("MQ4058", $"No field maps {string.Join(", ", names)}: the entity reads {(names.Count == 1 ? "it" : "them")} from nowhere.", "/fields");
+        }
+
+        /// <summary>
+        /// The members of a value object below a path that no field maps, to any depth, added to <paramref name="names"/> (the path's name plus
+        /// each member's): lists are skipped, as list attributes are, and so is a nested value object with no member a field can map; a nested
+        /// value object a field maps whole is stored.
+        /// </summary>
+        private static void UnmappedMembers(HashSet<string> mapped, string path, string name, RValueObject valueObject, List<string> names, int depth)
+        {
+            foreach (var member in valueObject.Attributes)
+            {
+                var memberPath = path + "." + member.Id;
+                if (member.Collection)
+                    continue;
+                var memberName = name + Casing.Pascal(member.Name);
+                if (mapped.Contains(memberPath))
+                    continue;
+                if (member.Type is { Kind: "value-object", ValueObject: { } nested })
+                {
+                    // A containment cycle is MQ3015's; the depth stops a speculative resolution of one.
+                    if (depth < 16)
+                        UnmappedMembers(mapped, memberPath, memberName, nested, names, depth + 1);
+                    continue;
+                }
+
+                names.Add(memberName);
+            }
         }
 
         /// <summary>

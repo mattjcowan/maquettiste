@@ -206,6 +206,34 @@ internal static class BindingDrift
             : [];
     }
 
+    /// <summary>
+    /// The columns of a table that a binding's child table entries on it name (retire-projection-design.md section 5): their fields', constants',
+    /// listed and order columns, and the columns of their owner foreign keys. The entries' own columns, not ones the binding's fields left out.
+    /// </summary>
+    /// <param name="binding">The binding.</param>
+    /// <param name="table">The table file.</param>
+    /// <returns>The column references, as the entries write them (an owner key's by id).</returns>
+    public static IReadOnlyList<string> ChildColumnsOf(EntityBinding binding, Table table)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
+        ArgumentNullException.ThrowIfNull(table);
+        if (binding.ChildTables.Count == 0)
+            return [];
+        var references = new List<string>();
+        foreach (var child in binding.ChildTables.Where(c => string.Equals(c.Table, table.Id, StringComparison.Ordinal)))
+        {
+            references.AddRange(child.Fields.Select(f => f.Column));
+            references.AddRange(child.Constants.Select(c => c.Column));
+            references.AddRange(child.Columns.Select(c => c.Column));
+            if (child.OrderColumn is { } order)
+                references.Add(order);
+            if (table.ForeignKeys.FirstOrDefault(f => string.Equals(f.Id, child.OwnerForeignKey, StringComparison.Ordinal)) is { } key)
+                references.AddRange(key.Columns);
+        }
+
+        return references;
+    }
+
     /// <summary>One binding's drift.</summary>
     /// <param name="model">The snapshot.</param>
     /// <param name="entity">The entity that holds the binding (its attributes name the fields).</param>
@@ -248,6 +276,8 @@ internal static class BindingDrift
             Name(named, columns, keyColumn);
         foreach (var relationColumn in RelationAttributeColumnsOf(model, table!))
             Name(named, columns, relationColumn);
+        foreach (var childColumn in ChildColumnsOf(binding, table!))
+            Name(named, columns, childColumn);
         foreach (var listed in binding.Columns)
             Name(named, columns, listed.Column);
         if (binding.Delete?.Soft is { } soft && WritesSource(binding, table!))
@@ -391,9 +421,8 @@ internal static class BindingDrift
         if (AttributeOf(model, entity, reference) is { } attribute)
             return attribute.Name;
         var dot = reference.IndexOf('.', StringComparison.Ordinal);
-        if (dot > 0 && AttributeOf(model, entity, reference[..dot]) is { Type.Ref: { } typeId } owner
-            && model.Get<ValueObject>(typeId)?.Attributes.FirstOrDefault(m => string.Equals(m.Id, reference[(dot + 1)..], StringComparison.Ordinal)) is { } member)
-            return owner.Name + Casing.Pascal(member.Name);
+        if (dot > 0 && AttributeOf(model, entity, reference[..dot]) is { Type.Ref: not null } owner && MemberName(model, owner, reference[(dot + 1)..]) is { } member)
+            return owner.Name + member;
         if (EndOf(model, reference) is { } end)
             return end.Navigation.Length > 0 ? end.Navigation + "Id" : Casing.Camel(end.Role + "Id");
         // The field forms of a relation end (several-types-design.md decision 46): <endId>.type names the type column (attachedToType),
@@ -408,6 +437,25 @@ internal static class BindingDrift
         }
 
         return reference;
+    }
+
+    /// <summary>
+    /// The members a path of member ids walks below a value object attribute, each name in Pascal case and joined (<c>GeoLatitude</c>), to any
+    /// depth; <see langword="null"/> when a segment names no member of the value object before it.
+    /// </summary>
+    private static string? MemberName(ModelSnapshot model, ModelAttribute owner, string path)
+    {
+        var name = "";
+        var current = owner;
+        foreach (var id in path.Split('.'))
+        {
+            if (current.Type.Ref is not { } typeId || model.Get<ValueObject>(typeId)?.Attributes.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.Ordinal)) is not { } member)
+                return null;
+            name += Casing.Pascal(member.Name);
+            current = member;
+        }
+
+        return name;
     }
 
     /// <summary>The relation end with an id, or <see langword="null"/>.</summary>

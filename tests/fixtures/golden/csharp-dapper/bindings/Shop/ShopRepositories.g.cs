@@ -22,6 +22,7 @@ public static partial class ShopRepositories
         (typeof(IPaymentRepository), typeof(PaymentRepository)),
         (typeof(IProductRepository), typeof(ProductRepository)),
         (typeof(IProductNoteRepository), typeof(ProductNoteRepository)),
+        (typeof(IQuoteRepository), typeof(QuoteRepository)),
     ];
 
     /// <summary>Calls <paramref name="register"/> once per repository.</summary>

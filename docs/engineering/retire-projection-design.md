@@ -148,14 +148,19 @@ item's position.
   first (or relies on the foreign key's cascade); a soft delete of the owner leaves its child rows.
 - **Writes** replace an attribute's rows: delete the owner's rows, then insert the items in order. The engine renders
   three statements per entry (select by owner, ordered; delete by owner; insert one row). A template that wants to diff
-  instead has the same columns. A read-only binding (`write: none`) reads its child tables and writes none.
+  instead has the same columns. A read-only binding (`write: none`) reads its child tables and writes none. The owner's
+  values are parameters named `owner` plus the owner field (`ownerId`), the position is `position`, a list of single values
+  names its value `value`, and a member's field is named after its path below the attribute (`geoLatitude`).
 - **Copy.** A copy carries an attribute's child rows with the copied owner (its `onCopy` decides: `copy` copies the rows,
   `clear` and `reset` leave none). Child tables are not parts: `entity.parts` stays about composition.
 - **Rules (new ids):** the attribute is the entity's (or inherited), listed once, and not also mapped as a field; the
   owner foreign key belongs to the child table and references the owning table; its columns are not mapped as fields;
   each field path names a member of the attribute's type, each once; the order column is an integer column, and only on
   a list. MQ4058 (an unmapped attribute) keeps skipping list attributes, as it does today; it newly counts a single value
-  object that neither fields nor a child table store, as it already does for its members.
+  object that neither fields nor a child table store, as it already does for its members. Built as MQ4137 (the attribute),
+  MQ4138 (the table and owner foreign key), MQ4139 (the owner's columns), MQ4140 (fields, constants, listed columns) and
+  MQ4141 (the order column); then MQ4142 (entries sharing a table with no constant telling them apart), MQ4143 (an owner key
+  on an updatable unique key without `onUpdate: cascade`) and MQ4144 (a single value object's table that allows several rows).
 
 ## 6. Smaller binding additions
 

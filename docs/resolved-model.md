@@ -362,6 +362,7 @@ A resolved entity binding, as the resolved model's entity records carry it.
 | `baseForeignKey` | string | left out when not set | Table per type: the id of the foreign key the binding's `baseForeignKey` names, joining its table to its nearest bound base's; left out without one, or when it does not resolve. |
 | `key` | list of [bindingFieldRecord](#bindingfieldrecord) | left out when not set | With `baseForeignKey`: the key it gives, one field per key field of the base's binding on the foreign key's column, which the field map does not hold; left out otherwise (the key fields are the field map's with `isKey`). |
 | `bases` | list of [bindingBaseRecord](#bindingbaserecord) | left out when not set | The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none. |
+| `childTables` | list of [bindingChildTableRecord](#bindingchildtablerecord) | left out when not set | The attributes stored in a table of their own, in file order; left out when there are none. |
 
 ### bindingConstantView
 
@@ -394,6 +395,7 @@ One field of a resolved binding.
 | `inUpdate` | boolean | never | Whether the update sets the field. |
 | `holds` | string | left out when not set | On a relation end with several types: `id`, `type` or `key`, what the field's column holds; left out on today's fields. |
 | `keyOf` | string | left out when not set | The entity of an `endId.entityId` field (`holds` is `key`); left out otherwise. |
+| `memberPath` | list of string | left out when not set | The ids of the value object members the path walks below the attribute, outermost first, for a member of a nested value object (`attributeId.memberId.memberId`); left out for a path of one member or none. |
 
 ### bindingColumnRecord
 
@@ -432,6 +434,47 @@ One table above a binding's own (table per type): the base's binding that reads 
 | `columns` | list of string | never | The foreign key's columns, in the table below, by key. |
 | `referencedColumns` | list of string | never | The columns of this table they reference, in the order of `columns`. |
 | `discriminatorColumn` | [bindingDiscriminatorRecord](#bindingdiscriminatorrecord) | left out when not set | The table's type column, with the derived entity's code and the codes its statements keep; left out without one. |
+| `childTables` | list of [bindingBaseChildRecord](#bindingbasechildrecord) | left out when not set | The base's binding's child tables as the derived entity uses them, each with the derived entity's merged `onCopy`; left out when the base's binding has none. |
+
+### bindingBaseChildRecord
+
+A child table of a base's binding, as a derived entity (table per type) uses it.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | never | The id of the base's binding's child table entry. |
+| `attribute` | string | never | The attribute's id, as the base's file writes it. |
+| `onCopy` | string | never | What a copy of the derived entity does with the rows: its own merged `onCopy` for the attribute, else `copy`. |
+
+### bindingChildTableRecord
+
+An attribute a binding stores in a table of its own: a list, one row per item, or a single value object, at most one row. Writes replace its rows: delete the owner's rows, then insert the items in order.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | never | The entry's id. |
+| `attribute` | string | never | The attribute's id, as the file writes it. |
+| `isList` | boolean | never | Whether the attribute is a list (one row per item); false for a single value object (at most one row). |
+| `table` | string | never | The child table's key, as the file writes it when it does not resolve. |
+| `ownerForeignKey` | string | can be null | The id of the foreign key that ties a row to its owner (its name for a key without an id), or null when it does not fit. |
+| `owner` | list of [bindingOwnerColumnRecord](#bindingownercolumnrecord) | never | The owner foreign key's columns, each with the owning table's column it references, the field whose value fills it and the statements' parameter. |
+| `orderColumn` | string | can be null | The key of the column holding a list item's position, or null. |
+| `constants` | list of [bindingConstantView](#bindingconstantview) | never | The entry's constants. |
+| `fields` | list of [bindingFieldRecord](#bindingfieldrecord) | never | The field map: a list of single values maps the attribute itself (named `value`); a value object's members are named after their path below the attribute. |
+| `columns` | list of [bindingColumnRecord](#bindingcolumnrecord) | never | Every column of the child table with what accounts for it (`owner` and `order` besides a binding's statuses). |
+| `writes` | boolean | never | Whether the entry writes its rows (the binding writes). |
+| `onCopy` | string | never | What a copy of the owner does with the rows: `copy` copies them; `clear` and `reset` leave none. |
+
+### bindingOwnerColumnRecord
+
+One column of a child table's owner foreign key.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `column` | string | never | The child table column's key. |
+| `referencedColumn` | string | never | The key of the owning table's column it references. |
+| `field` | string | can be null | The name of the binding's field on the referenced column, or null when none maps it. |
+| `parameter` | string | never | The statements' parameter for the owner's value (`ownerId`). |
 
 ### entityCheckRecord
 

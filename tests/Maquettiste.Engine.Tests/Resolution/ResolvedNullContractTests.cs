@@ -173,6 +173,9 @@ public sealed class ResolvedNullContractTests
 
         // What a copy carries over (parts-and-copy-design.md): no fixture model holds a copy block, so that their golden output stays as it was;
         // PartsAndCopyTests resolves them.
+        // A base's child table as a derived entity uses it (table per type): no fixture model gives a base a child table, so that the
+        // derived bindings' golden output stays as it was; BindingChildTableTests resolves it.
+        ["RBindingBaseChild"] = "a base's child tables: BindingChildTableTests",
         ["RCopy"] = "copy: PartsAndCopyTests",
         ["RCopyAttribute"] = "copy: PartsAndCopyTests",
         ["RCopyChoice"] = "copy: PartsAndCopyTests",

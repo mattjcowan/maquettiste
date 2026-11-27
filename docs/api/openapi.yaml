@@ -3028,7 +3028,9 @@ paths:
         where clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a
         read-only binding has no insert, update or delete). `exists` is the probe on the binding's own source by key. A binding
         with bases (table per type) also has `bases`, nearest first, each with its `level` and that table's `insert`, `update`
-        and `delete` for the entity. Parameters are named after the fields. A model with errors returns
+        and `delete` for the entity. A binding with child tables also has `childTables`, in file order, each labelled by its
+        attribute with its `select` (the rows of one owner, ordered by the order column), `insert` (one row) and `delete` (the
+        rows of one owner). Parameters are named after the fields. A model with errors returns
         `preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetBindingSqlAsync(entityId, bindingId, dialect, options)
@@ -14095,6 +14097,75 @@ components:
           description: The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none.
           items:
             $ref: '#/components/schemas/BindingBaseRecord'
+        childTables:
+          type: array
+          description: The attributes stored in a table of their own (retire-projection-design.md section 5), in file order; left out when
+            there are none.
+          items:
+            $ref: '#/components/schemas/BindingChildTableRecord'
+    BindingChildTableRecord:
+      x-engine-record: Maquettiste.Engine.BindingChildTableRecord
+      description: An attribute a binding stores in a table of its own, a list (one row per item) or a single value object (at most one
+        row). Writes replace its rows, delete the owner's rows, then insert the items in order.
+      type: object
+      required: [id, attribute, isList, table, ownerForeignKey, owner, orderColumn, constants, fields, columns, writes, onCopy]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        attribute:
+          type: string
+          description: The attribute's id, as the file writes it.
+        isList:
+          type: boolean
+        table:
+          type: string
+          description: The child table's key.
+        ownerForeignKey:
+          type: [string, 'null']
+          description: The id of the foreign key that ties a row to its owner; null when it does not fit.
+        owner:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingOwnerColumnRecord'
+        orderColumn:
+          type: [string, 'null']
+          description: The key of the column holding a list item's position.
+        constants:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingConstantView'
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingFieldRecord'
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/BindingColumnRecord'
+        writes:
+          type: boolean
+        onCopy:
+          type: string
+          enum: [copy, clear, reset]
+          description: What a copy of the owner does with the rows; copy copies them, clear and reset leave none.
+    BindingOwnerColumnRecord:
+      x-engine-record: Maquettiste.Engine.BindingOwnerColumnRecord
+      description: One column of a child table's owner foreign key.
+      type: object
+      required: [column, referencedColumn, field, parameter]
+      properties:
+        column:
+          type: string
+          description: The child table column's key.
+        referencedColumn:
+          type: string
+          description: The key of the owning table's column it references.
+        field:
+          type: [string, 'null']
+          description: The name of the binding's field on the referenced column.
+        parameter:
+          type: string
+          description: The statements' parameter for the owner's value (ownerId).
     BindingBaseRecord:
       x-engine-record: Maquettiste.Engine.BindingBaseRecord
       description: One table above a binding's own (table per type), the base's binding that reads and writes it, and how the table below
@@ -14124,6 +14195,26 @@ components:
             type: string
         discriminatorColumn:
           $ref: '#/components/schemas/BindingDiscriminatorRecord'
+        childTables:
+          type: array
+          description: The base's binding's child tables as the derived entity uses them, each with the derived entity's merged onCopy;
+            left out when the base's binding has none.
+          items:
+            $ref: '#/components/schemas/BindingBaseChildRecord'
+    BindingBaseChildRecord:
+      x-engine-record: Maquettiste.Engine.BindingBaseChildRecord
+      description: A child table of a base's binding, as a derived entity (table per type) uses it.
+      type: object
+      required: [id, attribute, onCopy]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        attribute:
+          type: string
+        onCopy:
+          type: string
+          enum: [copy, clear, reset]
+          description: What a copy of the derived entity does with the rows, its own merged onCopy for the attribute.
     BindingDiscriminatorRecord:
       x-engine-record: Maquettiste.Engine.BindingDiscriminatorRecord
       description: The type column a base entity and the entities derived from it share in one table, named by the binding's
@@ -14190,6 +14281,12 @@ components:
         keyOf:
           type: string
           description: The entity of an `endId.entityId` field (`holds` is `key`); left out otherwise.
+        memberPath:
+          type: array
+          description: The ids of the value object members the path walks below the attribute, for a member of a nested value object;
+            left out for a path of one member or none.
+          items:
+            type: string
     BindingColumnRecord:
       x-engine-record: Maquettiste.Engine.BindingColumnRecord
       type: object
@@ -14201,7 +14298,7 @@ components:
           type: [string, 'null']
         status:
           type: string
-          enum: [field, constant, discriminator, ignored, database, computed, identity, default, soft-delete, relation, unaccounted]
+          enum: [field, constant, discriminator, ignored, database, computed, identity, default, soft-delete, relation, owner, order, unaccounted]
         field:
           type: [string, 'null']
     BindingSqlResult:
@@ -14260,6 +14357,35 @@ components:
           description: With bases (table per type), each base's table's statements for this entity, nearest first; left out without bases.
           items:
             $ref: '#/components/schemas/BindingBaseSqlPreview'
+        childTables:
+          type: array
+          description: With child tables, each entry's statements, in file order, labelled by its attribute; left out without child tables.
+          items:
+            $ref: '#/components/schemas/BindingChildSqlPreview'
+    BindingChildSqlPreview:
+      x-engine-record: Maquettiste.Engine.BindingChildSqlPreview
+      description: The statements of one child table entry.
+      type: object
+      required: [id, attributeId, attributeName, select, insert, delete]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        attributeId:
+          type: string
+        attributeName:
+          type: string
+        select:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        insert:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        delete:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
     BindingBaseSqlPreview:
       x-engine-record: Maquettiste.Engine.BindingBaseSqlPreview
       description: The statements one base's table renders for a derived entity (table per type).

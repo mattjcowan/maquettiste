@@ -253,6 +253,129 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Csharp_dapper_child_tables_of_bases_and_by_a_unique_key_round_trip_on_sqlite()
+    {
+        // Child tables (retire-projection-design.md section 5) over the bindings fixture, on SQLite with foreign keys enforced: a payment's
+        // tags in payment_tags (a key that does not cascade), stored by Payment and by BankTransfer in one table per hierarchy, and reached
+        // by CardPayment through its base (table per type); a quote's terms in quote_terms, whose foreign key references the quote's number.
+        using var repo = PackRepo.Bindings(sqlite: true);
+        repo.Write(".maquettiste/model/databases/main/tables/payment-tags.json", """
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"01K6BFX0000000000000000200","name":"payment_tags","database":"01K6BFX0000000000000000002",
+             "columns":[{"id":"01K6BFX0000000000000000201","name":"payment_id","type":"int64","nullable":false},
+                        {"id":"01K6BFX0000000000000000202","name":"position","type":"int32","nullable":false},
+                        {"id":"01K6BFX0000000000000000203","name":"tag","type":"string","length":20,"nullable":false}],
+             "primaryKey":{"columns":["01K6BFX0000000000000000201","01K6BFX0000000000000000202"]},
+             "foreignKeys":[{"id":"01K6BFX0000000000000000204","name":"fk_payment_tags_payment","columns":["01K6BFX0000000000000000201"],
+                             "referencesTable":"01K6BFX0000000000000000050","referencesColumns":["01K6BFX0000000000000000051"]}]}
+            """);
+        const string Tags = """
+            {"id":"ID","attribute":"01K6BFX0000000000000000205","table":"01K6BFX0000000000000000200","ownerForeignKey":"01K6BFX0000000000000000204",
+             "fields":[{"attribute":"01K6BFX0000000000000000205","column":"01K6BFX0000000000000000203"}],"orderColumn":"01K6BFX0000000000000000202"}
+            """;
+        repo.EditJson(".maquettiste/model/entities/payment.json", payment =>
+        {
+            payment["attributes"]!.AsArray().Add(JsonNode.Parse("""{"id":"01K6BFX0000000000000000205","name":"tags","type":"string","length":20,"collection":true}"""));
+            payment["bindings"]![0]!["childTables"] = new JsonArray(JsonNode.Parse(Tags.Replace("ID", "01K6BFX0000000000000000206", StringComparison.Ordinal)));
+        });
+        repo.EditJson(".maquettiste/model/entities/bank-transfer.json", transfer =>
+            transfer["bindings"]![0]!["childTables"] = new JsonArray(JsonNode.Parse(Tags.Replace("ID", "01K6BFX0000000000000000207", StringComparison.Ordinal))));
+        repo.EditJson(".maquettiste/model/databases/main/tables/quotes.json", quotes =>
+            quotes["uniques"] = JsonNode.Parse("""[{"id":"01K6BFX0000000000000000210","columns":["01K6BFX0000000000000000122"]}]"""));
+        repo.Write(".maquettiste/model/databases/main/tables/quote-terms.json", """
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"01K6BFX0000000000000000211","name":"quote_terms","database":"01K6BFX0000000000000000002",
+             "columns":[{"id":"01K6BFX0000000000000000212","name":"quote_number","type":"string","length":20,"nullable":false},
+                        {"id":"01K6BFX0000000000000000213","name":"position","type":"int32","nullable":false},
+                        {"id":"01K6BFX0000000000000000214","name":"text","type":"string","length":200,"nullable":false}],
+             "primaryKey":{"columns":["01K6BFX0000000000000000212","01K6BFX0000000000000000213"]},
+             "foreignKeys":[{"id":"01K6BFX0000000000000000215","name":"fk_quote_terms_quote","columns":["01K6BFX0000000000000000212"],
+                             "referencesTable":"01K6BFX0000000000000000120","referencesColumns":["01K6BFX0000000000000000122"],"onUpdate":"cascade"}]}
+            """);
+        repo.EditJson(".maquettiste/model/entities/quote.json", quote =>
+        {
+            quote["attributes"]!.AsArray().Add(JsonNode.Parse("""{"id":"01K6BFX0000000000000000216","name":"terms","type":"string","length":200,"collection":true}"""));
+            quote["bindings"]![0]!["childTables"]!.AsArray().Add(JsonNode.Parse("""
+                {"id":"01K6BFX0000000000000000217","attribute":"01K6BFX0000000000000000216","table":"01K6BFX0000000000000000211","ownerForeignKey":"01K6BFX0000000000000000215",
+                 "fields":[{"attribute":"01K6BFX0000000000000000216","column":"01K6BFX0000000000000000214"}],"orderColumn":"01K6BFX0000000000000000213"}
+                """));
+        });
+        await repo.GenerateCleanlyAsync();
+        Assert.Contains("TagsDeleteRowsSql", repo.Read("src/Generated/Shop/CorporateCardPaymentRepository.g.cs"), StringComparison.Ordinal);
+        var project = Path.Combine(repo.Repo.Root, "roundtrip");
+        WriteProject(project, repo.PathOf("src/Generated"), ChildTablesRoundTripProgram);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet,
+            [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll"), repo.PathOf("db/main/schema.sql")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("child tables round trip ok", StringComparison.Ordinal), run.Output);
+    }
+
+    private const string ChildTablesRoundTripProgram = """
+        using System;
+        using System.IO;
+        using System.Linq;
+        using Dapper;
+        using Microsoft.Data.Sqlite;
+        using Shop.Model;
+        using Shop.Model.Shop;
+
+        DapperTypeHandlers.Register();
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = File.ReadAllText(args[0]) + "\nPRAGMA foreign_keys = ON;";
+            command.ExecuteNonQuery();
+        }
+
+        void Check(bool condition, string what)
+        {
+            if (!condition)
+                throw new InvalidOperationException("Round trip failed: " + what);
+        }
+
+        long Tags(long id) => connection.ExecuteScalar<long>("SELECT COUNT(*) FROM payment_tags WHERE payment_id = @id", new { id });
+
+        // One table per hierarchy: a bank transfer stores the payment's tags in payment_tags, as a payment does.
+        var transfers = new BankTransferRepository(connection);
+        var transfer = new BankTransfer { Amount = 20m, Reference = "TR-1", Tags = ["sepa", "urgent"] };
+        await transfers.InsertAsync(transfer);
+        Check((await transfers.GetAsync(transfer.Id))!.Tags.SequenceEqual(["sepa", "urgent"]), "a subtype in its base's table writes and reads the list");
+        Check((await new PaymentRepository(connection).GetAsync(transfer.Id))!.Tags.Count == 2, "the base reads the same rows");
+
+        // Table per type: a card payment's tags are its base's child table, loaded, written and deleted with it.
+        var cards = new CardPaymentRepository(connection);
+        var card = new CardPayment { Amount = 35m, Last4 = "4242", Tags = ["card"] };
+        await cards.InsertAsync(card);
+        var readCard = (await cards.GetAsync(card.Id))!;
+        Check(readCard.Tags.SequenceEqual(["card"]), "a base's child table is read with the derived entity");
+        readCard.Tags = ["card", "refund"];
+        Check(await cards.UpdateAsync(readCard), "update");
+        Check((await cards.GetAsync(card.Id))!.Tags.SequenceEqual(["card", "refund"]), "a base's child rows are written again");
+        var corporate = new CorporateCardPayment { Amount = 99m, Last4 = "1881", CostCenter = "CC-1", Tags = ["corporate"] };
+        await new CorporateCardPaymentRepository(connection).InsertAsync(corporate);
+        Check(Tags(corporate.Id) == 1, "two levels down, the root's child table is written");
+
+        // A delete through the wrong repository finds no row of its kind: it deletes nothing.
+        Check(!await transfers.DeleteAsync(card.Id), "a card payment is no bank transfer");
+        Check(Tags(card.Id) == 2, "its tags stay");
+        Check(await cards.DeleteAsync(card.Id), "a delete removes the base's child rows first, since their key does not cascade");
+        Check(Tags(card.Id) == 0 && connection.ExecuteScalar<long>("SELECT COUNT(*) FROM payments WHERE id = @id", new { id = card.Id }) == 0, "no row is left");
+        Check(await new CorporateCardPaymentRepository(connection).DeleteAsync(corporate.Id) && Tags(corporate.Id) == 0, "two levels down too");
+        Check(await transfers.DeleteAsync(transfer.Id) && Tags(transfer.Id) == 0, "the bank transfer and its tags go");
+
+        // A child table owned by a unique key: the quote's terms name it by number; the delete reads the row for it.
+        var quotes = new QuoteRepository(connection);
+        var quote = new Quote { Number = "Q-7", BillingAddress = new PostalAddress { Street = "1 Main St", City = "Springfield" }, Terms = ["Net 30", "No returns"] };
+        await quotes.InsertAsync(quote);
+        Check((await quotes.GetAsync(quote.Id))!.Terms.SequenceEqual(["Net 30", "No returns"]), "rows owned by a unique key");
+        Check((await quotes.GetAsync(quote.Id))!.ShippingAddress is null, "an optional single value object with no row");
+        Check(await quotes.DeleteAsync(quote.Id), "delete by key");
+        Check(connection.ExecuteScalar<long>("SELECT COUNT(*) FROM quote_terms") == 0, "the terms went first");
+        Check(!await quotes.DeleteAsync(quote.Id), "nothing left to delete");
+        Console.WriteLine("child tables round trip ok");
+        """;
+
+    [Fact]
     public async Task Sql_text_queries_named_queries_and_commands_compile_for_postgresql_and_run_on_sqlite()
     {
         // sql-queries-design.md section 21: the PostgreSQL output compiles, and on SQLite the recursive named query, the query written
@@ -2337,6 +2460,40 @@ public sealed class CompileTests
         Check(!await cards.UpdateAsync(card), "an update is true only when every table has the row");
         Check(await corporates.DeleteAsync(corporate.Id), "a delete removes every row");
         Check(await connection.ExecuteScalarAsync<long>("SELECT (SELECT COUNT(*) FROM payments WHERE id = @id) + (SELECT COUNT(*) FROM card_payments WHERE payment_id = @id) + (SELECT COUNT(*) FROM corporate_card_payments WHERE payment_id = @id)", new { id = corporate.Id }) == 0, "no row is left");
+
+        // Child tables: a quote's shipping address (at most one row), notes (in order) and labels (a key that does not cascade); its
+        // billing address in columns, the map point nested two levels down and the courier notes as JSON. Foreign keys are enforced
+        // from here on, so the labels must go before the quote.
+        using (var pragma = connection.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA foreign_keys = ON";
+            pragma.ExecuteNonQuery();
+        }
+
+        var quotes = new QuoteRepository(connection);
+        var quote = new Quote
+        {
+            Number = "Q-1",
+            BillingAddress = new PostalAddress { Street = "1 Main St", City = "Springfield", DeliveryNotes = ["Ring twice"], Geo = new GeoPoint { Latitude = 1.5m, Longitude = -2.25m } },
+            ShippingAddress = new PostalAddress { Street = "2 Dock Rd", City = "Shelbyville", Geo = new GeoPoint { Latitude = 3m, Longitude = 4m } },
+            Notes = [new QuoteNote { Text = "Thanks", Author = "Ada" }, new QuoteNote { Text = "Net 30" }],
+            Labels = ["urgent", "export"],
+        };
+        await quotes.InsertAsync(quote);
+        Check(quote.Id > 0, "the owner's key comes back before its child rows are written");
+        var loaded = (await quotes.GetAsync(quote.Id))!;
+        Check(loaded.BillingAddress is { City: "Springfield", Geo: { Latitude: 1.5m, Longitude: -2.25m } } && loaded.BillingAddress.DeliveryNotes.SequenceEqual(["Ring twice"]), "a nested value object in columns, a list as JSON");
+        Check(loaded.ShippingAddress is { Street: "2 Dock Rd", Geo.Longitude: 4m }, "a single value object in its own table, its map point as JSON");
+        Check(loaded.Notes.Select(n => n.Text).SequenceEqual(["Thanks", "Net 30"]) && loaded.Notes[1].Author is null, "a list in its own table, in order");
+        Check(loaded.Labels.Order().SequenceEqual(["export", "urgent"]), "a list of values in its own table");
+        loaded.Notes = [new QuoteNote { Text = "Paid" }];
+        loaded.ShippingAddress = null;
+        Check(await quotes.UpdateAsync(loaded), "an update writes the child rows again");
+        var updated = (await quotes.GetAsync(quote.Id))!;
+        Check(updated.Notes.Single().Text == "Paid" && updated.ShippingAddress is null && updated.Labels.Count == 2, "the child rows are replaced");
+        Check((await quotes.ListAsync()).Single().Labels.Count == 2, "a list reads the child rows too");
+        Check(await quotes.DeleteAsync(quote.Id), "a delete removes the labels first, since their key does not cascade");
+        Check(await connection.ExecuteScalarAsync<long>("SELECT (SELECT COUNT(*) FROM quote_labels) + (SELECT COUNT(*) FROM quote_notes) + (SELECT COUNT(*) FROM quotes)") == 0, "no row is left");
         Console.WriteLine("bindings round trip ok");
         """;
 

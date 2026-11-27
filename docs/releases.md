@@ -30,6 +30,33 @@ one.
   foreign-key shape too, naming columns of the table that holds the foreign key. Naming `foreignKey` makes a relationship
   with attributes a foreign key. The entity binding of that table counts the column as the relationship's (status
   `relation`).
+- **An attribute in a table of its own.** A binding can keep a list attribute (one row per item) or a single value object
+  (at most one row) in a child table: a `childTables` entry names the attribute, the table, the table's foreign key to the
+  owner's table (`ownerForeignKey`, on its primary key or a unique key), fields whose paths start with the attribute (a list
+  of single values maps the attribute itself), an integer `orderColumn` for a list, constants and columns. Each entry renders
+  three statements: the rows of one owner, in order; delete the rows of one owner; insert one row. Writes replace the rows,
+  after the owner's insert; a delete removes them first unless the foreign key cascades; a soft delete leaves them; a
+  read-only binding reads them only. Inherited attributes work with a table per type and with one table per hierarchy. A
+  copy carries the rows unless the attribute's `onCopy` is `clear` or `reset`.
+- **Field paths of any depth.** A field can walk value objects nested in value objects (`attributeId.memberId.memberId`),
+  and a path that ends at a nested value object or a list maps a JSON column. Map by name and "Create tables…" bindings
+  follow such paths too.
+- **New rules MQ4137 to MQ4144** check a child table's attribute, table and owner foreign key, the owner's columns, the
+  fields, constants and order column (MQ4137 to MQ4141); two entries in one table with no constant telling their rows apart
+  (MQ4142); an owner key on a unique key whose field changes without `onUpdate: cascade` (MQ4143, a warning); and a single
+  value object's table that lets an owner have several rows (MQ4144, a warning). MQ4047 also covers a child table's columns.
+  MQ4058 now counts the members of nested value objects; a field on a whole value object (a JSON column) stores it. A path
+  that ends at a nested value object or a list must map a JSON column, and a value object is never mapped both whole and
+  member by member (MQ4045).
+- **Table per type and child tables.** A derived binding's `bases` carry the bases' child tables (`child_tables`, each with
+  the derived entity's own merged `on_copy`), and the `csharp-dapper` pack loads, writes and deletes them with the entity.
+- **Templates.** A binding has `child_tables` (each with `attribute`, `is_list`, `table`, `owner_foreign_key`, `owner`,
+  `fields`, `order_column`, `constants`, `columns`, `writes` and `on_copy`), and a field has `members`, the value object
+  members its path walks. `binding_sql` takes an entry to render its `select`, `insert` or `delete`. `preview_binding_sql`
+  and the binding SQL endpoint return each entry's statements, labelled by its attribute. In the resolved model a binding
+  has `childTables`, and a field of a nested path has `memberPath`. The `csharp-dapper` pack's bound repository loads each
+  list in order and each single value object, and writes them again in the same transaction. Its delete reads the row
+  through the binding's own filters first and deletes nothing, child rows included, when there is none.
 - **Binding never changes storage.** None of this changes a table, its DDL, a migration snapshot or a fact.
 
 **When you update:**
@@ -39,7 +66,11 @@ one.
   derived entity's rows as its base's now needs `baseForeignKey` on the derived bindings. Resolution no longer reads that
   convention for bound entities.
 - A relationship with attributes whose mapping names `foreignKey` is now the foreign-key shape, where it was refused before.
-- There is no editor screen for `baseForeignKey` or for a relationship's attribute columns yet: use the JSON tab.
+- There is no editor screen for `baseForeignKey`, `childTables` or a relationship's attribute columns yet: use the JSON tab.
+- A binding that maps a value object attribute whole to a JSON column no longer gets MQ4058 for its members. One whose value
+  object holds nested value objects now gets MQ4058 for their members when no field maps them.
+- A field `attributeId.memberId` that names a nested value object or a list, refused before (MQ4045), now maps a JSON column;
+  a column of another type is MQ4045.
 
 ## 0.28.0 (2026-11-26)
 
