@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJTBNE0FNY476QTRM3",
+  "name": "sales order attachment is uploaded by user account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1VW1SQNXK0A4J5KRCBYWEF4",
+  "foreignKey": "01M8EJX9AC1QG3VVSM3H5ZV4EM"
+}

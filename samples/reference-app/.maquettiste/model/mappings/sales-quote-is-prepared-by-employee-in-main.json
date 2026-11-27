@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CKBQY4YKFJNVY698YR",
+  "name": "sales quote is prepared by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2BSH6N8BE3XD6TZSZYY83KV",
+  "foreignKey": "01M8EJX9ACESND7Q9Q3TYYQ4R8"
+}

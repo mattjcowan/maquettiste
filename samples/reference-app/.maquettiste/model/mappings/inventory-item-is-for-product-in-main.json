@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ6P2X6B04K3CKF834",
+  "name": "inventory item is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2BT4G2K7T8SEADGT5163WXF",
+  "foreignKey": "01M8EJX9AA47TRN6V87K282XG1"
+}

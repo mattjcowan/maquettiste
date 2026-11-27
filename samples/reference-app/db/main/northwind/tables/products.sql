@@ -47,6 +47,7 @@ CREATE TABLE northwind.products (
     CONSTRAINT fk_products_brand_id FOREIGN KEY (brand_id) REFERENCES northwind.brands (id) ON DELETE SET NULL,
     CONSTRAINT fk_products_base_unit_code FOREIGN KEY (base_unit_code) REFERENCES northwind.units_of_measure (code) ON DELETE RESTRICT,
     CONSTRAINT fk_products_storage_condition_id FOREIGN KEY (storage_condition_id) REFERENCES northwind.storage_conditions (id) ON DELETE SET NULL,
+    CONSTRAINT fk_products_status_ref FOREIGN KEY (status) REFERENCES northwind.product_statuses (code),
     CONSTRAINT ck_products_discontinued_after_launch CHECK (discontinued_on IS NULL OR launched_on IS NULL OR discontinued_on >= launched_on)
 );
 CREATE INDEX ix_products_status_name ON northwind.products (status, name);

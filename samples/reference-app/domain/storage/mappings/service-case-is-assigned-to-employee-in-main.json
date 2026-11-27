@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJV25YQ7378V3PEZDS",
+  "name": "service case is assigned to employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M33P7HGNR8HXC6QSF07Y4X8T",
+  "foreignKey": "01M8EJX9ABD8NY1E9ER5QP6H1W"
+}

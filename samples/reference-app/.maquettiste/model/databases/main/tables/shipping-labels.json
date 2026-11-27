@@ -1,0 +1,77 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PA8QG2C9N04QTYATS",
+  "name": "shipping_labels",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PV7C95T480ZC4AW0R",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the shipping label."
+    },
+    {
+      "id": "01M8EJX99PTVCN9E9097G521DS",
+      "name": "format",
+      "type": "string",
+      "length": 10,
+      "nullable": false,
+      "comment": "ZPL or PDF."
+    },
+    {
+      "id": "01M8EJX99PK3MC3FANBXDKG377",
+      "name": "storage_key",
+      "type": "string",
+      "length": 400,
+      "nullable": false,
+      "comment": "Object storage key of the label file."
+    },
+    {
+      "id": "01M8EJX99PPNKC26SP1NDFBH3F",
+      "name": "generated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the label was generated."
+    },
+    {
+      "id": "01M8EJX99P3DT13N1G278WZHFA",
+      "name": "shipment_package_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_shipping_labels",
+    "columns": [
+      "01M8EJX99PV7C95T480ZC4AW0R"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9084Y1FP93F873YMJ",
+      "name": "uq_shipping_labels_shipment_package_id",
+      "columns": [
+        "01M8EJX99P3DT13N1G278WZHFA"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A928QK6HT81WZ53GY3",
+      "name": "fk_shipping_labels_shipment_package_id",
+      "columns": [
+        "01M8EJX99P3DT13N1G278WZHFA"
+      ],
+      "referencesTable": "01M8EJX99PJF6CBD9HBT9WP452",
+      "referencesColumns": [
+        "01M8EJX99PP25C1NHZZJV9SK12"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A carrier label generated for a package."
+}

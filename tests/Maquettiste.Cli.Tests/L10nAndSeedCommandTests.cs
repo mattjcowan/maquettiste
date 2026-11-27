@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Cli.Commands;
 using Maquettiste.Engine.Localization;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
@@ -9,6 +10,7 @@ namespace Maquettiste.Cli.Tests;
 /// The <c>l10n</c> and <c>seed</c> verbs (reference-types-seeds-localization.md section 3.9) on the reference-data fixture (en default,
 /// fr and fr-CA; the fr shard holds three stale entries), and the project name rules of <c>init</c>.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class L10nAndSeedCommandTests
 {
     private const string UnitOfMeasure = "01JBM9S346Q3D25VT4F5V37E3S";

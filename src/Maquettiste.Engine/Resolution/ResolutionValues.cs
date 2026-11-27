@@ -121,18 +121,43 @@ internal sealed class DependencySet(DependencyKeyCache? cache = null)
         var runs = _runs ??= new List<string[]>(4);
         if (runs.Count > 32)
         {
-            // Very many runs (a database's membership gathers every table's keys): collect the distinct keys and sort them once.
-            var distinct = new HashSet<string>(StringComparer.Ordinal);
+            // Very many runs (a database's membership gathers every table's keys): the largest run stays as it is, sorted, and only the
+            // distinct keys outside it are collected, sorted and merged in (sorting every key again cost tens of milliseconds a database
+            // when the largest run holds every conceptual file's key).
+            var largest = runs[0];
             foreach (var run in runs)
-                distinct.UnionWith(run);
+            {
+                if (run.Length > largest.Length)
+                    largest = run;
+            }
+
+            var inLargest = new HashSet<string>(largest, StringComparer.Ordinal);
+            var extra = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var run in runs)
+            {
+                if (ReferenceEquals(run, largest))
+                    continue;
+                foreach (var key in run)
+                {
+                    if (!inLargest.Contains(key))
+                        extra.Add(key);
+                }
+            }
+
             if (_loose is not null)
             {
-                distinct.UnionWith(_loose);
+                foreach (var key in _loose)
+                {
+                    if (!inLargest.Contains(key))
+                        extra.Add(key);
+                }
+
                 _loose.Clear();
             }
 
-            var all = distinct.ToArray();
-            Array.Sort(all, StringComparer.Ordinal);
+            var extras = extra.ToArray();
+            Array.Sort(extras, StringComparer.Ordinal);
+            var all = Merge(largest, extras);
             runs.Clear();
             if (all.Length > 0)
                 runs.Add(all);

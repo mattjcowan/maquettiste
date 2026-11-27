@@ -1,0 +1,65 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9B2JBS677E9FD4W6Z6T",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99MTWE55Y7GS5QD5XVC",
+      "fields": [
+        {
+          "attribute": "01M1T5CYND1V61T8MBMYA60WPF",
+          "column": "01M8EJX99MTXZ717B2QEATJDWK"
+        },
+        {
+          "attribute": "01M1H6R8K1S76SQFG99ZF4BJNH",
+          "column": "01M8EJX99MSGMSD55MPZAJM2J0"
+        },
+        {
+          "attribute": "01M20E6ZWPCD65E4J0A7DDCGSX",
+          "column": "01M8EJX99MFA5V81YZYA9MYBJC"
+        },
+        {
+          "attribute": "01M386KB1GVW2FJ5TSZPM2AW0Z.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99MP7W77T8AJGRKR208"
+        },
+        {
+          "attribute": "01M386KB1GVW2FJ5TSZPM2AW0Z.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99M1DRDE9G243ZGF3Y2"
+        },
+        {
+          "attribute": "01M2MR87FH97MEP2JRJ1HH1HWE.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99MX9A15G55GR4PC82Q"
+        },
+        {
+          "attribute": "01M2MR87FH97MEP2JRJ1HH1HWE.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99MQD139HZ1CFCHRSXR"
+        },
+        {
+          "attribute": "01M23DA87Z7JE3B152MTB5QT6G",
+          "column": "01M8EJX99MNA7QRTEBH8NM6EH3"
+        },
+        {
+          "attribute": "01M1WCABX6GRWDRWARCZGECM3Q",
+          "column": "01M8EJX99ME1H4086T2T8V35R6"
+        },
+        {
+          "attribute": "01M1XKN66J6Q2H121DF1MSMPAJ",
+          "column": "01M8EJX99M6DSTKKPZTRRFWKQ4"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99M1DRDE9G243ZGF3Y2": "b022d4cb:48b85cd3",
+          "01M8EJX99M6DSTKKPZTRRFWKQ4": "04235704:8da1c7b8",
+          "01M8EJX99ME1H4086T2T8V35R6": "136fcdcf:d8a57cf9",
+          "01M8EJX99MFA5V81YZYA9MYBJC": "1d320e02:81884634",
+          "01M8EJX99MNA7QRTEBH8NM6EH3": "f4455765:ae2dc2c0",
+          "01M8EJX99MP7W77T8AJGRKR208": "ec0004a6:d46c92d7",
+          "01M8EJX99MQD139HZ1CFCHRSXR": "87d6ac3d:75525505",
+          "01M8EJX99MSGMSD55MPZAJM2J0": "0081779c:6bcc33d3",
+          "01M8EJX99MTXZ717B2QEATJDWK": "a5614527:8da1c7b8",
+          "01M8EJX99MX9A15G55GR4PC82Q": "01add269:d249895e"
+        }
+      }
+    }
+  ]
+}

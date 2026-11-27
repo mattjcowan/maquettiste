@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHJ440NJV0GAH8XD0F",
+  "name": "tax rate posts tax to sales tax account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1R5PWK3E2PS3B9HVYWR9KTA",
+  "foreignKey": "01M8EJX9A839HDC80E4TX0VKGC"
+}

@@ -73,5 +73,93 @@
       "length": 300,
       "description": "Why the deal was lost."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B841RDP15DHGKAW2SY",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PMW1FP6SRZVY75VV2",
+      "fields": [
+        {
+          "attribute": "01M2FQDVJVTK9QQDT1VCJPDF5F",
+          "column": "01M8EJX99PHPV90XA4S79DN4VE"
+        },
+        {
+          "attribute": "01M2S4QQ2RJVJEE45KD8G5199P",
+          "column": "01M8EJX99P4PDCA85HXJ86QZ7P"
+        },
+        {
+          "attribute": "01M2ZNBMPZ3CJXQM7XMBER6TPS.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PSBVBWBHWJF6XP2E6"
+        },
+        {
+          "attribute": "01M2ZNBMPZ3CJXQM7XMBER6TPS.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PRDBH4FKZ1P125H08"
+        },
+        {
+          "attribute": "01M207SHSB3CQZEKTXZH9597EK",
+          "column": "01M8EJX99PQVR6J1XMSGKNG7CT"
+        },
+        {
+          "attribute": "01M26H3XE5NSBSM8DB1RMPAZKA",
+          "column": "01M8EJX99PAAVYWY1P7RDJYM9P"
+        },
+        {
+          "attribute": "01M36SXAJ88AFG84KJK3AGWHNH",
+          "column": "01M8EJX99PF8EM357KYXD7FNNW"
+        },
+        {
+          "attribute": "01M1DXY11GT2FGJTX9BSNV2M18",
+          "column": "01M8EJX99P0KKWF6B98HE8EPFG"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PWD86Z1VFZBSSYH1V"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99P9A70JTCSHW61Z3XG"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99P6FCPNHSVTT87AGE0"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PJSFCK9M139CCQPAQ"
+        },
+        {
+          "attribute": "01M2RM4VJ56N5DG63MGNA8FE3H",
+          "column": "01M8EJX99PYJ31PJN2RFP2MXB4"
+        },
+        {
+          "attribute": "01M20M477AX09HK3K0WV1Y9SDR",
+          "column": "01M8EJX99PJBB90MN6338RY47N"
+        },
+        {
+          "attribute": "01M29VXW7Q54F04HR8S6W9P3P3",
+          "column": "01M8EJX99PG02587R518CQ1YBX"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P0KKWF6B98HE8EPFG": "b80415ec:f916bddd",
+          "01M8EJX99P4PDCA85HXJ86QZ7P": "82a3537f:35f1a519",
+          "01M8EJX99P6FCPNHSVTT87AGE0": "d31d4567:fd717804",
+          "01M8EJX99P9A70JTCSHW61Z3XG": "c0d79bde:9599b5fd",
+          "01M8EJX99PAAVYWY1P7RDJYM9P": "75e43dad:81884634",
+          "01M8EJX99PF8EM357KYXD7FNNW": "0c5477fc:9b51e601",
+          "01M8EJX99PG02587R518CQ1YBX": "1813fb2c:8da1c7b8",
+          "01M8EJX99PHPV90XA4S79DN4VE": "a5614527:8da1c7b8",
+          "01M8EJX99PJBB90MN6338RY47N": "ab1e6a4a:53fb88ea",
+          "01M8EJX99PJSFCK9M139CCQPAQ": "0b075263:9599b5fd",
+          "01M8EJX99PQVR6J1XMSGKNG7CT": "3955f8fd:08b882e7",
+          "01M8EJX99PRDBH4FKZ1P125H08": "09517263:48b85cd3",
+          "01M8EJX99PSBVBWBHWJF6XP2E6": "1054ddec:d46c92d7",
+          "01M8EJX99PWD86Z1VFZBSSYH1V": "42049432:e0d08678",
+          "01M8EJX99PYJ31PJN2RFP2MXB4": "c001011d:8da1c7b8"
+        }
+      }
+    }
   ]
 }

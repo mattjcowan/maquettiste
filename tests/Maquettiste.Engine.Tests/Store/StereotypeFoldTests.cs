@@ -6,6 +6,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Editor;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
@@ -16,6 +17,7 @@ namespace Maquettiste.Engine.Tests.Store;
 /// the next migration changes no table. A difference the fold cannot hide from the database refuses the table (MQ4077) and nothing is
 /// written.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class StereotypeFoldTests
 {
     private const string Audited = "01J92P0V25BX5TMQ8N9F6AJE61";

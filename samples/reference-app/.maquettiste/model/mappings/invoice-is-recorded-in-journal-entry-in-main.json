@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CG7ERB50Q82NZ8KPFM",
+  "name": "invoice is recorded in journal entry in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M266YYR2SV60GVHFXAARWDF8",
+  "foreignKey": "01M8EJX9A5KD5HTCNQB6C9BHGY"
+}

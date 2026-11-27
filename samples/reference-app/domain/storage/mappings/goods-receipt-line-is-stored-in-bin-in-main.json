@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJV7AWJRJPBGZRBR4T",
+  "name": "goods receipt line is stored in bin in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M32QCH881KTR1A2EEXV8CDJ0",
+  "foreignKey": "01M8EJX9AB2YF7NKBN0JTKR67R"
+}

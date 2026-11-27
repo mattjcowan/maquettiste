@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHGTEFCYH8Y4D9G17Y",
+  "name": "write off is settled against invoice in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M38FCQXCFS2R9ZRFC8YE8PAF",
+  "foreignKey": "01M8EJX9A628A9PRDJNHPPFQ15"
+}

@@ -1,0 +1,87 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJPZN9VC241ZQY1P20V7D5",
+  "name": "invoice_lines",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "columns": [
+    {
+      "id": "01M8EJPZN9WNE7FWBTSSC5R13F",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN98Y4J9T1HXJ9MSQNX",
+      "name": "quantity",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN9GND1ENGST82CTV09",
+      "name": "unit_price_amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN960Z8FR4174NC5FJX",
+      "name": "unit_price_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN9GVP943VEYBQDG455",
+      "name": "description",
+      "type": "string",
+      "length": 500
+    },
+    {
+      "id": "01M8EJPZN9CXQ3J4NP64BA313M",
+      "name": "invoice_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN92CXA336SM8GCBHRX",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_invoice_lines",
+    "columns": [
+      "01M8EJPZN9WNE7FWBTSSC5R13F"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJPZNN1H52GX7W2HDGDX7H",
+      "name": "fk_invoice_lines_invoice_id",
+      "columns": [
+        "01M8EJPZN9CXQ3J4NP64BA313M"
+      ],
+      "referencesTable": "01J92P0V1T0J6RH4MY9H81NYB4",
+      "referencesColumns": [
+        "01M8EJPZN8P9AWRMABQ8VM73RS"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJPZNN3HQK6GK5JRBBQZ6M",
+      "name": "fk_invoice_lines_product_id",
+      "columns": [
+        "01M8EJPZN92CXA336SM8GCBHRX"
+      ],
+      "referencesTable": "01M8EJPZN967ERTF2BPP3YM4QY",
+      "referencesColumns": [
+        "01M8EJPZN9FW9ZV7DANC4C50XN"
+      ],
+      "onDelete": "restrict"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Text;
 
@@ -14,8 +15,29 @@ namespace Maquettiste.Engine.Model;
 /// <param name="Inherited">Whether the column is inherited from a stereotype.</param>
 internal sealed record ShapeColumn(string Id, string Name, Column Entry, bool Inherited)
 {
-    /// <summary>The value provenance records for the column (<see cref="ColumnShapeHash.Of"/>).</summary>
-    public string Shape { get; } = ColumnShapeHash.Of(Entry);
+    private string? _shape;
+
+    /// <summary>The snapshot's shape hashes, which keep an entry's value from one snapshot to the next; none hashes the entry each time.</summary>
+    public ColumnShapeCache? Shapes { get; init; }
+
+    /// <summary>
+    /// The value provenance records for the column (<see cref="ColumnShapeHash.Of"/>), computed on first read and kept on the column: the
+    /// resolver lists every bound table's columns for drift but hashes only those a provenance records.
+    /// </summary>
+    public string Shape => _shape ??= Shapes?.Of(Entry) ?? ColumnShapeHash.Of(Entry);
+
+    /// <summary>
+    /// Equal by the column's own values (the computed <see cref="Shape"/> is a function of <see cref="Entry"/>, and <see cref="Shapes"/> only
+    /// remembers it, so neither takes part).
+    /// </summary>
+    /// <param name="other">The other column.</param>
+    /// <returns>Whether the id, name, entry and inherited flag are equal.</returns>
+    public bool Equals(ShapeColumn? other) =>
+        other is not null && string.Equals(Id, other.Id, StringComparison.Ordinal) && string.Equals(Name, other.Name, StringComparison.Ordinal)
+        && Equals(Entry, other.Entry) && Inherited == other.Inherited;
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine(StringComparer.Ordinal.GetHashCode(Id), StringComparer.Ordinal.GetHashCode(Name), Entry, Inherited);
 }
 
 /// <summary>What a binding's source is, as drift sees it.</summary>
@@ -85,6 +107,7 @@ internal sealed record BindingDriftReport(DriftSource Source, Table? Table, bool
 internal static class BindingDrift
 {
     private static readonly IReadOnlyList<ShapeColumn> NoColumns = [];
+    private static readonly ConditionalWeakTable<ModelSnapshot, Dictionary<string, List<Mapping>>> MappingsByForeignKey = new();
 
     /// <summary>
     /// The type column a binding names or inherits, read from files as the database run reads it (<c>TypeColumnOwner</c>): the binding's own
@@ -183,10 +206,43 @@ internal static class BindingDrift
         ArgumentNullException.ThrowIfNull(table);
         if (table.ForeignKeys.Count == 0)
             return [];
-        return [.. model.All<Mapping>()
-            .Where(m => m.Relation is not null && m.JunctionTable is null && m.ForeignKey is { } key && table.ForeignKeys.Any(f => string.Equals(f.Id, key, StringComparison.Ordinal)))
-            .OrderBy(m => m.Id, StringComparer.Ordinal)
-            .SelectMany(m => m.Attributes.Select(a => a.Column).OfType<string>())];
+        // Indexed once per snapshot by foreign key id (every binding of a large model asks; a scan of every mapping per binding was
+        // most of the resolver's time on the benchmark model).
+        var byKey = MappingsByForeignKey.GetValue(model, IndexMappings);
+        List<Mapping>? found = null;
+        foreach (var key in table.ForeignKeys)
+        {
+            if (byKey.TryGetValue(key.Id, out var mappings))
+            {
+                found ??= [];
+                foreach (var mapping in mappings)
+                {
+                    if (!found.Contains(mapping))
+                        found.Add(mapping);
+                }
+            }
+        }
+
+        if (found is null)
+            return [];
+        found.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+        return [.. found.SelectMany(m => m.Attributes.Select(a => a.Column).OfType<string>())];
+    }
+
+    /// <summary>The relation mappings on the foreign-key shape (no junction table) by the foreign key they name.</summary>
+    private static Dictionary<string, List<Mapping>> IndexMappings(ModelSnapshot model)
+    {
+        var byKey = new Dictionary<string, List<Mapping>>(StringComparer.Ordinal);
+        foreach (var mapping in model.All<Mapping>())
+        {
+            if (mapping.Relation is null || mapping.JunctionTable is not null || mapping.ForeignKey is not { } key)
+                continue;
+            if (!byKey.TryGetValue(key, out var list))
+                byKey[key] = list = [];
+            list.Add(mapping);
+        }
+
+        return byKey;
     }
 
     /// <summary>
@@ -239,7 +295,20 @@ internal static class BindingDrift
     /// <param name="entity">The entity that holds the binding (its attributes name the fields).</param>
     /// <param name="binding">The binding.</param>
     /// <returns>The report.</returns>
-    public static BindingDriftReport Of(ModelSnapshot model, Entity entity, EntityBinding binding)
+    public static BindingDriftReport Of(ModelSnapshot model, Entity entity, EntityBinding binding) => Of(model, entity, binding, mappedOnly: false);
+
+    /// <summary>
+    /// One binding's drift; with <paramref name="mappedOnly"/>, only what the resolver reports (MQ4087, MQ4088): the source, staleness, the
+    /// columns and the renamed and retyped mapped columns, with <see cref="BindingDriftReport.Added"/> and
+    /// <see cref="BindingDriftReport.Removed"/> left empty (working out what accounts for every column is most of the cost, and every
+    /// binding of a large model asks).
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="entity">The entity that holds the binding.</param>
+    /// <param name="binding">The binding.</param>
+    /// <param name="mappedOnly">Whether to skip the added and removed columns.</param>
+    /// <returns>The report.</returns>
+    public static BindingDriftReport Of(ModelSnapshot model, Entity entity, EntityBinding binding, bool mappedOnly)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(entity);
@@ -251,7 +320,7 @@ internal static class BindingDrift
 
         var columns = ColumnsOf(model, table!);
         var recorded = binding.Provenance?.Columns ?? FrozenDictionary<string, string>.Empty;
-        var ids = columns.Select(c => c.Id).ToFrozenSet(StringComparer.Ordinal);
+        var ids = columns.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
         var stale = recorded.Count > 0 && !recorded.Keys.Any(ids.Contains);
         var reads = hasProvenance && !stale;
 
@@ -265,6 +334,12 @@ internal static class BindingDrift
             if (!mappedBy.TryGetValue(at, out var fields))
                 mappedBy[at] = fields = [];
             fields.Add(i);
+        }
+
+        if (mappedOnly)
+        {
+            var (mappedRenamed, mappedRetyped) = reads ? Changed(model, entity, binding, columns, recorded, mappedBy) : ([], []);
+            return new BindingDriftReport(DriftSource.TableFile, table, hasProvenance, stale, columns, [], mappedRenamed, mappedRetyped, []);
         }
 
         var named = new HashSet<int>(mappedBy.Keys);
@@ -300,23 +375,46 @@ internal static class BindingDrift
                 continue;
             }
 
-            if (!mappedBy.TryGetValue(i, out var mapping) || string.Equals(was, column.Shape, StringComparison.Ordinal))
-                continue;
-            var nameChanged = !string.Equals(ColumnShapeHash.NamePartOf(was), ColumnShapeHash.NamePartOf(column.Shape), StringComparison.Ordinal);
-            var typeChanged = !string.Equals(ColumnShapeHash.TypePartOf(was), ColumnShapeHash.TypePartOf(column.Shape), StringComparison.Ordinal);
-            foreach (var f in mapping)
-            {
-                var field = binding.Fields[f];
-                var change = new DriftMappedColumn(column.Id, column.Name, field.Attribute, AttributeName(model, entity, field.Attribute), f, was, column.Shape);
-                if (nameChanged)
-                    renamed.Add(change);
-                if (typeChanged)
-                    retyped.Add(change);
-            }
+            if (mappedBy.TryGetValue(i, out var mapping))
+                AddChange(model, entity, binding, column, was, mapping, renamed, retyped);
         }
 
         IReadOnlyList<string> removed = reads ? [.. recorded.Keys.Where(id => !ids.Contains(id)).Order(StringComparer.Ordinal)] : [];
         return new BindingDriftReport(DriftSource.TableFile, table, hasProvenance, stale, columns, added, renamed, retyped, removed);
+    }
+
+    /// <summary>The renamed and retyped mapped columns, in column order then field order (a read provenance).</summary>
+    private static (List<DriftMappedColumn> Renamed, List<DriftMappedColumn> Retyped) Changed(ModelSnapshot model, Entity entity, EntityBinding binding,
+        IReadOnlyList<ShapeColumn> columns, IReadOnlyDictionary<string, string> recorded, Dictionary<int, List<int>> mappedBy)
+    {
+        var renamed = new List<DriftMappedColumn>();
+        var retyped = new List<DriftMappedColumn>();
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (mappedBy.TryGetValue(i, out var mapping) && recorded.TryGetValue(columns[i].Id, out var was))
+                AddChange(model, entity, binding, columns[i], was, mapping, renamed, retyped);
+        }
+
+        return (renamed, retyped);
+    }
+
+    /// <summary>Adds a recorded mapped column's change, once per field that maps it, when its value differs.</summary>
+    private static void AddChange(ModelSnapshot model, Entity entity, EntityBinding binding, ShapeColumn column, string was, List<int> mapping,
+        List<DriftMappedColumn> renamed, List<DriftMappedColumn> retyped)
+    {
+        if (string.Equals(was, column.Shape, StringComparison.Ordinal))
+            return;
+        var nameChanged = !string.Equals(ColumnShapeHash.NamePartOf(was), ColumnShapeHash.NamePartOf(column.Shape), StringComparison.Ordinal);
+        var typeChanged = !string.Equals(ColumnShapeHash.TypePartOf(was), ColumnShapeHash.TypePartOf(column.Shape), StringComparison.Ordinal);
+        foreach (var f in mapping)
+        {
+            var field = binding.Fields[f];
+            var change = new DriftMappedColumn(column.Id, column.Name, field.Attribute, AttributeName(model, entity, field.Attribute), f, was, column.Shape);
+            if (nameChanged)
+                renamed.Add(change);
+            if (typeChanged)
+                retyped.Add(change);
+        }
     }
 
     /// <summary>What a binding's source is: a designed or imported table file of its database, something else, or nothing.</summary>
@@ -364,11 +462,11 @@ internal static class BindingDrift
         foreach (var column in table.Columns)
         {
             if (!string.IsNullOrEmpty(column.Id))
-                columns.Add(new ShapeColumn(column.Id, column.Name, column, Inherited: false));
+                columns.Add(new ShapeColumn(column.Id, column.Name, column, Inherited: false) { Shapes = model.ColumnShapes });
         }
 
         foreach (var member in TableMembers.Of(model, table).Columns)
-            columns.Add(new ShapeColumn(member.Key, member.Member.Name, member.Member, Inherited: true));
+            columns.Add(new ShapeColumn(member.Key, member.Member.Name, member.Member, Inherited: true) { Shapes = model.ColumnShapes });
         return columns;
     }
 

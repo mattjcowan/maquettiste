@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CFE0PGRYNJFTY5YC7H",
+  "name": "bank account is denominated in currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1ZBNNXRJM5SYCMN27CDDQFD",
+  "foreignKey": "01M8EJX99YK0BR53PC69EKWM99"
+}

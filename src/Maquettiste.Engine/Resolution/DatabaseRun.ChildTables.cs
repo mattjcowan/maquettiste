@@ -132,7 +132,7 @@ internal sealed partial class DatabaseRun
         /// <summary>Whether a binding file stores an attribute: a field on it or one of its members, or a child table.</summary>
         private static bool StoredBy(EntityBinding binding, string attributeId) =>
             binding.ChildTables.Any(c => c.Attribute == attributeId)
-            || binding.Fields.Any(f => f.Attribute == attributeId || f.Attribute.StartsWith(attributeId + ".", StringComparison.Ordinal));
+            || binding.Fields.Any(f => f.Attribute == attributeId || IsBelow(f.Attribute, attributeId));
 
         /// <summary>
         /// MQ4138 for an owner foreign key that is not the child table's, does not reference the owning table, or references neither its primary key
@@ -291,7 +291,7 @@ internal sealed partial class DatabaseRun
                         {
                             Report("MQ4140", $"{prefix} maps '{field.Name}' twice (fields {paths[f.Attribute].ToString(CultureInfo.InvariantCulture)} and {j.ToString(CultureInfo.InvariantCulture)}).", fieldAt + "/attribute");
                         }
-                        else if (paths.Keys.FirstOrDefault(p => p != f.Attribute && (p.StartsWith(f.Attribute + ".", StringComparison.Ordinal) || f.Attribute.StartsWith(p + ".", StringComparison.Ordinal))) is { } overlap)
+                        else if (paths.Keys.FirstOrDefault(p => p != f.Attribute && (IsBelow(p, f.Attribute) || IsBelow(f.Attribute, p))) is { } overlap)
                         {
                             Report("MQ4140", $"{prefix} maps '{field.Name}' both whole and member by member (fields {paths[overlap].ToString(CultureInfo.InvariantCulture)} and {j.ToString(CultureInfo.InvariantCulture)}): map the value object to one JSON column, or each member to a column.", fieldAt + "/attribute");
                         }

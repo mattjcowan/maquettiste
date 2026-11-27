@@ -1,6 +1,7 @@
 using System.Text;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
@@ -8,6 +9,7 @@ namespace Maquettiste.Engine.Tests.Editor;
 /// The model half of queries written as SQL text and named queries (sql-queries-design.md decisions 1, 7, 8, 10, 12 and 17): the two forms
 /// the schema keeps apart, the canonical file, <c>reads</c> and <c>writes</c> as references, and deletes that keep a SQL text.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class SqlTextQueryModelTests
 {
     private const string SqlQueryId = "01KSQ000000000000000000001";

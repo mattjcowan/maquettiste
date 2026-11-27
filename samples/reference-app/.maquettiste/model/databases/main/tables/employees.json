@@ -1,0 +1,212 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PT43F1T8HC8C4XWKP",
+  "name": "employees",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PAQ89357DJKNG6ZE4",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the employee."
+    },
+    {
+      "id": "01M8EJX99PEJPZ2BPN21200M9Y",
+      "name": "employee_number",
+      "type": "string",
+      "length": 12,
+      "nullable": false,
+      "comment": "Payroll number."
+    },
+    {
+      "id": "01M8EJX99P1BG1AMTBVSC44E7D",
+      "name": "name_given_name",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "First or given name."
+    },
+    {
+      "id": "01M8EJX99PFD2S7W22MCVTEJDK",
+      "name": "name_family_name",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "Last or family name."
+    },
+    {
+      "id": "01M8EJX99PQ12DV2SV30R9X1GA",
+      "name": "name_title",
+      "type": "string",
+      "length": 20,
+      "comment": "Salutation, such as Dr. or Ms."
+    },
+    {
+      "id": "01M8EJX99PXR31S9ZSB6YCRF61",
+      "name": "work_email",
+      "type": "string",
+      "length": 254,
+      "nullable": false,
+      "comment": "Company email address."
+    },
+    {
+      "id": "01M8EJX99PTZN5TDVESD0YHZTX",
+      "name": "work_phone_number",
+      "type": "string",
+      "length": 20,
+      "comment": "Number in E.164 form, such as +14155550100."
+    },
+    {
+      "id": "01M8EJX99P0XCW5BK5SCJ7QFNC",
+      "name": "work_phone_extension",
+      "type": "string",
+      "length": 10,
+      "comment": "Internal extension."
+    },
+    {
+      "id": "01M8EJX99P6QVQQRMNMQWTB943",
+      "name": "job_title",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Position title."
+    },
+    {
+      "id": "01M8EJX99P7BVP75T5QBQ2728V",
+      "name": "hired_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of employment."
+    },
+    {
+      "id": "01M8EJX99P4XG46NY36AYPY66S",
+      "name": "terminated_on",
+      "type": "date",
+      "comment": "Last day of employment; null while employed."
+    },
+    {
+      "id": "01M8EJX99P1SB1BTN8NWZEY83Z",
+      "name": "is_sales_rep",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether the employee can own customer accounts and earn commission."
+    },
+    {
+      "id": "01M8EJX99PPE0QCVZAA0PC6JAQ",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P4M980PKQH8SEZ9W3",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PH3YYP439V0RWMZ74",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PHWRKQSAKEHXX7G3M",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PZ0S80P5S9KZSG3TQ",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99PRXZVV45MK11AJZD9",
+      "name": "department_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PXEN2NWQMEH5ZR3J5",
+      "name": "home_warehouse_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PV6HZNDJ8HZ5DMD1B",
+      "name": "manager_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_employees",
+    "columns": [
+      "01M8EJX99PAQ89357DJKNG6ZE4"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9N1C5KT2DGBVF2XVS",
+      "name": "uq_employees_work_email",
+      "columns": [
+        "01M8EJX99PXR31S9ZSB6YCRF61"
+      ]
+    },
+    {
+      "id": "01M8EJX9A9NWD8NJ2ZTZW52A3T",
+      "name": "uq_employees_employee_number",
+      "columns": [
+        "01M8EJX99PEJPZ2BPN21200M9Y"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9NHTH7KP40WK3V4VH",
+      "name": "fk_employees_department_id",
+      "columns": [
+        "01M8EJX99PRXZVV45MK11AJZD9"
+      ],
+      "referencesTable": "01M8EJX99P205VEZSNBGD90S75",
+      "referencesColumns": [
+        "01M8EJX99PF8R5RH27G2ZZSEM5"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A9WN2D49G9KZJMDV6A",
+      "name": "fk_employees_home_warehouse_id",
+      "columns": [
+        "01M8EJX99PXEN2NWQMEH5ZR3J5"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9Q684W4VENZ5NZND2",
+      "name": "fk_employees_manager_id",
+      "columns": [
+        "01M8EJX99PV6HZNDJ8HZ5DMD1B"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A person employed by Northwind, from warehouse associates to account managers."
+}

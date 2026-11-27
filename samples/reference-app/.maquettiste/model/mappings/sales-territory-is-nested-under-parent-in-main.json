@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHDH8CTVWDYSYABRCQ",
+  "name": "sales territory is nested under parent in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1KFF2S8AGRSGNW556YH6JP8",
+  "foreignKey": "01M8EJX9A8KSPTSKZAFZ2SS7T9"
+}

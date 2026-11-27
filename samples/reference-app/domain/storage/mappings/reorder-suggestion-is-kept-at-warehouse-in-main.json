@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ5SAAVRTMJ06ZYNB3",
+  "name": "reorder suggestion is kept at warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1PDXZEC5W40ZHFHM2RTWC7Q",
+  "foreignKey": "01M8EJX9AADPYMDZ282Y62AKNS"
+}

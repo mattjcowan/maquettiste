@@ -1,0 +1,65 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9BE0YS3PY822S834S46",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99N98WFMV4EP2ARBHGH",
+      "fields": [
+        {
+          "attribute": "01M1ZHPFTE99MBTMAFCRP8483B",
+          "column": "01M8EJX99NJB3F73HCQN44PCT9"
+        },
+        {
+          "attribute": "01M385H7HN116AZDMG70YB9AWK",
+          "column": "01M8EJX99NV5796MSAE99J7ZCW"
+        },
+        {
+          "attribute": "01M2B0R8XQT9SZGKTYF26QVJXB",
+          "column": "01M8EJX99NRGF4RHY61HZEXKFN"
+        },
+        {
+          "attribute": "01M269BN87KCYDMS62E5JK9E2H",
+          "column": "01M8EJX99NCFYX1Z0F1H8YF133"
+        },
+        {
+          "attribute": "01M2MCQYJ0B3M6DMQGE7KG0472.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99N5B74TEJW34Y27XA0"
+        },
+        {
+          "attribute": "01M2MCQYJ0B3M6DMQGE7KG0472.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99NTS65T6TJQQ76EWJ8"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99N94XDB3KH9CM0JPVP"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99NJNYFC4YDGX0EFFRA"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99NMVFPGCJ28MM1Y7EF"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99NQ4QTKS00RD6T7REP"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N5B74TEJW34Y27XA0": "2db5d4af:9b51e601",
+          "01M8EJX99N94XDB3KH9CM0JPVP": "42049432:e0d08678",
+          "01M8EJX99NCFYX1Z0F1H8YF133": "4ac102a5:19980141",
+          "01M8EJX99NJB3F73HCQN44PCT9": "a5614527:8da1c7b8",
+          "01M8EJX99NJNYFC4YDGX0EFFRA": "c0d79bde:9599b5fd",
+          "01M8EJX99NMVFPGCJ28MM1Y7EF": "d31d4567:fd717804",
+          "01M8EJX99NQ4QTKS00RD6T7REP": "0b075263:9599b5fd",
+          "01M8EJX99NRGF4RHY61HZEXKFN": "c9046f7a:43ec92f3",
+          "01M8EJX99NTS65T6TJQQ76EWJ8": "2a578471:9b51e601",
+          "01M8EJX99NV5796MSAE99J7ZCW": "82a3537f:6e0602bf"
+        }
+      }
+    }
+  ]
+}

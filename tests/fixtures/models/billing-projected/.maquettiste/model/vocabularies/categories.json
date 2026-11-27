@@ -1,0 +1,18 @@
+{
+  "$schema": "../../.schema/v1/category-tree.json",
+  "kind": "category-tree",
+  "id": "01J92P0V23WVT7FBW527GR7GX5",
+  "name": "categories",
+  "categories": [
+    {
+      "id": "01J92P0V06TYE8P8990AV35A8K",
+      "name": "Receivables",
+      "order": 1
+    },
+    {
+      "id": "01J92P0V07KWPZMZ6FKXDYJ3JA",
+      "name": "Catalog",
+      "order": 2
+    }
+  ]
+}

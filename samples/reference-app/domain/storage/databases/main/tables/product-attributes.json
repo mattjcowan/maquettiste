@@ -1,0 +1,72 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NAKZ2Z45JQRJYGJ6A",
+  "name": "product_attributes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NXKHGFZ3X72MBE8A3",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the product attribute."
+    },
+    {
+      "id": "01M8EJX99NZ9HRZZ1BJA2NMDKY",
+      "name": "code",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "Attribute code used in feeds."
+    },
+    {
+      "id": "01M8EJX99N5B7QFR0BY3BKKB3M",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name."
+    },
+    {
+      "id": "01M8EJX99N9F67QJP5AT0RZW63",
+      "name": "data_type",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Value type - text, number, boolean or option."
+    },
+    {
+      "id": "01M8EJX99NWNZTA4KYH8NN76S2",
+      "name": "unit",
+      "type": "string",
+      "length": 10,
+      "comment": "Unit of numeric values, such as mm."
+    },
+    {
+      "id": "01M8EJX99NGSKMC5TYG8FVB6Q0",
+      "name": "is_filterable",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the storefront offers it as a filter."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_attributes",
+    "columns": [
+      "01M8EJX99NXKHGFZ3X72MBE8A3"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A7QCX25ARJNMN30W8X",
+      "name": "uq_product_attributes_code",
+      "columns": [
+        "01M8EJX99NZ9HRZZ1BJA2NMDKY"
+      ]
+    }
+  ],
+  "comment": "Definition of a filterable product characteristic, such as Glove size or Voltage."
+}

@@ -13,6 +13,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Store;
 
 /// <summary>Untrusted input, collisions inside one plan, and failures midway: the store answers with a result and changes nothing.</summary>
+[UsesProjectedFixtures]
 public sealed class ModelStoreHardeningTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

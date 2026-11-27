@@ -1,0 +1,52 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKC5AMQF43E3WKDJMK90PX",
+  "name": "process_instances",
+  "database": "01JQDBS0000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKC5AM46RXR6DKJFDM9N7Z",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMZ31JFVWT2YM1FVA7",
+      "name": "process",
+      "type": "string",
+      "length": 255,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMCD5XDZ461QMMJF52",
+      "name": "subject",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EKC5AM51V3AA07WAG39KP6",
+      "name": "configuration",
+      "type": "json",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AM94HBZBVX2HZXR3SX",
+      "name": "context",
+      "type": "json"
+    },
+    {
+      "id": "01M8EKC5AMN0G88EY3E935ETBV",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_process_instances",
+    "columns": [
+      "01M8EKC5AM46RXR6DKJFDM9N7Z"
+    ]
+  },
+  "comment": "A running orchestration: its active states and context."
+}

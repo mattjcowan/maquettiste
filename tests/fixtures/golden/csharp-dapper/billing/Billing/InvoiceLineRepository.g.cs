@@ -12,14 +12,14 @@ using Dapper;
 
 namespace App.Model.Billing;
 
-/// <summary>Reads and writes <see cref="InvoiceLine"/> rows in billing.invoice_lines (database main, postgresql).</summary>
+/// <summary>Reads and writes <see cref="InvoiceLine"/> rows through its binding to table invoice_lines (database main, postgresql).</summary>
 public partial interface IInvoiceLineRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<InvoiceLine?> GetAsync(string id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<InvoiceLine>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InvoiceLine>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(InvoiceLine entity, CancellationToken cancellationToken = default);
@@ -34,43 +34,44 @@ public partial interface IInvoiceLineRepository
 /// <summary>The Dapper implementation of <see cref="IInvoiceLineRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class InvoiceLineRepository(IDbConnection connection, IDbTransaction? transaction = null) : IInvoiceLineRepository
 {
-    private const string Columns = """
-        id AS Id,
-        quantity AS Quantity,
-        unit_price_amount AS UnitPriceAmount,
-        unit_price_currency AS UnitPriceCurrency,
-        description AS Description,
-        invoice_id AS InvoiceId,
-        product_id AS ProductId
+    private const string SelectSql = """
+        SELECT t.id AS id, t.quantity AS quantity, t.unit_price_amount AS unitPriceAmount, t.unit_price_currency AS unitPriceCurrency, t.description AS description, t.invoice_id AS invoiceId, t.product_id AS productId
+        FROM billing.invoice_lines t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM billing.invoice_lines WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM billing.invoice_lines ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.quantity AS quantity, t.unit_price_amount AS unitPriceAmount, t.unit_price_currency AS unitPriceCurrency, t.description AS description, t.invoice_id AS invoiceId, t.product_id AS productId
+        FROM billing.invoice_lines t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO billing.invoice_lines (id, quantity, unit_price_amount, unit_price_currency, description, invoice_id, product_id)
-        VALUES (@Id, @Quantity, @UnitPriceAmount, @UnitPriceCurrency, @Description, @InvoiceId, @ProductId)
+        VALUES (@id, @quantity, @unitPriceAmount, @unitPriceCurrency, @description, @invoiceId, @productId)
         """;
 
     private const string UpdateSql = """
-        UPDATE billing.invoice_lines SET quantity = @Quantity, unit_price_amount = @UnitPriceAmount, unit_price_currency = @UnitPriceCurrency, description = @Description, invoice_id = @InvoiceId, product_id = @ProductId
-        WHERE id = @Id
+        UPDATE billing.invoice_lines SET quantity = @quantity, unit_price_amount = @unitPriceAmount, unit_price_currency = @unitPriceCurrency, description = @description, invoice_id = @invoiceId, product_id = @productId
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM billing.invoice_lines WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM billing.invoice_lines
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<InvoiceLine?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<InvoiceLine>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InvoiceLine>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -93,39 +94,39 @@ public partial class InvoiceLineRepository(IDbConnection connection, IDbTransact
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of invoice_lines, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table invoice_lines as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public string Id { get; set; } = default!;
-        public int Quantity { get; set; }
-        public decimal UnitPriceAmount { get; set; }
-        public string UnitPriceCurrency { get; set; } = default!;
-        public string? Description { get; set; }
-        public Guid InvoiceId { get; set; }
-        public Guid ProductId { get; set; }
+        public string id { get; set; } = default!;
+        public int quantity { get; set; }
+        public decimal unitPriceAmount { get; set; }
+        public string unitPriceCurrency { get; set; } = default!;
+        public string? description { get; set; }
+        public Guid invoiceId { get; set; }
+        public Guid productId { get; set; }
 
         public static InvoiceLine ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Quantity = row.Quantity,
-            UnitPrice = new Money { Amount = row.UnitPriceAmount, Currency = row.UnitPriceCurrency },
-            Description = row.Description,
-            InvoiceId = row.InvoiceId,
-            ProductId = row.ProductId,
+            Id = row.id,
+            Quantity = row.quantity,
+            Description = row.description,
+            InvoiceId = row.invoiceId,
+            ProductId = row.productId,
+            UnitPrice = new Money { Amount = row.unitPriceAmount, Currency = row.unitPriceCurrency },
         };
 
         public static Row From(InvoiceLine entity) => new()
         {
-            Id = entity.Id,
-            Quantity = entity.Quantity,
-            UnitPriceAmount = entity.UnitPrice.Amount,
-            UnitPriceCurrency = entity.UnitPrice.Currency,
-            Description = entity.Description,
-            InvoiceId = entity.InvoiceId,
-            ProductId = entity.ProductId,
+            id = entity.Id,
+            quantity = entity.Quantity,
+            unitPriceAmount = entity.UnitPrice.Amount,
+            unitPriceCurrency = entity.UnitPrice.Currency,
+            description = entity.Description,
+            invoiceId = entity.InvoiceId,
+            productId = entity.ProductId,
         };
     }
 }

@@ -51,5 +51,53 @@
       "length": 400,
       "description": "Photo of the goods."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BPR137MKRJ9T2JRNPQ",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99Q3QR9G3BV3F8WH8WW",
+      "fields": [
+        {
+          "attribute": "01M366970W0D7CBH9Y9HWGRVMC",
+          "column": "01M8EJX99QC68412CEM3R2DTBB"
+        },
+        {
+          "attribute": "01M1WMJF7WMQS01SHQ4XDYMV3A",
+          "column": "01M8EJX99QNH16R0TT4TBXDXHD"
+        },
+        {
+          "attribute": "01M37PKRV8SWTNGER7CNNYR9S9",
+          "column": "01M8EJX99Q4G13GX4NY1YMT89J"
+        },
+        {
+          "attribute": "01M1THC8ZVBFSQ64GW5KBGZS5D",
+          "column": "01M8EJX99Q6JF28XDX0J9MTHPP"
+        },
+        {
+          "attribute": "01M26QWPC4PQ69GPJM7JP6MGS7",
+          "column": "01M8EJX99QABGWRRWFBQYQCVSH"
+        },
+        {
+          "attribute": "01M1YJD0X9CH484VKHV5W0Y57D",
+          "column": "01M8EJX99QX862BZJX223AZVVH"
+        },
+        {
+          "attribute": "01M33MFYXMF5N3K9QBPJZ0RS7K",
+          "column": "01M8EJX99QRYZHZZCWGR6MR0WG"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q4G13GX4NY1YMT89J": "25a63e52:ef1ae9ec",
+          "01M8EJX99Q6JF28XDX0J9MTHPP": "ab5aa970:43ec92f3",
+          "01M8EJX99QABGWRRWFBQYQCVSH": "53a713b8:5c7847da",
+          "01M8EJX99QC68412CEM3R2DTBB": "a5614527:8da1c7b8",
+          "01M8EJX99QNH16R0TT4TBXDXHD": "23bae02d:e0d08678",
+          "01M8EJX99QRYZHZZCWGR6MR0WG": "be765558:8da1c7b8",
+          "01M8EJX99QX862BZJX223AZVVH": "74635f49:d8a57cf9"
+        }
+      }
+    }
   ]
 }

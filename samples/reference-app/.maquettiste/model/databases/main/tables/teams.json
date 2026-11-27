@@ -1,0 +1,103 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PKEA6B6DKH4SNXYC6",
+  "name": "teams",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PV00AMJAEFES925BB",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the team."
+    },
+    {
+      "id": "01M8EJX99PW0Z94H6AZXHA1SSR",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "Team name."
+    },
+    {
+      "id": "01M8EJX99P5QQAGS828ZSFWNHV",
+      "name": "purpose",
+      "type": "string",
+      "length": 300,
+      "comment": "What the team does."
+    },
+    {
+      "id": "01M8EJX99P6CRXZY71FQQ32QJF",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "comment": "Shared mailbox."
+    },
+    {
+      "id": "01M8EJX99PS586JG62BQR17ENB",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PKZKKGBG75FNV7Q6E",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PFTM5BNNM9913YRGX",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P2P52E7HY86DQY462",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PSWVTAE5STW5W7QHC",
+      "name": "lead_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_teams",
+    "columns": [
+      "01M8EJX99PV00AMJAEFES925BB"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A949MCPFMSDFS7YH3T",
+      "name": "uq_teams_name",
+      "columns": [
+        "01M8EJX99PW0Z94H6AZXHA1SSR"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9HR0RNNWQ5GRRED71",
+      "name": "fk_teams_lead_id",
+      "columns": [
+        "01M8EJX99PSWVTAE5STW5W7QHC"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A working group that shares a queue or a territory, such as the Northeast inside sales team."
+}

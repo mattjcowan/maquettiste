@@ -1,0 +1,105 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q339KYHM3JMRMWTXP",
+  "name": "sales_order_notes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QMJS27BZJJY2AX56W",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the sales order note."
+    },
+    {
+      "id": "01M8EJX99QDHP38BD3VV4Z9VC2",
+      "name": "body",
+      "type": "text",
+      "nullable": false,
+      "comment": "Note text."
+    },
+    {
+      "id": "01M8EJX99Q1F3KR0KGWE2NZPBC",
+      "name": "is_customer_visible",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Shown on the customer portal."
+    },
+    {
+      "id": "01M8EJX99QMT824RJR4YCB392Z",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QMVWADKKMTCK4YBY5",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q0B8DZC8B27GWNMHK",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QMN1W9XA29T88B6FH",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99Q8BRY1YTV5SE5TPZP",
+      "name": "sales_order_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QG345PXT54GJTKN7B",
+      "name": "author_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sales_order_notes",
+    "columns": [
+      "01M8EJX99QMJS27BZJJY2AX56W"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AC95JJJWRFRM0D1V9X",
+      "name": "fk_sales_order_notes_sales_order_id",
+      "columns": [
+        "01M8EJX99Q8BRY1YTV5SE5TPZP"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AC1YGWGC2SMWNYDQM2",
+      "name": "fk_sales_order_notes_author_id",
+      "columns": [
+        "01M8EJX99QG345PXT54GJTKN7B"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A note on a sales order, internal or visible to the customer on the portal."
+}

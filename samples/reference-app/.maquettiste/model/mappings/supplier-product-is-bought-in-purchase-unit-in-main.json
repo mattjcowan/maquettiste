@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJV40EBZ6YSMB3BQ1V",
+  "name": "supplier product is bought in purchase unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2RP00ZMPGQWCGR290XFWYY6",
+  "foreignKey": "01M8EJX9ABNNW9DF5SCM1PFP3Q"
+}

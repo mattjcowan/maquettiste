@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH5924RKQ83GKGMBAH",
+  "name": "exchange rate converts to to currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M35JGX5STFSWR074YM8ZH2D3",
+  "foreignKey": "01M8EJX9A8B3MD8HMV6VT1DJFT"
+}

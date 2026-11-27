@@ -1,9 +1,11 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Functions.Tests.Support;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Functions.Tests;
 
 /// <summary>Unit paths, template context, file move, pack outputs, pack settings and explain (generation-ui.md sections 4.3 and 5), against the contract.</summary>
+[UsesProjectedFixtures]
 public sealed class PackAuthoringEndpointTests
 {
     private static string Hash(TestResponse response) => response.Json["hash"]!.GetValue<string>();

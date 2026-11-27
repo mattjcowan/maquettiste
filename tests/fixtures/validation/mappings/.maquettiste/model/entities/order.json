@@ -21,5 +21,18 @@
       "name": "total",
       "type": "decimal"
     }
+  ],
+  "bindings": [
+    {
+      "id": "01JBND00000000000000000002",
+      "database": "01JDBS00000000000000000001",
+      "source": "01JTAB00000000000000000002",
+      "fields": [
+        {
+          "attribute": "01JATT00000000000000000201",
+          "column": "01JCMN00000000000000000002"
+        }
+      ]
+    }
   ]
 }

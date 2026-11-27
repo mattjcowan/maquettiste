@@ -1,0 +1,86 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PCW73JG9FF1X6T8NB",
+  "name": "roles",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P0HZECHHP2T4KZN27",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the role."
+    },
+    {
+      "id": "01M8EJX99PHB8172DW9NMS7RJE",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "Role name."
+    },
+    {
+      "id": "01M8EJX99PA62Z00AS4FF6G9T2",
+      "name": "description",
+      "type": "string",
+      "length": 500,
+      "comment": "What the role is for."
+    },
+    {
+      "id": "01M8EJX99P9W0EF66YZCTB3QCX",
+      "name": "is_system",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Built-in role that cannot be deleted."
+    },
+    {
+      "id": "01M8EJX99PG1WF0KWP9DFVQWYH",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P58XD0P2B9M2VDBD3",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P9DXG7BYKSXXTRFQS",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P84KSZVSTZ9S5MHBJ",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_roles",
+    "columns": [
+      "01M8EJX99P0HZECHHP2T4KZN27"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9DS16W228GW6ABX2S",
+      "name": "uq_roles_name",
+      "columns": [
+        "01M8EJX99PHB8172DW9NMS7RJE"
+      ]
+    }
+  ],
+  "comment": "A named set of permissions granted to user accounts, such as Order desk or Warehouse lead."
+}

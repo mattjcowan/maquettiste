@@ -1,0 +1,114 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NMDFNQ7JYDQT5EB05",
+  "name": "product_lifecycle_events",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N5KTQQ72AZ22R7VF8",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the product lifecycle event."
+    },
+    {
+      "id": "01M8EJX99NAC16JXQ7W3KR625Y",
+      "name": "from_status",
+      "type": "string",
+      "length": 8,
+      "comment": "Status before the change."
+    },
+    {
+      "id": "01M8EJX99NTYW1BS50KCMJFX48",
+      "name": "to_status",
+      "type": "string",
+      "length": 8,
+      "nullable": false,
+      "comment": "Status after the change."
+    },
+    {
+      "id": "01M8EJX99NWF150GMYJ2C04TQS",
+      "name": "occurred_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the change happened."
+    },
+    {
+      "id": "01M8EJX99N4656M69K28PK4YZZ",
+      "name": "reason",
+      "type": "string",
+      "length": 300,
+      "comment": "Why the status changed."
+    },
+    {
+      "id": "01M8EJX99NJQHJGGA813DE4BC3",
+      "name": "changed_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NGKHJX2TEWEKNB8K4",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_lifecycle_events",
+    "columns": [
+      "01M8EJX99N5KTQQ72AZ22R7VF8"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A79Q6SW814DMKF0FF3",
+      "name": "fk_product_lifecycle_events_changed_by_id",
+      "columns": [
+        "01M8EJX99NJQHJGGA813DE4BC3"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7Z5CD5W55TP3E0P5Z",
+      "name": "fk_product_lifecycle_events_product_id",
+      "columns": [
+        "01M8EJX99NGKHJX2TEWEKNB8K4"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A7DTVH00QA5MMCK6KS",
+      "name": "fk_product_lifecycle_events_from_status_ref",
+      "columns": [
+        "01M8EJX99NAC16JXQ7W3KR625Y"
+      ],
+      "referencesTable": "01M8EJX99Q9QKY4DEDT32R0FFA",
+      "referencesColumns": [
+        "01M8EJX99Q6ZJ1YSNRKJ84N774"
+      ]
+    },
+    {
+      "id": "01M8EJX9A7CANFPM8SND48VATV",
+      "name": "fk_product_lifecycle_events_to_status_ref",
+      "columns": [
+        "01M8EJX99NTYW1BS50KCMJFX48"
+      ],
+      "referencesTable": "01M8EJX99Q9QKY4DEDT32R0FFA",
+      "referencesColumns": [
+        "01M8EJX99Q6ZJ1YSNRKJ84N774"
+      ]
+    }
+  ],
+  "comment": "A change of a product's lifecycle status, kept as history."
+}

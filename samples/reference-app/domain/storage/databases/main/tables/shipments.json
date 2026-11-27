@@ -1,0 +1,312 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PKM2XB6JYQ5KG4H99",
+  "name": "shipments",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PJZQHKXG1H6695ECQ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the shipment."
+    },
+    {
+      "id": "01M8EJX99PCCK4CW1CKHVAN7MC",
+      "name": "shipment_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Shipment number printed on the packing slip."
+    },
+    {
+      "id": "01M8EJX99PN1VKDMKMMH3GS8TP",
+      "name": "status",
+      "type": "string",
+      "length": 7,
+      "nullable": false,
+      "default": "PLAN",
+      "comment": "Lifecycle state."
+    },
+    {
+      "id": "01M8EJX99PVPHW6069J69NM3S8",
+      "name": "ship_to_line1",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Street and number, or PO box."
+    },
+    {
+      "id": "01M8EJX99PB33XTDCB2E0A3PW0",
+      "name": "ship_to_line2",
+      "type": "string",
+      "length": 120,
+      "comment": "Suite, floor or building."
+    },
+    {
+      "id": "01M8EJX99PE1ZRQDYQ8SNR359Z",
+      "name": "ship_to_city",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "City or locality."
+    },
+    {
+      "id": "01M8EJX99PMA61R5AWEKB86V2D",
+      "name": "ship_to_region",
+      "type": "string",
+      "length": 80,
+      "comment": "State, province or county."
+    },
+    {
+      "id": "01M8EJX99PRXTX0HRD0ETFAVMH",
+      "name": "ship_to_postal_code",
+      "type": "string",
+      "length": 20,
+      "comment": "Postal or ZIP code."
+    },
+    {
+      "id": "01M8EJX99PGHWRTWA0J512XHCX",
+      "name": "ship_to_country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "comment": "ISO country code."
+    },
+    {
+      "id": "01M8EJX99P9ND31Y1QBYW0G10B",
+      "name": "freight_terms",
+      "type": "string",
+      "length": 3,
+      "comment": "Incoterm of the shipment."
+    },
+    {
+      "id": "01M8EJX99PBP780ZJBS916DMKC",
+      "name": "tracking_number",
+      "type": "string",
+      "length": 60,
+      "comment": "Master tracking or PRO number."
+    },
+    {
+      "id": "01M8EJX99PF2CF3RHMPAHMG1PP",
+      "name": "estimated_delivery_on",
+      "type": "date",
+      "comment": "Carrier's estimate."
+    },
+    {
+      "id": "01M8EJX99PTWTSZ8CF6E62PKC2",
+      "name": "shipped_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it left the dock."
+    },
+    {
+      "id": "01M8EJX99PV3RWQH75FTBP4JS3",
+      "name": "delivered_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was delivered."
+    },
+    {
+      "id": "01M8EJX99PMCPNVXN4ZFXNN1H3",
+      "name": "freight_cost_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PRE5EW1WJZQWPX8VW",
+      "name": "freight_cost_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99PCQD97J1RY7ME3G3E",
+      "name": "declared_value_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PH6XAFBAKXFPHZ58A",
+      "name": "declared_value_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99PBBVMCYDXRY9T38JD",
+      "name": "total_weight_value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "The weight."
+    },
+    {
+      "id": "01M8EJX99PQKAYHDZFFJWCBV9P",
+      "name": "total_weight_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the weight."
+    },
+    {
+      "id": "01M8EJX99PWN346FGPAZ4PTEXT",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PJV7M2S22BT2E93XX",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PYQRK7N3GE3PXJVR0",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P1TW7CSSP3X057WTZ",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PYP4RDEHJJ2Z7TG5G",
+      "name": "sales_order_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PT3SS83A2BPSJF89W",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PM99R8NH3V86ZAETF",
+      "name": "carrier_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P2VA0EA75JNZMZPK8",
+      "name": "carrier_service_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P8V1NK1BZ9EQS73B7",
+      "name": "delivery_route_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_shipments",
+    "columns": [
+      "01M8EJX99PJZQHKXG1H6695ECQ"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A96XX15RF5R6A56DHX",
+      "name": "uq_shipments_shipment_number",
+      "columns": [
+        "01M8EJX99PCCK4CW1CKHVAN7MC"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A97Q63JACGBRAQXCX9",
+      "name": "fk_shipments_sales_order_id",
+      "columns": [
+        "01M8EJX99PYP4RDEHJJ2Z7TG5G"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A944PDEYPEDGV5DXDC",
+      "name": "fk_shipments_warehouse_id",
+      "columns": [
+        "01M8EJX99PT3SS83A2BPSJF89W"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A9F1V7ER7SAV5ST9SE",
+      "name": "fk_shipments_carrier_id",
+      "columns": [
+        "01M8EJX99PM99R8NH3V86ZAETF"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9J4FDZFB6B0EPY6D4",
+      "name": "fk_shipments_carrier_service_id",
+      "columns": [
+        "01M8EJX99P2VA0EA75JNZMZPK8"
+      ],
+      "referencesTable": "01M8EJX99PA7MTD0KWX8FXWCM0",
+      "referencesColumns": [
+        "01M8EJX99P6N7K7H260YR5XY22"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9ADTJ3ZGCV9MGNB56",
+      "name": "fk_shipments_delivery_route_id",
+      "columns": [
+        "01M8EJX99P8V1NK1BZ9EQS73B7"
+      ],
+      "referencesTable": "01M8EJX99PWK12H21W6VRCWHPF",
+      "referencesColumns": [
+        "01M8EJX99PTQ0JDEEQVFZTCQJY"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9M7Z86261R8V2XC81",
+      "name": "fk_shipments_status_ref",
+      "columns": [
+        "01M8EJX99PN1VKDMKMMH3GS8TP"
+      ],
+      "referencesTable": "01M8EJX99QQ53WJX68ZK2Q264J",
+      "referencesColumns": [
+        "01M8EJX99Q9E7J31M6KKSXMK1C"
+      ]
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A9YNPYWFBMC66VGANC",
+      "name": "ix_shipments_tracking_number",
+      "columns": [
+        {
+          "column": "01M8EJX99PBP780ZJBS916DMKC"
+        }
+      ]
+    }
+  ],
+  "comment": "Goods leaving a warehouse for one destination, on a carrier or an own-fleet route."
+}

@@ -1,0 +1,121 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q3MD569PG7E9FSSJ1",
+  "name": "purchase_approvals",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QV3E8JX1P82MXPD41",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the purchase approval."
+    },
+    {
+      "id": "01M8EJX99QS7JWGN3P23PN9NQH",
+      "name": "approval_level",
+      "type": "int16",
+      "nullable": false,
+      "comment": "Step number."
+    },
+    {
+      "id": "01M8EJX99Q2X04ZM5K5CR3XJ5C",
+      "name": "decision",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "pending",
+      "comment": "pending, approved or rejected."
+    },
+    {
+      "id": "01M8EJX99QQ3W7CPKWTHP27TM3",
+      "name": "decided_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the approver decided."
+    },
+    {
+      "id": "01M8EJX99QBDJGBPK3BA4YW9BK",
+      "name": "comment",
+      "type": "string",
+      "length": 500,
+      "comment": "Approver's comment."
+    },
+    {
+      "id": "01M8EJX99QQV0MMTBG1RCDB0NR",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99Q43S0NSFZBEWCQPF1",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q0C089VJZV4AGJ72N",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QFW12YPZKNY8HERTV",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QQRS76M8X5BM2JP46",
+      "name": "approver_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q7D8NBEG3CMN8659Y",
+      "name": "purchase_order_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_purchase_approvals",
+    "columns": [
+      "01M8EJX99QV3E8JX1P82MXPD41"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABAG8Z48CMVCX6Y62H",
+      "name": "fk_purchase_approvals_approver_id",
+      "columns": [
+        "01M8EJX99QQRS76M8X5BM2JP46"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ABGH1FSV5M027YQVGV",
+      "name": "fk_purchase_approvals_purchase_order_id",
+      "columns": [
+        "01M8EJX99Q7D8NBEG3CMN8659Y"
+      ],
+      "referencesTable": "01M20RTE9GYMJF4W6ZSG87Y5T2",
+      "referencesColumns": [
+        "01M8EJX99Q0CGM80EJ972RZV09"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "One approval step of a purchase order, by amount threshold."
+}

@@ -16,6 +16,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// does not change.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class BindingProvenanceTests
 {
     private const string Main = E2ERepo.MainDatabaseId;

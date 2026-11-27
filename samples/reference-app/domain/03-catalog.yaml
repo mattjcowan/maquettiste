@@ -6,6 +6,8 @@ referenceTypes:
   ProductStatus:
     description: Lifecycle of a product in the catalog.
     code: 8
+    apply: converge
+    delete: true
     rows:
       DRAFT: Draft | Being set up; not sellable.
       ACTIVE: Active | Sellable and replenished.
@@ -53,18 +55,6 @@ entities:
       packagings: ProductPackaging name=product_contains_packagings | Packaging levels (inner, case, pallet).
       translations: ProductTranslation name=product_contains_translations | Localized names and descriptions.
       attributeValues: ProductAttributeValue name=product_contains_attribute_values | Values of filterable product attributes.
-    mapping:
-      description: The product status is a reference type, stored through a lookup table (the project convention) so reports can join its labels.
-    overlay:
-      description: Product search and integrity tuning.
-      columns:
-        name:
-          comment: Searched with a trigram index in production.
-      checks:
-        ck_products_discontinued_after_launch: discontinued_on IS NULL OR launched_on IS NULL OR discontinued_on >= launched_on
-      indexes:
-        - name: ix_products_status_name
-          columns: [status, name]
 
   ProductVariant:
     description: A sellable option of a product, such as a size or a color, with its own SKU.

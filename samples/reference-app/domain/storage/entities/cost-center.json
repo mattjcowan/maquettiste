@@ -1,0 +1,65 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9AY709D7XESZYJYDTAP",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99P5J0E19PAVE7JYSJ0",
+      "fields": [
+        {
+          "attribute": "01M2TKFFYKSJ5NYYXCNN17PTYH",
+          "column": "01M8EJX99PY96M7HPE86J4KR2W"
+        },
+        {
+          "attribute": "01M2JP0ZWWA1Q11QG6K2JW16JV",
+          "column": "01M8EJX99PJ010TH6HCG4JAEAT"
+        },
+        {
+          "attribute": "01M1ZGMXCRN98NT9D9VBPN84E6",
+          "column": "01M8EJX99P330BXWYANB7WTQ75"
+        },
+        {
+          "attribute": "01M2JVD028EJRXJDB0Z0CSWB5P",
+          "column": "01M8EJX99PEVN2ZCZTMX9B3C8X"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PB440RPNDRDBWCDA6"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PTR4TDJFCC4T3J240"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PRVVKSARZKK7W1CF2"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PWMC7R9VFCQ7CC22S"
+        },
+        {
+          "attribute": "01M383H3VXB7J7M0G27GQKP74Z",
+          "column": "01M8EJX99PTFWJCMD19NKRPF2C"
+        },
+        {
+          "attribute": "01M28G8MEJHQNCJY2WQ24W5N0N",
+          "column": "01M8EJX99P62PSN59V4VH53ARY"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P330BXWYANB7WTQ75": "82a3537f:6e0602bf",
+          "01M8EJX99P62PSN59V4VH53ARY": "c6dde088:d8a57cf9",
+          "01M8EJX99PB440RPNDRDBWCDA6": "42049432:e0d08678",
+          "01M8EJX99PEVN2ZCZTMX9B3C8X": "0a2438db:19980141",
+          "01M8EJX99PJ010TH6HCG4JAEAT": "5694d08a:ef1ae9ec",
+          "01M8EJX99PRVVKSARZKK7W1CF2": "d31d4567:fd717804",
+          "01M8EJX99PTFWJCMD19NKRPF2C": "76798025:d8a57cf9",
+          "01M8EJX99PTR4TDJFCC4T3J240": "c0d79bde:9599b5fd",
+          "01M8EJX99PWMC7R9VFCQ7CC22S": "0b075263:9599b5fd",
+          "01M8EJX99PY96M7HPE86J4KR2W": "a5614527:8da1c7b8"
+        }
+      }
+    }
+  ]
+}

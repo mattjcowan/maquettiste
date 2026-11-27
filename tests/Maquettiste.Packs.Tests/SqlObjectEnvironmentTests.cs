@@ -14,6 +14,7 @@ namespace Maquettiste.Packs.Tests;
 /// One PostgreSQL database <c>billing</c> (schema <c>billing</c>) with a table <c>invoices</c>; the server case skips unless
 /// <c>MAQUETTISTE_TEST_POSTGRES_CONTAINER</c> names a running container.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class SqlObjectEnvironmentTests
 {
     internal const string DevTools = "01SE0000000000000000000020";

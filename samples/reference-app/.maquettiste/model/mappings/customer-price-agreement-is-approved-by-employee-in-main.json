@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJSP1V05D254KB651K",
+  "name": "customer price agreement is approved by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1N213JAG1N5CQ50B8J7SDG4",
+  "foreignKey": "01M8EJX9AA6Y6QRND6W5JEREP1"
+}

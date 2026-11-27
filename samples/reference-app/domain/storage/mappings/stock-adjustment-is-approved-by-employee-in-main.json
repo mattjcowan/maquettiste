@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJWEQ00Y5RQ550JNSE",
+  "name": "stock adjustment is approved by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M30J3P9FKSRCP8YXSEPHFNZJ",
+  "foreignKey": "01M8EJX9AAY23DNF0CW25PK6D1"
+}

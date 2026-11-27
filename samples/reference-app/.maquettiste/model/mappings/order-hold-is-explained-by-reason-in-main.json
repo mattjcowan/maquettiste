@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJDDP0HQ9WS4TGA8JJ",
+  "name": "order hold is explained by reason in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2V9RBN5XGR9HEMQTMK3SGME",
+  "foreignKey": "01M8EJX9ACKGN8Z6SHZW783SM8"
+}

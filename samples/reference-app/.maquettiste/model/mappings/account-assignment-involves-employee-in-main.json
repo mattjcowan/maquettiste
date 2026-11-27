@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHAG4EMDCE1VXVG9KE",
+  "name": "account assignment involves employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1FXNE4BX0J6KPRYAFFBQZWK",
+  "foreignKey": "01M8EJX9A7J5VB7Y96RA28095W"
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHQVTBWRXGTP3PM2T5",
+  "name": "product is stocked in base unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1WVCQA2WWPAFX1H59CVGX6A",
+  "foreignKey": "01M8EJX9A7XNDBS3JGAKQEP37A"
+}

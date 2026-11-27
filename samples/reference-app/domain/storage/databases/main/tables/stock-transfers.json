@@ -1,0 +1,154 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PEV7G6FVCXZ9MZJHA",
+  "name": "stock_transfers",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PBGE461H84KGRCSSC",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the stock transfer."
+    },
+    {
+      "id": "01M8EJX99PRGEABVS6KDFMMC13",
+      "name": "transfer_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Transfer number."
+    },
+    {
+      "id": "01M8EJX99P3M702E8FT7DDHB7A",
+      "name": "status",
+      "type": "string",
+      "length": 7,
+      "nullable": false,
+      "default": "REQ",
+      "comment": "Lifecycle state."
+    },
+    {
+      "id": "01M8EJX99PVJS5099HN457672R",
+      "name": "requested_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date requested."
+    },
+    {
+      "id": "01M8EJX99PGVH8MWYT1MG5Y271",
+      "name": "shipped_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it left the source."
+    },
+    {
+      "id": "01M8EJX99P9XY4EZH37WVHTQWG",
+      "name": "received_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it arrived."
+    },
+    {
+      "id": "01M8EJX99PJPJA0H47DHBCY4FV",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PF5RQ47W2CQWSHPSJ",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PK12EFZM0XEYGXM79",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PD9SF52SZYF9HTK8P",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PCD7XH53M01PB9CXY",
+      "name": "to_warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PZP8D7XARCH9FCRSP",
+      "name": "carrier_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PZWBDT0V1X45VYFS6",
+      "name": "from_warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_stock_transfers",
+    "columns": [
+      "01M8EJX99PBGE461H84KGRCSSC"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AAY7XS6SMMW4YF7N4J",
+      "name": "uq_stock_transfers_transfer_number",
+      "columns": [
+        "01M8EJX99PRGEABVS6KDFMMC13"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA8Z461Y79TFK0W9WP",
+      "name": "fk_stock_transfers_to_warehouse_id",
+      "columns": [
+        "01M8EJX99PCD7XH53M01PB9CXY"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AAE5Y336RNYHF009HA",
+      "name": "fk_stock_transfers_carrier_id",
+      "columns": [
+        "01M8EJX99PZP8D7XARCH9FCRSP"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAVEFSQ41A0CCV6JT1",
+      "name": "fk_stock_transfers_from_warehouse_id",
+      "columns": [
+        "01M8EJX99PZWBDT0V1X45VYFS6"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A movement of stock between two Northwind warehouses."
+}

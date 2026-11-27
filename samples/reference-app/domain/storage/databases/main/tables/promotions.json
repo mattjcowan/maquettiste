@@ -1,0 +1,126 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QF6C7NWKA4NH5E7W4",
+  "name": "promotions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q0B4TTWBMHCCEYPKG",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the promotion."
+    },
+    {
+      "id": "01M8EJX99QZ1THAPZDXWW2NKST",
+      "name": "code",
+      "type": "string",
+      "length": 30,
+      "nullable": false,
+      "comment": "Promotion code."
+    },
+    {
+      "id": "01M8EJX99QNQFCN34BWA85KGEN",
+      "name": "name",
+      "type": "string",
+      "length": 150,
+      "nullable": false,
+      "comment": "Promotion name."
+    },
+    {
+      "id": "01M8EJX99QXDYX57KK1FC6YN0R",
+      "name": "description",
+      "type": "text",
+      "comment": "Terms shown to customers."
+    },
+    {
+      "id": "01M8EJX99QZRS2S5QP1RWMDGYE",
+      "name": "status",
+      "type": "string",
+      "length": 6,
+      "nullable": false,
+      "default": "DRAFT",
+      "comment": "Lifecycle state."
+    },
+    {
+      "id": "01M8EJX99QQ9ACC9ETX51F7YB9",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99Q23VH0B0CJEPS1MMV",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99Q517X0P54RXHF8SC0",
+      "name": "budget_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99Q8SVF2B34DFWNR9AG",
+      "name": "budget_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QMF6TAF5FMGNRDY3M",
+      "name": "max_redemptions",
+      "type": "int32",
+      "comment": "Cap on redemptions across all customers."
+    },
+    {
+      "id": "01M8EJX99QMM83171V0JRGJPGW",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QQGD0Y8EQPC2W5DAK",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QPJAKCRPTRCAHAK7M",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QB4XJ0B46KFCJDNCN",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_promotions",
+    "columns": [
+      "01M8EJX99Q0B4TTWBMHCCEYPKG"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AART5DS5SB7CNZ2HPE",
+      "name": "uq_promotions_code",
+      "columns": [
+        "01M8EJX99QZ1THAPZDXWW2NKST"
+      ]
+    }
+  ],
+  "comment": "A time-boxed marketing promotion with conditions and rewards, such as buy 10 cases get 1 free."
+}

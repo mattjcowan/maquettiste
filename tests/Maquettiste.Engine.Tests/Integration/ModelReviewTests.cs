@@ -1,4 +1,5 @@
 using Maquettiste.Engine.Tests.Snapshots;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -6,6 +7,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// The acceptance of next-phase-2-design.md section 6.2: a reviewer reads a change by package and by member, from the snapshot taken
 /// before it or from a folder that holds the base (a CI checkout stands in), with the migration facts in their own group.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ModelReviewTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

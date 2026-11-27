@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHSA1SGJAQCB6JC16B",
+  "name": "cycle count lies in zone in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2063FGPHB4YCYRA3WX06BWX",
+  "foreignKey": "01M8EJX9A9JAS23KBHTHBX68C1"
+}

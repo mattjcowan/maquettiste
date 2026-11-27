@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJPJ3EM9H1KXX45DQ1",
+  "name": "sales order contains holds in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1FM9EBC8JTXHX0D3XJ8TTFF",
+  "foreignKey": "01M8EJX9AC6PMW478ARJTRYJVB"
+}

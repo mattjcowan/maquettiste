@@ -1,0 +1,112 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q1PE01Y2ASHZ69K51",
+  "name": "standard_costs",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q086EHA0AXGMGWATV",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the standard cost."
+    },
+    {
+      "id": "01M8EJX99QPCKWV64ND9VGFS4K",
+      "name": "cost_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99Q7CSF04V76N4AE4FG",
+      "name": "cost_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QDTBEFWM0T31CMEW9",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99Q7GJJG3BYRXXEH4BE",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99QKWKGH7JHWPCJJB15",
+      "name": "costing_method",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "standard",
+      "comment": "standard, average or last-purchase."
+    },
+    {
+      "id": "01M8EJX99Q59HNWWEHRAEX00RY",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99Q9SS0TSESV89ZYV1W",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q7DHWTV78BNDPEF8C",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QCFZY30989RHMVKKY",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QY3C6W5Z46D64Y25E",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_standard_costs",
+    "columns": [
+      "01M8EJX99Q086EHA0AXGMGWATV"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAMT0X1AAPE08NHHY8",
+      "name": "fk_standard_costs_product_id",
+      "columns": [
+        "01M8EJX99QY3C6W5Z46D64Y25E"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "The standard cost of a product for a period, used for margin reporting and inventory valuation."
+}

@@ -240,8 +240,10 @@ public sealed class CliApp(CliEnvironment environment)
                                   impact: referrers, databases reached and per pack the units and files it touches; write
                                   nothing), --format text|json
           model materialize tables --database <id|name> <entity...>
-                                Write a designed table per entity with its projection's shape and bind the entity to it:
-                                  --schema <id|name>, --dry-run (print the plan and write nothing), --format text|json
+                                Write a designed table per entity with the shape the conventions give it and bind the entity
+                                  to it (name a hierarchy whole): --schema <id|name>, --hierarchy one-table|per-concrete|per-type
+                                  or <root entity>=<shape> (repeatable), --list-storage table|json or <Entity.attribute>=<storage>
+                                  (repeatable), --dry-run (print the plan and write nothing), --format text|json
           model materialize entities --database <id|name> --package <id|name> <table...>
                                 Write an entity per table or view, bound to it, and a relation per foreign key between them:
                                   --dry-run, --format text|json

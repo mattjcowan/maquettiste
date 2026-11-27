@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJX2Y515SMFAW6MYYC",
+  "name": "return authorization is approved by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2GDDY5GMG399NQE69FTQKCD",
+  "foreignKey": "01M8EJX9AB0KBBEB9DNVE694GW"
+}

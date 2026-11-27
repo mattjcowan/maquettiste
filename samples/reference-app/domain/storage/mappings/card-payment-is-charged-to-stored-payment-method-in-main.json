@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CFRMRMPQNR27YE6NSW",
+  "name": "card payment is charged to stored payment method in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1KV5NBBNNHEBNYHHPHMZAHT",
+  "foreignKey": "01M8EJX9A3DTFYVJ3Q5NBCNX6Z"
+}

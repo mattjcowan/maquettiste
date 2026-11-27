@@ -10,6 +10,7 @@ namespace Maquettiste.Engine.Tests.Expressions;
 /// The expression rules (next-phase-3-design.md section 3.1, "Rules", task H6), one test each, over the bindings fixture: the
 /// invented entity Product, bound to its table products, whose columns and attributes are id, sku, name and price.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ExpressionRuleTests
 {
     internal const string ProductId = "01K6BFX0000000000000000027";

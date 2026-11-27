@@ -9,6 +9,7 @@ import { NODE_BASE_URL, startMockServer } from "@/mocks/node";
 export const IDS = {
   invoice: "01J92P0V0FJ23CGSNKM7P1W5V7",
   payment: "01J92P0V0HEGSC6MW92CST5KA6",
+  invoicesTable: "01J92P0V1T0J6RH4MY9H81NYB4",
   overview: "01J92P0V2164SDBW687ZV6E1MV",
 };
 

@@ -37,5 +37,48 @@
       "default": true,
       "description": "Whether the cancellation counts as a lost sale in reports."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9AT2K3YMVN798FGW4C1",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99Q2JMM6VCSM32EBYYC",
+      "fields": [
+        {
+          "attribute": "01M20SQS4TNK6RE59010AX4ZX1",
+          "column": "01M8EJX99QXKNM4FYW6RKS0WN0"
+        },
+        {
+          "attribute": "01M2AR8572BQQFS3X1R7S79TY2",
+          "column": "01M8EJX99QCS06FMGASE7343JR"
+        },
+        {
+          "attribute": "01M1Q2XEZTSQ4A7SG2QB2MDQ7G",
+          "column": "01M8EJX99QDEZ9ECC7W2HAE4D2"
+        },
+        {
+          "attribute": "01M32VYTXQMHC0TM6FHBHKHE4T",
+          "column": "01M8EJX99QSW841XP1M6C7MZ8A"
+        },
+        {
+          "attribute": "01M2WVYB596ZFE7XF9DEVKTVCD",
+          "column": "01M8EJX99QQ87NWCQH4N0P7R0P"
+        },
+        {
+          "attribute": "01M352J3V77SWZZE4X5PY7GPHN",
+          "column": "01M8EJX99Q05ZD2F420RJZT4HJ"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q05ZD2F420RJZT4HJ": "0a2438db:19980141",
+          "01M8EJX99QCS06FMGASE7343JR": "3e75a136:19980141",
+          "01M8EJX99QDEZ9ECC7W2HAE4D2": "5694d08a:461bd2c5",
+          "01M8EJX99QQ87NWCQH4N0P7R0P": "d0efd4f6:53fb88ea",
+          "01M8EJX99QSW841XP1M6C7MZ8A": "82a3537f:6137f4ed",
+          "01M8EJX99QXKNM4FYW6RKS0WN0": "a5614527:53fb88ea"
+        }
+      }
+    }
   ]
 }

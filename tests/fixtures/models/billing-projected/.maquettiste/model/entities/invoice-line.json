@@ -1,0 +1,45 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01J92P0V0GWFR78HZH0P8Z3GY7",
+  "name": "InvoiceLine",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "category": "01J92P0V06TYE8P8990AV35A8K",
+  "key": {
+    "attributes": [
+      "01J92P0V0X1EDKMF6X5RA8NZWG"
+    ],
+    "strategy": "ulid"
+  },
+  "attributes": [
+    {
+      "id": "01J92P0V0X1EDKMF6X5RA8NZWG",
+      "name": "id",
+      "type": "ulid",
+      "required": true
+    },
+    {
+      "id": "01J92P0V0Y049452AH0K8CDC9N",
+      "name": "quantity",
+      "type": "int32",
+      "required": true,
+      "validation": {
+        "min": 1
+      }
+    },
+    {
+      "id": "01J92P0V0ZQNG1QWKD83FEA0GA",
+      "name": "unitPrice",
+      "type": {
+        "ref": "01J92P0V0304M76KA84NE4D1TE"
+      },
+      "required": true
+    },
+    {
+      "id": "01J92P0V1015JY6PVQZG6MY8AS",
+      "name": "description",
+      "type": "string",
+      "length": 500
+    }
+  ]
+}

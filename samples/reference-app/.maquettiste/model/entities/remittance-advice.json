@@ -63,5 +63,63 @@
       "default": false,
       "description": "Whether it was matched to a payment."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BME3Z5EGDD00HQWFCV",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NYTHRQKD1KN32QRT6",
+      "fields": [
+        {
+          "attribute": "01M1M5Z7KAZJSPTSAQ52CXHV13",
+          "column": "01M8EJX99N8VQWQKW74QG3S3SP"
+        },
+        {
+          "attribute": "01M32XSFQJDCGVRTY1JDK4AJYY",
+          "column": "01M8EJX99N9VFMSGQ1SJH71WVS"
+        },
+        {
+          "attribute": "01M1FKRSQ9VF5G5B0YVMCBVDNM",
+          "column": "01M8EJX99NHBZGYNW0TAKXB2GT"
+        },
+        {
+          "attribute": "01M1J8Z4CM80BSE61SPAB1DYJ9.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99N4H7YE41DA4PXC4SG"
+        },
+        {
+          "attribute": "01M1J8Z4CM80BSE61SPAB1DYJ9.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99NAHHFYGHTSNKF8VPQ"
+        },
+        {
+          "attribute": "01M1QD6KKV9YTTKMRF69AR0ZN3",
+          "column": "01M8EJX99NEGREZYFDBR3NX4T3"
+        },
+        {
+          "attribute": "01M1DYQC8915N1H7KCN11SQHGY",
+          "column": "01M8EJX99NQGM1KC3Q3SW99625"
+        },
+        {
+          "attribute": "01M2EJ27JWNSTFFR9HFHDZQ8V5",
+          "column": "01M8EJX99N124TTE5KA9FS6SEB"
+        },
+        {
+          "attribute": "01M1MRNHS73NAR1Q3D4RP4BZ93",
+          "column": "01M8EJX99NQFK33A5MPVN848EG"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N124TTE5KA9FS6SEB": "b173885b:d8a57cf9",
+          "01M8EJX99N4H7YE41DA4PXC4SG": "eddbdbb2:d46c92d7",
+          "01M8EJX99N8VQWQKW74QG3S3SP": "a5614527:8da1c7b8",
+          "01M8EJX99N9VFMSGQ1SJH71WVS": "1ec47b6b:81884634",
+          "01M8EJX99NAHHFYGHTSNKF8VPQ": "ee860e29:48b85cd3",
+          "01M8EJX99NEGREZYFDBR3NX4T3": "d79f2c49:19c5078c",
+          "01M8EJX99NHBZGYNW0TAKXB2GT": "1509355d:9599b5fd",
+          "01M8EJX99NQFK33A5MPVN848EG": "c001011d:d8a57cf9",
+          "01M8EJX99NQGM1KC3Q3SW99625": "4ccd5dc6:19980141"
+        }
+      }
+    }
   ]
 }

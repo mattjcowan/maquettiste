@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH50YAARRJMAXWZY9X",
+  "name": "journal line is charged to cost center in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M34VQXM7EVEHJPFAP09W9FK1",
+  "foreignKey": "01M8EJX9A87NE4N5AGS4EK6Z54"
+}

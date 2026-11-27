@@ -68,5 +68,83 @@
       "type": "text",
       "description": "Negotiation notes."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B0AACNJXSX5XFQJMNW",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PN9CGGQ4DXPP33RJ2",
+      "fields": [
+        {
+          "attribute": "01M2A782V1R6S75DVSSMYXXWG7",
+          "column": "01M8EJX99PFJA9ZVKJDFN9PAS1"
+        },
+        {
+          "attribute": "01M1YFH7Z896VBYZTX8BASGX08",
+          "column": "01M8EJX99PT9RPMGJCY88RCMVQ"
+        },
+        {
+          "attribute": "01M1S041F9KRE5RCS4DPPTW6V7.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99P74KMRPR8A2HHPCNW"
+        },
+        {
+          "attribute": "01M1S041F9KRE5RCS4DPPTW6V7.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99PDM1M3T1YCQX1AXKM"
+        },
+        {
+          "attribute": "01M2VZJKJHAFP9QXDRSFE9SB43",
+          "column": "01M8EJX99P0NMM67V0J8PNSSXT"
+        },
+        {
+          "attribute": "01M21PP6ZHQ3W2CP0Y7C3B719T",
+          "column": "01M8EJX99P4010JJ9QB4NRQFYK"
+        },
+        {
+          "attribute": "01M1NRQ1BNS1D441R72BEEXV7Z",
+          "column": "01M8EJX99PR493XPC7DCPAGTGF"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PSK4RZ5FJC34KZQDR"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PB4ANCMBZRZFQN1Z6"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PC73KCNQ4S21X2RMK"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PBBYKXB3D6BFQJ5G5"
+        },
+        {
+          "attribute": "01M31H5G4YD8172ZMQHKMRTNET",
+          "column": "01M8EJX99P6ZKRF69W92N0SQ8S"
+        },
+        {
+          "attribute": "01M291PNM5520W5H6CVWMTZF5P",
+          "column": "01M8EJX99P27SV50BBCMK5HM8K"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P0NMM67V0J8PNSSXT": "60c92276:19980141",
+          "01M8EJX99P27SV50BBCMK5HM8K": "48960d0b:d8a57cf9",
+          "01M8EJX99P4010JJ9QB4NRQFYK": "68f23d62:9b51e601",
+          "01M8EJX99P6ZKRF69W92N0SQ8S": "c001011d:8da1c7b8",
+          "01M8EJX99P74KMRPR8A2HHPCNW": "2db5d4af:81884634",
+          "01M8EJX99PB4ANCMBZRZFQN1Z6": "c0d79bde:9599b5fd",
+          "01M8EJX99PBBYKXB3D6BFQJ5G5": "0b075263:9599b5fd",
+          "01M8EJX99PC73KCNQ4S21X2RMK": "d31d4567:fd717804",
+          "01M8EJX99PDM1M3T1YCQX1AXKM": "2a578471:9b51e601",
+          "01M8EJX99PFJA9ZVKJDFN9PAS1": "a5614527:8da1c7b8",
+          "01M8EJX99PR493XPC7DCPAGTGF": "ab5aa970:43ec92f3",
+          "01M8EJX99PSK4RZ5FJC34KZQDR": "42049432:e0d08678",
+          "01M8EJX99PT9RPMGJCY88RCMVQ": "b43669f9:ef1ae9ec"
+        }
+      }
+    }
   ]
 }

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJP8NW0YT9A1E01751",
+  "name": "serial number is drawn from lot in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1RSQHVXE2HAXBFSYJVVHJNZ",
+  "foreignKey": "01M8EJX9AA5ZRCXA6DDG7G2ZJV"
+}

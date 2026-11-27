@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHJT16BP0BY29ZBSWS",
+  "name": "product is classified as hazard class in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M34JE7SWMBRVAG6G29EKP3NH",
+  "foreignKey": "01M8EJX9A7XHGXXKG4DC4E494P"
+}

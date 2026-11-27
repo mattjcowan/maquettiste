@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ5DZP6EK8MKJ51A30",
+  "name": "request for quote is bought by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M30TGAP950E9DQCW5ZSYV1RN",
+  "foreignKey": "01M8EJX9AB3HB44M2RCGMPVWH1"
+}

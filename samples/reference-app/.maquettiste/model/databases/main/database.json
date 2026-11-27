@@ -14,5 +14,6 @@
       "name": "northwind",
       "description": "All operational tables of Northwind Operations."
     }
-  ]
+  ],
+  "byConvention": "none"
 }

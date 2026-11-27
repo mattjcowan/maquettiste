@@ -1,0 +1,101 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QM2593EWW3DNC676T",
+  "name": "countries",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QZYYZX93FNJF0W9JT",
+      "name": "code",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "comment": "ISO 3166-1 alpha-2 code; the natural key."
+    },
+    {
+      "id": "01M8EJX99QA5Q7HJ0FCPETH03R",
+      "name": "alpha3_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "ISO 3166-1 alpha-3 code."
+    },
+    {
+      "id": "01M8EJX99QZBZT4XPMQ5AZK0G6",
+      "name": "numeric_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "ISO 3166-1 numeric code."
+    },
+    {
+      "id": "01M8EJX99QAHAXB5XN1J4ZTTWR",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "English short name."
+    },
+    {
+      "id": "01M8EJX99QEW1F7QB70S90VBPE",
+      "name": "calling_code",
+      "type": "string",
+      "length": 8,
+      "comment": "International dialling prefix, such as +49."
+    },
+    {
+      "id": "01M8EJX99QXFHG385ESJ5GYVYB",
+      "name": "is_eu_member",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether intra-community VAT rules apply."
+    },
+    {
+      "id": "01M8EJX99QRS6TKF4WHS5J435P",
+      "name": "is_sanctioned",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether trade with the country is blocked by export controls."
+    },
+    {
+      "id": "01M8EJX99QZ39X3HWKV75V2FQE",
+      "name": "currency_code",
+      "type": "string",
+      "length": 3
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_countries",
+    "columns": [
+      "01M8EJX99QZYYZX93FNJF0W9JT"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ABS6G6MQQQ4NNYWJGP",
+      "name": "uq_countries_alpha3_code",
+      "columns": [
+        "01M8EJX99QA5Q7HJ0FCPETH03R"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABCCW27BEVTK39WFNG",
+      "name": "fk_countries_currency_code",
+      "columns": [
+        "01M8EJX99QZ39X3HWKV75V2FQE"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A country or territory from ISO 3166-1. Drives address validation, tax jurisdictions and customs paperwork."
+}

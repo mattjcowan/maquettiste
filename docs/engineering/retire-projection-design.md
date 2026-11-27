@@ -60,6 +60,10 @@ resolves.
 | Stored derived attributes | yes | yes: a field maps them | binding |
 | Overlay extras: columns, indexes, checks, stereotype members | yes | yes: they are the designed table's own | designed table |
 | A relation stored as an entity (promoted) | yes | no | removed; modeled as an entity with two relations |
+| A list attribute of a relation in a table of its own | yes | **no** | no binding form yet; "Create tables…" refuses it, naming the attribute |
+| A table inside a child table | no (nested value objects are embedded) | **no** | no binding form yet; "Create tables…" refuses it, naming the attribute |
+| A list of a reference type in a PostgreSQL enum array | `sql-ddl` (`native`) | **no** | no binding form yet; "Create tables…" refuses it, naming the attribute |
+| A relation to an abstract base stored as a table per concrete entity | yes (keys into each concrete table) | **no** | no binding form yet; "Create tables…" refuses it, naming the relation |
 
 ## 4. Table per type: `baseForeignKey`
 

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHMZZNGME8S98DRZD5",
+  "name": "delivery route is driven by driver in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M27Z7YSX198MTFPVF0JZW79B",
+  "foreignKey": "01M8EJX9A96P7C3YTYKY66H8F2"
+}

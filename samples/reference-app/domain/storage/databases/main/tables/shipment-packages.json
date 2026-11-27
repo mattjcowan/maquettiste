@@ -1,0 +1,111 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PJF6CBD9HBT9WP452",
+  "name": "shipment_packages",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PP25C1NHZZJV9SK12",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the shipment package."
+    },
+    {
+      "id": "01M8EJX99P7KDYC0HX9ZBM1WXE",
+      "name": "package_number",
+      "type": "int32",
+      "nullable": false,
+      "comment": "Package number within the shipment."
+    },
+    {
+      "id": "01M8EJX99PJ6GH43KHZ0MR6G5G",
+      "name": "package_type",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "carton, pallet or envelope."
+    },
+    {
+      "id": "01M8EJX99PZV3GZW3K2Z2QKD8D",
+      "name": "tracking_number",
+      "type": "string",
+      "length": 60,
+      "comment": "Carrier tracking number."
+    },
+    {
+      "id": "01M8EJX99PCW91YTWQTMMX856R",
+      "name": "dimensions_length",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Longest side."
+    },
+    {
+      "id": "01M8EJX99PQBBCM1V605EMAQ49",
+      "name": "dimensions_width",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Second side."
+    },
+    {
+      "id": "01M8EJX99P0VQMRMSJG9V5RW95",
+      "name": "dimensions_height",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Vertical side."
+    },
+    {
+      "id": "01M8EJX99P7C8T89R66T7WKN3D",
+      "name": "dimensions_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the three measures."
+    },
+    {
+      "id": "01M8EJX99PFXNPJVWFFJVDHCB2",
+      "name": "weight_value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "The weight."
+    },
+    {
+      "id": "01M8EJX99PM7GDBAXK2P4K877N",
+      "name": "weight_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the weight."
+    },
+    {
+      "id": "01M8EJX99PRVFWHBEQFERA2867",
+      "name": "shipment_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_shipment_packages",
+    "columns": [
+      "01M8EJX99PP25C1NHZZJV9SK12"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9SXMB81NMD99WQY7Z",
+      "name": "fk_shipment_packages_shipment_id",
+      "columns": [
+        "01M8EJX99PRVFWHBEQFERA2867"
+      ],
+      "referencesTable": "01M8EJX99PKM2XB6JYQ5KG4H99",
+      "referencesColumns": [
+        "01M8EJX99PJZQHKXG1H6695ECQ"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A carton or pallet of a shipment with its own tracking number."
+}

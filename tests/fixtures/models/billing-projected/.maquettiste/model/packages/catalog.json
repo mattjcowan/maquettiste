@@ -1,0 +1,8 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01J92P0V025DRFTXKMS240G2NG",
+  "name": "Catalog",
+  "parent": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "description": "What we sell."
+}

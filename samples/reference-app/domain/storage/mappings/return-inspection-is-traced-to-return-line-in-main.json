@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ1ADRNCKPETAW7ZVG",
+  "name": "return inspection is traced to return line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1W0HN2T67W27QTKN6TT9XMZ",
+  "foreignKey": "01M8EJX9ABGF80R9G4HTW7149K"
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJXS27VFZY4N507Z8A",
+  "name": "repair order tracks serial number in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M36QTNV7E4F5HJ2SKKJ8VW1X",
+  "foreignKey": "01M8EJX9ABF1410EQ52TH0XC0H"
+}

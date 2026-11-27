@@ -1,0 +1,71 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99Q3DQ4W9NRV1VTEABR",
+  "name": "request_for_quote_supplier",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QNG5DFGJKJAFP3YT0",
+      "name": "requests_for_quote_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QW3ZFF0NECXSXY228",
+      "name": "invited_suppliers_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q59GX59NR0872KSTG",
+      "name": "invited_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the invitation was sent."
+    },
+    {
+      "id": "01M8EJX99QJ7KCMBAMBPNEX46F",
+      "name": "declined",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether the supplier declined to quote."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_request_for_quote_supplier",
+    "columns": [
+      "01M8EJX99QNG5DFGJKJAFP3YT0",
+      "01M8EJX99QW3ZFF0NECXSXY228"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AC31261VXXJHYXND6Z",
+      "name": "fk_request_for_quote_supplier_requests_for_quote_id",
+      "columns": [
+        "01M8EJX99QNG5DFGJKJAFP3YT0"
+      ],
+      "referencesTable": "01M8EJX99QZ70E612H7EY72E6Y",
+      "referencesColumns": [
+        "01M8EJX99QW4MBVVP6369VPAQ4"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACP4B7MHC11VK1JDRJ",
+      "name": "fk_request_for_quote_supplier_invited_suppliers_id",
+      "columns": [
+        "01M8EJX99QW3ZFF0NECXSXY228"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Suppliers invited to quote on a request for quote, with the invitation date."
+}

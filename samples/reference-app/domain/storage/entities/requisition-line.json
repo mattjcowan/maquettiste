@@ -1,0 +1,55 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9BNGX9T5QNAJ8Z1G5FZ",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QNBDN1H186M3SWSMG",
+      "fields": [
+        {
+          "attribute": "01M2PR7QPYQDNBSEFMM5HD0DMN",
+          "column": "01M8EJX99Q8CEJ2TF70ADG101P"
+        },
+        {
+          "attribute": "01M1HDR5VCE4CGHCP69VPDKKVY",
+          "column": "01M8EJX99Q8S83G37403NKQBCV"
+        },
+        {
+          "attribute": "01M24BD32EW725HB6Y9WWPMZPK",
+          "column": "01M8EJX99QHFAA65E2WA0B6R52"
+        },
+        {
+          "attribute": "01M3822PEWAQ5HBFFCE0VKYHKX.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QDMFX3GZ79Y4FBMA9"
+        },
+        {
+          "attribute": "01M3822PEWAQ5HBFFCE0VKYHKX.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QDZFK0K1H2N9186QF"
+        },
+        {
+          "attribute": "01M1YFQK8J34N9DYG0QVGQNV09",
+          "column": "01M8EJX99QE7KRSP2DYCCHV9XH"
+        },
+        {
+          "attribute": "01M1EMRKA9Q5ETZJAQYS72CNFN",
+          "column": "01M8EJX99QXSX0T0K87EDKEN5P"
+        },
+        {
+          "attribute": "01M1M88WAJKFCTMS9A9XQ1B8Z7",
+          "column": "01M8EJX99QCN8TBB8SDSA4PB5E"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q8CEJ2TF70ADG101P": "a5614527:8da1c7b8",
+          "01M8EJX99Q8S83G37403NKQBCV": "c9046f7a:e90be005",
+          "01M8EJX99QCN8TBB8SDSA4PB5E": "af21a571:d8a57cf9",
+          "01M8EJX99QDMFX3GZ79Y4FBMA9": "05108687:d249895e",
+          "01M8EJX99QDZFK0K1H2N9186QF": "b3e9c0c7:75525505",
+          "01M8EJX99QE7KRSP2DYCCHV9XH": "65682ff3:8da1c7b8",
+          "01M8EJX99QHFAA65E2WA0B6R52": "1a7b308d:b52e18e1",
+          "01M8EJX99QXSX0T0K87EDKEN5P": "64814827:d8a57cf9"
+        }
+      }
+    }
+  ]
+}

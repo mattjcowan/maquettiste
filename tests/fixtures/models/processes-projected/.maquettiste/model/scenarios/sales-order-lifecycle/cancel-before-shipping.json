@@ -1,0 +1,40 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000014",
+  "name": "CancelBeforeShipping",
+  "displayName": "Cancel before shipping",
+  "process": "01JQPRC0000000000000000001",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000101": 100,
+      "01JQATT0000000000000000102": 1000
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000049",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000011"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000050",
+      "event": "01JQPRX0000000000000000009",
+      "assume": {
+        "01JQPRX0000000000000000011": true
+      },
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000017"
+        ]
+      },
+      "description": "Nothing has left the warehouse: notShipped is true, so the order is cancelled."
+    }
+  ],
+  "outcome": "final"
+}

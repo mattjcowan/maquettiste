@@ -1,0 +1,119 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QEDSR9R9QCT6DT61C",
+  "name": "backorders",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QA1Q667S9YP45ADAP",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the backorder."
+    },
+    {
+      "id": "01M8EJX99QKQVSHSHH6V8CS5ZF",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity waiting."
+    },
+    {
+      "id": "01M8EJX99Q8FB82PY2ZFNBDJT0",
+      "name": "expected_on",
+      "type": "date",
+      "comment": "Expected availability date."
+    },
+    {
+      "id": "01M8EJX99QMD442CG4PT2TZP8R",
+      "name": "customer_notified_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the customer was told."
+    },
+    {
+      "id": "01M8EJX99QQBYX2FP62MJE3W8C",
+      "name": "is_fulfilled",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether it has been allocated since."
+    },
+    {
+      "id": "01M8EJX99Q00SFSXVKCYZFGPB8",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QJ0VB5DFBVNQ73NTB",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QBXRDV3TH47ETKXP8",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99Q6T5GGJ8DQGSQE2FZ",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QAXXVBX0HA5RQ4Y5J",
+      "name": "sales_order_line_id",
+      "type": "ulid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QW3ZYZP07FKQ3VG2Q",
+      "name": "purchase_order_line_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_backorders",
+    "columns": [
+      "01M8EJX99QA1Q667S9YP45ADAP"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACTNA6CAC788FHG04M",
+      "name": "fk_backorders_sales_order_line_id",
+      "columns": [
+        "01M8EJX99QAXXVBX0HA5RQ4Y5J"
+      ],
+      "referencesTable": "01M34B2XCK0G0EW7GX48YPV9R6",
+      "referencesColumns": [
+        "01M8EJX99QB5W684KZRFP37DGQ"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACVW1HDMF9EFYDRAXP",
+      "name": "fk_backorders_purchase_order_line_id",
+      "columns": [
+        "01M8EJX99QW3ZYZP07FKQ3VG2Q"
+      ],
+      "referencesTable": "01M8EJX99Q2NHVT98RXQ84QHB9",
+      "referencesColumns": [
+        "01M8EJX99QN3T8C8VT8N9Z2TVW"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A quantity of an order line that could not be allocated and waits for replenishment."
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ33QW0J4NBXGCTKG2",
+  "name": "purchase order is governed by contract in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1WNNRCJT6007KZWJ0G4DSAH",
+  "foreignKey": "01M8EJX9AB5KFAG1N68QQHJ5B3"
+}

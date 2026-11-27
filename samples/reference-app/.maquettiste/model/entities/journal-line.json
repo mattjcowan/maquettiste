@@ -50,5 +50,63 @@
       "length": 200,
       "description": "Line memo."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B7SK64KTARSQ8K7GGV",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PNJFKKW22HG3MPHSA",
+      "fields": [
+        {
+          "attribute": "01M30AWF1N7VZSM0RK3B2STNHV",
+          "column": "01M8EJX99PN2VA83TT8YQHS5QH"
+        },
+        {
+          "attribute": "01M2E935787BKB79J6DCJ4BS0V.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99P1RGWVZQX78FPBKQB"
+        },
+        {
+          "attribute": "01M2E935787BKB79J6DCJ4BS0V.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PNH4K7ZPVW2FJ0720"
+        },
+        {
+          "attribute": "01M29A3YWEPK3R9F76HEABHSX6.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PRADSYNEHV82NNZ6Y"
+        },
+        {
+          "attribute": "01M29A3YWEPK3R9F76HEABHSX6.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PX356AE259FWY7B2J"
+        },
+        {
+          "attribute": "01M1X5MG36WAH6JZCKG3T53BGK",
+          "column": "01M8EJX99P64FQ1W56P4NE45QS"
+        },
+        {
+          "attribute": "01M2P2VG7C477YBPNP98VD9R56",
+          "column": "01M8EJX99P8W3HBR94BJGKNRA1"
+        },
+        {
+          "attribute": "01M2ZBNKK3MGCFAHSE7V01JXK7",
+          "column": "01M8EJX99PMDF6KZ69KKFJS1SK"
+        },
+        {
+          "attribute": "01M1KFCZM6QF2085GJABSM7D0Q",
+          "column": "01M8EJX99PHGSEX5VWETNXFWYW"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P1RGWVZQX78FPBKQB": "2b6e2b65:d249895e",
+          "01M8EJX99P64FQ1W56P4NE45QS": "9c225a95:6b504d2a",
+          "01M8EJX99P8W3HBR94BJGKNRA1": "b7170223:fc034f10",
+          "01M8EJX99PHGSEX5VWETNXFWYW": "c6efb1e6:8da1c7b8",
+          "01M8EJX99PMDF6KZ69KKFJS1SK": "c8365d62:d8a57cf9",
+          "01M8EJX99PN2VA83TT8YQHS5QH": "a5614527:fc034f10",
+          "01M8EJX99PNH4K7ZPVW2FJ0720": "11e84960:75525505",
+          "01M8EJX99PRADSYNEHV82NNZ6Y": "6256ca8b:d249895e",
+          "01M8EJX99PX356AE259FWY7B2J": "ff28db3f:75525505"
+        }
+      }
+    }
   ]
 }

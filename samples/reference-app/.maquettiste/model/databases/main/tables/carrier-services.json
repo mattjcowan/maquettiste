@@ -1,0 +1,111 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PA7MTD0KWX8FXWCM0",
+  "name": "carrier_services",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P6N7K7H260YR5XY22",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the carrier service."
+    },
+    {
+      "id": "01M8EJX99PXXSA5HJFATQWQ4GV",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Carrier's service code."
+    },
+    {
+      "id": "01M8EJX99P5QN7HEA7ZJG1PG1A",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Service name."
+    },
+    {
+      "id": "01M8EJX99PQ76QK4TEZXRRR1D7",
+      "name": "service_level",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "ground, express, overnight, ltl or ftl."
+    },
+    {
+      "id": "01M8EJX99PZWT5CB26MSF648ND",
+      "name": "transit_days",
+      "type": "int16",
+      "comment": "Typical business days in transit."
+    },
+    {
+      "id": "01M8EJX99PBRM9VR3VWHBDGMRY",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it can be booked."
+    },
+    {
+      "id": "01M8EJX99PK26W918JMEVPFFWM",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PESN62T7XW756GWDX",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P4A82HR9R3W46B7JK",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P9KJDWABB6QC8HG0A",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PPFFR38KXJBPMQQ1J",
+      "name": "carrier_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_carrier_services",
+    "columns": [
+      "01M8EJX99P6N7K7H260YR5XY22"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8ZGRW4FBF1PRGM96M",
+      "name": "fk_carrier_services_carrier_id",
+      "columns": [
+        "01M8EJX99PPFFR38KXJBPMQQ1J"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A service a carrier offers, such as Ground, 2-day air or LTL standard."
+}

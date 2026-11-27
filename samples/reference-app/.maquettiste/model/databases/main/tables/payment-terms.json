@@ -1,0 +1,87 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NPS00JBS5309MN9Z5",
+  "name": "payment_terms",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NKNTBNAQ78BETQE9V",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the payment term."
+    },
+    {
+      "id": "01M8EJX99NX8MCR648DHSXPF0Q",
+      "name": "net_days",
+      "type": "int16",
+      "nullable": false,
+      "comment": "Days until the invoice is due."
+    },
+    {
+      "id": "01M8EJX99NZKJFC369J07ZPPG5",
+      "name": "discount_days",
+      "type": "int16",
+      "comment": "Days within which the early payment discount applies."
+    },
+    {
+      "id": "01M8EJX99NK5V4XYWSH28X6YVF",
+      "name": "discount_percent",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Early payment discount."
+    },
+    {
+      "id": "01M8EJX99N0SEX5C2V2WS787YW",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99NRXSVFK95V3DA5XD9",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99NQ2XST877JMSNKC0X",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99N9W9GNMCKTCH93RX5",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_payment_terms",
+    "columns": [
+      "01M8EJX99NKNTBNAQ78BETQE9V"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A62PX8PGDPH7EN93Z8",
+      "name": "uq_payment_terms_code",
+      "columns": [
+        "01M8EJX99N0SEX5C2V2WS787YW"
+      ]
+    }
+  ],
+  "comment": "Payment terms, such as Net 30 or 2/10 Net 30."
+}

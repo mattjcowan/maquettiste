@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHPP3K0Q7KBT31WZ5E",
+  "name": "carrier service is shipped by carrier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2MW5056Z472QAGDCCGS4X0Y",
+  "foreignKey": "01M8EJX9A8ZGRW4FBF1PRGM96M"
+}

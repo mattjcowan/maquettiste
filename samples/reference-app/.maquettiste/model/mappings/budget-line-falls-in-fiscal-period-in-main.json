@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHWE2PB5NC72NH0VCN",
+  "name": "budget line falls in fiscal period in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1EF4CVX7NQY397525GG2ZE3",
+  "foreignKey": "01M8EJX9A81Z0C2M87KT659K5Z"
+}

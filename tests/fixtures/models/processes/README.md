@@ -1,7 +1,7 @@
 # The gate 3 fixture
 
 Two processes with parallel states and gates (phase-3-design.md section 8.1), their 14 scenarios, the actors, and the entities
-the stores use, mapped explicitly to the PostgreSQL database `main`: `SalesOrderLifecycle` (a lifecycle of `SalesOrder`, bound
+the stores use, each bound to a designed table of the PostgreSQL database `main`: `SalesOrderLifecycle` (a lifecycle of `SalesOrder`, bound
 to `SalesOrder.status`) and `PurchaseApproval` (an orchestration of `PurchaseRequest`). Beside the model, a C# solution holds what
 the example packs cannot generate: the hand-written halves of the generated pairs.
 

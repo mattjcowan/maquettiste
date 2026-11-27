@@ -13,5 +13,26 @@
   "label": {
     "id": "01M2ECJ8EMBFVTX61C43DKH6YK",
     "length": 64
-  }
+  },
+  "bindings": [
+    {
+      "id": "01M8EJX9CD2D28Y9912FT58AQV",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "table": "01M8EJX99QQ53WJX68ZK2Q264J",
+      "fields": [
+        {
+          "attribute": "code",
+          "column": "01M8EJX99Q9E7J31M6KKSXMK1C"
+        },
+        {
+          "attribute": "label",
+          "column": "01M8EJX99Q4B76GPAHM6PHCRG1"
+        },
+        {
+          "attribute": "description",
+          "column": "01M8EJX99QBRXXGE4Y9SWGAF7P"
+        }
+      ]
+    }
+  ]
 }

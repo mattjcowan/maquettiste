@@ -14,8 +14,9 @@ One model repo per rule family. Each folder holds `.maquettiste/` (a `maquettist
 | `names-keys` | MQ3001, MQ3005, MQ3006, MQ3007 |
 | `relations` | MQ3001, MQ3008 to MQ3011, MQ3016 |
 | `values` | MQ3012, MQ3013, MQ3017, MQ3019 (attribute defaults, and column defaults against the resolved length, a native type, json and range) |
-| `physical` | MQ2001, MQ4001 to MQ4008, MQ4010 |
-| `mappings` | MQ4004, MQ4009, MQ4011 |
+| `physical` | MQ2001, MQ4001 to MQ4003, MQ4005, MQ4006, MQ4008, MQ4010 (designed tables, views, sequences) |
+| `mappings` | MQ4004, MQ4009, MQ4011 (relation mappings between bound entities) |
+| `physical-projected`, `mappings-projected` | **Temporary, deleted by pull request 3 of retiring projection**: the two families as they were before 0.29.0, with the overlays (MQ4004, MQ4007) and entity mappings (MQ4004, MQ4009) that only projection reads |
 | `extensions` | MQ5001, MQ5004 |
 | `scripts` | MQ2007, MQ5002, MQ5003, `x/no-draft` (with the test's fake sandbox) |
 | `reference-data` | MQ2001 and MQ2002 (storage keys), MQ3019 (default codes), MQ7001, MQ7002, MQ7006 to MQ7008, MQ7010, MQ7011 (settings findings land on `maquettiste.json`) |

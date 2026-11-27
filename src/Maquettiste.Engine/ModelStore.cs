@@ -2027,6 +2027,10 @@ public enum BatchOp
 /// the operation acts on (stereotype-sets-design.md decision 10).</param>
 /// <param name="Verb">The key of the project's own verb a verb operation acts on (rename-verb, remove-verb).</param>
 /// <param name="TriggerPoints">refresh-scenario: also write each step's <c>expect.triggerPoints</c> (trigger-points-design.md decision 28).</param>
+/// <param name="Hierarchy">materialize-tables: the shape of each hierarchy (<c>one-table</c>, <c>per-concrete</c>, <c>per-type</c>) by its root
+/// entity's id, or under <c>*</c> for every hierarchy (the operation's string form); absent takes the defaults.</param>
+/// <param name="ListStorage">materialize-tables: where each list attribute goes (<c>table</c>, <c>json</c>) by attribute id, or under <c>*</c>
+/// for every list (the operation's string form); absent takes the defaults.</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
@@ -2035,7 +2039,8 @@ public sealed record BatchOperation(
     IReadOnlyList<string>? Tags = null, string? As = null, IReadOnlyList<string>? ElementIds = null, string? Prefix = null, bool? Redefine = null,
     bool? ExcludeMissing = null, bool? KeepNames = null, string? Code = null, string? To = null, IReadOnlyDictionary<string, string>? Codes = null,
     string? Entity = null, string? Attribute = null, IReadOnlyDictionary<string, JsonElement>? StateCodes = null, string? Stereotype = null,
-    string? Verb = null, bool? TriggerPoints = null);
+    string? Verb = null, bool? TriggerPoints = null, IReadOnlyDictionary<string, string>? Hierarchy = null,
+    IReadOnlyDictionary<string, string>? ListStorage = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

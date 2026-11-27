@@ -3,6 +3,7 @@ using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
+[UsesProjectedFixtures]
 public sealed class ValidateTests
 {
     private const string CustomerFile = ".maquettiste/model/entities/customer.json";

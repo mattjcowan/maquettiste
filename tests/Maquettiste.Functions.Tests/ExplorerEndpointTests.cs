@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Maquettiste.Engine;
 using Maquettiste.Engine.Model;
 using Maquettiste.Functions.Tests.Support;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Functions.Tests;
 
@@ -77,6 +78,7 @@ public sealed class ExplorerEndpointTests
         Recorder.Json("elements-read.json", response);
     }
 
+    [UsesProjectedFixtures]
     [Fact]
     public async Task An_expression_preview_answers_in_contract_shape()
     {
@@ -177,6 +179,7 @@ public sealed class ExplorerEndpointTests
         Recorder.Json("database-table-customers.json", table);
     }
 
+    [UsesProjectedFixtures]
     [Fact]
     public async Task Table_summaries_on_a_model_with_errors_are_partial()
     {

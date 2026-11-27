@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ5DTBK1HGKDMPP31C",
+  "name": "stock movement is performed by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M34T1FKCSX5Q3J3HVZXFBVPE",
+  "foreignKey": "01M8EJX9AA1TY1A5G4E2W8DPAA"
+}

@@ -58,5 +58,68 @@
       "length": 200,
       "description": "Brand website."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9ATGY45KJK6B6NBBMHC",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NPRAMFJKXE3SX2DVT",
+      "fields": [
+        {
+          "attribute": "01M33HD577ETA8D88HSM8MA2JP",
+          "column": "01M8EJX99NQ14XDDQHTJGW6DZG"
+        },
+        {
+          "attribute": "01M1W7FZQBB3QRY3XGT26HK60N",
+          "column": "01M8EJX99N83TPY7RJHNJYTH8R"
+        },
+        {
+          "attribute": "01M1FF6K4R30M5QR9XH8P74MVF",
+          "column": "01M8EJX99NCZQ3T27Z4F0GVVY0"
+        },
+        {
+          "attribute": "01M1J1CJ15SB22NJJE6KCZH4XP",
+          "column": "01M8EJX99NC6DE30J6NR5GJ2HA"
+        },
+        {
+          "attribute": "01M2H39P8E4377KS1Z0WHYB721",
+          "column": "01M8EJX99NRY958MV3270BJ33J"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99NZHVE14N98D58ZZSA"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99NT52AJ8WRF42NM17H"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99N7HCRY6BNQXK1FP96"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99NFAFJNQG2Y8T9DC7R"
+        },
+        {
+          "attribute": "01M2W08N3HGE0YXSVNEP39VQ8D",
+          "column": "01M8EJX99NNJ8T3FCDV4QNGSXR"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N7HCRY6BNQXK1FP96": "d31d4567:fd717804",
+          "01M8EJX99N83TPY7RJHNJYTH8R": "82a3537f:6e0602bf",
+          "01M8EJX99NC6DE30J6NR5GJ2HA": "9c98591c:5c7847da",
+          "01M8EJX99NCZQ3T27Z4F0GVVY0": "c9046f7a:43ec92f3",
+          "01M8EJX99NFAFJNQG2Y8T9DC7R": "0b075263:9599b5fd",
+          "01M8EJX99NNJ8T3FCDV4QNGSXR": "f130058d:d8a57cf9",
+          "01M8EJX99NQ14XDDQHTJGW6DZG": "a5614527:8da1c7b8",
+          "01M8EJX99NRY958MV3270BJ33J": "747a8f39:6b504d2a",
+          "01M8EJX99NT52AJ8WRF42NM17H": "c0d79bde:9599b5fd",
+          "01M8EJX99NZHVE14N98D58ZZSA": "42049432:e0d08678"
+        }
+      }
+    }
   ]
 }

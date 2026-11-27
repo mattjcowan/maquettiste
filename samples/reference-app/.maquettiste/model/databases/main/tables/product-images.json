@@ -1,0 +1,79 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NT2QGTHB6BFM6ZZDV",
+  "name": "product_images",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N71HCKVEQ0PS2WR6X",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false,
+      "comment": "Surrogate key of the product image."
+    },
+    {
+      "id": "01M8EJX99N3ZW1SMA969WT6J93",
+      "name": "url",
+      "type": "string",
+      "length": 400,
+      "nullable": false,
+      "comment": "Image URL."
+    },
+    {
+      "id": "01M8EJX99N53MZYZQTD0T0ZQW9",
+      "name": "alt_text",
+      "type": "string",
+      "length": 200,
+      "comment": "Accessible description."
+    },
+    {
+      "id": "01M8EJX99NJWGMDVYPVQYJFE6W",
+      "name": "width_px",
+      "type": "int32",
+      "comment": "Width in pixels."
+    },
+    {
+      "id": "01M8EJX99NGZ76MRPDY5X92Z3D",
+      "name": "height_px",
+      "type": "int32",
+      "comment": "Height in pixels."
+    },
+    {
+      "id": "01M8EJX99NHJMB267GGXWWYTRA",
+      "name": "is_primary",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Image used in listings."
+    },
+    {
+      "id": "01M8EJX99NMCZ1Y8QA19SEFSA6",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_images",
+    "columns": [
+      "01M8EJX99N71HCKVEQ0PS2WR6X"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7M08NY9AQJ8S4D78A",
+      "name": "fk_product_images_product_id",
+      "columns": [
+        "01M8EJX99NMCZ1Y8QA19SEFSA6"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "An image of a product, stored in the media CDN."
+}

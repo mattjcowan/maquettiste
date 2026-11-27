@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CK4PC88DX6D8PE8N8J",
+  "name": "sales quote contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1MKK7ZWX3PG2VAEWHGT5QWC",
+  "foreignKey": "01M8EJX9AC516CCCJDPMMYKVQ3"
+}

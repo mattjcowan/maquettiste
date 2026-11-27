@@ -52,5 +52,53 @@
       "default": "value",
       "description": "value, weight or quantity."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B7HM9AJK6AFJHQBK2F",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QNBZBMH978AMPY4BH",
+      "fields": [
+        {
+          "attribute": "01M36QBBZF1B5BWNKNQDMP91RY",
+          "column": "01M8EJX99QMM5GHS9DV5D440N4"
+        },
+        {
+          "attribute": "01M1ZH8E2WAZ3SXP6XD9249XE9",
+          "column": "01M8EJX99QJ8EE9YVKG7823GXK"
+        },
+        {
+          "attribute": "01M1E526D923AC8X89T1W5T2QH.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99Q0VB70FANE3YAW576"
+        },
+        {
+          "attribute": "01M1E526D923AC8X89T1W5T2QH.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99Q36C8GMY920X8X64S"
+        },
+        {
+          "attribute": "01M274J46MWSH8J4F7187F4VC7",
+          "column": "01M8EJX99QX4J6ZS4YEGWCDMCD"
+        },
+        {
+          "attribute": "01M24RRY2NDN1HQWBKFJ2SXV6F",
+          "column": "01M8EJX99Q135M0EXGN17CVETA"
+        },
+        {
+          "attribute": "01M2Z7P3GMHCQ78TXZS678GZYE",
+          "column": "01M8EJX99Q74EGA6YTP7P5VQ2S"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q0VB70FANE3YAW576": "1054ddec:d46c92d7",
+          "01M8EJX99Q135M0EXGN17CVETA": "1320ab09:8da1c7b8",
+          "01M8EJX99Q36C8GMY920X8X64S": "09517263:48b85cd3",
+          "01M8EJX99Q74EGA6YTP7P5VQ2S": "c38e78df:d8a57cf9",
+          "01M8EJX99QJ8EE9YVKG7823GXK": "0573f75b:04146d06",
+          "01M8EJX99QMM5GHS9DV5D440N4": "a5614527:8da1c7b8",
+          "01M8EJX99QX4J6ZS4YEGWCDMCD": "d9ffd7aa:ef1ae9ec"
+        }
+      }
+    }
   ]
 }

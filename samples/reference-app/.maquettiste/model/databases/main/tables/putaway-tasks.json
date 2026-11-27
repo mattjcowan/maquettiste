@@ -1,0 +1,167 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PXXHS6E4WMA8849HZ",
+  "name": "putaway_tasks",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PVCYVS0NEBETFJWZ6",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the putaway task."
+    },
+    {
+      "id": "01M8EJX99P6RMYR4W3XV6RRF22",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "open",
+      "comment": "open, in-progress or done."
+    },
+    {
+      "id": "01M8EJX99PC4TW18J4X5X0BA7D",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity to put away."
+    },
+    {
+      "id": "01M8EJX99PMFDFASMKZ4RZ6RS6",
+      "name": "completed_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was done."
+    },
+    {
+      "id": "01M8EJX99P26DCK99JJT1E8BXG",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PD3BRV7CMTGFTBN89",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PCSF42NK10P0FG02R",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PPPS9XZ4TE08180CR",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PZG80273BJM5JJWDE",
+      "name": "assigned_to_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PW1TCJJT6JRC6Z3W4",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PC6Q68JRP8CVMRSZV",
+      "name": "goods_receipt_line_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P2KH5PH5ZVEG6M5KG",
+      "name": "from_bin_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P6CZBZ6MX3Y78BNQZ",
+      "name": "to_bin_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_putaway_tasks",
+    "columns": [
+      "01M8EJX99PVCYVS0NEBETFJWZ6"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AACA8VBE7G8Q7RGB3N",
+      "name": "fk_putaway_tasks_assigned_to_id",
+      "columns": [
+        "01M8EJX99PZG80273BJM5JJWDE"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAEYS184CJHHT19A8A",
+      "name": "fk_putaway_tasks_product_id",
+      "columns": [
+        "01M8EJX99PW1TCJJT6JRC6Z3W4"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AAE2MNERJDK0BZ5PTH",
+      "name": "fk_putaway_tasks_goods_receipt_line_id",
+      "columns": [
+        "01M8EJX99PC6Q68JRP8CVMRSZV"
+      ],
+      "referencesTable": "01M8EJX99QD13KT715JME7FAK0",
+      "referencesColumns": [
+        "01M8EJX99Q9AXVM54XZE73BJ87"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAQQ50J0M2BMJGM658",
+      "name": "fk_putaway_tasks_from_bin_id",
+      "columns": [
+        "01M8EJX99P2KH5PH5ZVEG6M5KG"
+      ],
+      "referencesTable": "01M8EJX99P6T2XHSRWPFJSSPJA",
+      "referencesColumns": [
+        "01M8EJX99PNZ31YCAG0CEXWAPQ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAERSCGKYMR664CVFM",
+      "name": "fk_putaway_tasks_to_bin_id",
+      "columns": [
+        "01M8EJX99P6CZBZ6MX3Y78BNQZ"
+      ],
+      "referencesTable": "01M8EJX99P6T2XHSRWPFJSSPJA",
+      "referencesColumns": [
+        "01M8EJX99PNZ31YCAG0CEXWAPQ"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A task to move received goods from the dock to a storage bin."
+}

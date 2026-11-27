@@ -35,5 +35,48 @@
       "required": true,
       "description": "Budgeted amount."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9ATX6CENEZ0GS8NKM9M",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PQMWCPQHSP40PBC3K",
+      "fields": [
+        {
+          "attribute": "01M24GQ3XVP5RH18CRB9JXRBZN",
+          "column": "01M8EJX99PHAB5SC7QQ8WJDAQT"
+        },
+        {
+          "attribute": "01M201REDD6WEPVJSCA4STH3TR.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PSW1QX14PAA99N0XW"
+        },
+        {
+          "attribute": "01M201REDD6WEPVJSCA4STH3TR.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99P879YCJR74F8Z38YE"
+        },
+        {
+          "attribute": "01M37R66866W0SS56A8MCG1RJ8",
+          "column": "01M8EJX99PB0ZFFC2AJKSJM5QQ"
+        },
+        {
+          "attribute": "01M2FEWPXQQWX1TEQ77D2NG3D0",
+          "column": "01M8EJX99PHJRKS8EGFJBHZ45B"
+        },
+        {
+          "attribute": "01M1KXR2D1QCE6CBE6WHHE44D6",
+          "column": "01M8EJX99P472FMYASRNH8M4G3"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P472FMYASRNH8M4G3": "c6efb1e6:8da1c7b8",
+          "01M8EJX99P879YCJR74F8Z38YE": "09517263:48b85cd3",
+          "01M8EJX99PB0ZFFC2AJKSJM5QQ": "3cc244a7:8da1c7b8",
+          "01M8EJX99PHAB5SC7QQ8WJDAQT": "a5614527:8da1c7b8",
+          "01M8EJX99PHJRKS8EGFJBHZ45B": "ba2bbf72:8da1c7b8",
+          "01M8EJX99PSW1QX14PAA99N0XW": "1054ddec:d46c92d7"
+        }
+      }
+    }
   ]
 }

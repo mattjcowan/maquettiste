@@ -85,6 +85,13 @@ public sealed record SyntheticModelOptions
 
     /// <summary>Attributes per lookup entity, the key included.</summary>
     public int LookupAttributes { get; init; } = 40;
+
+    /// <summary>
+    /// Whether the databases lay out the entities' tables by convention and entity mappings, as models did before 0.29.0, instead of
+    /// holding designed tables and bindings. Temporary, for the test that proves "Create tables…" keeps the projected shape: pull request 3
+    /// of retiring projection deletes it.
+    /// </summary>
+    internal bool Projected { get; init; }
 }
 
 /// <summary>Benchmark options (the <c>maquettiste bench</c> flags).</summary>

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CKB2PQ6EYK06Y0R3FZ",
+  "name": "standing order belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M347ZR14JF7RVP3BA7B3BSF0",
+  "foreignKey": "01M8EJX9ACWREZ6G2BY0VNBQQM"
+}

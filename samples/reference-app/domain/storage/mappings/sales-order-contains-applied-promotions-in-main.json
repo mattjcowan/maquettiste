@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ0DN72RXRR6Z877PC",
+  "name": "sales order contains applied promotions in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2KN78DVMHZSS6A76H0RYBBB",
+  "foreignKey": "01M8EJX9ACJ5J3W728SZC0WBBW"
+}

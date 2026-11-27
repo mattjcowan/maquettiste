@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ19AY76SM8DJY26Q1",
+  "name": "stock movement is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2EESSTQGFZV6RXQSNCM5X3S",
+  "foreignKey": "01M8EJX9AAF1WMPPRRP55G30FD"
+}

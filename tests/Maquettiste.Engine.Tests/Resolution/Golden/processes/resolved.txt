@@ -12,17 +12,6 @@ entity GateSignature plural=GateSignatures package=Purchasing abstract=false bas
   attr 7 reason: builtin text
   attr 8 outcome: builtin string required
   attr 9 at: builtin datetimeoffset required
-  mapping main table=gate_signatures inheritance=- discriminator=-=-
-    <GateSignature:id> -> gate_signatures.id
-    <GateSignature:instance> -> gate_signatures.instance
-    <GateSignature:gate> -> gate_signatures.gate
-    <GateSignature:sequence> -> gate_signatures.sequence
-    <GateSignature:signer> -> gate_signatures.signer
-    <GateSignature:actor> -> gate_signatures.actor
-    <GateSignature:meaning> -> gate_signatures.meaning
-    <GateSignature:reason> -> gate_signatures.reason
-    <GateSignature:outcome> -> gate_signatures.outcome
-    <GateSignature:at> -> gate_signatures.at
 entity ProcessInstance plural=ProcessInstances package=Purchasing abstract=false base=- promoted=false stereotypes=
   key id uuid-v7
   attr 0 id: builtin uuid required
@@ -31,22 +20,11 @@ entity ProcessInstance plural=ProcessInstances package=Purchasing abstract=false
   attr 3 configuration: builtin json required
   attr 4 context: builtin json
   attr 5 updatedAt: builtin datetimeoffset required
-  mapping main table=process_instances inheritance=- discriminator=-=-
-    <ProcessInstance:id> -> process_instances.id
-    <ProcessInstance:process> -> process_instances.process
-    <ProcessInstance:subject> -> process_instances.subject
-    <ProcessInstance:configuration> -> process_instances.configuration
-    <ProcessInstance:context> -> process_instances.context
-    <ProcessInstance:updatedAt> -> process_instances.updated_at
 entity PurchaseRequest plural=PurchaseRequests package=Purchasing abstract=false base=- promoted=false stereotypes=
   key id uuid-v7
   attr 0 id: builtin uuid required
   attr 1 amount: builtin decimal required
   attr 2 costCentre: builtin string
-  mapping main table=purchase_requests inheritance=- discriminator=-=-
-    <PurchaseRequest:id> -> purchase_requests.id
-    <PurchaseRequest:amount> -> purchase_requests.amount
-    <PurchaseRequest:costCentre> -> purchase_requests.cost_centre
 entity SalesOrder plural=SalesOrders package=Sales abstract=false base=- promoted=false stereotypes=
   key id uuid-v7
   attr 0 id: builtin uuid required
@@ -54,12 +32,6 @@ entity SalesOrder plural=SalesOrders package=Sales abstract=false base=- promote
   attr 2 configuration: builtin json
   attr 3 total: builtin decimal required
   attr 4 creditLimit: builtin decimal required
-  mapping main table=sales_orders inheritance=- discriminator=-=-
-    <SalesOrder:id> -> sales_orders.id
-    <SalesOrder:status> -> sales_orders.status
-    <SalesOrder:configuration> -> sales_orders.configuration
-    <SalesOrder:total> -> sales_orders.total
-    <SalesOrder:creditLimit> -> sales_orders.credit_limit
 entity SalesOrderHistory plural=SalesOrderHistories package=Sales abstract=false base=- promoted=false stereotypes=
   key id uuid-v7
   attr 0 id: builtin uuid required
@@ -67,51 +39,45 @@ entity SalesOrderHistory plural=SalesOrderHistories package=Sales abstract=false
   attr 2 fromState: builtin string
   attr 3 toState: builtin string required
   attr 4 at: builtin datetimeoffset required
-  mapping main table=sales_order_histories inheritance=- discriminator=-=-
-    <SalesOrderHistory:id> -> sales_order_histories.id
-    <SalesOrderHistory:salesOrderId> -> sales_order_histories.sales_order_id
-    <SalesOrderHistory:fromState> -> sales_order_histories.from_state
-    <SalesOrderHistory:toState> -> sales_order_histories.to_state
-    <SalesOrderHistory:at> -> sales_order_histories.at
 database main postgresql default-schema=public limit=63 schemas=public
-  table public.gate_signatures key=<GateSignature>@<main> synthesized entity=GateSignature former_names=[] since=-
-    0 id uuid native=uuid not-null pk key=<GateSignature:id> former_names=[] since=-
-    1 instance string(255) native=varchar(255) not-null key=<GateSignature:instance> former_names=[] since=-
-    2 gate string(255) native=varchar(255) not-null key=<GateSignature:gate> former_names=[] since=-
-    3 sequence int64 native=bigint not-null key=<GateSignature:sequence> former_names=[] since=-
-    4 signer string(255) native=varchar(255) not-null key=<GateSignature:signer> former_names=[] since=-
-    5 actor string(255) native=varchar(255) not-null key=<GateSignature:actor> former_names=[] since=-
-    6 meaning string(255) native=varchar(255) null key=<GateSignature:meaning> former_names=[] since=-
-    7 reason text native=text null key=<GateSignature:reason> former_names=[] since=-
-    8 outcome string(255) native=varchar(255) not-null key=<GateSignature:outcome> former_names=[] since=-
-    9 at datetimeoffset[6,-] native=timestamptz(6) not-null key=<GateSignature:at> former_names=[] since=-
+  table public.gate_signatures key=<gate_signatures> designed former_names=[] since=-
+    0 id uuid native=uuid not-null pk key=<col:id> former_names=[] since=-
+    1 instance string(255) native=varchar(255) not-null key=<col:instance> former_names=[] since=-
+    2 gate string(255) native=varchar(255) not-null key=<col:gate> former_names=[] since=-
+    3 sequence int64 native=bigint not-null key=<col:sequence> former_names=[] since=-
+    4 signer string(255) native=varchar(255) not-null key=<col:signer> former_names=[] since=-
+    5 actor string(255) native=varchar(255) not-null key=<col:actor> former_names=[] since=-
+    6 meaning string(255) native=varchar(255) null key=<col:meaning> former_names=[] since=-
+    7 reason text native=text null key=<col:reason> former_names=[] since=-
+    8 outcome string(255) native=varchar(255) not-null key=<col:outcome> former_names=[] since=-
+    9 at datetimeoffset[6,-] native=timestamptz(6) not-null key=<col:at> former_names=[] since=-
     pk pk_gate_signatures (id)
-  table public.process_instances key=<ProcessInstance>@<main> synthesized entity=ProcessInstance former_names=[] since=-
-    0 id uuid native=uuid not-null pk key=<ProcessInstance:id> former_names=[] since=-
-    1 process string(255) native=varchar(255) not-null key=<ProcessInstance:process> former_names=[] since=-
-    2 subject uuid native=uuid null key=<ProcessInstance:subject> former_names=[] since=-
-    3 configuration json native=jsonb not-null key=<ProcessInstance:configuration> former_names=[] since=-
-    4 context json native=jsonb null key=<ProcessInstance:context> former_names=[] since=-
-    5 updated_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<ProcessInstance:updatedAt> former_names=[] since=-
+  table public.process_instances key=<process_instances> designed former_names=[] since=-
+    0 id uuid native=uuid not-null pk key=<col:id> former_names=[] since=-
+    1 process string(255) native=varchar(255) not-null key=<col:process> former_names=[] since=-
+    2 subject uuid native=uuid null key=<col:subject> former_names=[] since=-
+    3 configuration json native=jsonb not-null key=<col:configuration> former_names=[] since=-
+    4 context json native=jsonb null key=<col:context> former_names=[] since=-
+    5 updated_at datetimeoffset[6,-] native=timestamptz(6) not-null key=<col:updated_at> former_names=[] since=-
     pk pk_process_instances (id)
-  table public.purchase_requests key=<PurchaseRequest>@<main> synthesized entity=PurchaseRequest former_names=[] since=-
-    0 id uuid native=uuid not-null pk key=<PurchaseRequest:id> former_names=[] since=-
-    1 amount decimal[18,2] native=numeric(18,2) not-null key=<PurchaseRequest:amount> former_names=[] since=-
-    2 cost_centre string(255) native=varchar(255) null key=<PurchaseRequest:costCentre> former_names=[] since=-
+  table public.purchase_requests key=<purchase_requests> designed former_names=[] since=-
+    0 id uuid native=uuid not-null pk key=<col:id> former_names=[] since=-
+    1 amount decimal[18,2] native=numeric(18,2) not-null key=<col:amount> former_names=[] since=-
+    2 cost_centre string(255) native=varchar(255) null key=<col:cost_centre> former_names=[] since=-
     pk pk_purchase_requests (id)
-  table public.sales_order_histories key=<SalesOrderHistory>@<main> synthesized entity=SalesOrderHistory former_names=[] since=-
-    0 id uuid native=uuid not-null pk key=<SalesOrderHistory:id> former_names=[] since=-
-    1 sales_order_id uuid native=uuid not-null key=<SalesOrderHistory:salesOrderId> former_names=[] since=-
-    2 from_state string(255) native=varchar(255) null key=<SalesOrderHistory:fromState> former_names=[] since=-
-    3 to_state string(255) native=varchar(255) not-null key=<SalesOrderHistory:toState> former_names=[] since=-
-    4 at datetimeoffset[6,-] native=timestamptz(6) not-null key=<SalesOrderHistory:at> former_names=[] since=-
+  table public.sales_order_histories key=<sales_order_histories> designed former_names=[] since=-
+    0 id uuid native=uuid not-null pk key=<col:id> former_names=[] since=-
+    1 sales_order_id uuid native=uuid not-null key=<col:sales_order_id> former_names=[] since=-
+    2 from_state string(255) native=varchar(255) null key=<col:from_state> former_names=[] since=-
+    3 to_state string(255) native=varchar(255) not-null key=<col:to_state> former_names=[] since=-
+    4 at datetimeoffset[6,-] native=timestamptz(6) not-null key=<col:at> former_names=[] since=-
     pk pk_sales_order_histories (id)
-  table public.sales_orders key=<SalesOrder>@<main> synthesized entity=SalesOrder former_names=[] since=-
-    0 id uuid native=uuid not-null pk key=<SalesOrder:id> former_names=[] since=-
-    1 status int32 native=integer not-null default=0 key=<SalesOrder:status> former_names=[] since=-
-    2 configuration json native=jsonb null key=<SalesOrder:configuration> former_names=[] since=-
-    3 total decimal[18,2] native=numeric(18,2) not-null key=<SalesOrder:total> former_names=[] since=-
-    4 credit_limit decimal[18,2] native=numeric(18,2) not-null key=<SalesOrder:creditLimit> former_names=[] since=-
+  table public.sales_orders key=<sales_orders> designed former_names=[] since=-
+    0 id uuid native=uuid not-null pk key=<col:id> former_names=[] since=-
+    1 status int32 native=integer not-null default=0 key=<col:status> former_names=[] since=-
+    2 configuration json native=jsonb null key=<col:configuration> former_names=[] since=-
+    3 total decimal[18,2] native=numeric(18,2) not-null key=<col:total> former_names=[] since=-
+    4 credit_limit decimal[18,2] native=numeric(18,2) not-null key=<col:credit_limit> former_names=[] since=-
     pk pk_sales_orders (id)
 process PurchaseApproval display='Purchase approval' package=Purchasing use=orchestration subject=PurchaseRequest bound=- enum=- initial=Drafting
   keys e:<PurchaseRequest> e:<Purchasing> e:<PurchaseApproval> s:inflection

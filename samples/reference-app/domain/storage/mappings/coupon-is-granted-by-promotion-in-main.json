@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJCG2JNV2ERA68W7EW",
+  "name": "coupon is granted by promotion in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2TST7KV1ZXC62XS9PQ12SC6",
+  "foreignKey": "01M8EJX9AAC7DJTME8MFHH5QJ4"
+}

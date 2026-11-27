@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ834Q8BY8E9HDYH2A",
+  "name": "supplier quote answers request for quote in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2X88JZ6H6QNMK6T2JP4Y9E8",
+  "foreignKey": "01M8EJX9AB1A2B86TDDHGS0D74"
+}

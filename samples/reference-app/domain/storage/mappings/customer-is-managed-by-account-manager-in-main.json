@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHT5316C1QEBG0M7JG",
+  "name": "customer is managed by account manager in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1NTGFVBFG14QBWJM45T4WD4",
+  "foreignKey": "01M8EJX9A8ZZWNWMJ9D3E02SAS"
+}

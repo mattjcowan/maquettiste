@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CKWRG2P852TDH18QT4",
+  "name": "sales quote line is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2MCZRJSKFGGZ51GQ5Y1J618",
+  "foreignKey": "01M8EJX9ACA2W3TE0VRRCM9ZK0"
+}

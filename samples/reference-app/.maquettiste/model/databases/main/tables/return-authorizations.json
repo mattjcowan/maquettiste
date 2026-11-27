@@ -1,0 +1,201 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QYXHD6AQZWP4YATWR",
+  "name": "return_authorizations",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q82HXF67G8HR61WV8",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the return authorization."
+    },
+    {
+      "id": "01M8EJX99QE8ERN0QZEHCCC7F2",
+      "name": "rma_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "RMA number the customer writes on the parcel."
+    },
+    {
+      "id": "01M8EJX99QQ63JVD52WMJWZXYX",
+      "name": "requested_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Request date."
+    },
+    {
+      "id": "01M8EJX99QEH2GS71RHSSHERJJ",
+      "name": "status",
+      "type": "string",
+      "length": 6,
+      "nullable": false,
+      "default": "REQ",
+      "comment": "Lifecycle state."
+    },
+    {
+      "id": "01M8EJX99Q0E9Z22S4AHNBK0JN",
+      "name": "approved_on",
+      "type": "date",
+      "comment": "Approval date."
+    },
+    {
+      "id": "01M8EJX99QCR9Q5T3RKTHXG8Y8",
+      "name": "return_method",
+      "type": "string",
+      "length": 20,
+      "comment": "carrier-pickup or drop-off."
+    },
+    {
+      "id": "01M8EJX99QG1MFDA5TR62PETXC",
+      "name": "restocking_fee_percent",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Restocking fee charged."
+    },
+    {
+      "id": "01M8EJX99Q3Y59RHBA7MKF9KEV",
+      "name": "customer_comments",
+      "type": "text",
+      "comment": "What the customer said."
+    },
+    {
+      "id": "01M8EJX99QNW18HP1BXH46MYEZ",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99Q5GRCX0YH1MYAARAX",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QA4ZYFG0N1PJEKKA1",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QDH0YYKXS3EN8XMQT",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QY0J5T1XD4REVX7TS",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QFW47MQRZC95PRBZ3",
+      "name": "sales_order_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99Q8VPA3CXREN9MWHPK",
+      "name": "approved_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99Q0Z977K505X54BTG3",
+      "name": "receiving_warehouse_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99Q4ZFQ2NJQ5HV9CA6Z",
+      "name": "invoice_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_return_authorizations",
+    "columns": [
+      "01M8EJX99Q82HXF67G8HR61WV8"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ABT9E54E20ZFFZV7TC",
+      "name": "uq_return_authorizations_rma_number",
+      "columns": [
+        "01M8EJX99QE8ERN0QZEHCCC7F2"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABSNZRVYNFTWQATJF3",
+      "name": "fk_return_authorizations_customer_id",
+      "columns": [
+        "01M8EJX99QY0J5T1XD4REVX7TS"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AB2QQD94EGH3D4316N",
+      "name": "fk_return_authorizations_sales_order_id",
+      "columns": [
+        "01M8EJX99QFW47MQRZC95PRBZ3"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB0KBBEB9DNVE694GW",
+      "name": "fk_return_authorizations_approved_by_id",
+      "columns": [
+        "01M8EJX99Q8VPA3CXREN9MWHPK"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB17CTNQHDWZJWFDXF",
+      "name": "fk_return_authorizations_receiving_warehouse_id",
+      "columns": [
+        "01M8EJX99Q0Z977K505X54BTG3"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB2XRTH78ZJRM335VX",
+      "name": "fk_return_authorizations_invoice_id",
+      "columns": [
+        "01M8EJX99Q4ZFQ2NJQ5HV9CA6Z"
+      ],
+      "referencesTable": "01M2GD6QYSRRK545Z2FCJ57JXN",
+      "referencesColumns": [
+        "01M8EJX99MY2YCY00H3262RRRP"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A return merchandise authorization (RMA) permitting a customer to send goods back."
+}

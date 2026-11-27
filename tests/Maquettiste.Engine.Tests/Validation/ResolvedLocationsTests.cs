@@ -3,10 +3,12 @@ using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Rendering;
 using Maquettiste.Engine.Tests.Resolution;
 using Maquettiste.Engine.Validation;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Validation;
 
 /// <summary>Where the checks after resolution put a finding (next-phase-2-design.md section 5.5), one case per rule.</summary>
+[UsesProjectedFixtures]
 public sealed class ResolvedLocationsTests
 {
     private static async Task<(ResolvedModel Model, Maquettiste.Engine.Model.ModelSnapshot Snapshot)> Billing()

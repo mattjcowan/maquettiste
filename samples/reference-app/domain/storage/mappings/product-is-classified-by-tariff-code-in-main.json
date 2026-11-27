@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH8PANDP4BV7AWVY15",
+  "name": "product is classified by tariff code in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1GZPR0S28NE9Q3JYXKT26SP",
+  "foreignKey": "01M8EJX9A7C74M5S8HDBRYYYAA"
+}

@@ -1,0 +1,161 @@
+{
+  "kind": "table",
+  "id": "01M1D9THCS31DA7KKYVDECJDRT",
+  "name": "inventory_items",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Allocation can never exceed what is on hand plus what is inbound.",
+  "columns": [
+    {
+      "id": "01M8EJX99PRBW1ND6BEXECKRK6",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the inventory item."
+    },
+    {
+      "id": "01M8EJX99PFJSHQ09XF1XKPBNT",
+      "name": "quantity_on_hand",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "default": 0,
+      "comment": "Physical quantity in the warehouse."
+    },
+    {
+      "id": "01M8EJX99P4M0QX5A5FD1VDQ4E",
+      "name": "quantity_allocated",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "default": 0,
+      "comment": "Quantity reserved for open orders."
+    },
+    {
+      "id": "01M8EJX99PFJFD15XYQRZX72CG",
+      "name": "quantity_on_order",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "default": 0,
+      "comment": "Quantity on open purchase orders."
+    },
+    {
+      "id": "01M8EJX99PS86TXSHVVEKA11VH",
+      "name": "reorder_point",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "comment": "Quantity that triggers replenishment."
+    },
+    {
+      "id": "01M8EJX99PJQ9DDPZP02HGYFXH",
+      "name": "last_counted_on",
+      "type": "date",
+      "comment": "Date of the last cycle count."
+    },
+    {
+      "id": "01M8EJX99PNQ9JAPN6TAY9V0GY",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PXAFSK47D9YJ9FWKW",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PEKVF0M5MJJ998Q0H",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P5B8MCWS95RHD5TXX",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PKD6CN2HNY8DTR05F",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PAKS4YAT36138EE2N",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PA4ZMHNJ3M65EZ30K",
+      "name": "default_bin_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_inventory_items",
+    "columns": [
+      "01M8EJX99PRBW1ND6BEXECKRK6"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA47TRN6V87K282XG1",
+      "name": "fk_inventory_items_product_id",
+      "columns": [
+        "01M8EJX99PKD6CN2HNY8DTR05F"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AA5ARCZ7S14M02AMG6",
+      "name": "fk_inventory_items_warehouse_id",
+      "columns": [
+        "01M8EJX99PAKS4YAT36138EE2N"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AAJS7FDEZS73D20QCB",
+      "name": "fk_inventory_items_default_bin_id",
+      "columns": [
+        "01M8EJX99PA4ZMHNJ3M65EZ30K"
+      ],
+      "referencesTable": "01M8EJX99P6T2XHSRWPFJSSPJA",
+      "referencesColumns": [
+        "01M8EJX99PNZ31YCAG0CEXWAPQ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "checks": [
+    {
+      "id": "01M2SKVD4H0HEH877W0QAS8Q04",
+      "name": "ck_inventory_items_allocation",
+      "expression": {
+        "*": "quantity_allocated <= quantity_on_hand + quantity_on_order"
+      }
+    }
+  ],
+  "comment": "Allocation can never exceed what is on hand plus what is inbound."
+}

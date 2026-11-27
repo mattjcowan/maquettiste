@@ -6,6 +6,7 @@ using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
+[UsesProjectedFixtures]
 public sealed class ModelStoreDeleteTests
 {
     private const string ScratchId = "01K9XRF00000000000000000E1";

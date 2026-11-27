@@ -5,7 +5,7 @@
     "name": "main",
     "package": null,
     "tags": [],
-    "hash": "7fccf6c4f0985534e9089ca5b34664883add3de727699fb83d825ae1d0a638f5",
+    "hash": "e7477a461bbbeb1b5a7567144413b1a28eb5a41192c47a8a36e340e849cfd038",
     "path": ".maquettiste/model/databases/main/database.json",
     "category": null,
     "stereotypes": []
@@ -16,7 +16,7 @@
     "name": "FindCustomersWithIssuedInvoices",
     "package": null,
     "tags": [],
-    "hash": "5861cfcd16d9dd149a1cd153d9f93000362fe1c6bdd0262eef8b3887151384dc",
+    "hash": "160debf98a8f86380ce02d346eea3a943908f2114857450757e4f947dd103af9",
     "path": ".maquettiste/model/databases/main/queries/find-customers-with-issued-invoices.json",
     "category": null,
     "stereotypes": [],
@@ -28,7 +28,7 @@
     "name": "InvoicesByCustomer",
     "package": null,
     "tags": [],
-    "hash": "a7917d0b4cc381e1fbfae083bcd8ee4e7dcd101fa9db40aa40fd81b91758c7fd",
+    "hash": "8ff566966ee929edb2bcabe1af9b325778fa643509a910eefe216e93ef7ccbd1",
     "path": ".maquettiste/model/databases/main/queries/invoices-by-customer.json",
     "category": null,
     "stereotypes": [],
@@ -40,7 +40,7 @@
     "name": "RevenueByMonth",
     "package": null,
     "tags": [],
-    "hash": "b78de777c2af7201e2b81daf0cbf1771b705df74750bf1e3769eb8ebd453f16c",
+    "hash": "fd5c008b0a6df5eaa40f19543c21211bf4308c7fe62563d9a4cea9fe8b2b8068",
     "path": ".maquettiste/model/databases/main/queries/revenue-by-month.json",
     "category": null,
     "stereotypes": [],
@@ -59,22 +59,45 @@
     "database": "01J92P0V1QRN2181XM2ZWE02W4"
   },
   {
+    "id": "01M8EJPZN867GR1CJR5ZERBJ0V",
+    "kind": "table",
+    "name": "customers",
+    "package": null,
+    "tags": [],
+    "hash": "683371c56cc966304913ac19ab83094daef527241ea2c00b156fcf3e0c0674b2",
+    "path": ".maquettiste/model/databases/main/tables/customers.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
+    "id": "01M8EJPZN9VC241ZQY1P20V7D5",
+    "kind": "table",
+    "name": "invoice_lines",
+    "package": null,
+    "tags": [],
+    "hash": "df78dcea27789ceb9058b1d43eec1b42a2245a182b23969c6f64efe02c611cfd",
+    "path": ".maquettiste/model/databases/main/tables/invoice-lines.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
     "id": "01J92P0V1T0J6RH4MY9H81NYB4",
     "kind": "table",
-    "name": "",
+    "name": "invoices",
     "package": null,
     "tags": [
       "billing"
     ],
-    "hash": "f5378ea4f0d5a6bfd5906472bf641edd096d8a11f100390380fac5058547d77e",
-    "path": ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json",
+    "hash": "937620dc71bd3ba067c6fb7d4e7ef184d3e889405aface34ab6128c3766a6b1e",
+    "path": ".maquettiste/model/databases/main/tables/invoices.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
     "stereotypes": [
       "audited"
     ],
     "displayName": "Invoice register",
-    "database": "01J92P0V1QRN2181XM2ZWE02W4",
-    "entity": "01J92P0V0FJ23CGSNKM7P1W5V7"
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
   },
   {
     "id": "01K6BND0000000000000000001",
@@ -84,6 +107,42 @@
     "tags": [],
     "hash": "57f8335d169391f345b5c19e6dbef90d5dd01c48c51d063bf1de8bbf71d7bf4e",
     "path": ".maquettiste/model/databases/main/tables/notes.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
+    "id": "01M8EJPZN9Y3HNXTC7V3Q7CP50",
+    "kind": "table",
+    "name": "payment_invoice",
+    "package": null,
+    "tags": [],
+    "hash": "6a8052636ea2f698aa468e23ac6a462d681b44656ae713db1ed8b512edabb9c6",
+    "path": ".maquettiste/model/databases/main/tables/payment-invoice.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
+    "id": "01M8EJPZN9C4NZBD1KXE8NG70G",
+    "kind": "table",
+    "name": "payments",
+    "package": null,
+    "tags": [],
+    "hash": "a5394979a8cadc6db36dce1760acb3d630dff9fee09f9cee057b9075ef092a36",
+    "path": ".maquettiste/model/databases/main/tables/payments.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
+    "id": "01M8EJPZN967ERTF2BPP3YM4QY",
+    "kind": "table",
+    "name": "products",
+    "package": null,
+    "tags": [],
+    "hash": "55791fce1e0aaa996aed08bc50a6fe3d351d5853741b0ec2321fed44328c2050",
+    "path": ".maquettiste/model/databases/main/tables/products.json",
     "category": null,
     "stereotypes": [],
     "database": "01J92P0V1QRN2181XM2ZWE02W4"
@@ -132,7 +191,7 @@
       "billing",
       "pii"
     ],
-    "hash": "9e5da84d083cffdcec1a6b4969a4281f1cbf2b64957bde9621616f813ea27dcf",
+    "hash": "99c25f7e3cbb4d3902284adff98d480789be1805ffda4ab474d5f5354e7f3d99",
     "path": ".maquettiste/model/entities/customer.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
     "stereotypes": [
@@ -146,7 +205,7 @@
     "name": "InvoiceLine",
     "package": "01J92P0V01KDRN8GX5PGYCNKSX",
     "tags": [],
-    "hash": "5e21b73617381f8ff27e372b5fcb7bd0257fde13c8b93d44dbe788a8a05cdc00",
+    "hash": "90c4156b079e2df24ffae2234641160c9ec2f00f1864839da4f4108a15819baa",
     "path": ".maquettiste/model/entities/invoice-line.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
     "stereotypes": []
@@ -170,7 +229,7 @@
     "tags": [
       "billing"
     ],
-    "hash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
+    "hash": "46bac0ca20bfd65ef33cc164b8d86d762945a87918a8e9eb374c3302135c1ed5",
     "path": ".maquettiste/model/entities/invoice.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
     "stereotypes": [
@@ -185,7 +244,7 @@
     "name": "Payment",
     "package": "01J92P0V01KDRN8GX5PGYCNKSX",
     "tags": [],
-    "hash": "3fcf3563828b7a5a112b376bcb440d466ceb092c72798d2f96c3be34aac8c43d",
+    "hash": "fdbe93b32519f789dc8261157569836db6693d00b90b402b99588469ccf65928",
     "path": ".maquettiste/model/entities/payment.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
     "stereotypes": [
@@ -198,7 +257,7 @@
     "name": "Product",
     "package": "01J92P0V025DRFTXKMS240G2NG",
     "tags": [],
-    "hash": "9eef879d0241ec82e861d390b167bf839de58382841584f5ddc5cd17f78db78f",
+    "hash": "0350ac091735ba72f7fd9d0eaa1a69693ed2623aa9e027dc51a07613fe66cbb2",
     "path": ".maquettiste/model/entities/product.json",
     "category": "01J92P0V07KWPZMZ6FKXDYJ3JA",
     "stereotypes": [
@@ -228,17 +287,40 @@
     "stereotypes": []
   },
   {
-    "id": "01J92P0V200XW93JQYSRCT2SE3",
+    "id": "01M8EJPZP48MNPCSEXHYASNATD",
     "kind": "mapping",
-    "name": "Invoice in main",
+    "name": "contains in main",
     "package": null,
     "tags": [],
-    "hash": "84db9d2e788aa2a538cb1df016c3613dc7e0c886317630b3d85fb5808d9b8318",
-    "path": ".maquettiste/model/mappings/invoice-in-main.json",
+    "hash": "b307b6cfd034e051b7d1c750c0de6ab3459a70ef9fd02cde165d1c537f5c37e9",
+    "path": ".maquettiste/model/mappings/contains-in-main.json",
     "category": null,
     "stereotypes": [],
-    "database": "01J92P0V1QRN2181XM2ZWE02W4",
-    "entity": "01J92P0V0FJ23CGSNKM7P1W5V7"
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
+    "id": "01M8EJPZP4PXCX37YCSR3XEG5Y",
+    "kind": "mapping",
+    "name": "places in main",
+    "package": null,
+    "tags": [],
+    "hash": "e39d585bb9adbee9f899a98ea58a8aa569efd069fa313a4ecc69a39426033de6",
+    "path": ".maquettiste/model/mappings/places-in-main.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
+  },
+  {
+    "id": "01M8EJPZP47YMVP6NE06X8GK1S",
+    "kind": "mapping",
+    "name": "refers to in main",
+    "package": null,
+    "tags": [],
+    "hash": "82db3a5f6837b515707f053e0543979fa1996ecf9bbc21153ecd90c6942f5872",
+    "path": ".maquettiste/model/mappings/refers-to-in-main.json",
+    "category": null,
+    "stereotypes": [],
+    "database": "01J92P0V1QRN2181XM2ZWE02W4"
   },
   {
     "id": "01J92P0V1ZYK32MC97T5NBB5Y5",
@@ -246,7 +328,7 @@
     "name": "settles in main",
     "package": null,
     "tags": [],
-    "hash": "8c48c6fb141cdf1f9fe1f2b05904923d9717a46d8bc778649eea71adb2fa1086",
+    "hash": "57190412ebcfc786ad20fdfeee260ce9fab551c4ab7ce0bcc1805e89c47690c0",
     "path": ".maquettiste/model/mappings/settles-in-main.json",
     "category": null,
     "stereotypes": [],

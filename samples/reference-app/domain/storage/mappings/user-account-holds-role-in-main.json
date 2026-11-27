@@ -1,0 +1,32 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHTKVZJTGDKA373QM2",
+  "name": "user account holds role in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M32KK88ZB9Q7Q739WN1CP2JX",
+  "attributes": [
+    {
+      "attribute": "01M1VVT2HTG1PGEN735HPK5EMV",
+      "column": "01M8EJX99QJKDVH9WXJ6VD2G5Y"
+    },
+    {
+      "attribute": "01M2005T6E9AJ5AP7HCNX1EYN7",
+      "column": "01M8EJX99QB4Z79CH5P9NC12H2"
+    },
+    {
+      "attribute": "01M31QP97YVAS6XCJC9HZNDKWB",
+      "column": "01M8EJX99QXSGMMYT9MA5F4BRN"
+    }
+  ],
+  "junctionTable": "01M8EJX99QAG65RJ0SE1AGMJFA",
+  "ends": [
+    {
+      "end": "01M1GAZ34REJXCX967QZZ7X132",
+      "foreignKey": "01M8EJX9ACD4EXCDDB7YJ2BB0R"
+    },
+    {
+      "end": "01M2F5T34700M5FTE6CP1YAT4Q",
+      "foreignKey": "01M8EJX9ACX8C6W372H9J4DF5H"
+    }
+  ]
+}

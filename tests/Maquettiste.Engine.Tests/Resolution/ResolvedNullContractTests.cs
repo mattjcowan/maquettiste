@@ -91,6 +91,8 @@ public sealed class ResolvedNullContractTests
     {
         // What a failed calculated value throws (next-phase-2-design.md section 5.5): an exception, not a view; no object holds one.
         ["CalculatedValueException"] = "an exception that reads of calculated values throw: CalculationEvaluationTests",
+        // No fixture takes packages by convention since 0.29.0; pull request 3 of retiring projection removes the record.
+        ["RConventionPackage"] = "a database's convention packages: ExplicitMappingTests",
         // Migration facts need a baseline and a recorded change; MigrationResolutionTests resolves them.
         ["RMigration"] = "migration facts: MigrationResolutionTests",
         ["RMigrationObject"] = "migration facts: MigrationResolutionTests",

@@ -5,10 +5,12 @@ using Maquettiste.Functions.Tests.Support;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Functions.Tests;
 
 /// <summary>Model snapshots over the API (docs/engineering/snapshots.md): every response checked against the contract.</summary>
+[UsesProjectedFixtures]
 public sealed class SnapshotEndpointTests
 {
     [Fact]

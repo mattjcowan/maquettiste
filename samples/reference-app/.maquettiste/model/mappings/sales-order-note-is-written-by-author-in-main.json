@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CKBHE63NYEGCNKWESK",
+  "name": "sales order note is written by author in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1DMHJ8Q7FC9XWZWX6VK603Q",
+  "foreignKey": "01M8EJX9AC1YGWGC2SMWNYDQM2"
+}

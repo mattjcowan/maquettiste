@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CGJ0458BZ20JYEZRVG",
+  "name": "payment is recorded in journal entry in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1XTF7KB1Y8XJDJE1KFZDKE2",
+  "foreignKey": "01M8EJX9A5HV4M85BHX7GXVCWQ"
+}

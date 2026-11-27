@@ -1,0 +1,163 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P7FXE74TFQZ5MGWVC",
+  "name": "stock_adjustments",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P6W1B61CVR6MRCB25",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the stock adjustment."
+    },
+    {
+      "id": "01M8EJX99P8Y4S0YAHY0NDTQ13",
+      "name": "adjustment_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Adjustment number."
+    },
+    {
+      "id": "01M8EJX99P7F28B9NH59WF4RVV",
+      "name": "adjusted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the adjustment was booked."
+    },
+    {
+      "id": "01M8EJX99P5HTXHP07N2Q2AMZX",
+      "name": "quantity_delta",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Change in quantity."
+    },
+    {
+      "id": "01M8EJX99PZKVQ6TX200QE51RB",
+      "name": "value_delta_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PCWENAANZD9E7RVJY",
+      "name": "value_delta_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99PFXZ1PF7WQH3X9G7K",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "comment": "Explanation."
+    },
+    {
+      "id": "01M8EJX99PKBSKC37C0MF9844X",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PGZ9NG1QQ25VRBSNF",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PE8FY1RDABQFK7X8B",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PK290MZRZ188QG58K",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PCWZATH399W54PPRE",
+      "name": "inventory_item_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PGETK54VE2DCV84CP",
+      "name": "approved_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P51Z0KRD8GX40SBSN",
+      "name": "reason_id",
+      "type": "int32",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_stock_adjustments",
+    "columns": [
+      "01M8EJX99P6W1B61CVR6MRCB25"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AAXXJSWXPNC09JVKCV",
+      "name": "uq_stock_adjustments_adjustment_number",
+      "columns": [
+        "01M8EJX99P8Y4S0YAHY0NDTQ13"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAF3AS34EJKVSH4Z9Z",
+      "name": "fk_stock_adjustments_inventory_item_id",
+      "columns": [
+        "01M8EJX99PCWZATH399W54PPRE"
+      ],
+      "referencesTable": "01M1D9THCS31DA7KKYVDECJDRT",
+      "referencesColumns": [
+        "01M8EJX99PRBW1ND6BEXECKRK6"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AAY23DNF0CW25PK6D1",
+      "name": "fk_stock_adjustments_approved_by_id",
+      "columns": [
+        "01M8EJX99PGETK54VE2DCV84CP"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAJZM64XFQWQJ7SMNZ",
+      "name": "fk_stock_adjustments_reason_id",
+      "columns": [
+        "01M8EJX99P51Z0KRD8GX40SBSN"
+      ],
+      "referencesTable": "01M8EJX99PNMJGC9K0B0DFDMJT",
+      "referencesColumns": [
+        "01M8EJX99P1MZJPR63SVXN49PQ"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A correction of on-hand stock after a count, damage or theft, approved above a value threshold."
+}

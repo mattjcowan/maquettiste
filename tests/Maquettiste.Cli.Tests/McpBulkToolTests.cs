@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
@@ -6,6 +7,7 @@ namespace Maquettiste.Cli.Tests;
 /// The bulk read tools (docs/mcp.md "Reading a large model"): <c>get_model_kinds</c>, <c>get_elements</c>, <c>get_resolved_model</c>
 /// and the paged <c>get_model_index</c>, with the same bodies and paging as the editor API.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class McpBulkToolTests
 {
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
@@ -99,6 +101,9 @@ public sealed class McpBulkToolTests
 
         var preview = await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice } });
         Assert.True((bool)preview["valid"]!);
+        // hierarchy and listStorage are a string or an object; anything else is a bad request, never ignored.
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice }, hierarchy = 5 })).Code);
+        Assert.True((bool)(await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice }, hierarchy = "per-type" }))["valid"]!);
         Assert.Contains(preview["updates"]!.AsArray(), u => (string)u!["kind"]! == "table" && (string)u["name"]! == "invoices");
         var applied = await session.OkAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { Invoice } } } });
         Assert.Equal("saved", (string)applied["outcome"]!);

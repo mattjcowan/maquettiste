@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHE8PCZTGA56J0QDK3",
+  "name": "campaign response involves contact in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1S29VSWDMT9GC4HJ3E46VF0",
+  "foreignKey": "01M8EJX9A856R5V54YWRWWXQ5G"
+}

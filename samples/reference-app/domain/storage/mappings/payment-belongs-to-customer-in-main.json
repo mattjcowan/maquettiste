@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CGN588ESVNHEMHVAWK",
+  "name": "payment belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M30DCWHVZZXZZSJ3EGZT764V",
+  "foreignKey": "01M8EJX9A5NJA3GQ52V8V99CYM"
+}

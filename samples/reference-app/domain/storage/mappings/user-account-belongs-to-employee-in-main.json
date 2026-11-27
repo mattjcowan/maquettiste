@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHBZCM06MHWYNTF7HT",
+  "name": "user account belongs to employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2ME210PBJM5X3FGSYQWMJE1",
+  "foreignKey": "01M8EJX9A9BB6R8ZK2ANW01ZTW"
+}

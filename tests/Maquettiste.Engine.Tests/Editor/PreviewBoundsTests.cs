@@ -5,6 +5,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Rendering;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
@@ -15,6 +16,7 @@ namespace Maquettiste.Engine.Tests.Editor;
 /// kept until the model, the settings or the pack change; and a template that reads no seed and no schema diff converts no seed row and
 /// diffs no database.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class PreviewBoundsTests
 {
     private static CancellationToken Ct => EditorRepo.Ct;

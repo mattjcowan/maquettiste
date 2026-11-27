@@ -39,6 +39,12 @@ internal sealed record ClassifierInput
     /// </summary>
     public IReadOnlyList<MigrationRekey> MemberRekeys { get; init; } = [];
 
+    /// <summary>What a materialize in the same write adopted (<c>MaterializeResult.Adopted</c>): written on its rekey fact.</summary>
+    public IReadOnlyList<MigrationRekey> Adopted { get; init; } = [];
+
+    /// <summary>The facts the committed snapshot lists as rendered: an adoption of one of them is already in the snapshot.</summary>
+    public IReadOnlySet<string> RenderedFacts { get; init; } = FrozenSet<string>.Empty;
+
     /// <summary>
     /// The constraint ids (keys, uniques, foreign keys, checks and indexes; an inherited one by its keyed id) of the tables whose
     /// constraint entries an open <c>rekey</c> fact the write does not write lists, by table key, before the change. With
@@ -163,7 +169,7 @@ internal static class FactClassifier
             Migration? rekey = null;
             if (recorded.Count > 0)
             {
-                rekey = new Migration { Id = "", Database = input.DatabaseId, Fact = MigrationFact.Rekey, Keys = recorded };
+                rekey = new Migration { Id = "", Database = input.DatabaseId, Fact = MigrationFact.Rekey, Keys = recorded, Adopted = input.Adopted };
                 _newMoves = FactKeys.RekeyMap.Of(rekey);
             }
 
@@ -189,6 +195,16 @@ internal static class FactClassifier
             }
 
             var before = tables.Count > 0 || sequences.Count > 0 ? SnapshotRekey.Apply(input.Before, tables, sequences) : input.Before;
+            if (tables.Count > 0)
+            {
+                before = SnapshotRekey.ReadStoredReferenceColumns(before, tables, table => input.After.Tables.FirstOrDefault(t => t.Key == table), bothWays: true);
+            }
+
+            // An undo of a materialize whose adoption no run has rendered yet gives the objects back to the pack: not a drop.
+            var adoptions = _ordered.Where(f => f.Fact == MigrationFact.Rekey && f.Adopted.Count > 0 && !input.WrittenFacts.Contains(f.Id)
+                && !input.RenderedFacts.Contains(f.Id)).SelectMany(f => f.Adopted).ToList();
+            if (adoptions.Count > 0)
+                before = SnapshotRekey.Unadopt(before, adoptions, tables, input.After);
             Compare(before, input.After);
             var valueMaps = ValueMaps(input.After);
             if (_candidates.Count == 0 && rekey is null && valueMaps.Count == 0)

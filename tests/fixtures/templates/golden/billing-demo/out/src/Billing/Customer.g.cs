@@ -3,7 +3,6 @@ namespace Acme.Billing.Billing;
 
 /// Customer: Someone we bill.
 /// Attributes: 6; required: id, name, email, createdAt; prefix Acme.Billing
-/// Stored in customers
 public partial record Customer
 {
     public Guid Id { get; init; }

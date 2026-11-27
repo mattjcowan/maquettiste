@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ1797RJ6JFFD0MFZP",
+  "name": "sales order is credited to sales rep in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1RJDAY5KNPKFWWDHVN2A3HR",
+  "foreignKey": "01M8EJX9ACXGME7BHS2A0XQETF"
+}

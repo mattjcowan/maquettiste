@@ -1,0 +1,142 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PZPQDH9RPAGGPPZ3S",
+  "name": "discount_rules",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P4C46ME438BTCQ46T",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the discount rule."
+    },
+    {
+      "id": "01M8EJX99PWHGD6307DZS5APFE",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Rule name."
+    },
+    {
+      "id": "01M8EJX99PX5Z93MT1BQ2VZ43M",
+      "name": "discount_type",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "comment": "How the discount is computed."
+    },
+    {
+      "id": "01M8EJX99PGTBRXPW4211N58S5",
+      "name": "value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 4,
+      "nullable": false,
+      "comment": "Percentage or amount, depending on the type."
+    },
+    {
+      "id": "01M8EJX99P0BJ6XCWFFXXBHETC",
+      "name": "priority",
+      "type": "int16",
+      "nullable": false,
+      "default": 100,
+      "comment": "Evaluation order; lower runs first."
+    },
+    {
+      "id": "01M8EJX99PQY700SZ5XY8X10HV",
+      "name": "is_stackable",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether it combines with other discounts."
+    },
+    {
+      "id": "01M8EJX99PT4N3XDS15ZJZQH5W",
+      "name": "validity_starts_on",
+      "type": "date",
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99PFGB27CBJ9Y95S2PY",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99PVW23ZRQ27ZTKR1ZP",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QE72JAWZSF6S408QX",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QZBZC4ZA35THNW243",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QTVSE0J7E38TJ2ABY",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QXXFKYYZA0W8RYGNC",
+      "name": "product_category_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QNYKMDCSF8C9DVHWR",
+      "name": "customer_group_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_discount_rules",
+    "columns": [
+      "01M8EJX99P4C46ME438BTCQ46T"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAZD9FSCQTHG31T1DQ",
+      "name": "fk_discount_rules_product_category_id",
+      "columns": [
+        "01M8EJX99QXXFKYYZA0W8RYGNC"
+      ],
+      "referencesTable": "01M8EJX99NQ4YTPRWGEB5NP3V1",
+      "referencesColumns": [
+        "01M8EJX99NSKK4SVQ4V8E5P14K"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AADZK6H8WF0JE09A3Y",
+      "name": "fk_discount_rules_customer_group_id",
+      "columns": [
+        "01M8EJX99QNYKMDCSF8C9DVHWR"
+      ],
+      "referencesTable": "01M8EJX99NMC4QYC80P8BY26XA",
+      "referencesColumns": [
+        "01M8EJX99NJ66NG53750KF0MBD"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An automatic discount, such as 3 percent off janitorial supplies for buying group A."
+}

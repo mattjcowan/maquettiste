@@ -67,7 +67,7 @@ describe("mock contract", () => {
     await call("get", `/api/diagrams/${IDS.overview}`, "/api/diagrams/{id}");
     // A SQL text query and a built query with a recursive named query, so the view's query schema covers form, texts, writes, with,
     // namedQuery and the optional from and expression.
-    const invoices = `${IDS.invoice}@${database.id}`;
+    const invoices = IDS.invoicesTable;
     const text = await call("post", "/api/model/elements", "/api/model/elements", {
       kind: "query",
       database: database.id,
@@ -124,8 +124,8 @@ describe("mock contract", () => {
     const database = (index as { id: string; kind: string; name: string }[]).find((e) => e.kind === "database" && e.name === "main")!;
     const { payload } = await call("get", `/api/databases/${database.id}/view`, "/api/databases/{id}/view");
     const view = (payload as { view: DatabaseView }).view;
-    // The invoice table's overlay: its annotations, the audited stereotype's default properties merged under its own.
-    const invoices = view.tables.find((t) => t.entityId === IDS.invoice)!;
+    // The invoices table file: its annotations, the audited stereotype's default properties merged under its own.
+    const invoices = view.tables.find((t) => t.name === "invoices")!;
     expect(invoices).toMatchObject({
       displayName: "Invoice register",
       pluralName: null,
@@ -149,7 +149,7 @@ describe("mock contract", () => {
     });
     expect(invoices.columns.filter((c) => c.name !== "number").every((c) => c.stereotypes.length === 0 && c.description === null)).toBe(true);
     // The database carries its own annotations (none in the fixture) and lists its schemas.
-    expect(view).toMatchObject({ quoting: "reserved", byConvention: "all", packages: [], stereotypes: [], displayName: null });
+    expect(view).toMatchObject({ quoting: "reserved", byConvention: "none", packages: [], stereotypes: [], displayName: null });
     expect(view.schemas).toEqual([expect.objectContaining({ name: "billing", isDefault: true, isDeclared: true, stereotypes: [] })]);
   });
 
@@ -206,10 +206,11 @@ describe("mock contract", () => {
       delete json.key;
     });
     const { payload } = await call("get", `/api/databases/${database.id}/tables`, "/api/databases/{id}/tables");
-    const result = payload as { partial: boolean; tables: { entityId: string | null }[] };
+    const result = payload as { partial: boolean; tables: { name: string; entityId: string | null }[] };
     expect(result.partial).toBe(true);
-    expect(result.tables.map((t) => t.entityId)).not.toContain(IDS.payment);
-    expect(result.tables.map((t) => t.entityId)).toContain(IDS.invoice);
+    // Tables are designed files that name no entity: a broken entity takes none of them away.
+    expect(result.tables.map((t) => t.name)).toEqual(expect.arrayContaining(["invoices", "payments"]));
+    expect(result.tables.every((t) => t.entityId === null)).toBe(true);
   });
 
   it("publishes model.changed with each change's new index row (E5d), in contract shape", async () => {
@@ -247,8 +248,8 @@ describe("mock contract", () => {
     const { payload: index } = await call("get", "/api/model/index", "/api/model/index");
     const database = (index as { id: string; kind: string; name: string }[]).find((e) => e.kind === "database" && e.name === "main")!;
     const { payload } = await call("get", `/api/databases/${database.id}/view`, "/api/databases/{id}/view");
-    const customers = (payload as { view: DatabaseView }).view.tables.find((t) => t.name === "customers")!;
-    expect(customers.columns.find((c) => c.name === "email")?.nativeType).toBe("character varying(254)");
+    // A designed column states its own native type; the projected column that follows the type is checked in database-columns.test.ts.
+    expect((payload as { view: DatabaseView }).view.tables.find((t) => t.name === "customers")).toBeDefined();
     await call("get", "/api/model/resolved?scope=scalar-types", "/api/model/resolved");
   });
 

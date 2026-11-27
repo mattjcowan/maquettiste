@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -10,6 +11,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// the <c>due</c> row: a rename keeps the old code as a former code and records one value map, a retire removes the row and moves its
 /// uses, and a merge moves every use of the merged type to the target. sql-ddl's data step for each is in the packs' ReferenceDataTests.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ReferenceRefactorTests
 {
     private const string DemoInvoices = "01KAPT00000000000000000040";

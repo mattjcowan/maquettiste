@@ -5,5 +5,15 @@
   "name": "settles in main",
   "database": "01J92P0V1QRN2181XM2ZWE02W4",
   "relation": "01J92P0V1DKHD5Q02DV6S5M53D",
-  "shape": "junction"
+  "junctionTable": "01M8EJPZN9Y3HNXTC7V3Q7CP50",
+  "ends": [
+    {
+      "end": "01J92P0V1M776PCP4JKV5J31SY",
+      "foreignKey": "01M8EJPZNNCSZSF4TG00KFG8GG"
+    },
+    {
+      "end": "01J92P0V1N727B9EM9FXPMKH7P",
+      "foreignKey": "01M8EJPZNNF67N7KNHRET090CB"
+    }
+  ]
 }

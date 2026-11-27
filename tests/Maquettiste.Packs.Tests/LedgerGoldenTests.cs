@@ -133,6 +133,7 @@ internal static class LedgerFacts
 /// The migration ledger in sql-ddl's schema script (next-phase-1-design.md section 3.3): on PostgreSQL a script that reaches facts
 /// runs in one transaction with the ledger DDL and one row per fact it reaches; a model without facts writes what it always wrote.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class LedgerGoldenTests
 {
     [Fact]

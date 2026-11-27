@@ -1,0 +1,107 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NVCDQZJVD62PF96PN",
+  "name": "product_certifications",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N9A4F6CQJ8F50DSPA",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product certification."
+    },
+    {
+      "id": "01M8EJX99N8G2G1KCR3Z39QGT6",
+      "name": "certification_type",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Scheme, such as UL or CE."
+    },
+    {
+      "id": "01M8EJX99NH3D07Y2N7WRQDSA6",
+      "name": "certificate_number",
+      "type": "string",
+      "length": 60,
+      "comment": "Certificate number."
+    },
+    {
+      "id": "01M8EJX99NN1TZ3XZ77QTTQP44",
+      "name": "issued_by",
+      "type": "string",
+      "length": 120,
+      "comment": "Certification body."
+    },
+    {
+      "id": "01M8EJX99N9Z5DEE6MC17Y6TYK",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99NMDT5V8811BDPF12J",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99NZC5VCSDMA87JPSCY",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99N8RMK9QYGTJS0HQWD",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NR3JPKS2ANKR1SKPX",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99ND0B41WXWNYBGS933",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99N5M2VT9TGCPES6Q0W",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_certifications",
+    "columns": [
+      "01M8EJX99N9A4F6CQJ8F50DSPA"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A76T2H0EPS6ZHP9XVF",
+      "name": "fk_product_certifications_product_id",
+      "columns": [
+        "01M8EJX99N5M2VT9TGCPES6Q0W"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A certification a product holds, such as UL, CE or FDA 510(k)."
+}

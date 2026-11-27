@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine;
 using Maquettiste.Functions.Tests.Support;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Functions.Tests;
 
@@ -260,7 +261,8 @@ public sealed class GenerationTests
 
         var table = await host.SendJsonAsync("POST", "/api/templates/preview", new JsonObject
         {
-            ["pack"] = "sql-ddl", ["unit"] = "table", ["elementId"] = EditorHost.CustomerId + "@" + EditorHost.MainDatabaseId,
+            // The customers table of the billing fixture, a designed table since 0.29.0.
+            ["pack"] = "sql-ddl", ["unit"] = "table", ["elementId"] = "01M8EJPZN867GR1CJR5ZERBJ0V",
         });
         var schema = await host.SendJsonAsync("POST", "/api/templates/preview", new JsonObject { ["pack"] = "sql-ddl", ["unit"] = "schema", ["elementId"] = EditorHost.MainDatabaseId });
         var wrong = await host.SendJsonAsync("POST", "/api/templates/preview", new JsonObject { ["pack"] = "sql-ddl", ["unit"] = "table", ["elementId"] = EditorHost.InvoiceId });

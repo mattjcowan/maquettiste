@@ -1,0 +1,196 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PE8P64FHTYQMK50FC",
+  "name": "user_accounts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PTZF4HKZC0WA6DTTZ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the user account."
+    },
+    {
+      "id": "01M8EJX99PZEBAG66HA39S0BVS",
+      "name": "user_name",
+      "type": "string",
+      "length": 64,
+      "nullable": false,
+      "comment": "Sign-in name, lower case."
+    },
+    {
+      "id": "01M8EJX99PM439047TQ5P1MDAZ",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "nullable": false,
+      "comment": "Address for sign-in links and notifications."
+    },
+    {
+      "id": "01M8EJX99P2P9CAEE9M76CX05V",
+      "name": "display_name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Name shown in the user interface."
+    },
+    {
+      "id": "01M8EJX99PWC1PJ8YPKPGB8VES",
+      "name": "status",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "default": "INV",
+      "comment": "Lifecycle state of the account."
+    },
+    {
+      "id": "01M8EJX99PB78891ZC23NNP47R",
+      "name": "password_hash",
+      "type": "string",
+      "length": 255,
+      "comment": "Argon2id hash of the password; null for single sign-on users."
+    },
+    {
+      "id": "01M8EJX99PXHQFKAZAGJ2WQ5QA",
+      "name": "mfa_enabled",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether a second factor is required."
+    },
+    {
+      "id": "01M8EJX99PRMRQVNY2GP9VG4J7",
+      "name": "last_sign_in_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "Most recent successful sign-in."
+    },
+    {
+      "id": "01M8EJX99P5PTMRH8TNV1A9FWS",
+      "name": "failed_sign_in_count",
+      "type": "int16",
+      "nullable": false,
+      "default": 0,
+      "comment": "Consecutive failed attempts since the last success."
+    },
+    {
+      "id": "01M8EJX99PC0KTTF41EYJ3H7GB",
+      "name": "preferred_language",
+      "type": "string",
+      "length": 5,
+      "comment": "BCP 47 tag of the interface language."
+    },
+    {
+      "id": "01M8EJX99PBWD64KJJPJ74RGY4",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PZBYRGCJYTDMXQF5X",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PXNTWED54NYV5FQKS",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P7BCT1DCW0EFPFKV8",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99P52AJK3WYVNTG1EMB",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99PY942GR3AP6AZMDX0",
+      "name": "contact_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P54HC0ZFK3AFHEP72",
+      "name": "employee_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_user_accounts",
+    "columns": [
+      "01M8EJX99PTZF4HKZC0WA6DTTZ"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9Q6DR4535Z4JV4VPK",
+      "name": "uq_user_accounts_user_name",
+      "columns": [
+        "01M8EJX99PZEBAG66HA39S0BVS"
+      ]
+    },
+    {
+      "id": "01M8EJX9A9A4BBYWF2M7FZ0QAA",
+      "name": "uq_user_accounts_email",
+      "columns": [
+        "01M8EJX99PM439047TQ5P1MDAZ"
+      ]
+    },
+    {
+      "id": "01M8EJX9A9MM0GGSHDG68RH0K6",
+      "name": "uq_user_accounts_contact_id",
+      "columns": [
+        "01M8EJX99PY942GR3AP6AZMDX0"
+      ]
+    },
+    {
+      "id": "01M8EJX9A9NTH888A8KYG92TDV",
+      "name": "uq_user_accounts_employee_id",
+      "columns": [
+        "01M8EJX99P54HC0ZFK3AFHEP72"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9PWE5QM1BVGYHB8N1",
+      "name": "fk_user_accounts_contact_id",
+      "columns": [
+        "01M8EJX99PY942GR3AP6AZMDX0"
+      ],
+      "referencesTable": "01M8EJX99NX12803VWGRS1E1KW",
+      "referencesColumns": [
+        "01M8EJX99NRVN9JXZG7T665RP7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9BB6R8ZK2ANW01ZTW",
+      "name": "fk_user_accounts_employee_id",
+      "columns": [
+        "01M8EJX99P54HC0ZFK3AFHEP72"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A person or service that signs in to Northwind systems, either an employee or a customer portal user."
+}

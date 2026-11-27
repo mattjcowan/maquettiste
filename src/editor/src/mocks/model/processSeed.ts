@@ -467,13 +467,29 @@ export function withLifecycleProblems(seed: Seed): Seed {
 export function withDrift(seed: Seed): Seed {
   const statusEnum = M(501);
   const statusAttribute = M(502);
-  const files = seed.files.map((f) => {
+  const statusColumn = M(503);
+  // A Payment bound to a table gets a column for the attribute and a field that maps it, so the drift is the lifecycle's alone.
+  let bindingSource: string | null = null;
+  let files = seed.files.map((f) => {
     if (!f.path.endsWith("model/entities/payment.json")) return f;
     const json = JSON.parse(f.text) as Json;
     json.attributes = [...((json.attributes as Json[]) ?? []), { id: statusAttribute, name: "status", type: { ref: statusEnum }, default: "Pending" }];
     json.lifecycle = PAYMENT_LIFECYCLE;
+    const binding = ((json.bindings as Json[] | undefined) ?? [])[0];
+    if (binding) {
+      bindingSource = String(binding.source);
+      binding.fields = [...((binding.fields as Json[]) ?? []), { attribute: statusAttribute, column: statusColumn }];
+    }
     return { ...f, text: JSON.stringify(json, null, 2) + "\n" };
   });
+  if (bindingSource !== null) {
+    files = files.map((f) => {
+      const json = f.path.includes("/tables/") ? (JSON.parse(f.text) as Json) : null;
+      if (!json || json.id !== bindingSource) return f;
+      json.columns = [...((json.columns as Json[]) ?? []), { id: statusColumn, name: "status", type: "string", length: 16, nullable: true }];
+      return { ...f, text: JSON.stringify(json, null, 2) + "\n" };
+    });
+  }
   files.push(
     file("model/enums/payment-status.json", {
       kind: "enum",

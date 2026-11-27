@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../../.schema/v1/sequence.json",
+  "kind": "sequence",
+  "id": "01J92P0V1S972MSFDJ8G6V6MWT",
+  "name": "invoice_number_seq",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "start": 1000
+}

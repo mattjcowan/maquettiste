@@ -35,7 +35,7 @@ async function expectNoEntities(where: Locator, names: readonly string[], label:
 }
 
 test("the Databases workspace shows no entity and no mapping anywhere", async ({ page }) => {
-  await page.goto("/database");
+  await page.goto("/database?mock=projected");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await workspace(page, "Databases");
   const names = await entityNames(page);

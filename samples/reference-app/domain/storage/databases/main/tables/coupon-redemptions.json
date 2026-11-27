@@ -1,0 +1,86 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PJAE46NV5FPARD9JE",
+  "name": "coupon_redemptions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PJQNB1KNY8QJ15A46",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the coupon redemption."
+    },
+    {
+      "id": "01M8EJX99PBF4904K607V7NTM6",
+      "name": "redeemed_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the coupon was applied."
+    },
+    {
+      "id": "01M8EJX99P21GZJZBWKR9R5E1J",
+      "name": "discount_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PXYD8B1Q95EQ4WK9D",
+      "name": "discount_amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99P7353C6F6WQR1RPN4",
+      "name": "sales_order_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P62PTHNDHGN9FQFSQ",
+      "name": "coupon_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_coupon_redemptions",
+    "columns": [
+      "01M8EJX99PJQNB1KNY8QJ15A46"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA49YJZWM94Z16JB69",
+      "name": "fk_coupon_redemptions_sales_order_id",
+      "columns": [
+        "01M8EJX99P7353C6F6WQR1RPN4"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AA49Q62KN10JB949J5",
+      "name": "fk_coupon_redemptions_coupon_id",
+      "columns": [
+        "01M8EJX99P62PTHNDHGN9FQFSQ"
+      ],
+      "referencesTable": "01M8EJX99PXA9HWMV7BZWHZGQJ",
+      "referencesColumns": [
+        "01M8EJX99P38RYE072G6VMA9KV"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "One use of a coupon on a sales order."
+}

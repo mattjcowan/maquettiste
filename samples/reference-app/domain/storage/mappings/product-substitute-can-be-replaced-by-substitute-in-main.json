@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH50TVY3ED5G341HQ7",
+  "name": "product substitute can be replaced by substitute in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M20XBC2QN6TPZCC9QHTKBHJZ",
+  "foreignKey": "01M8EJX9A7H6C6Y2T9BBYWWFGR"
+}

@@ -10,6 +10,7 @@ namespace Maquettiste.Packs.Tests;
 /// and its repositories round-trip rows through an in-memory SQLite database built from the sql-ddl output. The tests skip
 /// with a message when NuGet cannot be reached and the packages are not in the local cache.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class CompileTests
 {
     private const string DapperVersion = "2.1.66";

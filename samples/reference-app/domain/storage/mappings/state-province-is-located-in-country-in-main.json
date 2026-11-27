@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ8FA98Z1ACGS42QPK",
+  "name": "state province is located in country in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1FMEG7MAGK7BR5ENCJFRNKV",
+  "foreignKey": "01M8EJX9ABKVZ5J5X1SQ616356"
+}

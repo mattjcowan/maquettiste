@@ -57,14 +57,6 @@ entities:
       journalEntry: JournalEntry name=invoice_is_recorded_in_journal_entry | Posting in the ledger.
     children:
       lines: InvoiceLine ordered name=invoice_contains_lines | Invoiced lines.
-    overlay:
-      description: The due date cannot precede the invoice date; open invoices are listed by due date.
-      checks:
-        ck_invoices_due_after_invoice_date: due_date >= invoice_date
-      indexes:
-        - name: ix_invoices_open_by_due_date
-          columns: [dueDate]
-          where: status <> 'PAID'
 
   InvoiceLine:
     description: A line of an invoice - a shipped product or a charge.
@@ -128,9 +120,6 @@ entities:
       paymentBatch: PaymentBatch name=payment_is_paid_in_payment_batch | Batch the payment was deposited in.
       depositAccount: BankAccount name=payment_is_deposited_to_deposit_account | Account the money went to.
       journalEntry: JournalEntry name=payment_is_recorded_in_journal_entry | Posting in the ledger.
-    mapping:
-      description: Card payments and bank transfers each get their own table keyed by the payment id (table per type).
-      inheritance: tpt
 
   CardPayment:
     description: A payment by credit or purchasing card through the payment processor.

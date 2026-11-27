@@ -64,5 +64,78 @@
       "length": 14,
       "description": "GTIN of the package."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BF5Y0MS5HFRT7C740J",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NAEKAFW0PSZNYH88E",
+      "fields": [
+        {
+          "attribute": "01M2S27VK2SQ8D7JN80MNHDMJ0",
+          "column": "01M8EJX99N0WWTDBP2XA5Y8V9Q"
+        },
+        {
+          "attribute": "01M2D75XZ8QBTZFDS0N2EH4J14",
+          "column": "01M8EJX99N81557RDHGP0K7J7W"
+        },
+        {
+          "attribute": "01M2V87WEPGEPJEARTENEGNVXQ",
+          "column": "01M8EJX99N96P5CPRE9ZVRNJF7"
+        },
+        {
+          "attribute": "01M2KA5PDCDYR8DFYXVSSQFA3G.01M26XBJHGAQ8QYRAM8KKVFJ8H",
+          "column": "01M8EJX99NCYE5KBP2FMMCVK74"
+        },
+        {
+          "attribute": "01M2KA5PDCDYR8DFYXVSSQFA3G.01M2BRTF0HWQF4TQQC60YAJ597",
+          "column": "01M8EJX99NTFN3Q4WHS404F22C"
+        },
+        {
+          "attribute": "01M2KA5PDCDYR8DFYXVSSQFA3G.01M1H302TC57PJJZPWWYE97KA3",
+          "column": "01M8EJX99N6NV25JP465X8NVM0"
+        },
+        {
+          "attribute": "01M2KA5PDCDYR8DFYXVSSQFA3G.01M24SH5RE8AEHVQH67HD2HYHZ",
+          "column": "01M8EJX99NFY5M6WTF8RTVRD7N"
+        },
+        {
+          "attribute": "01M2SBHKFV6MYQBT97QCCXBGN8.01M2HWNXGYJRZDD7KPMXMDE14X",
+          "column": "01M8EJX99NC52BMYBA9E20DZWY"
+        },
+        {
+          "attribute": "01M2SBHKFV6MYQBT97QCCXBGN8.01M2RYDCVQQ6H7P7ZQF61MX9EM",
+          "column": "01M8EJX99NJ13CBJJ3KKGRKD99"
+        },
+        {
+          "attribute": "01M1E23F3WVQZ3M1PECZ5KFD3V",
+          "column": "01M8EJX99N4359PF96EYP0MXQ7"
+        },
+        {
+          "attribute": "01M2WH0AD3RGBVB1NYKVZXBKHW",
+          "column": "01M8EJX99NX0YD4KQ32ZCN5HH4"
+        },
+        {
+          "attribute": "01M1V2EMGGGMKXNQHZVP5C7PPK",
+          "column": "01M8EJX99NWFMH6XKJMH4SXZFE"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N0WWTDBP2XA5Y8V9Q": "a5614527:8da1c7b8",
+          "01M8EJX99N4359PF96EYP0MXQ7": "716b18a0:06f1a906",
+          "01M8EJX99N6NV25JP465X8NVM0": "ce55e05e:2205852e",
+          "01M8EJX99N81557RDHGP0K7J7W": "9692b8cc:ef1ae9ec",
+          "01M8EJX99N96P5CPRE9ZVRNJF7": "56c3ed85:53fb88ea",
+          "01M8EJX99NC52BMYBA9E20DZWY": "0ecf6eb7:17d070b1",
+          "01M8EJX99NCYE5KBP2FMMCVK74": "56cfeddd:2205852e",
+          "01M8EJX99NFY5M6WTF8RTVRD7N": "f769088e:75525505",
+          "01M8EJX99NJ13CBJJ3KKGRKD99": "571f1fcf:75525505",
+          "01M8EJX99NTFN3Q4WHS404F22C": "c11826f0:2205852e",
+          "01M8EJX99NWFMH6XKJMH4SXZFE": "13867cc0:48b85cd3",
+          "01M8EJX99NX0YD4KQ32ZCN5HH4": "64814827:8da1c7b8"
+        }
+      }
+    }
   ]
 }

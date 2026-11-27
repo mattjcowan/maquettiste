@@ -12,6 +12,7 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// a baseline model instead (next-phase-1-design.md section 3.1), which leave them alone; and the migration facts each diff renders,
 /// which the saved snapshot lists (section 3.2).
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class SchemaSnapshotTests
 {
     private const string SnapshotPath = ".maquettiste/snapshots/main.json";

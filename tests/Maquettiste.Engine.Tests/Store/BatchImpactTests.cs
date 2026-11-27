@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
@@ -8,6 +9,7 @@ namespace Maquettiste.Engine.Tests.Store;
 /// The store's part of a dry run's impact (next-phase-2-design.md section 6.1, decisions 6 and 7): the referrers of what the change
 /// alters or deletes, minus the batch's own documents, and the databases it can reach. Packs are the generation service's.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class BatchImpactTests
 {
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";

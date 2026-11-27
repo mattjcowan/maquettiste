@@ -1,0 +1,81 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKC5AMMXV0ZQM4X23333N9",
+  "name": "gate_signatures",
+  "database": "01JQDBS0000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKC5AM5AHB19FR83YGWYTQ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AM81110YSBWCF79S4P",
+      "name": "instance",
+      "type": "string",
+      "length": 255,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMB3SMKB0X37J47QCF",
+      "name": "gate",
+      "type": "string",
+      "length": 255,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMGKVYMD15JKST4BYX",
+      "name": "sequence",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AM6HP83AX650E6HC42",
+      "name": "signer",
+      "type": "string",
+      "length": 255,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMK5RVMXEY3Q0G37FT",
+      "name": "actor",
+      "type": "string",
+      "length": 255,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMKR27AK1BHK06MXVP",
+      "name": "meaning",
+      "type": "string",
+      "length": 255
+    },
+    {
+      "id": "01M8EKC5AMVTADHXGVF1HDQE11",
+      "name": "reason",
+      "type": "text"
+    },
+    {
+      "id": "01M8EKC5AM8VKQGATJCAESK7N8",
+      "name": "outcome",
+      "type": "string",
+      "length": 255,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMBP5VQBT51QESR0BT",
+      "name": "at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_gate_signatures",
+    "columns": [
+      "01M8EKC5AM5AHB19FR83YGWYTQ"
+    ]
+  },
+  "comment": "The audit record of a gate: one row per signature attempt and outcome."
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJS1NKC5WRXBM96H47",
+  "name": "serial number is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1MA06MCZA9T3ZSM20AM6NCF",
+  "foreignKey": "01M8EJX9AA0EC6B61W3N3Z6A2M"
+}

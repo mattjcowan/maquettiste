@@ -12,14 +12,14 @@ using Dapper;
 
 namespace Processes.Data.Purchasing;
 
-/// <summary>Reads and writes <see cref="PurchaseRequest"/> rows in public.purchase_requests (database main, postgresql).</summary>
+/// <summary>Reads and writes <see cref="PurchaseRequest"/> rows through its binding to table purchase_requests (database main, postgresql).</summary>
 public partial interface IPurchaseRequestRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<PurchaseRequest?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<PurchaseRequest>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PurchaseRequest>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(PurchaseRequest entity, CancellationToken cancellationToken = default);
@@ -34,39 +34,44 @@ public partial interface IPurchaseRequestRepository
 /// <summary>The Dapper implementation of <see cref="IPurchaseRequestRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class PurchaseRequestRepository(IDbConnection connection, IDbTransaction? transaction = null) : IPurchaseRequestRepository
 {
-    private const string Columns = """
-        id AS Id,
-        amount AS Amount,
-        cost_centre AS CostCentre
+    private const string SelectSql = """
+        SELECT t.id AS id, t.amount AS amount, t.cost_centre AS costCentre
+        FROM public.purchase_requests t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM public.purchase_requests WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM public.purchase_requests ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.amount AS amount, t.cost_centre AS costCentre
+        FROM public.purchase_requests t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO public.purchase_requests (id, amount, cost_centre)
-        VALUES (@Id, @Amount, @CostCentre)
+        VALUES (@id, @amount, @costCentre)
         """;
 
     private const string UpdateSql = """
-        UPDATE public.purchase_requests SET amount = @Amount, cost_centre = @CostCentre
-        WHERE id = @Id
+        UPDATE public.purchase_requests SET amount = @amount, cost_centre = @costCentre
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM public.purchase_requests WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM public.purchase_requests
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<PurchaseRequest?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<PurchaseRequest>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PurchaseRequest>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -89,28 +94,28 @@ public partial class PurchaseRequestRepository(IDbConnection connection, IDbTran
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of purchase_requests, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table purchase_requests as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public decimal Amount { get; set; }
-        public string? CostCentre { get; set; }
+        public Guid id { get; set; }
+        public decimal amount { get; set; }
+        public string? costCentre { get; set; }
 
         public static PurchaseRequest ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Amount = row.Amount,
-            CostCentre = row.CostCentre,
+            Id = row.id,
+            Amount = row.amount,
+            CostCentre = row.costCentre,
         };
 
         public static Row From(PurchaseRequest entity) => new()
         {
-            Id = entity.Id,
-            Amount = entity.Amount,
-            CostCentre = entity.CostCentre,
+            id = entity.Id,
+            amount = entity.Amount,
+            costCentre = entity.CostCentre,
         };
     }
 }

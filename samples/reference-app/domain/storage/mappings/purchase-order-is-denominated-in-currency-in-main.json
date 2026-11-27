@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ6CEYMM5ECQWPXGBG",
+  "name": "purchase order is denominated in currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2TE9119Y94FFMANYZH68S21",
+  "foreignKey": "01M8EJX9AB30KHV9YBYF0Z301H"
+}

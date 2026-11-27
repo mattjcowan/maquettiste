@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH4ND655VJ1ZH78B0G",
+  "name": "channel listing is sold through sales channel in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2Z7VZQHTK9SZN8KAC5XJ9R1",
+  "foreignKey": "01M8EJX9A61GJCJB14W7VKRH8F"
+}

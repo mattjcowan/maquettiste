@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01J92P0V245JG9WK55YJE2QWWV",
+  "key": "aggregate-root",
+  "name": "Aggregate root",
+  "appliesTo": [
+    "entity"
+  ]
+}

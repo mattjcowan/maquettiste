@@ -28,8 +28,8 @@ a manifest, hand-edit detection and `generate --check` for CI; the CLI (`init`, 
 `seed`, `pack new`, `mcp`, and later `model export` and `model stats`) and an agent server with 39 tools at the time, 51 today (`docs/mcp.md`), including the bulk reads an external system needs to pull a model of thousands of elements: documents in pages, the resolved model as flat records, and kind counts. Example packs: `sql-ddl` and `csharp-dapper`.
 
 **Gate 1 (pass).** The synthetic benchmark (5,000 entities, 20,000 relations, seed 42, `--jobs 8`) writes 100,050 files;
-against the Section 13 budgets: load, validate and resolve 1.7 s (3 s), plan 0.1 s (2 s), render 2.2 s (40 s), post-process
-and write 4.5 s (15 s), cold total 6.7 s (60 s), incremental 1.4 s (2 s); output is byte-identical across runs and
+against the Section 13 budgets: load, validate and resolve 2.99 s (3 s), plan 0.2 s (2 s), render 2.2 s (40 s), post-process
+and write 6.4 s (15 s), cold total 9.8 s (60 s), incremental 1.9 s (2 s), on the bound model re-recorded on 2026-11-27; output is byte-identical across runs and
 platforms and `--check` catches drift, orphans and hand edits (`bench/README.md`, `bench/baseline.json`).
 
 **Phase 2: editor.** The IDE-style shell (rail of explorers, inspector, bottom panel, collapsible panels and restored page

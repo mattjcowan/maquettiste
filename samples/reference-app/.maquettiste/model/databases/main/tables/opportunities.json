@@ -1,0 +1,173 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PMW1FP6SRZVY75VV2",
+  "name": "opportunities",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PHPV90XA4S79DN4VE",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the opportunity."
+    },
+    {
+      "id": "01M8EJX99P4PDCA85HXJ86QZ7P",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Short description of the deal."
+    },
+    {
+      "id": "01M8EJX99PSBVBWBHWJF6XP2E6",
+      "name": "amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PRDBH4FKZ1P125H08",
+      "name": "amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99PQVR6J1XMSGKNG7CT",
+      "name": "probability",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Win probability; defaults from the stage."
+    },
+    {
+      "id": "01M8EJX99PAAVYWY1P7RDJYM9P",
+      "name": "expected_close_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Expected decision date."
+    },
+    {
+      "id": "01M8EJX99PF8EM357KYXD7FNNW",
+      "name": "closed_on",
+      "type": "date",
+      "comment": "Date the deal was won or lost."
+    },
+    {
+      "id": "01M8EJX99P0KKWF6B98HE8EPFG",
+      "name": "loss_reason",
+      "type": "string",
+      "length": 300,
+      "comment": "Why the deal was lost."
+    },
+    {
+      "id": "01M8EJX99PWD86Z1VFZBSSYH1V",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P9A70JTCSHW61Z3XG",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P6FCPNHSVTT87AGE0",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PJSFCK9M139CCQPAQ",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PYJ31PJN2RFP2MXB4",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PJBB90MN6338RY47N",
+      "name": "stage_id",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PG02587R518CQ1YBX",
+      "name": "owner_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_opportunities",
+    "columns": [
+      "01M8EJX99PHPV90XA4S79DN4VE"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8SJS91EPZ59QF9PP8",
+      "name": "fk_opportunities_customer_id",
+      "columns": [
+        "01M8EJX99PYJ31PJN2RFP2MXB4"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A8DB06X9V8K7PR3B2N",
+      "name": "fk_opportunities_stage_id",
+      "columns": [
+        "01M8EJX99PJBB90MN6338RY47N"
+      ],
+      "referencesTable": "01M8EJX99PVRF7SF55TZFS7FQ0",
+      "referencesColumns": [
+        "01M8EJX99PJ9RBEZ8Z7CDC8RH2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A8705RBY5XP1WQ7REC",
+      "name": "fk_opportunities_owner_id",
+      "columns": [
+        "01M8EJX99PG02587R518CQ1YBX"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A84FHJ9N29Q111M9FV",
+      "name": "ix_opportunities_expected_close_on",
+      "columns": [
+        {
+          "column": "01M8EJX99PAAVYWY1P7RDJYM9P"
+        }
+      ]
+    }
+  ],
+  "comment": "A potential deal with a customer, tracked through pipeline stages to won or lost."
+}

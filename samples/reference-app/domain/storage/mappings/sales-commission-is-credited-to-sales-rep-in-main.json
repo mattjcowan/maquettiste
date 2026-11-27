@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJTX799Q11Z7SCCKTR",
+  "name": "sales commission is credited to sales rep in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1F6GVD9A2BPHNFAS8ADKB1R",
+  "foreignKey": "01M8EJX9ACE9SQM8SDT3Z3F2RJ"
+}

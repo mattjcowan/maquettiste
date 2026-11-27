@@ -629,6 +629,8 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
         var facts = SchemaDiffer.RenderedFacts(database, f => !rendered.Contains(f.Id));
         var current = SnapshotCapture.Capture(database, before?.Revision ?? 0, parallelism, ct);
         ct.ThrowIfCancellationRequested();
+        if (before is not null && database.Migrations.Count > 0)
+            before = SnapshotRekey.Adopt(before, database.Migrations.Select(f => f.Source).Where(f => !rendered.Contains(f.Id)), current);
         var stored = before is null ? null : loaded;
         var diff = SchemaDiffer.Compare(before, current, database, parallelism, ct, facts)
             .WithStates(() => SchemaDiffer.State(stored, json), () => SchemaDiffer.State(current, json));

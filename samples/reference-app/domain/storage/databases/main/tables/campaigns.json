@@ -1,0 +1,130 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NK3S7EP53CVZSQ961",
+  "name": "campaigns",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NG1GY6QV4S10GS28J",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the campaign."
+    },
+    {
+      "id": "01M8EJX99NCZ2NTKANY6XMWMNF",
+      "name": "name",
+      "type": "string",
+      "length": 150,
+      "nullable": false,
+      "comment": "Campaign name."
+    },
+    {
+      "id": "01M8EJX99NX0HQ5RGCH4KW5J5S",
+      "name": "description",
+      "type": "text",
+      "comment": "Goals and audience."
+    },
+    {
+      "id": "01M8EJX99N26G0X24M6WNJH3NK",
+      "name": "channel",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Channel, such as email, print or event."
+    },
+    {
+      "id": "01M8EJX99NC94Y56Z7Z3Y7QYBR",
+      "name": "period_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99NEVE9NB2RHJM2NQJD",
+      "name": "period_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99NCRQSWG377YDS9CQJ",
+      "name": "budget_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99N8507X190GJAGGRVY",
+      "name": "budget_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99NFY2YWE7XRJ22YMFX",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99NJQPN15D1PHG2RMGR",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99N293767FCJRK5QDT0",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NJRZ55QWPXPGM094K",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99N0NQZESW838MX68PX",
+      "name": "owner_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_campaigns",
+    "columns": [
+      "01M8EJX99NG1GY6QV4S10GS28J"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A82K6XG5Q1GDTHFN42",
+      "name": "uq_campaigns_name",
+      "columns": [
+        "01M8EJX99NCZ2NTKANY6XMWMNF"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A89Z4V0F2DH2YZZDSV",
+      "name": "fk_campaigns_owner_id",
+      "columns": [
+        "01M8EJX99N0NQZESW838MX68PX"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A marketing campaign, such as a spring catalog mailing or a trade show."
+}

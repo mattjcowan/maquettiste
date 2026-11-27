@@ -1,0 +1,141 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QD3CPXAWXTZAYM3W9",
+  "name": "supplier_scorecards",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QGWS5VG2CPHNNX949",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the supplier scorecard."
+    },
+    {
+      "id": "01M8EJX99QYA8CPFFKGW7K73E2",
+      "name": "period_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99QKRWVGTN04YSYGWEC",
+      "name": "period_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99QXQSDWA150D8RES9G",
+      "name": "on_time_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Share of lines delivered on time."
+    },
+    {
+      "id": "01M8EJX99QH0NH6DY3VPAG5SA2",
+      "name": "fill_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Share of quantity delivered."
+    },
+    {
+      "id": "01M8EJX99QE1S7GKVDNS7DW5YC",
+      "name": "quality_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Share of quantity accepted."
+    },
+    {
+      "id": "01M8EJX99Q6BFFGKSN21RXA75G",
+      "name": "overall_score",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Weighted score."
+    },
+    {
+      "id": "01M8EJX99Q1CJPYXC9G09MAZ7S",
+      "name": "comments",
+      "type": "text",
+      "comment": "Reviewer's comments."
+    },
+    {
+      "id": "01M8EJX99QGGFZCKFVT1Y1NHS0",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QQKJK1A0RSTYT4FRQ",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q16T39E3C2WEZFZ0S",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QH52ZQV6BR62QNQAR",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99Q2T2GPNPMRBWFKQ80",
+      "name": "reviewed_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QYF3K7QW3Z2TVZ1R8",
+      "name": "supplier_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_supplier_scorecards",
+    "columns": [
+      "01M8EJX99QGWS5VG2CPHNNX949"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AB1AMN0C1QYY47NE8D",
+      "name": "fk_supplier_scorecards_reviewed_by_id",
+      "columns": [
+        "01M8EJX99Q2T2GPNPMRBWFKQ80"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB9RGDF7J4P3M5X7CR",
+      "name": "fk_supplier_scorecards_supplier_id",
+      "columns": [
+        "01M8EJX99QYF3K7QW3Z2TVZ1R8"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A periodic rating of a supplier's delivery, fill rate and quality."
+}

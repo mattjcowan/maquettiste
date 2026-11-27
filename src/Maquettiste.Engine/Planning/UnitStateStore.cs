@@ -105,7 +105,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         }
 
         var indexed = new List<UnitState>(states.Count);
-        var bytes = Encode(states, indexed);
+        var bytes = Encode(states, indexed, previous?.Bytes.Length ?? 0);
 
         // The same bytes as the file this store last read or wrote, still of that length on disk (a run that skipped every unit of
         // the pack): the file is left alone, as the manifest store leaves an unchanged manifest, so its time stamp keeps saying
@@ -170,13 +170,17 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     /// <summary>Encodes states; with <paramref name="indexed"/>, also gives them back as a load of the bytes would (key order, indexed read keys).</summary>
     /// <param name="states">The states.</param>
     /// <param name="indexed">Receives the states with <see cref="TableKeys"/> read keys, or <see langword="null"/>.</param>
+    /// <param name="sizeHint">
+    /// The size of the pack's previous file, or 0: the body starts that large, so a run that saves about what it read grows no buffer (each
+    /// doubling copied the whole body, about 150 MB a run over a 100,000-unit model's packs).
+    /// </param>
     /// <returns>The bytes.</returns>
-    internal static byte[] Encode(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed)
+    internal static byte[] Encode(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed, int sizeHint = 0)
     {
         var ordered = SortedByKey(states);
         var table = new Dictionary<string, int>(StringComparer.Ordinal);
         var strings = new List<string>();
-        var body = new ByteWriter(ordered.Count * 256); // about 280 bytes per state in a typical file
+        var body = new ByteWriter(Math.Max(ordered.Count * 256, sizeHint)); // about 280 bytes per state in a typical file
         int IndexOf(string value)
         {
             if (!table.TryGetValue(value, out var index))
@@ -613,7 +617,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
 
     /// <summary>
     /// The read keys of a decoded state: indexes into the file's key table, which the decoded states share (smaller than one string
-    /// array per state, and it lets <see cref="Encode(IReadOnlyCollection{UnitState}, List{UnitState})"/> map old indexes to new
+    /// array per state, and it lets <see cref="Encode(IReadOnlyCollection{UnitState}, List{UnitState}, int)"/> map old indexes to new
     /// ones instead of hashing every key again).
     /// </summary>
     /// <param name="table">The file's key table.</param>

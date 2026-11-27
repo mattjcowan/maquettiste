@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH5ZDEC0V6MDNCBHQV",
+  "name": "communication preference involves contact in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1WQ54T9AFFR6TSAZP41HQNX",
+  "foreignKey": "01M8EJX9A8SYJXNBMSYHM1JKT8"
+}

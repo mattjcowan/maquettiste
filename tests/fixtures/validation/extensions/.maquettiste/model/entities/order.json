@@ -19,5 +19,23 @@
       "type": "uuid",
       "required": true
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EKDBZTWR13JE969C3S6R5X",
+      "database": "01JDBS00000000000000000001",
+      "source": "01M8EKDBZ8RQR2DH00MNV8VGPY",
+      "fields": [
+        {
+          "attribute": "01JATT00000000000000000201",
+          "column": "01M8EKDBZ8MKCS68N87DRT9MC3"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EKDBZ8MKCS68N87DRT9MC3": "a5614527:8da1c7b8"
+        }
+      }
+    }
   ]
 }

@@ -13,14 +13,14 @@ using App.Model.Billing;
 
 namespace App.Model.Billing.Catalog;
 
-/// <summary>Reads and writes <see cref="Product"/> rows in billing.products (database main, postgresql).</summary>
+/// <summary>Reads and writes <see cref="Product"/> rows through its binding to table products (database main, postgresql).</summary>
 public partial interface IProductRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<Product?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<Product>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Product>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(Product entity, CancellationToken cancellationToken = default);
@@ -35,42 +35,44 @@ public partial interface IProductRepository
 /// <summary>The Dapper implementation of <see cref="IProductRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class ProductRepository(IDbConnection connection, IDbTransaction? transaction = null) : IProductRepository
 {
-    private const string Columns = """
-        id AS Id,
-        sku AS Sku,
-        name AS Name,
-        list_price_amount AS ListPriceAmount,
-        list_price_currency AS ListPriceCurrency,
-        deleted_at AS DeletedAt
+    private const string SelectSql = """
+        SELECT t.id AS id, t.sku AS sku, t.name AS name, t.list_price_amount AS listPriceAmount, t.list_price_currency AS listPriceCurrency, t.deleted_at AS deletedAt
+        FROM billing.products t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM billing.products WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM billing.products ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.sku AS sku, t.name AS name, t.list_price_amount AS listPriceAmount, t.list_price_currency AS listPriceCurrency, t.deleted_at AS deletedAt
+        FROM billing.products t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO billing.products (id, sku, name, list_price_amount, list_price_currency, deleted_at)
-        VALUES (@Id, @Sku, @Name, @ListPriceAmount, @ListPriceCurrency, @DeletedAt)
+        VALUES (@id, @sku, @name, @listPriceAmount, @listPriceCurrency, @deletedAt)
         """;
 
     private const string UpdateSql = """
-        UPDATE billing.products SET sku = @Sku, name = @Name, list_price_amount = @ListPriceAmount, list_price_currency = @ListPriceCurrency, deleted_at = @DeletedAt
-        WHERE id = @Id
+        UPDATE billing.products SET sku = @sku, name = @name, list_price_amount = @listPriceAmount, list_price_currency = @listPriceCurrency, deleted_at = @deletedAt
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM billing.products WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM billing.products
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<Product?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<Product>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Product>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -93,36 +95,36 @@ public partial class ProductRepository(IDbConnection connection, IDbTransaction?
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of products, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table products as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public string Sku { get; set; } = default!;
-        public string Name { get; set; } = default!;
-        public decimal? ListPriceAmount { get; set; }
-        public string? ListPriceCurrency { get; set; }
-        public DateTimeOffset? DeletedAt { get; set; }
+        public Guid id { get; set; }
+        public string sku { get; set; } = default!;
+        public string name { get; set; } = default!;
+        public decimal? listPriceAmount { get; set; }
+        public string? listPriceCurrency { get; set; }
+        public DateTimeOffset? deletedAt { get; set; }
 
         public static Product ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Sku = row.Sku,
-            Name = row.Name,
-            ListPrice = (row.ListPriceAmount is null && row.ListPriceCurrency is null ? null : new Money { Amount = (decimal)row.ListPriceAmount!, Currency = (string)row.ListPriceCurrency! }),
-            DeletedAt = row.DeletedAt,
+            Id = row.id,
+            Sku = row.sku,
+            Name = row.name,
+            DeletedAt = row.deletedAt,
+            ListPrice = (row.listPriceAmount is null && row.listPriceCurrency is null ? null : new Money { Amount = (decimal)row.listPriceAmount!, Currency = (string)row.listPriceCurrency! }),
         };
 
         public static Row From(Product entity) => new()
         {
-            Id = entity.Id,
-            Sku = entity.Sku,
-            Name = entity.Name,
-            ListPriceAmount = entity.ListPrice?.Amount,
-            ListPriceCurrency = entity.ListPrice?.Currency,
-            DeletedAt = entity.DeletedAt,
+            id = entity.Id,
+            sku = entity.Sku,
+            name = entity.Name,
+            listPriceAmount = entity.ListPrice?.Amount,
+            listPriceCurrency = entity.ListPrice?.Currency,
+            deletedAt = entity.DeletedAt,
         };
     }
 }

@@ -1,0 +1,84 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QCTZGS2Y78ZMR5AB5",
+  "name": "service_case_comments",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QRX0YYEWEYQMW0VHG",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the service case comment."
+    },
+    {
+      "id": "01M8EJX99QC2HH24DNRYQ7Y6X2",
+      "name": "body",
+      "type": "text",
+      "nullable": false,
+      "comment": "Message."
+    },
+    {
+      "id": "01M8EJX99QE5WAJ3MQJS65NX6D",
+      "name": "is_internal",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Hidden from the customer."
+    },
+    {
+      "id": "01M8EJX99QH0GSV14NJ8YJ4Y2J",
+      "name": "posted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When it was posted."
+    },
+    {
+      "id": "01M8EJX99QNB275RYR5V34AEXG",
+      "name": "author_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99Q8R7501VR1M8JKAQK",
+      "name": "service_case_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_service_case_comments",
+    "columns": [
+      "01M8EJX99QRX0YYEWEYQMW0VHG"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABXJNZWFRNPXYSC8PH",
+      "name": "fk_service_case_comments_author_id",
+      "columns": [
+        "01M8EJX99QNB275RYR5V34AEXG"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB7JPPZ9NMJF23YRQD",
+      "name": "fk_service_case_comments_service_case_id",
+      "columns": [
+        "01M8EJX99Q8R7501VR1M8JKAQK"
+      ],
+      "referencesTable": "01M8EJX99QXZ6GNTWBN29N1326",
+      "referencesColumns": [
+        "01M8EJX99Q063NTEPFVE7DA9C1"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A message on a service case, from the customer or an agent."
+}

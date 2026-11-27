@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHKQVPE4DR74913J7F",
+  "name": "stored payment method belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M24MAK7EJ1YNK8BPJF1YF077",
+  "foreignKey": "01M8EJX9A6YYJRJMYHDJ2DJNY4"
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PXM38KZREAE24DB6G",
+  "name": "tracking_events",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P441T5VH03GDYGACN",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the tracking event."
+    },
+    {
+      "id": "01M8EJX99PXECSHWTKHNTE7RQ0",
+      "name": "occurred_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the scan happened."
+    },
+    {
+      "id": "01M8EJX99PWWZJSB1N5PNN95G0",
+      "name": "event_code",
+      "type": "string",
+      "length": 10,
+      "nullable": false,
+      "comment": "Carrier event code."
+    },
+    {
+      "id": "01M8EJX99PV3FYSC5PDN566PF5",
+      "name": "description",
+      "type": "string",
+      "length": 200,
+      "comment": "Event text."
+    },
+    {
+      "id": "01M8EJX99PWE0025QD1GGV32GZ",
+      "name": "city",
+      "type": "string",
+      "length": 80,
+      "comment": "Scan location."
+    },
+    {
+      "id": "01M8EJX99P5GTWRZNC2EBSA3A8",
+      "name": "country_code",
+      "type": "string",
+      "length": 2,
+      "comment": "Scan country."
+    },
+    {
+      "id": "01M8EJX99PAZSE2DHZ89CDHCAG",
+      "name": "shipment_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_tracking_events",
+    "columns": [
+      "01M8EJX99P441T5VH03GDYGACN"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9DGSB5NY1SZDT4D0N",
+      "name": "fk_tracking_events_shipment_id",
+      "columns": [
+        "01M8EJX99PAZSE2DHZ89CDHCAG"
+      ],
+      "referencesTable": "01M8EJX99PKM2XB6JYQ5KG4H99",
+      "referencesColumns": [
+        "01M8EJX99PJZQHKXG1H6695ECQ"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A scan event reported by a carrier for a shipment."
+}

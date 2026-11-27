@@ -1,0 +1,138 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99N30H0S2NQ0SXCCFM4",
+  "name": "write_offs",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NEP9Q5WXM1Y14D961",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the write off."
+    },
+    {
+      "id": "01M8EJX99NN0WQ8FM1KDQJ6MJ1",
+      "name": "written_off_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date written off."
+    },
+    {
+      "id": "01M8EJX99NE7JAWVB6VYF8C616",
+      "name": "amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99NEWXV6QEBZ6Z080C1",
+      "name": "amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99NZAW1F1KQ66T07KXE",
+      "name": "reason",
+      "type": "string",
+      "length": 300,
+      "nullable": false,
+      "comment": "Why it is uncollectable."
+    },
+    {
+      "id": "01M8EJX99N5ZG5CW9DYD7TNT1D",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99NBY5J96P6R92NNEHR",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NYXJTC91KJ5FWFVB1",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NAYM4M4MDSJJCSY0X",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NT2CP89ZJJWH6HGAT",
+      "name": "approved_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NPZ5MNCCEDK2MDXSE",
+      "name": "journal_entry_id",
+      "type": "int64"
+    },
+    {
+      "id": "01M8EJX99NGCTY7XYQMT6YCJAK",
+      "name": "invoice_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_write_offs",
+    "columns": [
+      "01M8EJX99NEP9Q5WXM1Y14D961"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A6CS84YABKJF5KW3YJ",
+      "name": "fk_write_offs_approved_by_id",
+      "columns": [
+        "01M8EJX99NT2CP89ZJJWH6HGAT"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A626EA532NT69HWXSD",
+      "name": "fk_write_offs_journal_entry_id",
+      "columns": [
+        "01M8EJX99NPZ5MNCCEDK2MDXSE"
+      ],
+      "referencesTable": "01M38K2QP4Y617PVRRC6BZ9TCJ",
+      "referencesColumns": [
+        "01M1XTAK24VMJ86QYB1WBKGP0T"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A628A9PRDJNHPPFQ15",
+      "name": "fk_write_offs_invoice_id",
+      "columns": [
+        "01M8EJX99NGCTY7XYQMT6YCJAK"
+      ],
+      "referencesTable": "01M2GD6QYSRRK545Z2FCJ57JXN",
+      "referencesColumns": [
+        "01M8EJX99MY2YCY00H3262RRRP"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A bad debt write-off of an uncollectable invoice balance."
+}

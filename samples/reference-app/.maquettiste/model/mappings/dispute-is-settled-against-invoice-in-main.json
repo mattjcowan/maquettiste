@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CGRF8BQATBQCR3NBAN",
+  "name": "dispute is settled against invoice in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1X1XA3Q2SMPZ50C95B1ZJT5",
+  "foreignKey": "01M8EJX9A3Q5RQ90N8J3ZZWYGK"
+}

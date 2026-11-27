@@ -1,0 +1,124 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NE8Z81RJDX3J34FMX",
+  "name": "stored_payment_methods",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N94EWE96KZ77JSDRC",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the stored payment method."
+    },
+    {
+      "id": "01M8EJX99N8P9THCV9X8T8RRVX",
+      "name": "method_type",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "card or bank-account."
+    },
+    {
+      "id": "01M8EJX99NMKGWDZXVB1XKHMF9",
+      "name": "card_brand",
+      "type": "string",
+      "length": 4,
+      "comment": "Card network, for cards."
+    },
+    {
+      "id": "01M8EJX99N5E6TJSGPH3WEHDTK",
+      "name": "last4",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "comment": "Last four digits."
+    },
+    {
+      "id": "01M8EJX99NF30FTMM2V65102J4",
+      "name": "expires_on",
+      "type": "date",
+      "comment": "Expiry, for cards."
+    },
+    {
+      "id": "01M8EJX99NRH39C7CBGR6RWXK0",
+      "name": "processor_token",
+      "type": "string",
+      "length": 128,
+      "nullable": false,
+      "comment": "Token issued by the processor."
+    },
+    {
+      "id": "01M8EJX99NGJ94KRF0P3BVCWV4",
+      "name": "is_default",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Used for automatic payments."
+    },
+    {
+      "id": "01M8EJX99NYD5S1QJKMAZYK177",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99NG8GTYPWS7VBF7T9T",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NJ1QB1NP9PC5RN0E8",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NYDE6Y7EFCYHTT0GP",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NEZAQ5VHSXA17YNWE",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99NEC9A3WCBQEBX7GMS",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_stored_payment_methods",
+    "columns": [
+      "01M8EJX99N94EWE96KZ77JSDRC"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A6YYJRJMYHDJ2DJNY4",
+      "name": "fk_stored_payment_methods_customer_id",
+      "columns": [
+        "01M8EJX99NEC9A3WCBQEBX7GMS"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A tokenized card or bank account a customer saved on the portal; the details stay with the processor."
+}

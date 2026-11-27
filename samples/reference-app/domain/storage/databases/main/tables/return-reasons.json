@@ -1,0 +1,81 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QTHPT84P7JGXXZD5G",
+  "name": "return_reasons",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QVNJ6EXQC23AZH934",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the return reason."
+    },
+    {
+      "id": "01M8EJX99QK72PX9JFHC49KTN5",
+      "name": "is_customer_fault",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether a restocking fee applies."
+    },
+    {
+      "id": "01M8EJX99QPH9WQ2J9EPVXY222",
+      "name": "requires_inspection",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether goods must be inspected before credit."
+    },
+    {
+      "id": "01M8EJX99QG3PFXGA7D4CNCSB4",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99QMDNH8NFW47NCPSS1",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99QKRCQA5C1JYBZEA5F",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99QAQDHGPS2JFVHWQXQ",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_return_reasons",
+    "columns": [
+      "01M8EJX99QVNJ6EXQC23AZH934"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AB4YBYK180WEFVZ026",
+      "name": "uq_return_reasons_code",
+      "columns": [
+        "01M8EJX99QG3PFXGA7D4CNCSB4"
+      ]
+    }
+  ],
+  "comment": "A reason for a return, such as Damaged in transit or Ordered in error."
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJVJ4VETTJJR69VT78",
+  "name": "warehouse reports to manager in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2TGT5BK6GTGDM9VNBP9KRXY",
+  "foreignKey": "01M8EJX9AA7TQ0ZD6JHFQQ2NEF"
+}

@@ -1,0 +1,122 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P205VEZSNBGD90S75",
+  "name": "departments",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PF8R5RH27G2ZZSEM5",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the department."
+    },
+    {
+      "id": "01M8EJX99PEK2D6XWVVTTFGHGN",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Short department code used in cost reports."
+    },
+    {
+      "id": "01M8EJX99P393XDJANXC0A3HHQ",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Department name."
+    },
+    {
+      "id": "01M8EJX99P8RDVR8BB9C4W77EA",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether employees can be assigned."
+    },
+    {
+      "id": "01M8EJX99P22GSXXRYHG4MENSX",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PA65QMSC5ZXXFAZC2",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PCTY2ECZ2SXW26SRF",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PEA2T1HJ70805NR69",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PA5JGVRWDTJ3KHA52",
+      "name": "cost_center_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PBSRTSCAPGGG92QEN",
+      "name": "parent_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_departments",
+    "columns": [
+      "01M8EJX99PF8R5RH27G2ZZSEM5"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9ZJMBW99JTQC2RH75",
+      "name": "uq_departments_code",
+      "columns": [
+        "01M8EJX99PEK2D6XWVVTTFGHGN"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9A1V8E8R98EW6YW98",
+      "name": "fk_departments_cost_center_id",
+      "columns": [
+        "01M8EJX99PA5JGVRWDTJ3KHA52"
+      ],
+      "referencesTable": "01M8EJX99P5J0E19PAVE7JYSJ0",
+      "referencesColumns": [
+        "01M8EJX99PY96M7HPE86J4KR2W"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A969ZF92FS22F982VF",
+      "name": "fk_departments_parent_id",
+      "columns": [
+        "01M8EJX99PBSRTSCAPGGG92QEN"
+      ],
+      "referencesTable": "01M8EJX99P205VEZSNBGD90S75",
+      "referencesColumns": [
+        "01M8EJX99PF8R5RH27G2ZZSEM5"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An organizational unit of Northwind, nested into a hierarchy (Operations > Warehousing > Receiving)."
+}

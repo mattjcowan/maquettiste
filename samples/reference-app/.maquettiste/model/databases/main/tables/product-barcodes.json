@@ -1,0 +1,95 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99N97BAG99FMT0DKHA4",
+  "name": "product_barcodes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NXV1E8NJAH3QEH2BC",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product barcode."
+    },
+    {
+      "id": "01M8EJX99NWXV4ZBVY0GGJN34C",
+      "name": "symbology",
+      "type": "string",
+      "length": 12,
+      "nullable": false,
+      "comment": "Barcode type, such as GTIN-13, UPC-A or GS1-128."
+    },
+    {
+      "id": "01M8EJX99NWM4V28VS7H7QV9M9",
+      "name": "value",
+      "type": "string",
+      "length": 48,
+      "nullable": false,
+      "comment": "Encoded value."
+    },
+    {
+      "id": "01M8EJX99N8GTE55J073V3QD64",
+      "name": "is_primary",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Barcode printed on labels by default."
+    },
+    {
+      "id": "01M8EJX99NSJ03REK0M7QYBHXA",
+      "name": "unit_code",
+      "type": "string",
+      "length": 3
+    },
+    {
+      "id": "01M8EJX99NERPWW211D9M7S4MX",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_barcodes",
+    "columns": [
+      "01M8EJX99NXV1E8NJAH3QEH2BC"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A75WG256W1AZEFVSZ2",
+      "name": "uq_product_barcodes_value",
+      "columns": [
+        "01M8EJX99NWM4V28VS7H7QV9M9"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A70SNH5FQVP8E4C2SS",
+      "name": "fk_product_barcodes_unit_code",
+      "columns": [
+        "01M8EJX99NSJ03REK0M7QYBHXA"
+      ],
+      "referencesTable": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "referencesColumns": [
+        "01M8EJX99Q26RFK5STCSH1JBPE"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7DVNY4NYS02NFNDZD",
+      "name": "fk_product_barcodes_product_id",
+      "columns": [
+        "01M8EJX99NERPWW211D9M7S4MX"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A barcode that identifies a product at a packaging level."
+}

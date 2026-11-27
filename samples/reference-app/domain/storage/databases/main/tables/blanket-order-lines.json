@@ -1,0 +1,97 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99Q4XFZ50V77CSXF5E6",
+  "name": "blanket_order_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QCTTYNP1YAYMDH9SB",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the blanket order line."
+    },
+    {
+      "id": "01M8EJX99QW076XNSM50ERYB3M",
+      "name": "committed_quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity committed."
+    },
+    {
+      "id": "01M8EJX99QX73Q98JS631WB2D8",
+      "name": "released_quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "default": 0,
+      "comment": "Quantity released so far."
+    },
+    {
+      "id": "01M8EJX99Q5B2CCSRCZZV3WV5J",
+      "name": "unit_price_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QCYP7W0ZDCN842JQ4",
+      "name": "unit_price_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QQ92CJW32BR3C4FDZ",
+      "name": "blanket_order_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q3RD647NKHKHVMWJF",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_blanket_order_lines",
+    "columns": [
+      "01M8EJX99QCTTYNP1YAYMDH9SB"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACZACPM6TB524E56XH",
+      "name": "fk_blanket_order_lines_blanket_order_id",
+      "columns": [
+        "01M8EJX99QQ92CJW32BR3C4FDZ"
+      ],
+      "referencesTable": "01M8EJX99QCA872S7W021H7TBH",
+      "referencesColumns": [
+        "01M8EJX99Q9S3PZWQ7TBW1ZBB3"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACY3EGG9D9R97PS0AE",
+      "name": "fk_blanket_order_lines_product_id",
+      "columns": [
+        "01M8EJX99Q3RD647NKHKHVMWJF"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A product and quantity committed on a blanket order."
+}

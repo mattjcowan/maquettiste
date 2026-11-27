@@ -1,0 +1,76 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NZV7QZ0ZV49TBQ4TS",
+  "name": "tariff_codes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NQC166H5XPWXQ0CE0",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the tariff code."
+    },
+    {
+      "id": "01M8EJX99NHFPYREGCN6RXQ0TN",
+      "name": "code",
+      "type": "string",
+      "length": 12,
+      "nullable": false,
+      "comment": "HS or HTS code, such as 4015.19.1010."
+    },
+    {
+      "id": "01M8EJX99N8HMJKRTMD00QWPZY",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "nullable": false,
+      "comment": "Official description."
+    },
+    {
+      "id": "01M8EJX99NCRCRPQ9H337JKNWR",
+      "name": "duty_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "General duty rate."
+    },
+    {
+      "id": "01M8EJX99NTR63JR25SPGDG17W",
+      "name": "country_code",
+      "type": "string",
+      "length": 2
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_tariff_codes",
+    "columns": [
+      "01M8EJX99NQC166H5XPWXQ0CE0"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A797ASF8R540W1R5X5",
+      "name": "uq_tariff_codes_code",
+      "columns": [
+        "01M8EJX99NHFPYREGCN6RXQ0TN"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7MKGA5CD7KMSXPCXB",
+      "name": "fk_tariff_codes_country_code",
+      "columns": [
+        "01M8EJX99NTR63JR25SPGDG17W"
+      ],
+      "referencesTable": "01M8EJX99QM2593EWW3DNC676T",
+      "referencesColumns": [
+        "01M8EJX99QZYYZX93FNJF0W9JT"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A Harmonized System tariff code with the default import duty rate."
+}

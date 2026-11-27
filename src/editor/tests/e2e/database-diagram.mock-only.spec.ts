@@ -11,7 +11,7 @@ const tableCard = (page: Page, name: string) => canvas(page).getByTestId(`table-
 const row = (page: Page, table: string, column: string) => tableCard(page, table).getByTestId(`table-column-${column}`);
 
 async function openDiagram(page: Page) {
-  await page.goto("/database");
+  await page.goto("/database?mock=projected");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   // The first layout (elkjs, in a worker) and its fit are done: the cards are where they stay.
   await expect(canvas(page)).toHaveAttribute("data-layout", "settled");

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHDXXYQGB1D75E4P48",
+  "name": "contact concerns party in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2R9JBSPWJWAJVWXFS341E4Y",
+  "foreignKey": "01M8EJX9A8E9QVFXESQ24K031F"
+}

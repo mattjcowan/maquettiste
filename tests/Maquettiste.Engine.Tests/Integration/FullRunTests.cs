@@ -1,10 +1,12 @@
 using System.Text.Json;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
 /// <summary>Full and repeated runs over the billing fixture with real packs (integration tasks 1 and 2).</summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class FullRunTests
 {
     [Fact]

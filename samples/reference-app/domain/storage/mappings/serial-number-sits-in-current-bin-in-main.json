@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJEA2GQREPHTV2ZQC2",
+  "name": "serial number sits in current bin in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1VCH27SF7D4YKD73W2QRHEX",
+  "foreignKey": "01M8EJX9AAYZF03PBTRQ8NHV3N"
+}

@@ -32,7 +32,10 @@ public sealed class ProcessFixtureTests
 
         Assert.Equal(["Purchasing", "Sales"], model.All<Package>().Select(p => p.Name));
         Assert.Equal(["GateSignature", "ProcessInstance", "PurchaseRequest", "SalesOrder", "SalesOrderHistory"], model.All<Entity>().Select(e => e.Name));
-        Assert.Equal(5, model.All<Mapping>().Count);
+        // Each entity is bound to a designed table of main (no relation, so no relation mapping).
+        Assert.Empty(model.All<Mapping>());
+        Assert.Equal(5, model.All<Table>().Count);
+        Assert.All(model.All<Entity>(), e => Assert.Single(e.Bindings));
         Assert.Equal(ConventionMapping.None, Assert.Single(model.All<Database>()).ByConvention);
         Assert.Equal(8, model.All<Actor>().Count);
         Assert.Equal(["persona"], model.All<Actor>().Single(a => a.Name == "BudgetHolder").Stereotypes);

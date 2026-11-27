@@ -7,7 +7,8 @@ namespace Maquettiste.Bench.Synthetic;
 /// The synthetic model as element records, built in memory from <see cref="SyntheticModelOptions"/> (engine-design.md section 17):
 /// packages, entities (8 to 20 attributes, 10% in two-level hierarchies, <c>audited</c> and <c>soft-delete</c> on 30%), relations
 /// (70% one to many, 15% many to many, 10% with attributes, 5% one to one), enums, value objects, scalar types, three databases
-/// and mappings. Pure and deterministic: the same options give the same records in the same order.
+/// and their designed tables, bindings and relation mappings (<see cref="StoreTables"/>). Pure and deterministic: the same options
+/// give the same records in the same order.
 /// </summary>
 internal sealed partial class SyntheticModel
 {
@@ -108,8 +109,9 @@ internal sealed partial class SyntheticModel
         BuildRelations();
         BuildDatabasesAndMappings();
         BuildScaleShape();
-        EditTarget = _entities[MiddleStandalone()];
         Settings = BuildSettings();
+        StoreTables();
+        EditTarget = _entities[MiddleStandalone()];
     }
 
     private int MiddleStandalone()

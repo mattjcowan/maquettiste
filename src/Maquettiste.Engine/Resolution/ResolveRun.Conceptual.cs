@@ -47,10 +47,10 @@ internal sealed partial class ResolveRun
     /// <c>e:</c> keys of every conceptual file and mapping: which tables a database holds, and in which order, can change with any
     /// of them (a new collection attribute, a package move, an ignored mapping), so database table lists depend on all of them.
     /// </summary>
-    public IReadOnlyList<string> ConceptualElementKeys => _conceptualKeys ??= [.. Model.Documents
+    public IReadOnlyList<string> ConceptualElementKeys => _conceptualKeys ??= new DependencySet(Keys).AddRange(Model.Documents
         .Where(d => d.Element.Kind is ElementKind.Entity or ElementKind.Relation or ElementKind.Enum or ElementKind.ValueObject
             or ElementKind.ScalarType or ElementKind.Mapping or ElementKind.Stereotype or ElementKind.Package)
-        .Select(d => Keys.Element(d.Element.Id))];
+        .Select(d => Keys.Element(d.Element.Id))).ToList(); // sorted and frozen once: every database's lists merge it as one run
 
     private IReadOnlyList<string> MappingKeysOf(string id) => _mappingKeysByTarget.TryGetValue(id, out var keys) ? keys : [];
 
@@ -62,6 +62,8 @@ internal sealed partial class ResolveRun
 
     private Dictionary<string, List<(RRelation Relation, REnd End)>>? _relationsByEndId;
 
+    private object? _relationsByEndIdLock;
+
     /// <summary>
     /// The relations of <see cref="RelationOrder"/> with an end of this id, in that order, with the end: what a scan of
     /// <see cref="RelationOrder"/> for the end finds, without the scan (a binding's foreign key field looked up its end by walking every
@@ -72,7 +74,9 @@ internal sealed partial class ResolveRun
     /// <returns>The matches, usually one.</returns>
     public IReadOnlyList<(RRelation Relation, REnd End)> RelationsWithEnd(string endId)
     {
-        var index = LazyInitializer.EnsureInitialized(ref _relationsByEndId, () =>
+        // Built once under a lock: the bindings of a database build side by side and ask at the same time (the lock-free overload runs the
+        // factory on every thread that races it).
+        var index = LazyInitializer.EnsureInitialized(ref _relationsByEndId, ref _relationsByEndIdLock, () =>
         {
             var built = new Dictionary<string, List<(RRelation, REnd)>>(StringComparer.Ordinal);
             foreach (var relation in _relationOrder)
@@ -146,7 +150,8 @@ internal sealed partial class ResolveRun
     public void SetEntityMapping(REntity entity, string database, REntityMapping mapping)
     {
         mapping.TemplateDefined = TemplateDefinedOf(entity.Attributes, database, entity.Id);
-        Map(_entityMappings, entity.Id)[database] = mapping;
+        lock (_databaseMaps)
+            Map(_entityMappings, entity.Id)[database] = mapping;
         AddTemplateCollections(mapping.Database, mapping.Table, mapping.TemplateDefined);
     }
 
@@ -166,29 +171,44 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>Records an entity's binding to a database (erratum E43).</summary>
-    public void SetEntityBinding(REntity entity, string database, REntityBinding binding) => Map(_entityBindings, entity.Id)[database] = binding;
+    public void SetEntityBinding(REntity entity, string database, REntityBinding binding)
+    {
+        lock (_databaseMaps)
+            Map(_entityBindings, entity.Id)[database] = binding;
+    }
 
     /// <summary>Records a relation's mapping in a database.</summary>
     public void SetRelationMapping(RRelation relation, string database, RRelationMapping mapping)
     {
         mapping.TemplateDefined = TemplateDefinedOf(relation.Attributes, database, relation.Id);
-        Map(_relationMappings, relation.Id)[database] = mapping;
+        lock (_databaseMaps)
+            Map(_relationMappings, relation.Id)[database] = mapping;
         AddTemplateCollections(mapping.JunctionTable?.Database, mapping.JunctionTable, mapping.TemplateDefined);
     }
 
     /// <summary>Records a navigation's join path in a database.</summary>
-    public void SetJoin(RNavigation navigation, string database, RJoinPath path) =>
-        (navigation.PendingJoins ??= new SortedDictionary<string, RJoinPath>(StringComparer.Ordinal))[database] = path;
+    public void SetJoin(RNavigation navigation, string database, RJoinPath path)
+    {
+        lock (_databaseMaps)
+            (navigation.PendingJoins ??= new SortedDictionary<string, RJoinPath>(StringComparer.Ordinal))[database] = path;
+    }
 
     /// <summary>
     /// Records a navigation's paths per pair of targets in a database (several-types-design.md decision 48), in the order of
     /// <see cref="RNavigation.TypeJoins"/>.
     /// </summary>
-    public void SetTypeJoins(RNavigation navigation, string database, IReadOnlyList<RJoinPath> paths) =>
-        (navigation.PendingTypeJoins ??= new SortedDictionary<string, IReadOnlyList<RJoinPath>>(StringComparer.Ordinal))[database] = paths;
+    public void SetTypeJoins(RNavigation navigation, string database, IReadOnlyList<RJoinPath> paths)
+    {
+        lock (_databaseMaps)
+            (navigation.PendingTypeJoins ??= new SortedDictionary<string, IReadOnlyList<RJoinPath>>(StringComparer.Ordinal))[database] = paths;
+    }
 
     /// <summary>Records a key sequence of an entity in a database.</summary>
-    public void SetKeySequence(REntity entity, string database, RSequence sequence) => Map(_keySequences, entity.Id)[database] = sequence;
+    public void SetKeySequence(REntity entity, string database, RSequence sequence)
+    {
+        lock (_databaseMaps)
+            Map(_keySequences, entity.Id)[database] = sequence;
+    }
 
     private static SortedDictionary<string, T> Map<T>(Dictionary<string, SortedDictionary<string, T>> maps, string id)
     {
@@ -299,11 +319,10 @@ internal sealed partial class ResolveRun
     private IReadOnlyList<string> ComputeEntityMembership()
     {
         var keys = new DependencySet(Keys).Add("k:entity").Add("k:relation").Add("k:mapping").Add(Conventions);
-        foreach (var mapping in Model.All<Mapping>())
-        {
-            if (mapping.Relation is not null)
-                keys.Element(mapping.Id);
-        }
+        // What of the relation mappings can promote a relation, as one key rather than every relation mapping file's (a model with a
+        // mapping per relation put tens of thousands of keys on every entity's relation list). Always recorded: an entity mapping file that
+        // becomes a promoted relation mapping under the same id moves no kind set and no other key the lists record.
+        keys.Add(Planning.PromotionNaming.Key);
 
         var promotesByConvention = EffectiveConventions.AnyPromotes(Settings);
         if (promotesByConvention)

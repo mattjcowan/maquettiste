@@ -6,7 +6,7 @@ const explorer = (page: import("@playwright/test").Page) => page.getByRole("comp
 const chevron = (row: import("@playwright/test").Locator) => row.locator("span[aria-hidden]").first();
 
 test("New schema, rename, set default: an entity's table shows under the default schema", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   const side = explorer(page);
   const tree = side.getByTestId("explorer-tree");
   await workspace(page, "Databases");

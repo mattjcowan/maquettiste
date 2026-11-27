@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJHCD6Z9DFEWSRC32N",
+  "name": "contract price is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2QDQW1TCKWEKNNP8EVQQW5A",
+  "foreignKey": "01M8EJX9AA0RMEB11T88TEAWRJ"
+}

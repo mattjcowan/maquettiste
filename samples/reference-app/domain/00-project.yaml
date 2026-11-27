@@ -197,6 +197,7 @@ database:
   schema: northwind
   description: The operational PostgreSQL 16 database that holds every package.
   schemaDescription: All operational tables of Northwind Operations.
+  byConvention: none
   sequences:
     sales_order_number_seq:
       description: Numbers sales orders; formatted as SO-000000 by the application.
@@ -317,7 +318,7 @@ database:
       parameters:
         - { name: customerId, type: uuid }
         - { name: statuses, type: string, length: 8, collection: true, description: Status codes such as SUBMIT or CONFIRM. }
-      from: { source: SalesOrder, alias: o }
+      from: { source: sales_orders, alias: o }
       select:
         - { name: id, expression: { column: o.id } }
         - { name: orderNumber, expression: { column: o.order_number } }
@@ -338,9 +339,9 @@ database:
       parameters:
         - { name: since, type: datetimeoffset }
         - { name: top, type: int32, default: 10 }
-      from: { source: SalesOrder, alias: o }
+      from: { source: sales_orders, alias: o }
       joins:
-        - { source: SalesChannel, alias: ch, kind: left, on: { op: eq, left: { column: ch.id }, right: { column: o.sales_channel_id } } }
+        - { source: sales_channels, alias: ch, kind: left, on: { op: eq, left: { column: ch.id }, right: { column: o.sales_channel_id } } }
       select:
         - name: channel
           nullable: false

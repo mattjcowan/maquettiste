@@ -27,146 +27,14 @@
       "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
     },
     {
-      "fromElementId": "01J92P0V1T0J6RH4MY9H81NYB4",
-      "fromId": "01J92P0V1VQAA9FW71PKYWWHKN",
-      "jsonPointer": "/columns/0/attribute",
-      "field": "attribute",
-      "toId": "01J92P0V0R3VSP7D5238DTNZX1"
-    },
-    {
-      "fromElementId": "01J92P0V1T0J6RH4MY9H81NYB4",
-      "fromId": "01J92P0V1T0J6RH4MY9H81NYB4",
-      "jsonPointer": "/entity",
-      "field": "entity",
-      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
-    },
-    {
-      "fromElementId": "01J92P0V1T0J6RH4MY9H81NYB4",
-      "fromId": "01J92P0V1XETXS1K25N66WP3HY",
-      "jsonPointer": "/indexes/0/columns/0/column",
-      "field": "column",
-      "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
-    },
-    {
-      "fromElementId": "01J92P0V200XW93JQYSRCT2SE3",
-      "fromId": "01J92P0V200XW93JQYSRCT2SE3",
-      "jsonPointer": "/attributes/0/attribute",
-      "field": "attribute",
-      "toId": "01J92P0V0VB1Z49SWERMAGR4TV"
-    },
-    {
-      "fromElementId": "01J92P0V200XW93JQYSRCT2SE3",
-      "fromId": "01J92P0V200XW93JQYSRCT2SE3",
-      "jsonPointer": "/attributes/1/attribute",
-      "field": "attribute",
-      "toId": "01J92P0V0T6EA0XM025XQX8GBW"
-    },
-    {
-      "fromElementId": "01J92P0V200XW93JQYSRCT2SE3",
-      "fromId": "01J92P0V200XW93JQYSRCT2SE3",
-      "jsonPointer": "/entity",
-      "field": "entity",
-      "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
-    },
-    {
       "fromElementId": "01J92P0V2164SDBW687ZV6E1MV",
       "fromId": "01J92P0V2164SDBW687ZV6E1MV",
       "jsonPointer": "/members/1/element",
       "field": "element",
       "toId": "01J92P0V0FJ23CGSNKM7P1W5V7"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/orderBy/0/expression/column",
-      "field": "column",
-      "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/orderBy/1/expression/column",
-      "field": "column",
-      "toId": "01J92P0V0R3VSP7D5238DTNZX1"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/0/expression/column",
-      "field": "column",
-      "toId": "01J92P0V0Q9EK961M5HAQ3C5MY"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/1/expression/column",
-      "field": "column",
-      "toId": "01J92P0V0R3VSP7D5238DTNZX1"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/2/expression/column",
-      "field": "column",
-      "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/3/expression/column",
-      "field": "column",
-      "toId": "01J92P0V0VB1Z49SWERMAGR4TV"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/select/4/expression/column",
-      "field": "column",
-      "toId": "01J92P0V0WKRGKH7YBKA2V30NC"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000001",
-      "fromId": "01K6QRY0000000000000000001",
-      "jsonPointer": "/where/and/1/left/column",
-      "field": "column",
-      "toId": "01J92P0V0VB1Z49SWERMAGR4TV"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000002",
-      "fromId": "01K6QRY0000000000000000002",
-      "jsonPointer": "/select/2/expression/args/0/args/0/column",
-      "field": "column",
-      "toId": "01J92P0V0T6EA0XM025XQX8GBW"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000002",
-      "fromId": "01K6QRY0000000000000000002",
-      "jsonPointer": "/where/and/0/left/column",
-      "field": "column",
-      "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000002",
-      "fromId": "01K6QRY0000000000000000002",
-      "jsonPointer": "/where/and/1/left/column",
-      "field": "column",
-      "toId": "01J92P0V0SNXS6PZ42VDK42HP9"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000002",
-      "fromId": "01K6QRY0000000000000000002",
-      "jsonPointer": "/where/and/2/left/column",
-      "field": "column",
-      "toId": "01J92P0V0VB1Z49SWERMAGR4TV"
-    },
-    {
-      "fromElementId": "01K6QRY0000000000000000003",
-      "fromId": "01K6QRY0000000000000000003",
-      "jsonPointer": "/where/and/1/exists/where/and/1/left/column",
-      "field": "column",
-      "toId": "01J92P0V0VB1Z49SWERMAGR4TV"
     }
   ],
   "changes": null,
-  "facts": null
+  "facts": null,
+  "usage": null
 }

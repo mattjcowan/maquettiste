@@ -1,0 +1,222 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QXZ6GNTWBN29N1326",
+  "name": "service_cases",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q063NTEPFVE7DA9C1",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the service case."
+    },
+    {
+      "id": "01M8EJX99QD3MAHGXEVGBTPFHR",
+      "name": "case_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Case number."
+    },
+    {
+      "id": "01M8EJX99Q35E7J3AD5ZXJ9SG5",
+      "name": "subject",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "One-line summary."
+    },
+    {
+      "id": "01M8EJX99Q0YT1S051R2YRBD8D",
+      "name": "description",
+      "type": "text",
+      "comment": "Customer's description."
+    },
+    {
+      "id": "01M8EJX99QA67JKKAAD37X0DXH",
+      "name": "priority",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "default": "P3",
+      "comment": "Urgency."
+    },
+    {
+      "id": "01M8EJX99QTZ4HDFB68DEQQWXH",
+      "name": "status",
+      "type": "string",
+      "length": 8,
+      "nullable": false,
+      "default": "NEW",
+      "comment": "Lifecycle state."
+    },
+    {
+      "id": "01M8EJX99QNR88JDRE45P1V3A6",
+      "name": "opened_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the case was opened."
+    },
+    {
+      "id": "01M8EJX99Q99JSGE0XMZ5EGCQ3",
+      "name": "sla_due_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the first answer is due."
+    },
+    {
+      "id": "01M8EJX99QRP65BW7D170KVJV0",
+      "name": "resolved_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was resolved."
+    },
+    {
+      "id": "01M8EJX99QGF1M6ZW67S2PET2Z",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QWR1SR1N53SJP55TN",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QEZ5QQANAT6J13JXA",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99Q1WK7TCTCP7TS05WR",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QZ1EH8SKWEWYTZ264",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q7Q04K7S4RMR71X6H",
+      "name": "sales_order_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QTAAS8VCD69W5C5AP",
+      "name": "assigned_to_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QNAJN8YMQHT3WWD9D",
+      "name": "product_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QS3CYSVP9DDPQC624",
+      "name": "contact_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_service_cases",
+    "columns": [
+      "01M8EJX99Q063NTEPFVE7DA9C1"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ABTBFCPQVQB9Z5JMDE",
+      "name": "uq_service_cases_case_number",
+      "columns": [
+        "01M8EJX99QD3MAHGXEVGBTPFHR"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABVJ164GNGD21HZE8W",
+      "name": "fk_service_cases_customer_id",
+      "columns": [
+        "01M8EJX99QZ1EH8SKWEWYTZ264"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AB838M8QPXAJ87AFYM",
+      "name": "fk_service_cases_sales_order_id",
+      "columns": [
+        "01M8EJX99Q7Q04K7S4RMR71X6H"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ABD8NY1E9ER5QP6H1W",
+      "name": "fk_service_cases_assigned_to_id",
+      "columns": [
+        "01M8EJX99QTAAS8VCD69W5C5AP"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ABGQKMJXGV0P9ZZ57S",
+      "name": "fk_service_cases_product_id",
+      "columns": [
+        "01M8EJX99QNAJN8YMQHT3WWD9D"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ABTN4BVGTJZNZWM9PZ",
+      "name": "fk_service_cases_contact_id",
+      "columns": [
+        "01M8EJX99QS3CYSVP9DDPQC624"
+      ],
+      "referencesTable": "01M8EJX99NX12803VWGRS1E1KW",
+      "referencesColumns": [
+        "01M8EJX99NRVN9JXZG7T665RP7"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9ABP22JKZ4JCPQAEG15",
+      "name": "ix_service_cases_sla_due_at",
+      "columns": [
+        {
+          "column": "01M8EJX99Q99JSGE0XMZ5EGCQ3"
+        }
+      ]
+    }
+  ],
+  "comment": "A customer service request, such as a missing delivery, a billing question or a product problem."
+}

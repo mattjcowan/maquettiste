@@ -1,0 +1,71 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NAPV3VZ5YYTR0M8N9",
+  "name": "bundle_components",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NK1XQGYCWW1C3GD6C",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the bundle component."
+    },
+    {
+      "id": "01M8EJX99N1TK0MCYNA7C6QV1Y",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity per bundle, in the product's base unit."
+    },
+    {
+      "id": "01M8EJX99N9066HG0KZASDN84D",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99ND1ETX1138WFWNPN4",
+      "name": "product_bundle_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_bundle_components",
+    "columns": [
+      "01M8EJX99NK1XQGYCWW1C3GD6C"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A61CGHZR0P0EYE9EMF",
+      "name": "fk_bundle_components_product_id",
+      "columns": [
+        "01M8EJX99N9066HG0KZASDN84D"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A6NNYAE89530KDHW8Z",
+      "name": "fk_bundle_components_product_bundle_id",
+      "columns": [
+        "01M8EJX99ND1ETX1138WFWNPN4"
+      ],
+      "referencesTable": "01M8EJX99NCTG93A4REC85H219",
+      "referencesColumns": [
+        "01M8EJX99NQDYFHQNS01YFPJ4R"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A product and quantity included in a bundle."
+}

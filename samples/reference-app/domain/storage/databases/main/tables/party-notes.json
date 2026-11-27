@@ -1,0 +1,104 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PMCG16MD02MNZN41P",
+  "name": "party_notes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PQ1CK95W9RNYEQZ34",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the party note."
+    },
+    {
+      "id": "01M8EJX99P0JQ1H263YKJ2K1GK",
+      "name": "body",
+      "type": "text",
+      "nullable": false,
+      "comment": "Note text in Markdown."
+    },
+    {
+      "id": "01M8EJX99PNNC16F59SQFNTQ90",
+      "name": "is_pinned",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Shown at the top of the party's page."
+    },
+    {
+      "id": "01M8EJX99PNVHPFM9DQA3HP9E6",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PHEE4E204S7A6JTF9",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PV5JWBYGJ1ANMQ13K",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PTTYRX23WX6M9VP4M",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PATNJAJ3HWXM9E64B",
+      "name": "party_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P0F0EW95H11BGC21T",
+      "name": "author_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_party_notes",
+    "columns": [
+      "01M8EJX99PQ1CK95W9RNYEQZ34"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A86X79E3PH5Z20AKSG",
+      "name": "fk_party_notes_party_id",
+      "columns": [
+        "01M8EJX99PATNJAJ3HWXM9E64B"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A8TA5358ENY0SY497X",
+      "name": "fk_party_notes_author_id",
+      "columns": [
+        "01M8EJX99P0F0EW95H11BGC21T"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A free-text note on a party, such as delivery quirks or negotiation history."
+}

@@ -3,7 +3,18 @@
 // database, the plans of materialize-tables, materialize-entities, materialize-attributes and materialize-columns (the preview, and the batch operations that write them),
 // the five statements of a binding for a dialect (simple SQL, not the engine's renderer), and the binding rules the editor
 // shows inline (MQ4044 to MQ4048, MQ4050 and MQ4058). It shares the field map model with the editor (editors/storage/fieldMap.ts).
-import type { DatabaseView, Diagnostic, MaterializeChange, MaterializePlan, MaterializeStatus, BindingSqlResult, TableView } from "@/api/types";
+import type {
+  DatabaseView,
+  Diagnostic,
+  HierarchyShape,
+  ListStorage,
+  MaterializeChange,
+  MaterializeChoices,
+  MaterializePlan,
+  MaterializeStatus,
+  BindingSqlResult,
+  TableView,
+} from "@/api/types";
 import {
   bindingProblems,
   columnRows,
@@ -102,6 +113,10 @@ export interface MaterializeRequest {
   package?: string | null;
   columns?: string[] | null;
   attributes?: string[] | null;
+  /** materialize-tables: one shape for every hierarchy, or the root entity id to its shape. */
+  hierarchy?: HierarchyShape | Record<string, HierarchyShape> | null;
+  /** materialize-tables: one choice for every list, or the attribute id to its choice. */
+  listStorage?: ListStorage | Record<string, ListStorage> | null;
 }
 
 export interface MaterializeWrites {
@@ -155,6 +170,7 @@ export function planMaterialize(input: BindingInput, databaseId: string, request
     }),
     notes: out.notes,
     diagnostics: out.diagnostics,
+    ...(out.choices ? { choices: out.choices } : {}),
   };
   return { plan, writes: out.diagnostics.length ? { creates: [], updates: [], deletes: [] } : out.writes };
 }
@@ -164,6 +180,7 @@ interface Outcome {
   because: Map<string, string>;
   notes: string[];
   diagnostics: Diagnostic[];
+  choices?: MaterializeChoices;
 }
 
 const ANNOTATIONS = ["displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation"] as const;
@@ -196,17 +213,16 @@ function materializeTables(input: BindingInput, databaseId: string, request: Mat
     out.diagnostics.push(refusal("Name at least one entity to materialize.", databaseId));
     return out;
   }
-  const derived = new Set(entities(docs).flatMap((e) => (typeof e.base === "string" ? [e.base] : [])));
   for (const id of picked) {
     const e = docs.get(id);
     if (!e || e.kind !== "entity") out.diagnostics.push(refusal(`'${id}' is not an entity.`, id));
     else if (bindingsOf(e).some((b) => b.database === databaseId))
       out.diagnostics.push(refusal(`${String(e.name)} is already bound to ${String(db.name)}.`, id));
-    else if (e.abstract === true) out.diagnostics.push(refusal(`${String(e.name)} is abstract: it has no table of its own.`, id));
-    else if (typeof e.base === "string" || derived.has(id))
-      out.diagnostics.push(refusal(`${String(e.name)} is in an inheritance hierarchy: bind it by hand on its Storage tab.`, id));
   }
   if (out.diagnostics.length) return out;
+  const shaped = tableChoices(input, databaseId, picked, request);
+  out.choices = shaped.choices;
+  if (shaped.special) return materializeShaped(input, db, picked, request, shaped, out);
   // Every picked entity projected into the database (a mapping added in memory, an ignoring one made placing).
   const all = [...docs.values()];
   const projected = new Map(docs);
@@ -1127,6 +1143,371 @@ export function bindingFindings(view: DatabaseView, docs: ReadonlyMap<string, Js
       line: null,
       column: null,
     });
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ materialize-tables: hierarchies and lists
+
+const rootOf = (docs: ReadonlyMap<string, Json>, id: string): string => {
+  const seen = new Set([id]);
+  let at = id;
+  for (let next = docs.get(at)?.base; typeof next === "string" && docs.has(next) && !seen.has(next); next = docs.get(at)?.base) {
+    seen.add(next);
+    at = next;
+  }
+  return at;
+};
+
+const choiceOf = <T extends string>(param: T | Record<string, T> | null | undefined, key: string): T | undefined =>
+  typeof param === "string" ? param : param && typeof param === "object" ? param[key] : undefined;
+
+interface TableChoiceSet {
+  choices: MaterializeChoices;
+  /** An inheritance hierarchy or a list is among the picked entities. */
+  special: boolean;
+  shapeOf: Map<string, HierarchyShape>;
+  storageOf: Map<string, ListStorage>;
+  /** The picked entities of each hierarchy, root first. */
+  hierarchies: Map<string, string[]>;
+}
+
+/** The hierarchies among the picked entities and their lists, each with the shape or storage the request names, else its default. */
+function tableChoices(input: BindingInput, databaseId: string, picked: string[], request: MaterializeRequest): TableChoiceSet {
+  const { docs } = input;
+  const all = [...docs.values()];
+  const withDerived = new Set(all.flatMap((e) => (e.kind === "entity" && typeof e.base === "string" ? [e.base] : [])));
+  const name = (id: string) => String(docs.get(id)?.name ?? id);
+  const conventions = { ...input.conventions, ...(input.databaseConventions[String(docs.get(databaseId)?.name ?? "")] ?? {}) };
+  const out: TableChoiceSet = { choices: { hierarchies: [], lists: [] }, special: false, shapeOf: new Map(), storageOf: new Map(), hierarchies: new Map() };
+  const byRoot = new Map<string, string[]>();
+  for (const id of picked) {
+    const e = docs.get(id);
+    if (e?.kind !== "entity" || (typeof e.base !== "string" && !withDerived.has(id))) continue;
+    const root = rootOf(docs, id);
+    byRoot.set(root, [...(byRoot.get(root) ?? []), id]);
+  }
+  for (const [root, members] of [...byRoot].sort((a, b) => name(a[0]).localeCompare(name(b[0])))) {
+    const ordered = [...members].sort((a, b) => (a === root ? -1 : b === root ? 1 : name(a).localeCompare(name(b))));
+    const inheritance = all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === root)?.inheritance;
+    const fallback: HierarchyShape = inheritance === "tpc" ? "per-concrete" : inheritance === "tpt" ? "per-type" : "one-table";
+    const shape = choiceOf(request.hierarchy, root) ?? fallback;
+    out.shapeOf.set(root, shape);
+    out.hierarchies.set(root, ordered);
+    out.choices.hierarchies.push({ root, rootName: name(root), entities: ordered.map(name), shape, default: fallback });
+    out.special = true;
+  }
+  for (const id of [...picked].sort((a, b) => name(a).localeCompare(name(b)))) {
+    const entity = docs.get(id);
+    const mapping = all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === id);
+    for (const attr of arr(entity?.attributes)) {
+      if (attr.collection !== true) continue;
+      const own = arr(mapping?.attributes).find((a) => a.attribute === attr.id)?.storage;
+      const fromConventions = conventions.valueObjectCollectionStorage;
+      const fallback: ListStorage = own === "json" || (own === undefined && fromConventions === "json") ? "json" : "table";
+      const storage = choiceOf(request.listStorage, String(attr.id)) ?? fallback;
+      out.storageOf.set(String(attr.id), storage);
+      out.choices.lists.push({ entity: id, entityName: name(id), attribute: String(attr.id), attributeName: String(attr.name), storage, default: fallback });
+      out.special = true;
+    }
+  }
+  return out;
+}
+
+type Column = TableView["columns"][number];
+
+/**
+ * materialize-tables for entities in a hierarchy or with lists: the hierarchy's tables in the shape asked for, a child table or
+ * a JSON column per list, and a binding per entity. A small mirror of the engine's table builder: relationship keys and
+ * overlays are not carried over.
+ */
+function materializeShaped(input: BindingInput, db: Json, picked: string[], request: MaterializeRequest, set: TableChoiceSet, out: Outcome): Outcome {
+  const { docs } = input;
+  const databaseId = String(db.id);
+  const all = [...docs.values()];
+  const dbName = String(db.name ?? "");
+  const conventions = { ...input.conventions, ...(input.databaseConventions[dbName] ?? {}) };
+  const columnCase = String(conventions.columnCase ?? "snake");
+  const discriminatorName = typeof conventions.discriminatorColumn === "string" ? conventions.discriminatorColumn : "discriminator";
+  const name = (id: string) => String(docs.get(id)?.name ?? id);
+  for (const id of picked) {
+    const root = rootOf(docs, id);
+    for (let up = docs.get(id)?.base; typeof up === "string"; up = docs.get(up)?.base) {
+      if (!picked.includes(up)) out.diagnostics.push(refusal(`${name(id)} derives from ${name(up)}: create their tables together.`, id));
+      if (up === root) break;
+    }
+  }
+  if (out.diagnostics.length) return out;
+  // The columns each entity's own attributes give, by projecting it (abstract ones too).
+  const projected = new Map(docs);
+  for (const id of picked) {
+    const e = docs.get(id)!;
+    projected.set(id, { ...e, abstract: false });
+    if (!all.some((d) => d.kind === "mapping" && d.database === databaseId && d.entity === id))
+      projected.set(`tmp-${id}`, { kind: "mapping", id: `tmp-${id}`, name: "tmp", database: databaseId, entity: id });
+    else {
+      const m = all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === id)!;
+      projected.set(String(m.id), { ...m, ignore: false });
+    }
+  }
+  const view = resolveDatabase({ ...input, docs: projected }, databaseId);
+  const own = new Map<string, { table: TableView; columns: Column[] }>();
+  for (const id of picked) {
+    const t = view?.tables.find((x) => x.key === `${id}@${databaseId}`);
+    if (!t) {
+      out.diagnostics.push(refusal(`${name(id)} has no table of its own in ${dbName}.`, id));
+      continue;
+    }
+    own.set(id, { table: t, columns: t.columns });
+  }
+  if (out.diagnostics.length) return out;
+  const chain = (id: string): string[] => {
+    const up = docs.get(id)?.base;
+    return typeof up === "string" && picked.includes(up) ? [...chain(up), id] : [id];
+  };
+  const schemaOf = (id: string) => request.schema ?? (arr(db.schemas).find((x) => x.name === own.get(id)!.table.schema)?.id as string | undefined);
+  const snake = (word: string) => applyCase(word, columnCase);
+  const toCol = (c: Column, extra: Partial<Json> = {}): Json => {
+    const col: Json = { id: input.newId(), name: c.name, type: c.type };
+    if (c.length !== null) col.length = c.length;
+    if (c.precision !== null) col.precision = c.precision;
+    if (c.scale !== null) col.scale = c.scale;
+    if (!c.nullable) col.nullable = false;
+    return Object.assign(col, extra);
+  };
+  interface Built {
+    id: string;
+    name: string;
+    columns: Json[];
+    primaryKey: string[];
+    foreignKeys: Json[];
+    /** A child table: the table it belongs to. */
+    of?: string;
+  }
+  const tables: Built[] = [];
+  const newTable = (tableName: string): Built => {
+    const t: Built = { id: input.newId(), name: tableName, columns: [], primaryKey: [], foreignKeys: [] };
+    tables.push(t);
+    return t;
+  };
+  const fieldOf = (built: Map<string, string>, cols: Column[]) =>
+    cols.flatMap((c) => (c.attributePath && built.has(c.key) ? [{ attribute: c.attributePath, column: built.get(c.key)! }] : []));
+  const bindings = new Map<string, Json>();
+  const tableOfEntity = new Map<string, { table: Built; keyColumns: Column[]; byKey: Map<string, string> }>();
+  const done = new Set<string>();
+
+  for (const [root, members] of set.hierarchies) {
+    const shape = set.shapeOf.get(root)!;
+    const key = own.get(root)?.columns.filter((c) => c.isPrimaryKey) ?? [];
+    if (shape === "one-table") {
+      const t = newTable(own.get(root)!.table.name);
+      const byKey = new Map<string, string>();
+      for (const id of members) {
+        for (const c of own.get(id)!.columns) {
+          const existing = t.columns.find((x) => x.name === c.name);
+          if (existing) byKey.set(`${id}:${c.key}`, String(existing.id));
+          else {
+            const col = toCol(c, id === root ? {} : { nullable: true });
+            t.columns.push(col);
+            byKey.set(`${id}:${c.key}`, String(col.id));
+            if (c.isPrimaryKey) t.primaryKey.push(String(col.id));
+          }
+        }
+      }
+      const disc = { id: input.newId(), name: snake(discriminatorName), type: "string", length: 100, nullable: false };
+      t.columns.push(disc);
+      for (const id of members) {
+        const fields = chain(id).flatMap((link) =>
+          own.get(link)!.columns.flatMap((c) => (c.attributePath ? [{ attribute: c.attributePath, column: byKey.get(`${link}:${c.key}`)! }] : [])),
+        );
+        const code = all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === id)?.discriminatorValue;
+        // The other entities' columns of the shared table are none of this entity's.
+        const mapped = new Set(fields.map((f) => f.column));
+        const others = t.columns.filter((c) => c.id !== disc.id && !mapped.has(String(c.id))).map((c) => ({ column: c.id, status: "ignored" }));
+        bindings.set(id, {
+          id: input.newId(),
+          database: databaseId,
+          source: t.id,
+          fields,
+          ...(others.length ? { columns: others } : {}),
+          discriminatorColumn: disc.id,
+          discriminatorValue: typeof code === "string" || typeof code === "number" ? code : name(id),
+        });
+        const columnsOfEntity = own.get(id)!;
+        tableOfEntity.set(id, { table: t, keyColumns: key, byKey: new Map(columnsOfEntity.columns.map((c) => [c.key, byKey.get(`${id}:${c.key}`)!])) });
+        done.add(id);
+      }
+    } else if (shape === "per-concrete") {
+      for (const id of members) {
+        if (docs.get(id)?.abstract === true) {
+          out.notes.push(`${name(id)} is abstract: it has no table of its own; each concrete entity's table holds its attributes.`);
+          done.add(id);
+          continue;
+        }
+        const t = newTable(own.get(id)!.table.name);
+        const byKey = new Map<string, string>();
+        const fields: Json[] = [];
+        for (const link of chain(id)) {
+          for (const c of own.get(link)!.columns) {
+            const col = toCol(c);
+            t.columns.push(col);
+            if (c.isPrimaryKey) t.primaryKey.push(String(col.id));
+            if (c.attributePath) fields.push({ attribute: c.attributePath, column: col.id });
+            if (link === id) byKey.set(c.key, String(col.id));
+          }
+        }
+        bindings.set(id, { id: input.newId(), database: databaseId, source: t.id, fields });
+        tableOfEntity.set(id, { table: t, keyColumns: key, byKey });
+        done.add(id);
+      }
+    } else {
+      for (const id of members) {
+        const t = newTable(own.get(id)!.table.name);
+        const byKey = new Map<string, string>();
+        const fields: Json[] = [];
+        const binding: Json = { id: input.newId(), database: databaseId, source: t.id, fields };
+        const up = docs.get(id)?.base;
+        if (typeof up === "string" && tableOfEntity.has(up)) {
+          // Each derived table's key columns are also a foreign key to its base's table.
+          const base = tableOfEntity.get(up)!;
+          const joined = key.map((c) => toCol(c, { generated: undefined }));
+          for (const col of joined) {
+            delete col.generated;
+            t.columns.push(col);
+            t.primaryKey.push(String(col.id));
+          }
+          const fk = input.newId();
+          t.foreignKeys.push({
+            id: fk,
+            name: `fk_${t.name}_${base.table.name}`,
+            columns: joined.map((c) => c.id),
+            referencesTable: base.table.id,
+            referencesColumns: base.table.primaryKey,
+          });
+          binding.baseForeignKey = fk;
+        }
+        for (const c of own.get(id)!.columns) {
+          if (typeof up === "string" && c.isPrimaryKey) continue;
+          const col = toCol(c);
+          t.columns.push(col);
+          if (c.isPrimaryKey) t.primaryKey.push(String(col.id));
+          byKey.set(c.key, String(col.id));
+          if (c.attributePath) fields.push({ attribute: c.attributePath, column: col.id });
+        }
+        bindings.set(id, binding);
+        tableOfEntity.set(id, { table: t, keyColumns: key, byKey });
+        done.add(id);
+      }
+    }
+  }
+  // Every other picked entity: a table of its own.
+  for (const id of picked) {
+    if (done.has(id)) continue;
+    const { table, columns } = own.get(id)!;
+    const t = newTable(table.name);
+    const byKey = new Map<string, string>();
+    for (const c of columns) {
+      const col = toCol(c, c.identity ? { generated: "identity" } : {});
+      t.columns.push(col);
+      byKey.set(c.key, String(col.id));
+      if (c.isPrimaryKey) t.primaryKey.push(String(col.id));
+    }
+    bindings.set(id, { id: input.newId(), database: databaseId, source: t.id, fields: fieldOf(byKey, columns) });
+    tableOfEntity.set(id, { table: t, keyColumns: columns.filter((c) => c.isPrimaryKey), byKey });
+  }
+  // Lists: a child table per list kept in a table, a JSON column for the others.
+  const creates: Json[] = [];
+  for (const id of picked) {
+    const entity = docs.get(id)!;
+    const binding = bindings.get(id);
+    const owner = tableOfEntity.get(id);
+    if (!binding || !owner) continue;
+    for (const attr of arr(entity.attributes)) {
+      if (attr.collection !== true) continue;
+      const attrName = String(attr.name);
+      if (set.storageOf.get(String(attr.id)) === "json") {
+        const col: Json = { id: input.newId(), name: snake(attrName), type: "json", nullable: true };
+        owner.table.columns.push(col);
+        (binding.fields as Json[]).push({ attribute: String(attr.id), column: col.id });
+        continue;
+      }
+      const child = newTable(`${owner.table.name}_${snake(attrName)}`);
+      child.of = owner.table.name;
+      const keyCols = owner.keyColumns.map((k) => ({ source: k, id: input.newId() }));
+      const ownerKeys = owner.keyColumns.map((k) => owner.table.columns.find((c) => c.name === k.name)?.id ?? owner.byKey.get(k.key)!);
+      const order: Json = { id: input.newId(), name: "position", type: "int32" };
+      child.columns.push(...keyCols.map((k) => toCol(k.source, { id: k.id, generated: undefined })), order);
+      for (const c of child.columns) delete c.generated;
+      child.primaryKey.push(...keyCols.map((k) => k.id), String(order.id));
+      const ownerFk = input.newId();
+      child.foreignKeys.push({
+        id: ownerFk,
+        name: `fk_${child.name}_${owner.table.name}`,
+        columns: keyCols.map((k) => k.id),
+        referencesTable: owner.table.id,
+        referencesColumns: ownerKeys,
+      });
+      const fields: Json[] = [];
+      const type = attr.type;
+      const target = typeof type === "object" && type ? docs.get(String((type as { ref: string }).ref)) : undefined;
+      if (target?.kind === "value-object") {
+        for (const inner of arr(target.attributes)) {
+          const col: Json = {
+            id: input.newId(),
+            name: snake(String(inner.name)),
+            type: typeof inner.type === "string" ? inner.type : "string",
+            ...(inner.type === "string" || typeof inner.type !== "string" ? { length: 255 } : {}),
+            ...(inner.required === true ? { nullable: false } : {}),
+          };
+          child.columns.push(col);
+          fields.push({ attribute: `${String(attr.id)}.${String(inner.id)}`, column: col.id });
+        }
+      } else {
+        const scalar = typeof type === "string" ? type : "string";
+        const col: Json = {
+          id: input.newId(),
+          name: snake(singular(attrName)),
+          type: scalar,
+          nullable: false,
+          ...(scalar === "string" ? { length: 255 } : {}),
+        };
+        child.columns.push(col);
+        fields.push({ attribute: String(attr.id), column: col.id });
+      }
+      binding.childTables = [
+        ...((binding.childTables as Json[] | undefined) ?? []),
+        { id: input.newId(), attribute: String(attr.id), table: child.id, ownerForeignKey: ownerFk, fields, orderColumn: order.id },
+      ];
+    }
+  }
+  const entityOfTable = new Map([...tableOfEntity].map(([id, t]) => [t.table.id, id]));
+  for (const t of tables) {
+    const first = entityOfTable.get(t.id);
+    const schema = first ? schemaOf(first) : (request.schema ?? undefined);
+    const doc: Json = { kind: "table", id: t.id, name: t.name, database: databaseId };
+    if (schema) doc.schema = schema;
+    doc.columns = t.columns;
+    if (t.primaryKey.length) doc.primaryKey = { columns: t.primaryKey };
+    if (t.foreignKeys.length) doc.foreignKeys = t.foreignKeys;
+    creates.push(doc);
+    out.because.set(t.id, first ? `the designed table of ${name(first)}` : `a child table of ${t.of}`);
+  }
+  out.writes.creates.push(...creates);
+  for (const id of picked) {
+    const updated = clone(docs.get(id)!);
+    const binding = bindings.get(id);
+    if (!binding) continue;
+    updated.bindings = [...bindingsOf(docs.get(id)), binding];
+    out.writes.updates.push(updated);
+    const t = tableOfEntity.get(id)!.table;
+    out.because.set(id, `bound to ${t.name}`);
+  }
+  for (const id of picked) {
+    const mapping = all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === id);
+    if (mapping) {
+      out.writes.deletes.push(String(mapping.id));
+      out.because.set(String(mapping.id), `${name(id)} is bound to ${dbName} now`);
+    }
   }
   return out;
 }

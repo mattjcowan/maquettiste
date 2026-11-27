@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJMCBAC4W8N9YMBQAM",
+  "name": "advance ship notice fulfils purchase order in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2P1344JFNR76K8E7ARXVX1W",
+  "foreignKey": "01M8EJX9AATNCSGNAC0VPSBZQH"
+}

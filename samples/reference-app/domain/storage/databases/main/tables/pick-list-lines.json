@@ -1,0 +1,138 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P7FKEXMXTK3FGQKXX",
+  "name": "pick_list_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PP5RTPGD6A7PEVTF6",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the pick list line."
+    },
+    {
+      "id": "01M8EJX99PB7WBRQKS0D4TV2W1",
+      "name": "quantity_to_pick",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity to pick."
+    },
+    {
+      "id": "01M8EJX99P0P5H957JHWB1JVVK",
+      "name": "quantity_picked",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "Quantity confirmed."
+    },
+    {
+      "id": "01M8EJX99PZHJFZE4YYQNZQG24",
+      "name": "picked_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was confirmed."
+    },
+    {
+      "id": "01M8EJX99PQ5732W0985DHA0BW",
+      "name": "pick_list_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PQY4JMVXZ91JJ43X7",
+      "name": "sales_order_line_id",
+      "type": "ulid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PQEBPSCBQFZ6ZND53",
+      "name": "lot_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PWYY6VADPDG802DV3",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PW9TEQV16W838AR24",
+      "name": "bin_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_pick_list_lines",
+    "columns": [
+      "01M8EJX99PP5RTPGD6A7PEVTF6"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9ATV2KRT40C6J2S05",
+      "name": "fk_pick_list_lines_pick_list_id",
+      "columns": [
+        "01M8EJX99PQ5732W0985DHA0BW"
+      ],
+      "referencesTable": "01M8EJX99P06XGY3GT3MF1Q4ZH",
+      "referencesColumns": [
+        "01M8EJX99PMEQSY744M6MBR0X1"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A9JJZ4JFNRH0GA2006",
+      "name": "fk_pick_list_lines_sales_order_line_id",
+      "columns": [
+        "01M8EJX99PQY4JMVXZ91JJ43X7"
+      ],
+      "referencesTable": "01M34B2XCK0G0EW7GX48YPV9R6",
+      "referencesColumns": [
+        "01M8EJX99QB5W684KZRFP37DGQ"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A9E8MNCPAZ5P42CVFW",
+      "name": "fk_pick_list_lines_lot_id",
+      "columns": [
+        "01M8EJX99PQEBPSCBQFZ6ZND53"
+      ],
+      "referencesTable": "01M8EJX99P4YZT0BJ4SBS8XS67",
+      "referencesColumns": [
+        "01M8EJX99PJWQ6NSF0MMBRYXEK"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9HSVXCGDFBW27X37N",
+      "name": "fk_pick_list_lines_product_id",
+      "columns": [
+        "01M8EJX99PWYY6VADPDG802DV3"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A9MY78ETBYJBCKCAED",
+      "name": "fk_pick_list_lines_bin_id",
+      "columns": [
+        "01M8EJX99PW9TEQV16W838AR24"
+      ],
+      "referencesTable": "01M8EJX99P6T2XHSRWPFJSSPJA",
+      "referencesColumns": [
+        "01M8EJX99PNZ31YCAG0CEXWAPQ"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "One pick - a product, a bin and a quantity for an order line."
+}

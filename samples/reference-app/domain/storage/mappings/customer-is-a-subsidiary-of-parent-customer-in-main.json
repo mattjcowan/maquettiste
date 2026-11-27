@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHHTKG3QKBWNRQZKKY",
+  "name": "customer is a subsidiary of parent customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M38CGNPTWK0XZ1ZJ7T6JJVK4",
+  "foreignKey": "01M8EJX9A804SG7R1HHT2YBX99"
+}

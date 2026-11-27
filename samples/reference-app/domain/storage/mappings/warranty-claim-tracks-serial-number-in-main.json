@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJQVDD38B310VCYQ7D",
+  "name": "warranty claim tracks serial number in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1PCHAY3CFQCR9Q93H9RBH1E",
+  "foreignKey": "01M8EJX9ABZ57SRN4W94VJB6K5"
+}

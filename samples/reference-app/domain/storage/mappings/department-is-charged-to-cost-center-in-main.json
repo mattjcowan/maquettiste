@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHK4SVCNTP4HS9MJHA",
+  "name": "department is charged to cost center in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2GX4CVDZZ8Q2ZGGHXDAGGPS",
+  "foreignKey": "01M8EJX9A9A1V8E8R98EW6YW98"
+}

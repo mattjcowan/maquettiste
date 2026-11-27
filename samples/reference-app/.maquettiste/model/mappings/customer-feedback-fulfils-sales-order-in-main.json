@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJPGEB144H7BG0MKQ5",
+  "name": "customer feedback fulfils sales order in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1VR9Q2K9H5MYDABGBBWQ57E",
+  "foreignKey": "01M8EJX9AB1Z8B6F0F8G3A6Q30"
+}

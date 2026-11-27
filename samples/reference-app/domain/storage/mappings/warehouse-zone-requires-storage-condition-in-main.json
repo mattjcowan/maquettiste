@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJANGCW56C7YHTR6JC",
+  "name": "warehouse zone requires storage condition in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1M7QCF1JQBDS4Y3NR09ZF5W",
+  "foreignKey": "01M8EJX9AA5K5ESPR9VD6VX6X5"
+}

@@ -1,0 +1,226 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P04QKDMF6SZZA64TC",
+  "name": "leads",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PNWSE9BXK14T8N9W3",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the lead."
+    },
+    {
+      "id": "01M8EJX99P4VWVZ6W26MCW57HA",
+      "name": "company_name",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Prospect's company."
+    },
+    {
+      "id": "01M8EJX99PAYXEEH8HH1MGFPEY",
+      "name": "contact_name_given_name",
+      "type": "string",
+      "length": 80,
+      "comment": "First or given name."
+    },
+    {
+      "id": "01M8EJX99P2JJ42SSS1DJTZ6F6",
+      "name": "contact_name_family_name",
+      "type": "string",
+      "length": 80,
+      "comment": "Last or family name."
+    },
+    {
+      "id": "01M8EJX99PPA9DPGSSFG3Z9KSS",
+      "name": "contact_name_title",
+      "type": "string",
+      "length": 20,
+      "comment": "Salutation, such as Dr. or Ms."
+    },
+    {
+      "id": "01M8EJX99P8J58QB6BP0NW92S2",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "comment": "Prospect's email."
+    },
+    {
+      "id": "01M8EJX99PX4QZ9992RDDRTTET",
+      "name": "phone_number",
+      "type": "string",
+      "length": 20,
+      "comment": "Number in E.164 form, such as +14155550100."
+    },
+    {
+      "id": "01M8EJX99P48D299457XXKAPG3",
+      "name": "phone_extension",
+      "type": "string",
+      "length": 10,
+      "comment": "Internal extension."
+    },
+    {
+      "id": "01M8EJX99PMXS4MKQGKC30D515",
+      "name": "status",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "default": "NEW",
+      "comment": "Qualification state."
+    },
+    {
+      "id": "01M8EJX99PWGMQJNBA4HRZ1X14",
+      "name": "estimated_annual_value_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99P9XSF3508AG1Q2BQK",
+      "name": "estimated_annual_value_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99PC9H4QX5Z73XMXMF0",
+      "name": "notes",
+      "type": "text",
+      "comment": "Qualification notes."
+    },
+    {
+      "id": "01M8EJX99PPXY9EWRNR13Q9K4R",
+      "name": "converted_on",
+      "type": "date",
+      "comment": "Date the lead became a customer."
+    },
+    {
+      "id": "01M8EJX99PGZ4Q1S40ZFP1B2R9",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PDDK9GDHMYZ4T940A",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P5NHJ3M5V68ACQ1NE",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PBCE6622RA2BHS0TJ",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PPXF23MWABG9SWATS",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99P193MZDVW6E9D7009",
+      "name": "converted_customer_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PVXQ3SFJSQN2N93WX",
+      "name": "owner_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P2B19ESGBH8M4BT9K",
+      "name": "source_id",
+      "type": "int32"
+    },
+    {
+      "id": "01M8EJX99PZVYRA8VPZ3FWSR6Q",
+      "name": "industry_id",
+      "type": "int32"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_leads",
+    "columns": [
+      "01M8EJX99PNWSE9BXK14T8N9W3"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8TBNY4XGNTEFZPZFG",
+      "name": "fk_leads_converted_customer_id",
+      "columns": [
+        "01M8EJX99P193MZDVW6E9D7009"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8P4J4JZAN5AWTFZ7T",
+      "name": "fk_leads_owner_id",
+      "columns": [
+        "01M8EJX99PVXQ3SFJSQN2N93WX"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8GSBFN4MZQ92RNTVD",
+      "name": "fk_leads_source_id",
+      "columns": [
+        "01M8EJX99P2B19ESGBH8M4BT9K"
+      ],
+      "referencesTable": "01M8EJX99PMJ68BYB4ZJ1KG6E5",
+      "referencesColumns": [
+        "01M8EJX99P68KX5024RBQKKQR8"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8D1CVXGNC3J9ZXTCB",
+      "name": "fk_leads_industry_id",
+      "columns": [
+        "01M8EJX99PZVYRA8VPZ3FWSR6Q"
+      ],
+      "referencesTable": "01M8EJX99PKDR3T8F03SN0PFYW",
+      "referencesColumns": [
+        "01M8EJX99P32VY2C89WYH022P1"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A8B71QS9Q3933SFT83",
+      "name": "ix_leads_email",
+      "columns": [
+        {
+          "column": "01M8EJX99P8J58QB6BP0NW92S2"
+        }
+      ]
+    }
+  ],
+  "comment": "A prospective customer not yet qualified, captured from a trade show, the website or a referral."
+}

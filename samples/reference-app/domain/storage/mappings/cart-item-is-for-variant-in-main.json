@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ4F9P0B9ZD3399BG4",
+  "name": "cart item is for variant in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M240J8P4EG5NWN9V0YT4AFJQ",
+  "foreignKey": "01M8EJX9ACVF1MB17XE6S6417Z"
+}

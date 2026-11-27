@@ -1,0 +1,127 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PXEB2Q42PAEME2ZKA",
+  "name": "tax_rates",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P1S2N3MH8X4FJPWQB",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the tax rate."
+    },
+    {
+      "id": "01M8EJX99PS3M4Z77D1VSQ9CSD",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Rate name, such as Colorado state sales tax."
+    },
+    {
+      "id": "01M8EJX99P7ECRDVJK53GAF5EY",
+      "name": "rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "nullable": false,
+      "comment": "Rate."
+    },
+    {
+      "id": "01M8EJX99PH5ESXER0CQZDJA30",
+      "name": "tax_category",
+      "type": "string",
+      "length": 30,
+      "nullable": false,
+      "comment": "Goods category, such as general or food."
+    },
+    {
+      "id": "01M8EJX99PV3GBSV844GY7AVXY",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99PDVWF2EB039SSY0X8",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99PBRXZ2MXYQHBZ1FBS",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PFP10HC648P9QMZ92",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P2X4VX7XAHZD34D4D",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PZGQ09VDE7PQ2BXZT",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PK8D8JKZ1WGJMDPV4",
+      "name": "jurisdiction_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P6VYFFSWDFVJA71MX",
+      "name": "sales_tax_account_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_tax_rates",
+    "columns": [
+      "01M8EJX99P1S2N3MH8X4FJPWQB"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8KXEZMBV04D43PXJV",
+      "name": "fk_tax_rates_jurisdiction_id",
+      "columns": [
+        "01M8EJX99PK8D8JKZ1WGJMDPV4"
+      ],
+      "referencesTable": "01M8EJX99P0R2MTZEVENPJNMRR",
+      "referencesColumns": [
+        "01M8EJX99P50CT3Q74SN6644PH"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A839HDC80E4TX0VKGC",
+      "name": "fk_tax_rates_sales_tax_account_id",
+      "columns": [
+        "01M8EJX99P6VYFFSWDFVJA71MX"
+      ],
+      "referencesTable": "01M8EJX99P0PRFJXZXM6AR56B8",
+      "referencesColumns": [
+        "01M8EJX99PXZ7RFKDAGWVDWMTX"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A sales tax rate of a jurisdiction for a tax category and period."
+}

@@ -1,0 +1,137 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QSETCR2HGC5EGVX0F",
+  "name": "sales_commissions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QW688N111FWK56R15",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the sales commission."
+    },
+    {
+      "id": "01M8EJX99QZPJMZSESDZ68S4D5",
+      "name": "commission_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "nullable": false,
+      "comment": "Rate applied."
+    },
+    {
+      "id": "01M8EJX99Q1W1VKV3P32DMXZ20",
+      "name": "commission_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99Q9DNEEAJ14SBC3A43",
+      "name": "commission_amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QYG193HCWG16M8HWG",
+      "name": "earned_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date it was earned, usually the invoice date."
+    },
+    {
+      "id": "01M8EJX99Q8YDNXZQRW2C2Q68P",
+      "name": "is_paid",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether payroll paid it."
+    },
+    {
+      "id": "01M8EJX99QCQ714NYTM2NC3AXV",
+      "name": "paid_on",
+      "type": "date",
+      "comment": "Payroll date."
+    },
+    {
+      "id": "01M8EJX99QVAD5MRZ0X71XX8TD",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QKTZ3JYA88MZJ1H99",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q1BFNMMMZEEZTBWDR",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99Q906700YMQCNT4RCE",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99Q99FRV4EFSGY519BS",
+      "name": "sales_order_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QEEE86TQXY94X8MGD",
+      "name": "sales_rep_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sales_commissions",
+    "columns": [
+      "01M8EJX99QW688N111FWK56R15"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACB1REKD9RJGR06DB1",
+      "name": "fk_sales_commissions_sales_order_id",
+      "columns": [
+        "01M8EJX99Q99FRV4EFSGY519BS"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACE9SQM8SDT3Z3F2RJ",
+      "name": "fk_sales_commissions_sales_rep_id",
+      "columns": [
+        "01M8EJX99QEEE86TQXY94X8MGD"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "Commission earned by a sales rep on an order."
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJY1AJW5BSXQ5J5ME3",
+  "name": "inventory hold is kept at warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2APHMY54GY92EJBYBWWYS5T",
+  "foreignKey": "01M8EJX9A95HDPQKK52C50VTDJ"
+}

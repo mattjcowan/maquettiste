@@ -3,5 +3,6 @@
   "kind": "database",
   "id": "01JDBS00000000000000000001",
   "name": "main",
-  "dialect": "sqlite"
+  "dialect": "sqlite",
+  "byConvention": "none"
 }

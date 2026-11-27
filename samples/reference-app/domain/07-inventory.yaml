@@ -80,10 +80,6 @@ entities:
       product: Product! name=inventory_item_is_for_product | Stocked product.
       warehouse: Warehouse! cascade back=inventoryItems name=inventory_item_is_kept_at_warehouse | Warehouse holding the stock.
       defaultBin: BinLocation name=inventory_item_is_put_away_in_default_bin | Pick face of the product.
-    overlay:
-      description: Allocation can never exceed what is on hand plus what is inbound.
-      checks:
-        ck_inventory_items_allocation: quantity_allocated <= quantity_on_hand + quantity_on_order
 
   StockLot:
     description: A production lot or batch of a lot-controlled product, with its expiry date.
@@ -124,11 +120,6 @@ entities:
       toBin: BinLocation name=stock_movement_moves_to_to_bin | Destination bin.
       lot: StockLot name=stock_movement_is_drawn_from_lot | Lot moved.
       performedBy: Employee name=stock_movement_is_performed_by_employee | Who moved it.
-    overlay:
-      description: Movements are read newest first.
-      indexes:
-        - name: ix_stock_movements_occurred_at
-          columns: [occurredAt desc]
 
   StockAdjustment:
     description: A correction of on-hand stock after a count, damage or theft, approved above a value threshold.

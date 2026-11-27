@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJTGF3A6DF52182R56",
+  "name": "stock movement moves from from bin in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2Q9F24230FGJKNXSRAR695N",
+  "foreignKey": "01M8EJX9AATTSHHQR71ZEBWNHX"
+}

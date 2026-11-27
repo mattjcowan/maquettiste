@@ -1,0 +1,91 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PVRF7SF55TZFS7FQ0",
+  "name": "opportunity_stages",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PJ9RBEZ8Z7CDC8RH2",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the opportunity stage."
+    },
+    {
+      "id": "01M8EJX99PB980ND7PKS27MVW6",
+      "name": "default_probability",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "nullable": false,
+      "comment": "Win probability assigned on entering the stage."
+    },
+    {
+      "id": "01M8EJX99PR8BPGMH3JATKE09N",
+      "name": "is_closed",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether the stage ends the pipeline."
+    },
+    {
+      "id": "01M8EJX99P3P0M4DEPZKZAVSD4",
+      "name": "is_won",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether the stage means the deal was won."
+    },
+    {
+      "id": "01M8EJX99PKH8SPTQVYA2D65EN",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99P227J0DJPKBT241F2",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99PEFSPS25KRPKEQ8VP",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99PP6K3QXXAH26KP8RM",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_opportunity_stages",
+    "columns": [
+      "01M8EJX99PJ9RBEZ8Z7CDC8RH2"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A8W1ZYJG2K36XGFP13",
+      "name": "uq_opportunity_stages_code",
+      "columns": [
+        "01M8EJX99PKH8SPTQVYA2D65EN"
+      ]
+    }
+  ],
+  "comment": "A pipeline stage, such as Discovery, Proposal or Negotiation."
+}

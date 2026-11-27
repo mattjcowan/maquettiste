@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Loading;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Resolution;
 
@@ -16,6 +17,7 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// their hash unchanged; only new lines and the lists that hold every entity and table grew). The showcase holds a designed junction (<c>uses-in-main.json</c>), the bindings
 /// fixture entity bindings.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class RelationStorageUnchangedTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);

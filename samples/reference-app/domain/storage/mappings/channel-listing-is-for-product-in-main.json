@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHANPN7WMZW9EAQ838",
+  "name": "channel listing is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1JCFPRQM0DZSCNV4XT822C0",
+  "foreignKey": "01M8EJX9A620HWTJ2SVYYQDS4W"
+}

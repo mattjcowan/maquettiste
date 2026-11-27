@@ -1,0 +1,101 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NVHE5BG81DBJ7DZTQ",
+  "name": "campaign_responses",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NWHQQ8KG356SPWS7F",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the campaign response."
+    },
+    {
+      "id": "01M8EJX99N5VR9TJQB01EX59YR",
+      "name": "responded_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the response happened."
+    },
+    {
+      "id": "01M8EJX99NNJ2KDYXHHFDRE2PM",
+      "name": "response_type",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Kind of response, such as clicked or visited-booth."
+    },
+    {
+      "id": "01M8EJX99N1KMQ2BMHWSFGYW4Z",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "comment": "Details."
+    },
+    {
+      "id": "01M8EJX99NVZYM3SK0NC7YWXCN",
+      "name": "contact_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NCRJ1RM8TR0KTRHH9",
+      "name": "campaign_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99NVKG4RN8X569FGM49",
+      "name": "lead_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_campaign_responses",
+    "columns": [
+      "01M8EJX99NWHQQ8KG356SPWS7F"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A856R5V54YWRWWXQ5G",
+      "name": "fk_campaign_responses_contact_id",
+      "columns": [
+        "01M8EJX99NVZYM3SK0NC7YWXCN"
+      ],
+      "referencesTable": "01M8EJX99NX12803VWGRS1E1KW",
+      "referencesColumns": [
+        "01M8EJX99NRVN9JXZG7T665RP7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8SDYREE8N62CMJJ14",
+      "name": "fk_campaign_responses_campaign_id",
+      "columns": [
+        "01M8EJX99NCRJ1RM8TR0KTRHH9"
+      ],
+      "referencesTable": "01M8EJX99NK3S7EP53CVZSQ961",
+      "referencesColumns": [
+        "01M8EJX99NG1GY6QV4S10GS28J"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A8P347ZCA14VJC2C4M",
+      "name": "fk_campaign_responses_lead_id",
+      "columns": [
+        "01M8EJX99NVKG4RN8X569FGM49"
+      ],
+      "referencesTable": "01M8EJX99P04QKDMF6SZZA64TC",
+      "referencesColumns": [
+        "01M8EJX99PNWSE9BXK14T8N9W3"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A response to a campaign by a contact or a lead, such as a click, a booth visit or a request for quote."
+}

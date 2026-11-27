@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CFFN1M1ZGDFNJ1XB2J",
+  "name": "customer statement belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2Z38ZY4KAC6V74N31W1ENPE",
+  "foreignKey": "01M8EJX9A3RVJE2HM5MCC1SCEW"
+}

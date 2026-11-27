@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHRRZAMK0YNCQM71CP",
+  "name": "api key acts for api client in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2H1HCBSPEHPSE0W47DDS64F",
+  "foreignKey": "01M8EJX9A9XNAB4QCQ9JEZT2SB"
+}

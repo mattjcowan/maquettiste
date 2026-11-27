@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHAW7R70ZATKZG4959",
+  "name": "remittance advice applies payment in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M21TDHHWFHX90643CDNZJ8KE",
+  "foreignKey": "01M8EJX9A689ZT76CXCKM7B13Y"
+}

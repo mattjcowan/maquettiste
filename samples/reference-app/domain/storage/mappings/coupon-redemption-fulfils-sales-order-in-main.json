@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ0BWCR21CW3Q6WA0S",
+  "name": "coupon redemption fulfils sales order in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2Y6M8F2SQ7SA0R04ZC67B8Y",
+  "foreignKey": "01M8EJX9AA49YJZWM94Z16JB69"
+}

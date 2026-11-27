@@ -15,6 +15,7 @@ namespace Maquettiste.Engine.Tests.Expressions;
 /// are id, sku, name and price. A tree check is lowered during resolution for the database that holds its table, into
 /// <see cref="RCheck.Expression"/>, so the sql-ddl pack prints it unchanged.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ExpressionResolutionTests
 {
     private const string CheckId = "01K9EXR0000000000000000C01";

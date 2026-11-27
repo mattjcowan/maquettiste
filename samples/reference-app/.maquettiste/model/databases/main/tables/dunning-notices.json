@@ -1,0 +1,114 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99MTWE55Y7GS5QD5XVC",
+  "name": "dunning_notices",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99MTXZ717B2QEATJDWK",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the dunning notice."
+    },
+    {
+      "id": "01M8EJX99MSGMSD55MPZAJM2J0",
+      "name": "level",
+      "type": "int16",
+      "nullable": false,
+      "comment": "Escalation level."
+    },
+    {
+      "id": "01M8EJX99MFA5V81YZYA9MYBJC",
+      "name": "issued_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date sent."
+    },
+    {
+      "id": "01M8EJX99MP7W77T8AJGRKR208",
+      "name": "amount_overdue_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99M1DRDE9G243ZGF3Y2",
+      "name": "amount_overdue_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99MX9A15G55GR4PC82Q",
+      "name": "fee_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99MQD139HZ1CFCHRSXR",
+      "name": "fee_amount_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99MNA7QRTEBH8NM6EH3",
+      "name": "sent_via",
+      "type": "string",
+      "length": 20,
+      "comment": "email or mail."
+    },
+    {
+      "id": "01M8EJX99ME1H4086T2T8V35R6",
+      "name": "collection_case_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99M6DSTKKPZTRRFWKQ4",
+      "name": "invoice_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_dunning_notices",
+    "columns": [
+      "01M8EJX99MTXZ717B2QEATJDWK"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A3Q6TS85Y445XB78JM",
+      "name": "fk_dunning_notices_collection_case_id",
+      "columns": [
+        "01M8EJX99ME1H4086T2T8V35R6"
+      ],
+      "referencesTable": "01M8EJX99MT0FDQPXJMY4PR8WZ",
+      "referencesColumns": [
+        "01M8EJX99M2GQGTPV9A6V998PK"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A32VP4DY95Y6SEHAX2",
+      "name": "fk_dunning_notices_invoice_id",
+      "columns": [
+        "01M8EJX99M6DSTKKPZTRRFWKQ4"
+      ],
+      "referencesTable": "01M2GD6QYSRRK545Z2FCJ57JXN",
+      "referencesColumns": [
+        "01M8EJX99MY2YCY00H3262RRRP"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A payment reminder for an overdue invoice, escalating by level."
+}

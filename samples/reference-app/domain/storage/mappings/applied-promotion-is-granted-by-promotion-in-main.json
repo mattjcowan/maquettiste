@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJJXNWFHWVZPRHDAKM",
+  "name": "applied promotion is granted by promotion in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M35ER98A8BZZYV38YW2FJHXA",
+  "foreignKey": "01M8EJX9ACRGB8203NDFQ5RT2A"
+}

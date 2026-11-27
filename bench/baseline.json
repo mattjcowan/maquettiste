@@ -9,7 +9,7 @@
     "packs": [
       "fanout"
     ],
-    "writeSeconds": 1.605
+    "writeSeconds": 40.496
   },
   "machine": {
     "cores": 24,
@@ -21,13 +21,13 @@
     "gcHeapCount": 24,
     "gcDynamicAdaptation": 0,
     "runtimeEnvironment": [],
-    "peakWorkingSetMiB": 6003.7
+    "peakWorkingSetMiB": 10142.6
   },
   "budgets": [
     {
       "name": "load-validate-resolve",
       "limit": 3,
-      "actual": 1.717,
+      "actual": 2.99,
       "unit": "s",
       "atLeast": false,
       "pass": true
@@ -35,7 +35,7 @@
     {
       "name": "plan",
       "limit": 2,
-      "actual": 0.105,
+      "actual": 0.175,
       "unit": "s",
       "atLeast": false,
       "pass": true
@@ -43,7 +43,7 @@
     {
       "name": "render",
       "limit": 40,
-      "actual": 2.24,
+      "actual": 2.204,
       "unit": "s",
       "atLeast": false,
       "pass": true
@@ -51,7 +51,7 @@
     {
       "name": "post-process-write",
       "limit": 15,
-      "actual": 4.452,
+      "actual": 6.428,
       "unit": "s",
       "atLeast": false,
       "pass": true
@@ -59,7 +59,7 @@
     {
       "name": "cold-total",
       "limit": 60,
-      "actual": 6.675,
+      "actual": 9.774,
       "unit": "s",
       "atLeast": false,
       "pass": true
@@ -67,7 +67,7 @@
     {
       "name": "incremental",
       "limit": 2,
-      "actual": 1.433,
+      "actual": 1.907,
       "unit": "s",
       "atLeast": false,
       "pass": true
@@ -84,223 +84,228 @@
   "cold": {
     "files": 100050,
     "unitsRendered": 100050,
-    "pipelinedTotalSeconds": 6.675,
+    "pipelinedTotalSeconds": 9.774,
     "outputsMatch": true,
     "stages": [
       {
         "stage": "load",
-        "wallSeconds": 0.517,
-        "busySeconds": 0.517,
-        "items": 26267
+        "wallSeconds": 1.203,
+        "busySeconds": 1.203,
+        "items": 61109
       },
       {
         "stage": "validate",
-        "wallSeconds": 0.181,
-        "busySeconds": 0.181,
-        "items": 26267
+        "wallSeconds": 0.47,
+        "busySeconds": 0.47,
+        "items": 61109
       },
       {
         "stage": "resolve",
-        "wallSeconds": 1.019,
-        "busySeconds": 1.019,
-        "items": 26267
+        "wallSeconds": 1.317,
+        "busySeconds": 1.317,
+        "items": 61109
       },
       {
         "stage": "plan",
-        "wallSeconds": 1.109,
-        "busySeconds": 0.088,
+        "wallSeconds": 1.48,
+        "busySeconds": 0.158,
         "items": 100051
       },
       {
         "stage": "skip",
-        "wallSeconds": 0.017,
-        "busySeconds": 0.017,
+        "wallSeconds": 0.016,
+        "busySeconds": 0.016,
         "items": 100050
       },
       {
         "stage": "render",
-        "wallSeconds": 2.36,
-        "busySeconds": 2.36,
+        "wallSeconds": 2.204,
+        "busySeconds": 2.204,
         "items": 100050
       },
       {
         "stage": "post-process",
-        "wallSeconds": 0.193,
-        "busySeconds": 1.502,
+        "wallSeconds": 0.194,
+        "busySeconds": 1.513,
         "items": 100050
       },
       {
         "stage": "write",
-        "wallSeconds": 4.26,
-        "busySeconds": 4.26,
+        "wallSeconds": 6.234,
+        "busySeconds": 6.234,
         "items": 100050
       }
     ],
     "pipelinedStages": [
       {
         "stage": "load",
-        "wallSeconds": 0.36,
-        "busySeconds": 0.36,
-        "items": 26267
+        "wallSeconds": 1.101,
+        "busySeconds": 1.101,
+        "items": 61109
       },
       {
         "stage": "validate",
-        "wallSeconds": 0.13,
-        "busySeconds": 0.13,
-        "items": 26267
+        "wallSeconds": 0.419,
+        "busySeconds": 0.419,
+        "items": 61109
       },
       {
         "stage": "resolve",
-        "wallSeconds": 0.644,
-        "busySeconds": 0.644,
-        "items": 26267
+        "wallSeconds": 1.15,
+        "busySeconds": 1.15,
+        "items": 61109
       },
       {
         "stage": "plan",
-        "wallSeconds": 0.566,
-        "busySeconds": 0.058,
+        "wallSeconds": 0.787,
+        "busySeconds": 0.084,
         "items": 100051
       },
       {
         "stage": "skip",
-        "wallSeconds": 0.017,
-        "busySeconds": 0.017,
+        "wallSeconds": 0.015,
+        "busySeconds": 0.015,
         "items": 100050
       },
       {
         "stage": "render",
-        "wallSeconds": 4.883,
-        "busySeconds": 4.883,
+        "wallSeconds": 6.326,
+        "busySeconds": 6.326,
         "items": 100050
       },
       {
         "stage": "post-process",
-        "wallSeconds": 4.866,
-        "busySeconds": 2.938,
+        "wallSeconds": 6.289,
+        "busySeconds": 7.108,
         "items": 100050
       },
       {
         "stage": "write",
-        "wallSeconds": 5.582,
-        "busySeconds": 5.582,
+        "wallSeconds": 7.424,
+        "busySeconds": 7.424,
         "items": 100050
       }
     ]
   },
   "incremental": {
-    "totalSeconds": 1.433,
-    "unitsRendered": 57,
-    "unitsSkipped": 99993,
+    "totalSeconds": 1.907,
+    "unitsRendered": 48,
+    "unitsSkipped": 100002,
     "filesWritten": 12,
-    "gcPauseSeconds": 0.023,
+    "gcPauseSeconds": 0,
     "stages": [
       {
         "stage": "load",
-        "wallSeconds": 0.198,
-        "busySeconds": 0.198,
-        "items": 26267
+        "wallSeconds": 0.406,
+        "busySeconds": 0.406,
+        "items": 61109
       },
       {
         "stage": "validate",
-        "wallSeconds": 0.139,
-        "busySeconds": 0.139,
-        "items": 26267
+        "wallSeconds": 0.373,
+        "busySeconds": 0.373,
+        "items": 61109
       },
       {
         "stage": "resolve",
-        "wallSeconds": 0.824,
-        "busySeconds": 0.824,
-        "items": 26267
+        "wallSeconds": 0.977,
+        "busySeconds": 0.977,
+        "items": 61109
       },
       {
         "stage": "plan",
-        "wallSeconds": 0.735,
-        "busySeconds": 0.051,
+        "wallSeconds": 0.653,
+        "busySeconds": 0.052,
         "items": 100051
       },
       {
         "stage": "skip",
-        "wallSeconds": 0.1,
-        "busySeconds": 0.1,
+        "wallSeconds": 0.149,
+        "busySeconds": 0.149,
         "items": 100050
       },
       {
         "stage": "render",
-        "wallSeconds": 0.08,
-        "busySeconds": 0.08,
-        "items": 57
+        "wallSeconds": 0.061,
+        "busySeconds": 0.061,
+        "items": 48
       },
       {
         "stage": "post-process",
-        "wallSeconds": 0.008,
+        "wallSeconds": 0.006,
         "busySeconds": 0.001,
-        "items": 57
+        "items": 48
       },
       {
         "stage": "write",
-        "wallSeconds": 0.252,
-        "busySeconds": 0.252,
+        "wallSeconds": 0.317,
+        "busySeconds": 0.317,
         "items": 12
       }
     ],
     "freshStore": {
-      "totalSeconds": 1.372,
-      "unitsRendered": 57,
-      "gcPauseSeconds": 0.003,
+      "totalSeconds": 2.371,
+      "unitsRendered": 48,
+      "gcPauseSeconds": 0,
       "stages": [
         {
           "stage": "load",
-          "wallSeconds": 0.334,
-          "busySeconds": 0.334,
-          "items": 26267
+          "wallSeconds": 0.821,
+          "busySeconds": 0.821,
+          "items": 61109
         },
         {
           "stage": "validate",
-          "wallSeconds": 0.135,
-          "busySeconds": 0.135,
-          "items": 26267
+          "wallSeconds": 0.381,
+          "busySeconds": 0.381,
+          "items": 61109
         },
         {
           "stage": "resolve",
-          "wallSeconds": 0.638,
-          "busySeconds": 0.638,
-          "items": 26267
+          "wallSeconds": 1.083,
+          "busySeconds": 1.083,
+          "items": 61109
         },
         {
           "stage": "plan",
-          "wallSeconds": 0.546,
-          "busySeconds": 0.047,
+          "wallSeconds": 0.75,
+          "busySeconds": 0.074,
           "items": 100051
         },
         {
           "stage": "skip",
-          "wallSeconds": 0.087,
-          "busySeconds": 0.087,
+          "wallSeconds": 0.116,
+          "busySeconds": 0.116,
           "items": 100050
         },
         {
           "stage": "render",
-          "wallSeconds": 0.047,
-          "busySeconds": 0.047,
-          "items": 57
+          "wallSeconds": 0.053,
+          "busySeconds": 0.053,
+          "items": 48
         },
         {
           "stage": "post-process",
-          "wallSeconds": 0.009,
+          "wallSeconds": 0.005,
           "busySeconds": 0.001,
-          "items": 57
+          "items": 48
         },
         {
           "stage": "write",
-          "wallSeconds": 0.262,
-          "busySeconds": 0.262,
+          "wallSeconds": 0.294,
+          "busySeconds": 0.294,
           "items": 12
         }
       ]
+    },
+    "oneShot": {
+      "command": "/home/mjc/projects/github.com/mattjcowan/maquettiste/.claude/worktrees/agent-a3bf89767bbfa20fa/bench/Maquettiste.Bench/bin/Release/net10.0/Maquettiste.Bench one-shot-generate",
+      "editSeconds": 5.06,
+      "noOpSeconds": 0.277
     }
   },
   "check": {
-    "totalSeconds": 2.305,
+    "totalSeconds": 3.035,
     "outcome": "Succeeded",
     "unitsRendered": 100050
   },
@@ -311,6 +316,7 @@
     "The incremental run edits one attribute of one entity on disk and runs again with the same model store (the editor and watch scenario, which the 2 s budget covers); its time includes the rescan, validation, resolution, planning and skip check.",
     "The new-store incremental run reverts that edit and runs with a new model store and generation service over the same repo and cache (a new host process\u0027s first run, but with a warm JIT); it is reported, not a budget. A one-shot CLI process also pays process start and JIT (see bench/README.md).",
     "Peak working set is the whole process\u0027s peak over every run.",
-    "Stage times are busy times (the sum of each stage\u0027s spans), except post-processing, whose units run in parallel, which counts wall time: the engine records the plan stage twice, pack loading before resolve and unit planning after it, so plan\u0027s wall time also covers resolve."
+    "Stage times are busy times (the sum of each stage\u0027s spans), except post-processing, whose units run in parallel, which counts wall time: the engine records the plan stage twice, pack loading before resolve and unit planning after it, so plan\u0027s wall time also covers resolve.",
+    "The one-shot figures run a fresh process (/home/mjc/projects/github.com/mattjcowan/maquettiste/.claude/worktrees/agent-a3bf89767bbfa20fa/bench/Maquettiste.Bench/bin/Release/net10.0/Maquettiste.Bench one-shot-generate) over the pipelined repo and its cache folder: once after the same one-entity edit, once with nothing changed. They include process start and JIT (ReadyToRun only in a packed tool) and are reported, not budgets (bench/README.md). An untimed one-shot run before the edit left a last-run record, so the edit figure includes rejecting it, as after a no-op build."
   ]
 }

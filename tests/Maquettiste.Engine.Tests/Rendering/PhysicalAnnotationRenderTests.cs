@@ -8,6 +8,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Rendering;
 
 /// <summary>Templates read a table's annotations from its own file (the billing fixture's invoice table overlay), never the entity's.</summary>
+[UsesProjectedFixtures]
 public sealed class PhysicalAnnotationRenderTests
 {
     private const string Template =

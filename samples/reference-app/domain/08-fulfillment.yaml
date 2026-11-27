@@ -17,6 +17,8 @@ referenceTypes:
   ShipmentStatus:
     description: Lifecycle of a shipment.
     code: 7
+    apply: converge
+    delete: true
     rows:
       PLAN: Planned | Created from an order, not yet picked.
       PICK: Picking | Being picked.
@@ -53,10 +55,6 @@ entities:
     children:
       lines: ShipmentLine name=shipment_contains_lines | Order lines shipped.
       packages: ShipmentPackage ordered name=shipment_contains_packages | Cartons and pallets.
-    mapping:
-      description: Shipment status is a reference type stored through a lookup table; the delivery address columns get a ship_to_ prefix.
-      prefix:
-        shipToAddress: ship_to_
 
   ShipmentLine:
     description: The quantity of an order line included in a shipment.

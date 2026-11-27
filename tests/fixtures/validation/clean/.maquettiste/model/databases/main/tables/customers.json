@@ -1,0 +1,41 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKD8XNDSPCQ1ZY8NH71VG3",
+  "name": "customers",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKD8XP020JJG2BWX82FNHD",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKD8XPCQ6QNR1V726D6RGP",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKD8XP57R2S217VVM05JH6",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "default": "billing@example.com"
+    },
+    {
+      "id": "01M8EKD8XPPHR2PTX8R07CNB4K",
+      "name": "permissions",
+      "type": "int32",
+      "default": 3
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_customers",
+    "columns": [
+      "01M8EKD8XP020JJG2BWX82FNHD"
+    ]
+  }
+}

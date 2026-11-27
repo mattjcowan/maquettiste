@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH8B7JTXDXCTPC39VE",
+  "name": "user session signs in as user account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2TGJBD5EQ0AVWCPVZFCM316",
+  "foreignKey": "01M8EJX9A9WT3C0R21WBTK362D"
+}

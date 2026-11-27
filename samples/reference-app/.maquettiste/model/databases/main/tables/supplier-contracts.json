@@ -1,0 +1,149 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QXQACNSCPD3HP39MJ",
+  "name": "supplier_contracts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q8RMA9VG54CAHAWTX",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the supplier contract."
+    },
+    {
+      "id": "01M8EJX99QEPQRZEV4A57FETCE",
+      "name": "contract_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Contract number."
+    },
+    {
+      "id": "01M8EJX99QJR17XVFD37B22CFF",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99Q00D09CGNP9JFY9W8",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99QTFYVX040DZCKHTZ1",
+      "name": "terms",
+      "type": "text",
+      "comment": "Key terms."
+    },
+    {
+      "id": "01M8EJX99QK36QT7DE3YNEAY38",
+      "name": "auto_renew",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether it renews automatically."
+    },
+    {
+      "id": "01M8EJX99QRR31MYRC7YVXBQFF",
+      "name": "spend_commitment_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QD7SC98RPCYVY66PC",
+      "name": "spend_commitment_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QGFHJ8MP1544PQDCF",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99Q7EQEPYSQRK343Y2Y",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QPY518KQX7NK964JX",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QD1YC5QNR7NYEKKW7",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99Q8VF9ETJ60R47Y1K4",
+      "name": "owner_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QPBFF0J6DSP981YT8",
+      "name": "supplier_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_supplier_contracts",
+    "columns": [
+      "01M8EJX99Q8RMA9VG54CAHAWTX"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ABRC50BTV5JQFJADFK",
+      "name": "uq_supplier_contracts_contract_number",
+      "columns": [
+        "01M8EJX99QEPQRZEV4A57FETCE"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABNP71P5HQS6NM53ZE",
+      "name": "fk_supplier_contracts_owner_id",
+      "columns": [
+        "01M8EJX99Q8VF9ETJ60R47Y1K4"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ABTPM5TF2F7XDXW189",
+      "name": "fk_supplier_contracts_supplier_id",
+      "columns": [
+        "01M8EJX99QPBFF0J6DSP981YT8"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A purchasing contract with a supplier, fixing prices and commitments for a period."
+}

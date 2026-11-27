@@ -11,6 +11,7 @@ namespace Maquettiste.Engine.Tests.Store;
 /// above all) join the report of <see cref="ModelStore.ValidateAsync"/>, which every host's validate goes through, positioned, scoped
 /// like the load diagnostics, and computed once per snapshot.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ValidateResolverFindingsTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

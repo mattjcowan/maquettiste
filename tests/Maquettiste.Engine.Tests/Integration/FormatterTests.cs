@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -9,6 +10,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// formatter runner (integration task 12; engine-design.md section 13): over the files of rendered units only, and in memory in check mode.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class FormatterTests
 {
     private const string Script = """

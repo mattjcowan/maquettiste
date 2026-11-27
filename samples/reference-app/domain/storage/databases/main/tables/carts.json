@@ -1,0 +1,140 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QKF5ZPT2NDVCBVG29",
+  "name": "carts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QZM14V9MMNE2MEHV0",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the cart."
+    },
+    {
+      "id": "01M8EJX99Q7XCA80S1T6PHXZFK",
+      "name": "cart_token",
+      "type": "string",
+      "length": 64,
+      "nullable": false,
+      "comment": "Opaque token held by the browser."
+    },
+    {
+      "id": "01M8EJX99QMB3JAJ9QPZW0WYFF",
+      "name": "last_activity_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "Last change to the cart."
+    },
+    {
+      "id": "01M8EJX99Q95EFB20VDF6QDD90",
+      "name": "is_abandoned",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Flagged by the abandoned-cart job."
+    },
+    {
+      "id": "01M8EJX99Q2J1GJ6V2BVK6HENR",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QBG78419E0TN1YQJR",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q69FJAMGQK14WM135",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QT0FM9B1YK5D0WGYH",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QJ1J3ZG2B119VYQC3",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QF1RXW2YT3DW8BNYW",
+      "name": "converted_order_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QHECWGQBBZD39KHG6",
+      "name": "user_account_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_carts",
+    "columns": [
+      "01M8EJX99QZM14V9MMNE2MEHV0"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ACJ83XA4JCP99CPEM9",
+      "name": "uq_carts_cart_token",
+      "columns": [
+        "01M8EJX99Q7XCA80S1T6PHXZFK"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACM99P8Z7B6SEGFYCZ",
+      "name": "fk_carts_customer_id",
+      "columns": [
+        "01M8EJX99QJ1J3ZG2B119VYQC3"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AC1Y6WQ4PN4EA9RTSW",
+      "name": "fk_carts_converted_order_id",
+      "columns": [
+        "01M8EJX99QF1RXW2YT3DW8BNYW"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ACK0VT5AT6Z48A1AT7",
+      "name": "fk_carts_user_account_id",
+      "columns": [
+        "01M8EJX99QHECWGQBBZD39KHG6"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A customer portal shopping cart that becomes a sales order at checkout."
+}

@@ -1,0 +1,90 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PMPXTQCAXW5GPZB1R",
+  "name": "storage_conditions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PG6PCMKKQWS22FTRX",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the storage condition."
+    },
+    {
+      "id": "01M8EJX99PDKTAT9CKS8CTZTKG",
+      "name": "min_temperature_c",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Lowest allowed temperature."
+    },
+    {
+      "id": "01M8EJX99PRWNKFYQ4607MKWC1",
+      "name": "max_temperature_c",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Highest allowed temperature."
+    },
+    {
+      "id": "01M8EJX99PDFAJQA6CZNRWD86J",
+      "name": "requires_humidity_control",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether humidity is controlled."
+    },
+    {
+      "id": "01M8EJX99P2GCHYH9KY9R6AZB7",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99PSJBF8DWFR6N67C8S",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99P55HM3DMNABWT3Y2X",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99PYW361BG8YE7V52RW",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_storage_conditions",
+    "columns": [
+      "01M8EJX99PG6PCMKKQWS22FTRX"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AAR8AK0QJH408HMYF5",
+      "name": "uq_storage_conditions_code",
+      "columns": [
+        "01M8EJX99P2GCHYH9KY9R6AZB7"
+      ]
+    }
+  ],
+  "comment": "A storage requirement, such as Ambient, Chilled 2-8 C or Frozen."
+}

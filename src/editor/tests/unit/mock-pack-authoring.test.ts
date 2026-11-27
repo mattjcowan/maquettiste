@@ -39,7 +39,7 @@ describe("mock pack authoring", () => {
     expect(tables.json.rendered).toBe(0);
     expect(tables.json.paths).toEqual([]);
     expect(tables.json.wide).toBe(false);
-    const listed = (tables.json.elements as Json[]).find((e) => String(e.id).includes("@"))!;
+    const listed = (tables.json.elements as Json[]).find((e) => e.kind === "table")!;
     expect(listed.kind).toBe("table");
     expect(listed.name as string).toMatch(/^[^@]+ \(main\)$/);
     const one = await call("POST", "/api/templates/paths", "/api/templates/paths", { pack: "sql-ddl", unit: "table", elementIds: [listed.id] });

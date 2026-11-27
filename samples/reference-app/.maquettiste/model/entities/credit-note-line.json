@@ -58,5 +58,68 @@
       "required": true,
       "description": "Line total."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9AYWBMX6WQVZK18PXC6",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99MS5Y2DR330WZEAHPN",
+      "fields": [
+        {
+          "attribute": "01M35P5954KGCVN5R6Q578W4G6",
+          "column": "01M8EJX99M3VPZ14WBXCJWK1JS"
+        },
+        {
+          "attribute": "01M1FH843GEC6PYZV7501C3RNE",
+          "column": "01M8EJX99MVYNQ0051XEE4V6AE"
+        },
+        {
+          "attribute": "01M1KNTR87BCR8F86CWGXVTWZ4",
+          "column": "01M8EJX99M2E054MEE3XHW1V1G"
+        },
+        {
+          "attribute": "01M1MGDGWTJJ0TS4E13JVCTX6T.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99MF95BTA4EG6K1V1P3"
+        },
+        {
+          "attribute": "01M1MGDGWTJJ0TS4E13JVCTX6T.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99MQPSMXNVDCQQJA81C"
+        },
+        {
+          "attribute": "01M2G4XC7CJFNSM2PPKZV5YSTX.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99MVYFGQ5MWZ951Z2CE"
+        },
+        {
+          "attribute": "01M2G4XC7CJFNSM2PPKZV5YSTX.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99MBSZJJ8ZHK4RZBG6P"
+        },
+        {
+          "attribute": "01M1ZAVJSKK51QTTNXR91ZTF79",
+          "column": "01M8EJX99M9B6FR9NW44WW2V3F"
+        },
+        {
+          "attribute": "01M3072MN4XD0JB02WNFAP95HX",
+          "column": "01M8EJX99MN9GXVBGGMQP7QNKD"
+        },
+        {
+          "attribute": "01M1K4PDFHGP3A1JRVNFN5BBCN",
+          "column": "01M8EJX99M7EBDHK439D4PQ3H2"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99M2E054MEE3XHW1V1G": "1a7b308d:b52e18e1",
+          "01M8EJX99M3VPZ14WBXCJWK1JS": "a5614527:8da1c7b8",
+          "01M8EJX99M7EBDHK439D4PQ3H2": "64814827:d8a57cf9",
+          "01M8EJX99M9B6FR9NW44WW2V3F": "1d938016:8da1c7b8",
+          "01M8EJX99MBSZJJ8ZHK4RZBG6P": "a68013a5:48b85cd3",
+          "01M8EJX99MF95BTA4EG6K1V1P3": "63d21e41:d46c92d7",
+          "01M8EJX99MN9GXVBGGMQP7QNKD": "f7c0fe49:9b0ae5bb",
+          "01M8EJX99MQPSMXNVDCQQJA81C": "8c0ec395:48b85cd3",
+          "01M8EJX99MVYFGQ5MWZ951Z2CE": "7e56bed9:d46c92d7",
+          "01M8EJX99MVYNQ0051XEE4V6AE": "c9046f7a:e90be005"
+        }
+      }
+    }
   ]
 }

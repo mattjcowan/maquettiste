@@ -38,7 +38,7 @@ const fileOf = (page: Page, name: string) =>
 const propertiesOf = async (page: Page, id: string) => (await documentOf(page, id))?.properties;
 
 async function openCustomersTable(page: Page) {
-  await page.goto("/database");
+  await page.goto("/database?mock=projected");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await page.getByTestId("database-table-customers").click();
   await expect(page.getByTestId("column-grid")).toBeVisible();

@@ -47,5 +47,38 @@
       },
       "default": 3
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EKD8Y8BNT5PQQ20ZXXC5YG",
+      "database": "01JDBS00000000000000000001",
+      "source": "01M8EKD8XNDSPCQ1ZY8NH71VG3",
+      "fields": [
+        {
+          "attribute": "01JATT00000000000000000101",
+          "column": "01M8EKD8XP020JJG2BWX82FNHD"
+        },
+        {
+          "attribute": "01JATT00000000000000000102",
+          "column": "01M8EKD8XPCQ6QNR1V726D6RGP"
+        },
+        {
+          "attribute": "01JATT00000000000000000103",
+          "column": "01M8EKD8XP57R2S217VVM05JH6"
+        },
+        {
+          "attribute": "01JATT00000000000000000104",
+          "column": "01M8EKD8XPPHR2PTX8R07CNB4K"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EKD8XP020JJG2BWX82FNHD": "a5614527:8da1c7b8",
+          "01M8EKD8XP57R2S217VVM05JH6": "82244417:a9c53dee",
+          "01M8EKD8XPCQ6QNR1V726D6RGP": "82a3537f:6e0602bf",
+          "01M8EKD8XPPHR2PTX8R07CNB4K": "4fe3cdd4:d0210786"
+        }
+      }
+    }
   ]
 }

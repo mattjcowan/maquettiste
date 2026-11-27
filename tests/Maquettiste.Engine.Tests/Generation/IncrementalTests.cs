@@ -239,6 +239,39 @@ public sealed class IncrementalTests
     }
 
     /// <summary>A forced run over the incremental result renders everything and finds nothing to write: incremental equals forced.</summary>
+    [Fact]
+    public async Task An_entity_mapping_that_becomes_a_promoted_relation_mapping_re_renders_the_entity_list()
+    {
+        // A model with no relation mapping: the mapping file's own key is on no list, and its kind set does not move when it turns into a
+        // relation mapping under the same id. The entity list records pm:relation-mappings in every model, so the promoted entity appears.
+        const string mappingId = "01K9PR00000000000000000001";
+        void Model(ModelBuilder b, bool promoted)
+        {
+            var customer = b.Entity("Customer").Key("id", "uuid").Attr("name", "string");
+            var product = b.Entity("Product").Key("id", "uuid").Attr("title", "string");
+            var main = b.Database("main", Dialect.PostgreSql);
+            var favours = b.Relation("favours", customer, product);
+            b.Add(promoted
+                ? new Mapping { Id = mappingId, Name = "shop mapping", Database = main.Id, Relation = favours.Id, Shape = RelationShape.Promoted }
+                : new Mapping { Id = mappingId, Name = "shop mapping", Database = main.Id, Entity = customer.Id });
+        }
+
+        await using var f = await GenerationFixture.CreateAsync(b => Model(b, promoted: false), "basic");
+        // The index reads the entity list's size only, so only the list's membership keys can make it render again.
+        f.WritePackFile("basic", "index.tpl", "{{entity-count}}\n");
+        await f.RunAsync();
+        Assert.Equal("2", f.Outputs()["out/index.txt"].TrimEnd());
+
+        await f.WriteModelAsync(b => Model(b, promoted: true));
+        f.Renderer = new FakeRenderer();
+        var result = await f.RunAsync();
+
+        Assert.True(result.Outcome == RunOutcome.Succeeded, string.Join("\n", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Contains("basic/index", f.Renderer.Rendered);
+        Assert.Equal("3", f.Outputs()["out/index.txt"].TrimEnd()); // the promoted entity joins the list
+        await AssertForcedRunChangesNothing(f);
+    }
+
     private static async Task AssertForcedRunChangesNothing(GenerationFixture f)
     {
         var before = f.Outputs();

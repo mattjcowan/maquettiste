@@ -481,6 +481,15 @@ public sealed partial class AgentTools
         }
     }
 
+    /// <summary>A choice per id (an object of strings), or one for every id (a string, kept under <c>*</c>); <see langword="null"/> for none.</summary>
+    private static Dictionary<string, string>? Choice(JsonElement? value) => value switch
+    {
+        { ValueKind: JsonValueKind.String } v => new Dictionary<string, string>(StringComparer.Ordinal) { ["*"] = v.GetString()! },
+        { ValueKind: JsonValueKind.Object } v => v.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String)
+            .ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal),
+        _ => null,
+    };
+
     private async Task<AgentToolResult> PreviewMaterializeAsync(ToolArguments args, CancellationToken ct)
     {
         var database = args.String("database");
@@ -490,9 +499,18 @@ public sealed partial class AgentTools
         var package = args.String("package");
         if (string.IsNullOrEmpty(database))
             return BadRequest("database is required.");
+        foreach (var name in new[] { "hierarchy", "listStorage" })
+        {
+            if (args.Json(name) is { ValueKind: not (JsonValueKind.String or JsonValueKind.Object or JsonValueKind.Null) })
+                return BadRequest(name + " is a string, or an object from ids to strings.");
+        }
+
         var request = op switch
         {
-            "materialize-tables" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, args.String("schema")),
+            "materialize-tables" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, args.String("schema"))
+            {
+                Hierarchy = Choice(args.Json("hierarchy")), ListStorage = Choice(args.Json("listStorage")),
+            },
             "materialize-entities" when tables is { Length: > 0 } && !string.IsNullOrEmpty(package) => new MaterializeRequest(op, database, tables, null, package),
             "materialize-attributes" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, Columns: args.Strings("columns") is { Length: > 0 } columns ? columns : null),
             "materialize-columns" when entities is { Length: > 0 } => new MaterializeRequest(op, database, entities, Attributes: args.Strings("attributes") is { Length: > 0 } refs ? refs : null),

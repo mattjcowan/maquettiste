@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01J92P0V1CC98R0RRCAV73SGF4",
+  "name": "refers to",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "ends": [
+    {
+      "id": "01J92P0V1JK03BVHPB2KENZ68W",
+      "entity": "01J92P0V0GWFR78HZH0P8Z3GY7",
+      "role": "lines"
+    },
+    {
+      "id": "01J92P0V1K5BZCDV8JB9BQ2N6T",
+      "entity": "01J92P0V0JR8BE8253SKT29ZG7",
+      "role": "product",
+      "navigation": "product",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    }
+  ]
+}

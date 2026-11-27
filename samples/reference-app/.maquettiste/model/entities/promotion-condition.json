@@ -50,5 +50,58 @@
       },
       "description": "Minimum amount."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BGX3D3DA2V8SH8B5AW",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99Q42BKJ3B5VDBD3AHV",
+      "fields": [
+        {
+          "attribute": "01M1ZWHBC1D35X5WMM4H4HDBXD",
+          "column": "01M8EJX99QGKR155MF0S2S6G59"
+        },
+        {
+          "attribute": "01M2FD8NCDC3MGMV4VYGMS00KS",
+          "column": "01M8EJX99QY91AGSW01Y37AJBR"
+        },
+        {
+          "attribute": "01M2VNXP29J6A1QPT1MC9286W5",
+          "column": "01M8EJX99QR1YX0H4DWCKN8HWH"
+        },
+        {
+          "attribute": "01M2923TEGG1SA0AAB6X6H2TMR.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QZXSND3SN464RVV6W"
+        },
+        {
+          "attribute": "01M2923TEGG1SA0AAB6X6H2TMR.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QMQKQSDRQKY0X7NGG"
+        },
+        {
+          "attribute": "01M2X5PM2BWVADA3MCVKVXARM3",
+          "column": "01M8EJX99QG13YS5N9YJADX9AV"
+        },
+        {
+          "attribute": "01M2Y57DYR7575E36P15RDKFRK",
+          "column": "01M8EJX99QHCFZ891NTZK14GGQ"
+        },
+        {
+          "attribute": "01M1RN60V7T75ARX303FSHBZ14",
+          "column": "01M8EJX99Q2TG98F04AF8EFWVK"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q2TG98F04AF8EFWVK": "37a6fdd1:8da1c7b8",
+          "01M8EJX99QG13YS5N9YJADX9AV": "ea0782b8:d8a57cf9",
+          "01M8EJX99QGKR155MF0S2S6G59": "a5614527:8da1c7b8",
+          "01M8EJX99QHCFZ891NTZK14GGQ": "64814827:d8a57cf9",
+          "01M8EJX99QMQKQSDRQKY0X7NGG": "7d3d35ff:75525505",
+          "01M8EJX99QR1YX0H4DWCKN8HWH": "4716a7fe:17d070b1",
+          "01M8EJX99QY91AGSW01Y37AJBR": "89362b69:6ebc34b1",
+          "01M8EJX99QZXSND3SN464RVV6W": "d9455b0b:d249895e"
+        }
+      }
+    }
   ]
 }

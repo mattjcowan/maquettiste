@@ -14,6 +14,7 @@ import { planColumnRename } from "@/workspaces/database/renames";
 import { renameTableColumn, renameViewColumn } from "@/workspaces/database/columnRename";
 import { runSchemaOperation } from "@/inspector/DatabaseSchemas";
 import { useMockApi } from "./harness";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 
 type Json = Record<string, unknown>;
 
@@ -22,7 +23,7 @@ const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
 const PATTERN = "fk_{table}_{columns}";
 
 describe("the designer's writes against the mock", () => {
-  const api = useMockApi();
+  const api = useMockApi({ seed: billingProjectedSeed() });
 
   const view = async () => {
     const qc = api.services.queryClient;

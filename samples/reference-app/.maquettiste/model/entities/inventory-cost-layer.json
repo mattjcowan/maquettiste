@@ -67,5 +67,63 @@
       "required": true,
       "description": "Landed cost per unit."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B54GY1FMTP2CW92RDS",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PMZG988PETYDA4E1J",
+      "fields": [
+        {
+          "attribute": "01M2NJA1PWJ0D9GEBQNGCF923A",
+          "column": "01M8EJX99P36Z237CMBPCXKEW2"
+        },
+        {
+          "attribute": "01M1TXR8QTT47NEJKFSDC0T294",
+          "column": "01M8EJX99PB758NKN0AJRARRAN"
+        },
+        {
+          "attribute": "01M1FD54EKWVKTZ9TV870ZBMYN",
+          "column": "01M8EJX99PKWWRA8Q6Y9Y30V9Y"
+        },
+        {
+          "attribute": "01M27SDDS9R8YBS665V8QYTRJG",
+          "column": "01M8EJX99PTEG0W4SPY62RTXM7"
+        },
+        {
+          "attribute": "01M2828X9VXSFM19Q0TN4HSNHV.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PGVRR9KQVKQ7AKXY6"
+        },
+        {
+          "attribute": "01M2828X9VXSFM19Q0TN4HSNHV.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99P9ZHDKAYASHHKF466"
+        },
+        {
+          "attribute": "01M2XFYQKNSJ0H4T8MW2872BJR",
+          "column": "01M8EJX99PFKXYP5TGWV4XCBAR"
+        },
+        {
+          "attribute": "01M2NKVSKFC516VTD7YYTFNT8Z",
+          "column": "01M8EJX99PXADVPB1BAZ34M0X0"
+        },
+        {
+          "attribute": "01M2JY1XT2DCHMP5VTFF9JAB90",
+          "column": "01M8EJX99PXDP3C78S2KH56QK6"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P36Z237CMBPCXKEW2": "a5614527:fc034f10",
+          "01M8EJX99P9ZHDKAYASHHKF466": "c29a402e:48b85cd3",
+          "01M8EJX99PB758NKN0AJRARRAN": "1ec47b6b:81884634",
+          "01M8EJX99PFKXYP5TGWV4XCBAR": "64814827:8da1c7b8",
+          "01M8EJX99PGVRR9KQVKQ7AKXY6": "19692048:d46c92d7",
+          "01M8EJX99PKWWRA8Q6Y9Y30V9Y": "1a7b308d:0495da45",
+          "01M8EJX99PTEG0W4SPY62RTXM7": "5f96d38b:0495da45",
+          "01M8EJX99PXADVPB1BAZ34M0X0": "f9d6c349:8da1c7b8",
+          "01M8EJX99PXDP3C78S2KH56QK6": "38ce19a5:d8a57cf9"
+        }
+      }
+    }
   ]
 }

@@ -1,0 +1,84 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NB6CDF50KXMNRPTNY",
+  "name": "product_substitutes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N1GZQZ1EQH53CEK4G",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product substitute."
+    },
+    {
+      "id": "01M8EJX99NQDFQZ31XGTVGRFYH",
+      "name": "reason",
+      "type": "string",
+      "length": 200,
+      "comment": "Why the substitute fits."
+    },
+    {
+      "id": "01M8EJX99NPCQBZBY0FCH1AQK2",
+      "name": "priority",
+      "type": "int16",
+      "nullable": false,
+      "default": 1,
+      "comment": "Rank among substitutes; 1 is preferred."
+    },
+    {
+      "id": "01M8EJX99NS4P6V82KH50PS7XB",
+      "name": "requires_approval",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the customer must approve the substitution."
+    },
+    {
+      "id": "01M8EJX99N4VH02FCT9AZZ03YR",
+      "name": "substitute_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99NRP9NYB4XG7MD7QFV",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_substitutes",
+    "columns": [
+      "01M8EJX99N1GZQZ1EQH53CEK4G"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7H6C6Y2T9BBYWWFGR",
+      "name": "fk_product_substitutes_substitute_id",
+      "columns": [
+        "01M8EJX99N4VH02FCT9AZZ03YR"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A7AMSM30B30WJETM78",
+      "name": "fk_product_substitutes_product_id",
+      "columns": [
+        "01M8EJX99NRP9NYB4XG7MD7QFV"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A product that can replace another when it is out of stock, ranked by preference."
+}

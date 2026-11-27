@@ -4,10 +4,12 @@ using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>E5 to E5e (explorer-redesign.md section 4.1): index rows, batched reads, the index tag and table summaries.</summary>
+[UsesProjectedFixtures]
 public sealed class ExplorerScaleTests
 {
     private const string OverviewDiagramId = "01J92P0V2164SDBW687ZV6E1MV";

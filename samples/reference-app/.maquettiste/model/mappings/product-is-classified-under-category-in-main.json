@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHGE8MZW7KC7Y147CZ",
+  "name": "product is classified under category in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M26Z9FH61TFVGMFWYPHECH1R",
+  "foreignKey": "01M8EJX9A7X1VR9TZFRWEKDGS9"
+}

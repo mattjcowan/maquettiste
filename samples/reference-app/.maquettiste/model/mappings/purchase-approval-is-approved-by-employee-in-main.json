@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJMSHXRN3HE6YX0BSK",
+  "name": "purchase approval is approved by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1NDHSPVSJRSMHS3JH7GAPDX",
+  "foreignKey": "01M8EJX9ABAG8Z48CMVCX6Y62H"
+}

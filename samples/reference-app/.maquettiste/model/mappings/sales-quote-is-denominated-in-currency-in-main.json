@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CKZD67M00T805R2EPN",
+  "name": "sales quote is denominated in currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2KVPKQHN462A34XDJWGNFVP",
+  "foreignKey": "01M8EJX9ACCANZ5V8MY2EF1H2B"
+}

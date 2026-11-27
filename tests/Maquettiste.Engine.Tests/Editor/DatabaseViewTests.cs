@@ -2,10 +2,12 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>E1: <see cref="GenerationService.GetDatabaseViewAsync"/> (phase2-design.md section 3.8).</summary>
+[UsesProjectedFixtures]
 public sealed class DatabaseViewTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);

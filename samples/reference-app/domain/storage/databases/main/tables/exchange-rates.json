@@ -1,0 +1,107 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PA3ZD9QH0FRSFQT4T",
+  "name": "exchange_rates",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PK33ZHDMBRX2V4M67",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the exchange rate."
+    },
+    {
+      "id": "01M8EJX99PTD37GR2Z73R0TMF8",
+      "name": "rate",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 8,
+      "nullable": false,
+      "comment": "Units of the target currency per unit of the source currency."
+    },
+    {
+      "id": "01M8EJX99PPA92JNQR35S39NM8",
+      "name": "effective_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date the rate applies."
+    },
+    {
+      "id": "01M8EJX99PS81AE15HBYB900CY",
+      "name": "rate_type",
+      "type": "string",
+      "length": 10,
+      "nullable": false,
+      "default": "spot",
+      "comment": "spot, average or budget."
+    },
+    {
+      "id": "01M8EJX99PVXEZMZC59WBKB20J",
+      "name": "source",
+      "type": "string",
+      "length": 40,
+      "comment": "Feed the rate came from."
+    },
+    {
+      "id": "01M8EJX99PC7WEHZXJNC9V67ZY",
+      "name": "from_currency_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P52MMKDT4D2RYGRE0",
+      "name": "to_currency_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_exchange_rates",
+    "columns": [
+      "01M8EJX99PK33ZHDMBRX2V4M67"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8FJW05RW1GXXE5Q9F",
+      "name": "fk_exchange_rates_from_currency_code",
+      "columns": [
+        "01M8EJX99PC7WEHZXJNC9V67ZY"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A8B3MD8HMV6VT1DJFT",
+      "name": "fk_exchange_rates_to_currency_code",
+      "columns": [
+        "01M8EJX99P52MMKDT4D2RYGRE0"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A85GFD33QR58ZST6TQ",
+      "name": "ix_exchange_rates_effective_on",
+      "columns": [
+        {
+          "column": "01M8EJX99PPA92JNQR35S39NM8"
+        }
+      ]
+    }
+  ],
+  "comment": "A currency conversion rate on a date, loaded daily from the central bank feed."
+}

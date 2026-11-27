@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Snapshots;
 
@@ -9,6 +10,7 @@ namespace Maquettiste.Engine.Tests.Snapshots;
 /// The model diff (next-phase-2-design.md section 6.2): sides that are snapshots, folders or the working model, rows grouped by package
 /// and facts by database, and field changes that name their sub-element.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ModelDiffTests
 {
     internal const string Billing = "01J92P0V01KDRN8GX5PGYCNKSX";

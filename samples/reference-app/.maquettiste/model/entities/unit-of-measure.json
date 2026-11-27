@@ -64,5 +64,43 @@
       },
       "description": "Decimals allowed on quantities in the unit."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C9CZRRG7XQ63TJVZ6B",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "fields": [
+        {
+          "attribute": "01M1DMJKN68JMPAPFSSKQDXAAR",
+          "column": "01M8EJX99Q26RFK5STCSH1JBPE"
+        },
+        {
+          "attribute": "01M33BM5QAN67ZSY5337FRQY01",
+          "column": "01M8EJX99Q9SX37MDCSQGX55D3"
+        },
+        {
+          "attribute": "01M1XXAS2NR0DYKXP381MEJC28",
+          "column": "01M8EJX99QA3ZQP29C590Z0NR3"
+        },
+        {
+          "attribute": "01M36R68ESCEHEJ1D0VFS0PF1H",
+          "column": "01M8EJX99Q05ZBSN8VE0A1ZATK"
+        },
+        {
+          "attribute": "01M1FA9YS2Y31HQ86G0V7PZ5AP",
+          "column": "01M8EJX99Q4MY7KEH16AMDEKGJ"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q05ZBSN8VE0A1ZATK": "5d77b63f:19980141",
+          "01M8EJX99Q26RFK5STCSH1JBPE": "5694d08a:48b85cd3",
+          "01M8EJX99Q4MY7KEH16AMDEKGJ": "5c7a5e89:6bcc33d3",
+          "01M8EJX99Q9SX37MDCSQGX55D3": "82a3537f:047ca306",
+          "01M8EJX99QA3ZQP29C590Z0NR3": "48eb632f:ef1ae9ec"
+        }
+      }
+    }
   ]
 }

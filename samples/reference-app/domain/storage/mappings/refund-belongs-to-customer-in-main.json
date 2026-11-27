@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHS9P7A0EGSCTTJ4JM",
+  "name": "refund belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2M74JFEYBJGNXG1W4V72MHX",
+  "foreignKey": "01M8EJX9A6GEHFRJ9M4WS3G5W5"
+}

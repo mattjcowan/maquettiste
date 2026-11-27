@@ -1,0 +1,110 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PWE8JFBJRHYEBTQPV",
+  "name": "serial_numbers",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P3ARH4W6ATBW4C20V",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the serial number."
+    },
+    {
+      "id": "01M8EJX99PMN0P57ECYEPC2NAR",
+      "name": "serial",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "Serial number."
+    },
+    {
+      "id": "01M8EJX99PY9NC7H25HPNHWW5F",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "in-stock",
+      "comment": "in-stock, shipped, returned or scrapped."
+    },
+    {
+      "id": "01M8EJX99PCY8ZB5H4QRF9PH4V",
+      "name": "received_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was received."
+    },
+    {
+      "id": "01M8EJX99PNFG89W1PWG9PBA4A",
+      "name": "lot_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PFPHBKJ9G86MDEWS5",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PKF5GJ3SY7WAJRCY5",
+      "name": "current_bin_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_serial_numbers",
+    "columns": [
+      "01M8EJX99P3ARH4W6ATBW4C20V"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AAN5TK71E0X5Y2WGNP",
+      "name": "uq_serial_numbers_serial",
+      "columns": [
+        "01M8EJX99PMN0P57ECYEPC2NAR"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA5ZRCXA6DDG7G2ZJV",
+      "name": "fk_serial_numbers_lot_id",
+      "columns": [
+        "01M8EJX99PNFG89W1PWG9PBA4A"
+      ],
+      "referencesTable": "01M8EJX99P4YZT0BJ4SBS8XS67",
+      "referencesColumns": [
+        "01M8EJX99PJWQ6NSF0MMBRYXEK"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AA0EC6B61W3N3Z6A2M",
+      "name": "fk_serial_numbers_product_id",
+      "columns": [
+        "01M8EJX99PFPHBKJ9G86MDEWS5"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AAYZF03PBTRQ8NHV3N",
+      "name": "fk_serial_numbers_current_bin_id",
+      "columns": [
+        "01M8EJX99PKF5GJ3SY7WAJRCY5"
+      ],
+      "referencesTable": "01M8EJX99P6T2XHSRWPFJSSPJA",
+      "referencesColumns": [
+        "01M8EJX99PNZ31YCAG0CEXWAPQ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A serialized unit of a product, tracked from receipt to the customer."
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHC3RCC08731J0P45G",
+  "name": "shipment is kept at warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2SFBD3PH68T1KEY126SKW9D",
+  "foreignKey": "01M8EJX9A944PDEYPEDGV5DXDC"
+}

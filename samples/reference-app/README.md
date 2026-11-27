@@ -4,23 +4,26 @@
 
 The data layer of a B2B wholesale distributor, modeled in Maquettiste and generated end to end: 203 entities in 12 packages,
 8 value objects, 5 scalar types, 23 enums, 2 reference types, 439 relations, one PostgreSQL 16 database (`main`, schema `northwind`) with
-table overlays, two designed tables, a view, three sequences and two queries (a customer's open sales orders, and revenue by sales
+210 designed tables, a view, three sequences and two queries (a customer's open sales orders, and revenue by sales
 channel), and one subject-area diagram per package. The read-only entity `OpenSalesOrder` reads the first query through its
 binding, so its repository runs the query (paged and ordered by key; the query class `OpenSalesOrdersQuery` keeps the
 query's own newest-first order); the query itself declares only its columns, and an order's lines are the parts of
-`SalesOrder`, read through their own repository. One designed table, `remarks`, is shared by two entities
-through explicit bindings (erratum E43): `CustomerRemark` and `SalesOrderRemark` are never projected, their binding's constant
-`subject_type` tells their rows apart, and their repositories come from the binding.
-
-The database file `main` has no `byConvention` member on purpose: it keeps the rule from before 0.3.0 (every entity, or the
-entities of its `packages`), and `generate --check` proves that such models still generate byte-identical output. A new
-database made in the editor states its convention (`none`, the picked domains, or `all`; engine-design.md D46).
+`SalesOrder`, read through their own repository. Every entity is bound to a designed table, and
+every relation has a relation mapping (439). The model uses no projection: the database file `main` says `"byConvention": "none"`.
+"Create tables…" wrote 208 of the designed tables once, from the earlier convention-based layout; `integration_outbox` and
+`remarks` were designed by hand. One designed table, `remarks`, is shared by two entities
+through explicit bindings (erratum E43): their binding's constant `subject_type` tells the rows of `CustomerRemark` and
+`SalesOrderRemark` apart, and their repositories come from the binding.
 
 ## Layout
 
 ```
 domain/*.yaml            the domain description (grammar in domain/README.md) - edit these
-tools/build-model.mjs    domain -> .maquettiste/ (model, maquettiste.json, schema copies, pack copies); deterministic
+domain/storage/          the storage as model documents (paths mirror .maquettiste/model/): the designed tables and
+                         relation mappings whole, and `{ "bindings": [...] }` files for entities and reference types
+tools/build-model.mjs    domain + domain/storage -> .maquettiste/ (model, maquettiste.json, schema copies, pack copies); deterministic
+tools/take-storage.mjs   copies a project's storage back into domain/storage/ (`--from <project>`); refuses any other
+                         difference from the YAML
 tools/check-model.mjs    fails when .maquettiste/ is not exactly what build-model.mjs produces (npm test)
 tools/seed.mjs           builds the same model through a running editor's API, batch by batch
 tools/empty-editor.sh    starts the editor image on an empty project for seed.mjs
@@ -30,7 +33,10 @@ tools/db-apply.sh        applies db/main to postgres:16 (schema, migrations, see
 tools/gate2.sh           the gate 2 check, step by step (also what the gate2 job of .github/workflows/ci.yml runs)
 db/main/                 committed sql-ddl output: schema.sql, tables/views/sequences, migrations/, seed.sql; the
                          migrations 0001.sql to 0005.sql keep the names earlier versions gave them and stay owned;
-                         a new one is <revision>-<key>.sql, named by its content
+                         a new one is <revision>-<key>.sql, named by its content;
+                         0006-91750a84d22d.sql holds the ledger rows of the one conversion to designed tables; as
+                         written by sql-ddl, it also creates the two lookup tables and their foreign keys where they
+                         are missing, so a database built from the migrations alone gets them
 src/ReferenceApp.Data/   ReferenceApp.Data.csproj (net10.0, Dapper, Npgsql); Generated/ is generated and not committed:
                          .gitignore there carries the csharp-dapper pack's managed block that ignores it;
                          Custom/ holds hand-written partial halves of generated types
@@ -67,7 +73,8 @@ samples/reference-app/tools/db-apply.sh          # 210 tables, 1 view, 3 sequenc
 samples/reference-app/tools/db-apply.sh --down
 ```
 
-`db/main/seed.sql` carries the generated lookup rows plus hand-written currencies and countries inside its
+`db/main/seed.sql` carries the generated lookup rows (the lookup tables `product_statuses` and `shipment_statuses` are
+declared tables now, created by `schema.sql` and the table scripts) plus hand-written currencies and countries inside its
 `maquettiste:keep id=seed-data` region, which regeneration preserves. The C# companions (`Customer.cs` next to
 `Customer.g.cs`) are written once into `Generated/`; the hand-written code lives in `src/ReferenceApp.Data/Custom/`
 as further partial parts, so a fresh clone needs no committed stubs.
@@ -87,8 +94,10 @@ docker compose -f docker/compose.yaml --project-directory tmp/nw-seed down -v
 the copy as you, with no ACLs or `chmod` (docker/README.md explains the image's user rule).
 
 `seed.mjs` saves `maquettiste.json` through `PUT /api/project/settings` with `migrations.record` set to `off`, then posts 31
-batches to `POST /api/model/batch` (vocabularies, packages, types, database objects, entities per package, relations per package,
-table overlays, mappings, diagrams) and saves the real settings. The batches reshape a database that was never deployed, so
+batches to `POST /api/model/batch` (vocabularies, packages, the database with its sequences, views and designed tables, types,
+12 entity batches (one per package, without their bindings), 12 relation batches, one batch of the relation mappings with the
+bindings, queries, diagrams) and saves the real settings. The bindings come after the relations because a binding can name relation ends: each
+entity and reference type is written again whole, by name (an upsert). The batches reshape a database that was never deployed, so
 they record no migration facts. It then checks `POST /api/validate` reports nothing and, with `--compare`, that every file equals
 `build-model.mjs`'s and that `.maquettiste/model` holds no other file.
 `--dry-run` lists the batches without sending anything.
@@ -98,9 +107,9 @@ they record no migration facts. It then checks `POST /api/validate` reports noth
 `tools/gate2.sh` runs SPEC Section 21's gate 2 the way the gate2 job of `.github/workflows/ci.yml` does (phase2-design.md 7.2): it copies
 this folder to `tmp/gate2/` without the model, `db/` and build output, starts the image over it, seeds the model through the
 API (`seed.mjs --compare`), runs the Playwright walk `src/editor/tests/e2e/gate2.spec.ts` (add `receivingHours` to
-`Warehouse` in the grid, rename the relation `delivery route departs from warehouse` to `delivery route departs from depot`, plan, open a diff, apply,
+`Warehouse` in the grid, then add a column for it with "Add columns for the unmapped attributes" on the editor's Storage tab, rename the relation `delivery route departs from warehouse` to `delivery route departs from depot`, plan, open a diff, apply,
 `applyResult.outcome` = `succeeded`). Then `check` asserts that both edits are in the model files, `warehouses.sql` and
-`Warehouse.g.cs`, runs `validate`, runs `generate --check` over every output (the editor's apply equals the CLI's output, `db/main`, `Generated/` and the
+`Warehouse.g.cs` (and that `warehouses.json` has the column `receiving_hours`), runs `validate`, runs `generate --check` over every output (the editor's apply equals the CLI's output, `db/main`, `Generated/` and the
 `.gitignore` block the apply created included) and generates the whole project again with the CLI (`--force`) into a second copy,
 comparing `Generated/` with `diff -r`. Last come `dotnet build -warnaserror` of `ReferenceApp.Data` and `db-apply.sh` against PostgreSQL
 (both databases must hold 210 tables, 1 view and 3 sequences). The workflow also runs `generate --check` on this folder, so
@@ -124,15 +133,17 @@ and hands them back before going on.
 - Many-to-many without attributes (`role grants permission`, `collection includes product`) and with attributes
   (`user account holds role`, `payment settles invoice`, `rfq invites supplier`), mapped to junction tables.
 - Self-references: `Employee.manager`, `Department.parent`, `ProductCategory.parent`, `LedgerAccount.parent` and more.
-- TPH inheritance `Party` -> `Customer`, `Supplier`, `Carrier` with discriminator values; TPT `Payment` -> `CardPayment`,
-  `BankTransfer`.
-- Value objects embedded (with `bill_`/`ship_`/`hq_` prefixes), a value-object collection table (`Supplier.remitToAddresses`)
-  and a JSON one (`Contact.additionalPhones`); enums stored as codes and as integers (`SalesOrderLine.status`);
-  reference types stored as lookup tables keyed by code (`Product.status`, `Shipment.status`; migration 0002 converts
-  their former enum lookup ids to codes).
+- One table for the `Party` hierarchy (`parties`, a type column with the codes PARTY, CUSTOMER, SUPPLIER and CARRIER); a
+  table per type for `Payment` (`card_payments` and `bank_transfers`, each keyed by the payment's id through the binding's
+  base foreign key).
+- Value objects embedded (with `bill_`/`ship_`/`hq_`/`ship_to_` prefixes), a child table for a list
+  (`Supplier.remitToAddresses` in `parties_remit_to_addresses`, a `childTables` entry) and a JSON column
+  (`Contact.additionalPhones`); enums stored as codes and as integers (`SalesOrderLine.status`);
+  reference types bound to lookup tables keyed by code (`Product.status` to `product_statuses`, `Shipment.status` to
+  `shipment_statuses`; migration 0002 converts their former enum lookup ids to codes).
 - Stereotypes `aggregate-root`, `audited`, `soft-delete`, `reference-data` and `lookup` (11 lookup entities); a strict tag
   vocabulary; a category tree with one category per package under four groups.
-- Alternate keys, indexed and unique attributes, overlays with native types, checks, filtered and descending indexes,
+- Alternate keys, indexed and unique attributes, designed tables with native types, jsonb details, checks, filtered and descending indexes,
   sequence defaults, a sequence-keyed entity (`JournalEntry`), the designed `integration_outbox` table and the
   `open_sales_orders` view.
 
@@ -141,7 +152,7 @@ and hands them back before going on.
 - **One language.** `maquettiste.json` declares no `localization` block, so the model has no translation shards:
   `maquettiste l10n status` answers "not declared" here, and the editor's locale switcher and Translations sections stay
   hidden. The localization paths are exercised by the engine's tests and the `write-model --locales 4` bench model instead.
-- **Two reference types.** `ProductStatus` and `ShipmentStatus` (seeds `product-status` and `shipment-status`), stored as
+- **Two reference types.** `ProductStatus` and `ShipmentStatus` (seeds `product-status` and `shipment-status`), bound to
   lookup tables keyed by code; the other reference-data strategies are covered by the `sql-ddl` pack's goldens, not by
   this application. `$CLI seed export ProductStatus` prints the rows as CSV (`@id,@code,@label,@description`), and
   `seed import` previews a CSV against them.

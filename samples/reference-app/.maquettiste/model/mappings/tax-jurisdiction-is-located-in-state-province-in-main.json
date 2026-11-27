@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHSC4Z4RBGCZQ4HENP",
+  "name": "tax jurisdiction is located in state province in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2JZV93PHKXXJKJGXHKDQR9H",
+  "foreignKey": "01M8EJX9A84TV0V625FEFNT6T9"
+}

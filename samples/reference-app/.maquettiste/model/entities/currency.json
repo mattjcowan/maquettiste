@@ -73,5 +73,48 @@
       "default": true,
       "description": "Whether new documents may use the currency."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9AZHCBJ7255JVMAXZ9Y",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QRBGEFE3GNVN365J7",
+      "fields": [
+        {
+          "attribute": "01M1SDBW7HCRAWN462AYWG6D7V",
+          "column": "01M8EJX99QJKX5M1HTH079V63S"
+        },
+        {
+          "attribute": "01M2F86BGCC4T8YA9TW8AVRWM4",
+          "column": "01M8EJX99Q6MGWPTN2G403C1HQ"
+        },
+        {
+          "attribute": "01M37N9NWDJ759KTVNG1KM4TT6",
+          "column": "01M8EJX99QKKVTS7JPZVBQ11V2"
+        },
+        {
+          "attribute": "01M32JERP8G5F9EW21XX2QACWG",
+          "column": "01M8EJX99Q35NDBJMFC0JH2M81"
+        },
+        {
+          "attribute": "01M1RZ7R04SKPQD9M7F0905FWQ",
+          "column": "01M8EJX99QYH0HWRPVATN9XTWJ"
+        },
+        {
+          "attribute": "01M2ZH8JDJ73VXR5KNKAQN6WK2",
+          "column": "01M8EJX99QXP0TSJHW2X38W2Y9"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q35NDBJMFC0JH2M81": "b76a7ca1:1be9d475",
+          "01M8EJX99Q6MGWPTN2G403C1HQ": "a497190e:48b85cd3",
+          "01M8EJX99QJKX5M1HTH079V63S": "5694d08a:48b85cd3",
+          "01M8EJX99QKKVTS7JPZVBQ11V2": "82a3537f:047ca306",
+          "01M8EJX99QXP0TSJHW2X38W2Y9": "0a2438db:19980141",
+          "01M8EJX99QYH0HWRPVATN9XTWJ": "0e4a5251:6bcc33d3"
+        }
+      }
+    }
   ]
 }

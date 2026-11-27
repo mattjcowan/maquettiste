@@ -50,5 +50,48 @@
       "length": 300,
       "description": "Postal code ranges in the zone."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C04QD9GP7148Q7PKD9",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99P62WSPXSP72QQVNQQ",
+      "fields": [
+        {
+          "attribute": "01M234GRXTF73ZSFNKA1XRHTRS",
+          "column": "01M8EJX99P4B20ZTJGAXQADHE7"
+        },
+        {
+          "attribute": "01M332ZB1R8YSRZJ1QS68F57GW",
+          "column": "01M8EJX99P3GJEXH1KEZZ4HN6T"
+        },
+        {
+          "attribute": "01M2MC5GE3AV24RWYPTKMP6HA4",
+          "column": "01M8EJX99PBE4GJ7RRT0868G1Z"
+        },
+        {
+          "attribute": "01M1SFDJCZPQPQJ7AVNRFDBCMH",
+          "column": "01M8EJX99PPVZZBFCRY1YYMMDG"
+        },
+        {
+          "attribute": "01M26CPAPFHDG5ER8J4A2A7F5E",
+          "column": "01M8EJX99PVBQMZEQ1GCT484RB"
+        },
+        {
+          "attribute": "01M1N38S9ZRHZZX0YJM94SV0SQ",
+          "column": "01M8EJX99PH79KD9XPC9XZA4MJ"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P3GJEXH1KEZZ4HN6T": "5694d08a:ef1ae9ec",
+          "01M8EJX99P4B20ZTJGAXQADHE7": "a5614527:8da1c7b8",
+          "01M8EJX99PBE4GJ7RRT0868G1Z": "82a3537f:6137f4ed",
+          "01M8EJX99PH79KD9XPC9XZA4MJ": "9b8bc963:d8a57cf9",
+          "01M8EJX99PPVZZBFCRY1YYMMDG": "c9046f7a:f916bddd",
+          "01M8EJX99PVBQMZEQ1GCT484RB": "38ac8394:641290f5"
+        }
+      }
+    }
   ]
 }

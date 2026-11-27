@@ -50,5 +50,58 @@
       },
       "description": "Minimum order quantity for the price."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9APQZAN4SGQTT927XRX",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99P5NM9796CKHZJ5Y44",
+      "fields": [
+        {
+          "attribute": "01M2FG1MEEJHCZ1286R7XD9JQM",
+          "column": "01M8EJX99PVCAFBW1XV9M14GK9"
+        },
+        {
+          "attribute": "01M251835FMV39VV8XNJWJQ9DN.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PAXNAW74M6VANRGBF"
+        },
+        {
+          "attribute": "01M251835FMV39VV8XNJWJQ9DN.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PV9PZFR1S75NSX8SV"
+        },
+        {
+          "attribute": "01M25VNK1GPC7MFRFBMMC57824",
+          "column": "01M8EJX99PRY5PJTGBYCWQN6AS"
+        },
+        {
+          "attribute": "01M2CNP3QFB14DA9MMD9B926JZ",
+          "column": "01M8EJX99PJJDCPQV5ZSPYAKMN"
+        },
+        {
+          "attribute": "01M37N41AK7WTV2VJX78D8C87A",
+          "column": "01M8EJX99PJHDFKQJ7CCB5WJAT"
+        },
+        {
+          "attribute": "01M2BJC4ADYZPY7NP7A7Z5CJQ2",
+          "column": "01M8EJX99PGST341VT8Q85TZKV"
+        },
+        {
+          "attribute": "01M2NWDY545Y1M1RDD4BNXDSK0",
+          "column": "01M8EJX99PMEE5MNY57GNY1VX7"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99PAXNAW74M6VANRGBF": "5dea1359:d249895e",
+          "01M8EJX99PGST341VT8Q85TZKV": "64814827:d8a57cf9",
+          "01M8EJX99PJHDFKQJ7CCB5WJAT": "ea0782b8:d8a57cf9",
+          "01M8EJX99PJJDCPQV5ZSPYAKMN": "feed62cd:17d070b1",
+          "01M8EJX99PMEE5MNY57GNY1VX7": "e887b05f:8da1c7b8",
+          "01M8EJX99PRY5PJTGBYCWQN6AS": "22161731:08b882e7",
+          "01M8EJX99PV9PZFR1S75NSX8SV": "4847822b:75525505",
+          "01M8EJX99PVCAFBW1XV9M14GK9": "a5614527:8da1c7b8"
+        }
+      }
+    }
   ]
 }

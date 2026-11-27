@@ -64,5 +64,53 @@
       },
       "description": "Scan country."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C94VQEANF3E2HHD74K",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PXM38KZREAE24DB6G",
+      "fields": [
+        {
+          "attribute": "01M1FA1JTE1BBX2E91EEQMBXYG",
+          "column": "01M8EJX99P441T5VH03GDYGACN"
+        },
+        {
+          "attribute": "01M1RR01XZ4M6739HQ1ANZ5GYW",
+          "column": "01M8EJX99PXECSHWTKHNTE7RQ0"
+        },
+        {
+          "attribute": "01M1TG8628QQ619R50ZPXPF843",
+          "column": "01M8EJX99PWWZJSB1N5PNN95G0"
+        },
+        {
+          "attribute": "01M1DXBACES3G6XTJ57V0EHDQ3",
+          "column": "01M8EJX99PV3FYSC5PDN566PF5"
+        },
+        {
+          "attribute": "01M1DXGM963KB2YKWZDCQVSYP1",
+          "column": "01M8EJX99PWE0025QD1GGV32GZ"
+        },
+        {
+          "attribute": "01M2A9A1GKEAF7PVZQ0GT30KAW",
+          "column": "01M8EJX99P5GTWRZNC2EBSA3A8"
+        },
+        {
+          "attribute": "01M33QJ3JKD0GCKADBFYJV6AAB",
+          "column": "01M8EJX99PAZSE2DHZ89CDHCAG"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P441T5VH03GDYGACN": "a5614527:fc034f10",
+          "01M8EJX99P5GTWRZNC2EBSA3A8": "38ac8394:641290f5",
+          "01M8EJX99PAZSE2DHZ89CDHCAG": "700ec538:8da1c7b8",
+          "01M8EJX99PV3FYSC5PDN566PF5": "c9046f7a:6b504d2a",
+          "01M8EJX99PWE0025QD1GGV32GZ": "11a62c23:69185ebd",
+          "01M8EJX99PWWZJSB1N5PNN95G0": "861cc601:483b7d3a",
+          "01M8EJX99PXECSHWTKHNTE7RQ0": "c8d712be:e0d08678"
+        }
+      }
+    }
   ]
 }

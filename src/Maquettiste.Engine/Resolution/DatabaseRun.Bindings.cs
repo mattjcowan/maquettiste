@@ -109,7 +109,7 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>The bound bases whose tables each entity's rows also live in, by entity id (built on first use).</summary>
-    private readonly Dictionary<string, List<REntity>> _upperLevels = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<REntity>> _upperLevels = new(StringComparer.Ordinal);
 
     /// <summary>
     /// The bound bases whose tables an entity's rows also live in (table per type), nearest first, read from the files: the base a
@@ -254,6 +254,78 @@ internal sealed partial class DatabaseRun
     /// <summary>The entities whose binding waits for its base's (a guard against a cycle of bases).</summary>
     private readonly HashSet<string> _building = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Builds every binding of this database side by side, in waves: a binding that reads its base's resolved binding (table per type, or a
+    /// subtype in such a base's table) waits for the wave of its base. Each builder writes only the binding it creates and holds its findings
+    /// until <see cref="ResolveBindings"/> reports them in one-by-one order, so the resolved model and the diagnostics are those of a
+    /// sequential build (a large model has thousands of bindings, and building them one by one was a third of a database's run). The shared
+    /// memos the builders read are filled first, and every table's keys frozen. Returns <see langword="null"/>, building nothing, when the
+    /// bases form a cycle (the sequential build's guard decides that order) or there are too few bindings to gain.
+    /// </summary>
+    private Dictionary<string, BindingBuilder>? BuildInWaves(Dictionary<string, TableBuild> tables, Dictionary<string, RView> views,
+        Dictionary<string, RQuery> queries)
+    {
+        if (_boundEntities.Count < 64)
+            return null;
+        var depths = new Dictionary<string, int>(StringComparer.Ordinal);
+        var order = new List<REntity>();
+        var visiting = new HashSet<string>(StringComparer.Ordinal);
+        int? Depth(REntity entity)
+        {
+            if (depths.TryGetValue(entity.Id, out var known))
+                return known;
+            if (!visiting.Add(entity.Id))
+                return null; // a cycle of bases
+            var depth = 0;
+            if (UpperLevels(entity).Count > 0 && BoundBase(entity) is { } b)
+            {
+                if (Depth(b) is not { } below)
+                    return null;
+                depth = below + 1;
+            }
+
+            visiting.Remove(entity.Id);
+            depths[entity.Id] = depth;
+            order.Add(entity);
+            return depth;
+        }
+
+        foreach (var entity in _boundEntities)
+        {
+            if (Depth(entity) is null)
+                return null;
+        }
+
+        // What the builders share is read only from here on: the levels and type column members memos are filled, and each table's keys
+        // are frozen (a dependency set settles its list on first read).
+        foreach (var entity in order)
+            _ = UpperLevels(entity);
+        _ = TypeColumnMembers(_boundEntities[0]);
+        foreach (var t in _tableOrder)
+            _ = t.Deps.ToList();
+
+        var builders = new Dictionary<string, BindingBuilder>(order.Count, StringComparer.Ordinal);
+        foreach (var wave in order.GroupBy(e => depths[e.Id]).OrderBy(g => g.Key))
+        {
+            var members = wave.ToList();
+            var waveBuilders = new BindingBuilder[members.Count];
+            _run.ForEach(members.Count, i =>
+            {
+                var (file, index) = _bindingByEntity[members[i].Id];
+                var builder = new BindingBuilder(this, members[i], file, index, tables, views, queries) { BufferReports = true };
+                builder.Build();
+                waveBuilders[i] = builder;
+            });
+            for (var i = 0; i < members.Count; i++)
+            {
+                builders[members[i].Id] = waveBuilders[i];
+                _resolvedBindings[members[i].Id] = waveBuilders[i].Result;
+            }
+        }
+
+        return builders;
+    }
+
     private void ResolveBindings(List<RView> views)
     {
         if (_bindingByEntity.Count == 0)
@@ -275,14 +347,24 @@ internal sealed partial class DatabaseRun
         // A binding that joins its base's table (table per type), or shares the table of a base that does, reads the base's resolved
         // binding: the base is built first.
         _resolvedBindings.Clear();
+        var prebuilt = BuildInWaves(tables, viewsById, queriesById);
+        var flushed = new HashSet<string>(StringComparer.Ordinal);
         REntityBinding BuildOne(REntity entity)
         {
-            if (_resolvedBindings.TryGetValue(entity.Id, out var done))
-                return done;
+            if (prebuilt is not null ? flushed.Contains(entity.Id) : _resolvedBindings.ContainsKey(entity.Id))
+                return _resolvedBindings[entity.Id];
             if (UpperLevels(entity).Count > 0 && BoundBase(entity) is { } b && _building.Add(entity.Id))
             {
                 BuildOne(b);
                 _building.Remove(entity.Id);
+            }
+
+            if (prebuilt is not null)
+            {
+                // Built side by side already: its findings are reported now, in the order a one-by-one build would report them.
+                flushed.Add(entity.Id);
+                prebuilt[entity.Id].ReportBuffered();
+                return _resolvedBindings[entity.Id];
             }
 
             var (file, index) = _bindingByEntity[entity.Id];
@@ -380,8 +462,7 @@ internal sealed partial class DatabaseRun
             var id = file.Checks[k];
             if (entity.Checks.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.Ordinal)) is not { } check)
                 continue;
-            if (!check.ListedBy.Contains(binding))
-                check.ListedBy.Add(binding);
+            _run.ListBinding(check, binding);
             if (binding.WriteTable is not { } table || check.Condition?.Root is not { } source)
                 continue;
             // A check is lowered into one table: one that reads what a table above the binding's own stores (table per type) adds nothing,
@@ -498,7 +579,29 @@ internal sealed partial class DatabaseRun
             return _b;
         }
 
-        private void Report(string rule, string message, string pointer) => run._run.AddDiagnostic(rule, message, entity.Id, _at + pointer);
+        /// <summary>Whether findings wait for <see cref="ReportBuffered"/> (a binding built beside others).</summary>
+        public bool BufferReports { get; init; }
+
+        private List<(string Rule, string Message, string Pointer)>? _buffered;
+
+        /// <summary>The binding, once built.</summary>
+        public REntityBinding Result => _b;
+
+        /// <summary>Reports the findings a buffered build held, in the order it found them.</summary>
+        public void ReportBuffered()
+        {
+            foreach (var (rule, message, pointer) in _buffered ?? [])
+                run._run.AddDiagnostic(rule, message, entity.Id, pointer);
+            _buffered = null;
+        }
+
+        private void Report(string rule, string message, string pointer)
+        {
+            if (BufferReports)
+                (_buffered ??= []).Add((rule, message, _at + pointer));
+            else
+                run._run.AddDiagnostic(rule, message, entity.Id, _at + pointer);
+        }
 
         // ---- source and write table ------------------------------------------------------------------------------------------
 
@@ -889,32 +992,37 @@ internal sealed partial class DatabaseRun
 
         // ---- fields ----------------------------------------------------------------------------------------------------------
 
+        /// <summary>A field's pointer, built only for a finding (a large model resolves hundreds of thousands of fields).</summary>
+        private static string FieldAt(int i) => "/fields/" + i.ToString(CultureInfo.InvariantCulture);
+
         private List<RBindingField> ResolveFields()
         {
-            var fields = new List<RBindingField>();
-            var attributes = new Dictionary<string, int>(StringComparer.Ordinal);
-            var columns = new Dictionary<string, int>(StringComparer.Ordinal);
-            var paths = new Dictionary<string, int>(StringComparer.Ordinal);
+            var count = file.Fields.Count;
+            var fields = new List<RBindingField>(count);
+            var attributes = new Dictionary<string, int>(count, StringComparer.Ordinal);
+            var columns = new Dictionary<string, int>(count, StringComparer.Ordinal);
+            var paths = new Dictionary<string, int>(count, StringComparer.Ordinal);
+            var dottedPaths = false; // one path can lie below another only when one of them names a member
             var perTypeBase = run.IsPerType(entity) ? run.BoundBase(entity) : null;
             for (var i = 0; i < file.Fields.Count; i++)
             {
                 var f = file.Fields[i];
-                var at = "/fields/" + i.ToString(CultureInfo.InvariantCulture);
                 var field = new RBindingField { AttributeRef = f.Attribute, Column = f.Column };
                 if (!Target(field, f.Attribute))
                 {
                     // Every field form that names a relation end resolves or gets MQ4045 (several-types-design.md decision 46).
-                    Report("MQ4045", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of entity '{entity.Name}' to database '{run._db.Name}' names '{f.Attribute}', which is neither an attribute of the entity, a member of one of its value object attributes, nor the end of a to-one relation of the entity.", at + "/attribute");
+                    Report("MQ4045", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of entity '{entity.Name}' to database '{run._db.Name}' names '{f.Attribute}', which is neither an attribute of the entity, a member of one of its value object attributes, nor the end of a to-one relation of the entity.", FieldAt(i) + "/attribute");
                 }
                 else if (!attributes.TryAdd(f.Attribute, i))
-                    Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' twice (fields {attributes[f.Attribute].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", at + "/attribute");
-                else if (field is { Attribute: not null, End: null } && paths.Keys.FirstOrDefault(p => p.StartsWith(f.Attribute + ".", StringComparison.Ordinal) || f.Attribute.StartsWith(p + ".", StringComparison.Ordinal)) is { } overlap)
+                    Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' twice (fields {attributes[f.Attribute].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", FieldAt(i) + "/attribute");
+                else if (field is { Attribute: not null, End: null } && (dottedPaths || f.Attribute.Contains('.', StringComparison.Ordinal))
+                    && paths.Keys.FirstOrDefault(p => IsBelow(p, f.Attribute) || IsBelow(f.Attribute, p)) is { } overlap)
                     // A value object held whole (a JSON column) and member by member (retire-projection-design.md section 6).
-                    Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' both whole and member by member (fields {paths[overlap].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}): map the value object to one JSON column, or each member to a column.", at + "/attribute");
+                    Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' both whole and member by member (fields {paths[overlap].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}): map the value object to one JSON column, or each member to a column.", FieldAt(i) + "/attribute");
                 else if (perTypeBase is not null && MapsInherited(field, perTypeBase))
-                    Report("MQ4132", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' maps {(field.End is null ? "an attribute" : "the key of a relation end")} that base '{perTypeBase.Name}' has, but the binding joins the base's table by its base foreign key, so the base's binding maps it there: remove the field.", at + "/attribute");
-                if (field is { Attribute: not null, End: null })
-                    paths.TryAdd(f.Attribute, i);
+                    Report("MQ4132", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' maps {(field.End is null ? "an attribute" : "the key of a relation end")} that base '{perTypeBase.Name}' has, but the binding joins the base's table by its base foreign key, so the base's binding maps it there: remove the field.", FieldAt(i) + "/attribute");
+                if (field is { Attribute: not null, End: null } && paths.TryAdd(f.Attribute, i))
+                    dottedPaths |= f.Attribute.Contains('.', StringComparison.Ordinal);
 
                 if (FindSourceColumn(f.Column) is { } column)
                 {
@@ -923,21 +1031,21 @@ internal sealed partial class DatabaseRun
                     field.NativeType = column.Table?.NativeType ?? column.View?.NativeType ?? column.Query?.NativeType;
                     field.Nullable = column.Nullable;
                     if (!columns.TryAdd(column.Name, i))
-                        Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps column '{column.Name}' twice (fields {columns[column.Name].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", at + "/column");
+                        Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps column '{column.Name}' twice (fields {columns[column.Name].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", FieldAt(i) + "/column");
                     // A path that ends at a nested value object or a list holds it whole: a JSON column (retire-projection-design.md section 6).
                     else if (field.Member is { } whole && (whole.Collection || whole.Type.Kind == "value-object") && column.Type is { } type && type != "json")
-                        Report("MQ4045", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' holds a {(whole.Collection ? "list" : "value object")} whole, but column '{column.Name}' is {type}: a path that ends at a value object or a list maps a JSON column.", at + "/column");
+                        Report("MQ4045", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' holds a {(whole.Collection ? "list" : "value object")} whole, but column '{column.Name}' is {type}: a path that ends at a value object or a list maps a JSON column.", FieldAt(i) + "/column");
                 }
                 else
                 {
                     field.ColumnName = f.Column;
                     if (_b.SourceKind is not null)
-                        Report("MQ4045", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' reads column '{f.Column}', which {_b.SourceKind} '{_b.SourceName}' does not have.", at + "/column");
+                        Report("MQ4045", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' reads column '{f.Column}', which {_b.SourceKind} '{_b.SourceName}' does not have.", FieldAt(i) + "/column");
                 }
 
                 field.WriteColumn = WriteColumnFor(f.Column, field.ColumnName, field.SourceColumn);
                 if (field.End is not null)
-                    CheckAgainstStorage(field, at);
+                    CheckAgainstStorage(field, FieldAt(i));
                 fields.Add(field);
             }
 
@@ -1583,7 +1691,7 @@ internal sealed partial class DatabaseRun
             // A source that resolves to nothing of the database is MQ4044's (decision 15).
             if (file.Provenance is not { } provenance || _b.SourceKind is null || run._run.EntitySource(entity.Id) is not { } source)
                 return;
-            var drift = BindingDrift.Of(run._run.Model, source, file);
+            var drift = BindingDrift.Of(run._run.Model, source, file, mappedOnly: true);
             var prefix = $"The binding of entity '{entity.Name}' to database '{run._db.Name}'";
             if (drift.Source == DriftSource.NotTableFile)
             {

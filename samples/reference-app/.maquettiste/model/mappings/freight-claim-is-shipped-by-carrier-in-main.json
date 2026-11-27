@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH3M813BVG1J8M6SDA",
+  "name": "freight claim is shipped by carrier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M37TRRRSNW25W7NF1R3VSEX2",
+  "foreignKey": "01M8EJX9A92X9JSHVC43A5GASE"
+}

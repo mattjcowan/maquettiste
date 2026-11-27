@@ -2525,4 +2525,220 @@ func fact_steps(db, diff, out, after)
     end
   end
 end
+
+# What the rekey facts of "Create tables..." adopted (f.adopted): objects the database may already hold because this pack made them
+# outside the snapshot (a lookup table or a list's table in seed.sql, the foreign key or check of a column holding a reference type's
+# codes), which the model now declares as designed tables. The snapshot takes them in as they are, so the diff holds no change for
+# them; a database built from the migrations alone never got them, so the migration that renders the fact creates each one where it
+# is missing and leaves one that is there as it is, in every dialect: the schemas and tables before the new tables
+# (adopted_table_statements), the constraints after the foreign keys (adopted_constraint_statements). A migration from nothing builds
+# them with the rest of the model, so it writes neither.
+
+# The adopted keys of a kind of the listed rekey facts, in applied order (none in a migration from nothing).
+func adopted_keys(diff, kind)
+  $result = []
+  if mq_from_nothing
+    ret $result
+  end
+  for f in diff.facts
+    if f.fact == "rekey"
+      for k in f.adopted
+        if k.kind == kind
+          $result[$result.size] = k
+        end
+      end
+    end
+  end
+  ret $result
+end
+
+# The ids of the rekey facts that adopted something, for the comment above the statements.
+func adopting_fact_ids(diff)
+  $ids = []
+  for f in diff.facts
+    if f.fact == "rekey" && f.adopted.size > 0
+      $ids[$ids.size] = f.id
+    end
+  end
+  ret $ids | array.join ", "
+end
+
+# A table of the database by key, or null.
+func table_by_key(db, key)
+  for t in db.tables
+    if t.key == key
+      ret t
+    end
+  end
+  ret null
+end
+
+# Oracle: a statement run through EXECUTE IMMEDIATE in a PL/SQL block that ignores the errors that mean it is there already
+# (codes, a list of SQLCODE values such as -955), ended by "/" for SQL*Plus and SQLcl.
+func ora_unless_there(statement, codes, db)
+  $st = statement | string.rstrip
+  if $st | string.ends_with ";"
+    $st = $st | string.slice 0 ($st.size - 1)
+  end
+  ret "BEGIN\n    EXECUTE IMMEDIATE " + lit($st, db) + ";\nEXCEPTION WHEN OTHERS THEN\n    IF SQLCODE NOT IN (" + codes + ") THEN RAISE; END IF;\nEND;\n/"
+end
+
+# Oracle: an adopted table's CREATE TABLE (the text _table.scriban wrote, up to its closing line) and its indexes, each in a block
+# that skips it when it exists (ORA-00955, ORA-01408), then its comments, which COMMENT ON sets again harmlessly.
+func ora_adopted_table(t, text)
+  $db = t.database
+  $create = ""
+  for line in (text | string.split "\n")
+    $create = $create + (for.first ? "" : "\n") + line
+    if line | string.starts_with ")"
+      break
+    end
+  end
+  $s = ora_unless_there($create, "-955", $db)
+  for ix in t.indexes
+    $ix = index_sql(ix, t)
+    $s = $s + "\n" + (($ix | string.starts_with "--") ? $ix : ora_unless_there($ix, "-955, -1408", $db))
+  end
+  if pack.params.comments
+    if t.comment
+      $s = $s + "\n" + comment_sql(t, null, t.comment)
+    end
+    for c in t.columns
+      if c.comment
+        $s = $s + "\n" + comment_sql(t, c, c.comment)
+      end
+    end
+  end
+  ret $s
+end
+
+# The adopted schemas and tables, created where they are missing: schemas as schema_sql writes them, tables (in foreign key order) as
+# _table.scriban writes them with the idempotent parameter forced on (IF NOT EXISTS on PostgreSQL, MySQL and SQLite, an OBJECT_ID
+# test on SQL Server, and their indexes guarded as well), on Oracle in PL/SQL blocks (ora_adopted_table), each followed by the rows of the
+# reference type bound to it, inserted when missing (bound_rows_sql), so the constraints added after them find every code a table
+# already stores, as the earlier seed.sql made the table, its rows and then the constraints. One block led by a comment
+# line that starts "-- Adopted".
+func adopted_table_statements(db, diff, out)
+  $parts = []
+  for k in adopted_keys(diff, "schema")
+    if creates_schemas(db) && !builtin_schema(k.to, db) && !schemas_done[k.to]
+      schemas_done[k.to] = true
+      $parts[$parts.size] = schema_sql(k.to, db)
+    end
+  end
+  $tables = []
+  $seen = {}
+  for k in adopted_keys(diff, "table")
+    $t = table_by_key(db, k.to)
+    if $t && !$seen[$t.key]
+      $seen[$t.key] = true
+      $tables[$tables.size] = $t
+    end
+  end
+  if $tables.size > 0
+    $spec = dependency_spec($tables)
+    for i in ($tables.size == 1 ? [0] : (ddl_order $spec))
+      $t = $tables[i]
+      mq_force_idempotent = true
+      $sql = include "_table.scriban" $t
+      mq_force_idempotent = false
+      $parts[$parts.size] = db.dialect == "oracle" ? ora_adopted_table($t, $sql) : $sql
+      # The rows of the reference type bound to it, inserted when missing (bound_rows_sql), before any foreign key reaches them.
+      for rt in model.reference_types
+        $b = rt.bindings[db.name]
+        if $b && $b.table.key == $t.key && !mq_ref_rows[rt.id]
+          mq_ref_rows[rt.id] = true
+          $rows = bound_rows_sql(rt, db)
+          if $rows != ""
+            $parts[$parts.size] = $rows
+          end
+        end
+      end
+    end
+  end
+  if $parts.size > 0
+    emit(out, "-- Adopted by migration fact " + adopting_fact_ids(diff) + ": tables the earlier seed.sql made, now designed tables, and their reference rows. A database that ran it holds them; one built from the migrations alone gets them here.\n" + ($parts | array.join "\n"))
+  end
+end
+
+# SQLite: the triggers this pack's seed.sql made for a column holding a reference type's codes (column_objects_add_sql in
+# _reference.scriban), since SQLite cannot add a constraint to a table: for an adopted foreign key, _i and _u on the table and _d on
+# the referenced one; for an adopted check (its expression "<column> IN (...)"), _i and _u. CREATE TRIGGER IF NOT EXISTS, so a
+# database that holds them keeps its own. A TODO line when the constraint has another shape.
+func sqlite_adopted_triggers(t, k, f, check)
+  $db = t.database
+  if f
+    if f.columns.size != 1
+      ret "-- TODO: foreign key " + k.name + " of " + t.name + " has several columns; SQLite cannot add it to the table: add it as triggers by hand."
+    end
+    $c = f.columns[0]
+    $col = q($c.name, $db)
+    $target = qt(f.referenced_table)
+    $code = q(f.referenced_columns[0].name, $db)
+    $of = $c.bound_type ? $c.bound_type.name : f.referenced_table.name
+    $when = "NEW." + $col + " IS NOT NULL AND NOT EXISTS (SELECT 1 FROM " + $target + " WHERE " + $code + " = NEW." + $col + ")"
+    $raise = lit(k.name + ": " + t.name + "." + $c.name + " must be a code of " + $of, $db)
+    $s = "CREATE TRIGGER IF NOT EXISTS " + q(k.name + "_i", $db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
+    $s = $s + "CREATE TRIGGER IF NOT EXISTS " + q(k.name + "_u", $db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
+    ret $s + "CREATE TRIGGER IF NOT EXISTS " + q(k.name + "_d", $db) + " BEFORE DELETE ON " + $target + " WHEN EXISTS (SELECT 1 FROM " + qt(t) + " WHERE " + $col + " = OLD." + $code + ") BEGIN SELECT RAISE(ABORT, " + lit(k.name + ": a code still stored in " + t.name + "." + $c.name + " cannot be deleted", $db) + "); END;"
+  end
+  $c = null
+  for x in t.columns
+    if ("ck_" + t.name + "_" + x.name + "_ref") == k.name
+      $c = x
+    end
+  end
+  if !$c || !(check.expression | string.starts_with (q($c.name, $db) + " IN ("))
+    ret "-- TODO: check " + k.name + " of " + t.name + " (" + check.expression + "); SQLite cannot add it to the table: add it as triggers by hand."
+  end
+  $col = q($c.name, $db)
+  $of = $c.bound_type ? $c.bound_type.name : "its check"
+  $when = "NEW." + $col + " IS NOT NULL AND NOT (NEW." + check.expression + ")"
+  $raise = lit(k.name + ": " + t.name + "." + $c.name + " must be a code of " + $of, $db)
+  ret "CREATE TRIGGER IF NOT EXISTS " + q(k.name + "_i", $db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n" + "CREATE TRIGGER IF NOT EXISTS " + q(k.name + "_u", $db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;"
+end
+
+# The adopted foreign keys and checks of tables the database had (a column holding a reference type's codes, which seed.sql
+# constrained), each added only where it is missing: a DO block on PostgreSQL (pg_constraint), an OBJECT_ID test on SQL Server, an
+# information_schema test on MySQL, a PL/SQL block that ignores ORA-02275 and ORA-02264 on Oracle, triggers on SQLite
+# (sqlite_adopted_triggers). One block led by a comment line that starts "-- Adopted".
+func adopted_constraint_statements(db, diff, out)
+  $parts = []
+  if mq_from_nothing
+    ret
+  end
+  for fact in diff.facts
+    if fact.fact != "rekey"
+      continue
+    end
+    for k in fact.adopted
+      if k.kind != "foreign-key" && k.kind != "check"
+        continue
+      end
+      $t = table_by_key(db, k.table)
+      $f = $t && k.kind == "foreign-key" ? find_named($t.foreign_keys, k.name) : null
+      $check = $t && k.kind == "check" ? find_named($t.checks, k.name) : null
+      if !$f && !$check
+        continue
+      end
+      if db.dialect == "sqlite"
+        $parts[$parts.size] = sqlite_adopted_triggers($t, k, $f, $check)
+        continue
+      end
+      $add = "ALTER TABLE " + qt($t) + " ADD CONSTRAINT " + q(k.name, db) + " " + ($f ? foreign_key_body($f, db) : "CHECK (" + $check.expression + ")") + ";"
+      if db.dialect == "postgresql"
+        $parts[$parts.size] = pg_unless_constraint($t, k.name, $add)
+      else if db.dialect == "sqlserver"
+        $parts[$parts.size] = "IF OBJECT_ID(" + ms_object($t.schema, k.name, db) + ") IS NULL " + $add
+      else if db.dialect == "mysql"
+        $parts[$parts.size] = my_guard(db, "NOT " + my_exists_constraint($t, k.name, null), $add)
+      else
+        $parts[$parts.size] = ora_unless_there($add, "-2275, -2264", db)
+      end
+    end
+  end
+  if $parts.size > 0
+    emit(out, "-- Adopted by migration fact " + adopting_fact_ids(diff) + ": the constraints the earlier seed.sql gave columns holding reference codes, now declared by their tables. Each is added only where it is missing.\n" + ($parts | array.join "\n"))
+  end
+end
 -}}

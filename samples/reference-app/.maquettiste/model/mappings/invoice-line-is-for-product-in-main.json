@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CG9MVV44HVMYC87ATN",
+  "name": "invoice line is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2RCSSHTW34NH2NNQPKZYPBX",
+  "foreignKey": "01M8EJX9A5HK0V3HZYB8XNZ7S5"
+}

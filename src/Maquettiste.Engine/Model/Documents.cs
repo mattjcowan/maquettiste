@@ -10,7 +10,35 @@ namespace Maquettiste.Engine.Model;
 /// <param name="DependencyHash"><c>H(Hash, sidecar hash)</c>: what <c>e:&lt;id&gt;</c> dependency keys hash to.</param>
 /// <param name="Json">The parsed file, as read.</param>
 /// <param name="SidecarText">The sidecar description text, when the description is a file reference that was found.</param>
-public sealed record ElementDocument(Element Element, string Path, string Hash, string DependencyHash, JsonElement Json, string? SidecarText);
+public sealed record ElementDocument(Element Element, string Path, string Hash, string DependencyHash, JsonElement Json, string? SidecarText)
+{
+    private readonly LazyJson? _source;
+
+    private ElementDocument(LazyJson source, Element element, string path, string hash, string dependencyHash, string? sidecarText)
+        : this(element, path, hash, dependencyHash, default(JsonElement), sidecarText) => _source = source;
+
+    /// <summary>A document whose JSON is parsed from its file's bytes on first read (<see cref="LazyJson"/>).</summary>
+    /// <param name="element">The element.</param>
+    /// <param name="path">The repo-relative path.</param>
+    /// <param name="hash">The content hash.</param>
+    /// <param name="dependencyHash">The dependency hash.</param>
+    /// <param name="source">The file's JSON, parsed on first read.</param>
+    /// <param name="sidecarText">The sidecar description text, or <see langword="null"/>.</param>
+    /// <returns>The document.</returns>
+    internal static ElementDocument WithLazyJson(Element element, string path, string hash, string dependencyHash, LazyJson source, string? sidecarText) =>
+        new(source, element, path, hash, dependencyHash, sidecarText);
+
+    /// <summary>The file's JSON.</summary>
+    public JsonElement Json
+    {
+        get => _source is { } source ? source.Value : field;
+        init
+        {
+            field = value;
+            _source = null;
+        }
+    } = Json;
+}
 
 /// <summary>An entry in the id index: an element or a sub-element.</summary>
 /// <param name="Id">The id.</param>

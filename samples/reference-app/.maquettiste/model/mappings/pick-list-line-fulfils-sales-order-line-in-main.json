@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHW7X86SWA718YBES4",
+  "name": "pick list line fulfils sales order line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1SWAN4PE25MBGRS2RZY3T9Y",
+  "foreignKey": "01M8EJX9A9JJZ4JFNRH0GA2006"
+}

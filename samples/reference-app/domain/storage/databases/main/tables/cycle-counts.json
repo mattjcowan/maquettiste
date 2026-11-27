@@ -1,0 +1,146 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PJME45XDQGEZTFMGC",
+  "name": "cycle_counts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P1SJQBXKVX6JKT8GC",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the cycle count."
+    },
+    {
+      "id": "01M8EJX99PEH0D0078VG1RAWV3",
+      "name": "count_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Count number."
+    },
+    {
+      "id": "01M8EJX99PJD4N5VBHY1C4T4TY",
+      "name": "scheduled_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Planned date."
+    },
+    {
+      "id": "01M8EJX99PQRR1KX8ATYV4T7KK",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "planned",
+      "comment": "planned, counting, review or closed."
+    },
+    {
+      "id": "01M8EJX99PN30WG79ZG088SZAV",
+      "name": "completed_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When counting finished."
+    },
+    {
+      "id": "01M8EJX99P48P75D40AT2F6GS5",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P5ASZBWXBG7Z4HZKM",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PGZRM832W0VGTRQ9F",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P76ET4PNSTHY7P09Y",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PRDKJV4W93B6QVP3Z",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P1N5MYGN4ESRWRFEJ",
+      "name": "assigned_to_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P1XPZC3SHGBGRR266",
+      "name": "zone_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_cycle_counts",
+    "columns": [
+      "01M8EJX99P1SJQBXKVX6JKT8GC"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A944JAXXWCJSP31JCK",
+      "name": "uq_cycle_counts_count_number",
+      "columns": [
+        "01M8EJX99PEH0D0078VG1RAWV3"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9B4F3JG21G5H60WCC",
+      "name": "fk_cycle_counts_warehouse_id",
+      "columns": [
+        "01M8EJX99PRDKJV4W93B6QVP3Z"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A9Z3QW8FYDM1WHJYEY",
+      "name": "fk_cycle_counts_assigned_to_id",
+      "columns": [
+        "01M8EJX99P1N5MYGN4ESRWRFEJ"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9JAS23KBHTHBX68C1",
+      "name": "fk_cycle_counts_zone_id",
+      "columns": [
+        "01M8EJX99P1XPZC3SHGBGRR266"
+      ],
+      "referencesTable": "01M8EJX99PTSVSK05NPK4GV16J",
+      "referencesColumns": [
+        "01M8EJX99PJRJM8VV1YN1B389B"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A scheduled count of part of a warehouse to verify stock accuracy."
+}

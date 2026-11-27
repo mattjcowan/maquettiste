@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH61SMEJGHRV0S6MTY",
+  "name": "opportunity belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M290DR1THADCMZB9Y8CY423J",
+  "foreignKey": "01M8EJX9A8SJS91EPZ59QF9PP8"
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHEKD46KQ6EETCWTEH",
+  "name": "product contains attribute values in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1W9C9X61YQ6BKRMAQC3CPHG",
+  "foreignKey": "01M8EJX9A73AVBG6VTJTCFYVWD"
+}

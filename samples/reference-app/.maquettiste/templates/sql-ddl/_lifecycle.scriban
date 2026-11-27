@@ -29,7 +29,7 @@ func lifecycle_column(e, a, db)
       if f.attribute && f.attribute.id == a.id
         $c = f.write_column ?? f.source_column
         if $c
-          ret [$c, $b.constants.size > 0]
+          ret [$c, $b.constants.size > 0 || (e.base != null && !$b.base_foreign_key && ($b.discriminator_column != null || $b.bases.size > 0))]
         end
       end
     end

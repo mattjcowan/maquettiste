@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHT7FTF96N5YMVK445",
+  "name": "vehicle is based at home warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1XR5A67H3GGBD64SYJERPP4",
+  "foreignKey": "01M8EJX9A9FY3KYZZFS5Z40YC0"
+}

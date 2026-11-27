@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJPZN9Y3HNXTC7V3Q7CP50",
+  "name": "payment_invoice",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "columns": [
+    {
+      "id": "01M8EJPZN9C44R8YSJ9N56RH2D",
+      "name": "payments_id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN9SF27609ZNJM29ZQJ",
+      "name": "invoices_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN95JZFCPQY4XQ54JGQ",
+      "name": "allocated_amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN9YD4K5T4N209N48MW",
+      "name": "allocated_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_payment_invoice",
+    "columns": [
+      "01M8EJPZN9C44R8YSJ9N56RH2D",
+      "01M8EJPZN9SF27609ZNJM29ZQJ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJPZNNCSZSF4TG00KFG8GG",
+      "name": "fk_payment_invoice_payments_id",
+      "columns": [
+        "01M8EJPZN9C44R8YSJ9N56RH2D"
+      ],
+      "referencesTable": "01M8EJPZN9C4NZBD1KXE8NG70G",
+      "referencesColumns": [
+        "01M8EJPZN9770GYSTSGBXXDWBK"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJPZNNF67N7KNHRET090CB",
+      "name": "fk_payment_invoice_invoices_id",
+      "columns": [
+        "01M8EJPZN9SF27609ZNJM29ZQJ"
+      ],
+      "referencesTable": "01J92P0V1T0J6RH4MY9H81NYB4",
+      "referencesColumns": [
+        "01M8EJPZN8P9AWRMABQ8VM73RS"
+      ],
+      "onDelete": "cascade"
+    }
+  ]
+}

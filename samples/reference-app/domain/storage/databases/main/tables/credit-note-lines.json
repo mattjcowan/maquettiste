@@ -1,0 +1,128 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99MS5Y2DR330WZEAHPN",
+  "name": "credit_note_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99M3VPZ14WBXCJWK1JS",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the credit note line."
+    },
+    {
+      "id": "01M8EJX99MVYNQ0051XEE4V6AE",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "nullable": false,
+      "comment": "Line text."
+    },
+    {
+      "id": "01M8EJX99M2E054MEE3XHW1V1G",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity credited."
+    },
+    {
+      "id": "01M8EJX99MF95BTA4EG6K1V1P3",
+      "name": "unit_price_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99MQPSMXNVDCQQJA81C",
+      "name": "unit_price_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99MVYFGQ5MWZ951Z2CE",
+      "name": "line_total_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99MBSZJJ8ZHK4RZBG6P",
+      "name": "line_total_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99M9B6FR9NW44WW2V3F",
+      "name": "credit_note_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99MN9GXVBGGMQP7QNKD",
+      "name": "invoice_line_id",
+      "type": "ulid"
+    },
+    {
+      "id": "01M8EJX99M7EBDHK439D4PQ3H2",
+      "name": "product_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_credit_note_lines",
+    "columns": [
+      "01M8EJX99M3VPZ14WBXCJWK1JS"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A3PV5ZP1S7G4Z434PH",
+      "name": "fk_credit_note_lines_credit_note_id",
+      "columns": [
+        "01M8EJX99M9B6FR9NW44WW2V3F"
+      ],
+      "referencesTable": "01M8EJX99M0Y5G9EFCDNSHQYYX",
+      "referencesColumns": [
+        "01M8EJX99MG7ANKC4STT46BDSC"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A3ZST6Y0DWPNE9EJYF",
+      "name": "fk_credit_note_lines_invoice_line_id",
+      "columns": [
+        "01M8EJX99MN9GXVBGGMQP7QNKD"
+      ],
+      "referencesTable": "01M8EJX99NA18Q5EXP0AQYSB58",
+      "referencesColumns": [
+        "01M8EJX99N8BGGERWZ04Z6X7AF"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A33ZZ7MKK2D4XDWRBG",
+      "name": "fk_credit_note_lines_product_id",
+      "columns": [
+        "01M8EJX99M7EBDHK439D4PQ3H2"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A credited item of a credit note."
+}

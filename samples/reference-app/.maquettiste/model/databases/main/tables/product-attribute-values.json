@@ -1,0 +1,100 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99N4SZNCJ8Q533SGAPT",
+  "name": "product_attribute_values",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NQP9NJFC6NW03JPAS",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false,
+      "comment": "Surrogate key of the product attribute value."
+    },
+    {
+      "id": "01M8EJX99NXWXW55G0SRAZSH45",
+      "name": "text_value",
+      "type": "string",
+      "length": 500,
+      "comment": "Value of a text attribute."
+    },
+    {
+      "id": "01M8EJX99NQSF8BCX6WGK5K0JF",
+      "name": "numeric_value",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 4,
+      "comment": "Value of a number attribute."
+    },
+    {
+      "id": "01M8EJX99N30FRX6667EBT03RD",
+      "name": "boolean_value",
+      "type": "bool",
+      "comment": "Value of a boolean attribute."
+    },
+    {
+      "id": "01M8EJX99N8ARJF9QS7D7GDQGT",
+      "name": "definition_id",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99NFKWQRDYB53RNGHHC",
+      "name": "option_id",
+      "type": "int32"
+    },
+    {
+      "id": "01M8EJX99NZJSWB040WAMHTCJR",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_attribute_values",
+    "columns": [
+      "01M8EJX99NQP9NJFC6NW03JPAS"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7RD206NZ33JCM3NJF",
+      "name": "fk_product_attribute_values_definition_id",
+      "columns": [
+        "01M8EJX99N8ARJF9QS7D7GDQGT"
+      ],
+      "referencesTable": "01M8EJX99NAKZ2Z45JQRJYGJ6A",
+      "referencesColumns": [
+        "01M8EJX99NXKHGFZ3X72MBE8A3"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A7ANK716M2NTMMVKVV",
+      "name": "fk_product_attribute_values_option_id",
+      "columns": [
+        "01M8EJX99NFKWQRDYB53RNGHHC"
+      ],
+      "referencesTable": "01M8EJX99NGH11EVKKACXGFBWT",
+      "referencesColumns": [
+        "01M8EJX99N1H2SVS2HQE599X3M"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A73AVBG6VTJTCFYVWD",
+      "name": "fk_product_attribute_values_product_id",
+      "columns": [
+        "01M8EJX99NZJSWB040WAMHTCJR"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "The value of one attribute for one product."
+}

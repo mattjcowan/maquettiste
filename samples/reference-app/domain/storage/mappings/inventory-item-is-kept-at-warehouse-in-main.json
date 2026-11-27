@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJBDHHSJRWQTP63882",
+  "name": "inventory item is kept at warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2H9XW5WEXT6BPYPZ4SZ64G4",
+  "foreignKey": "01M8EJX9AA5ARCZ7S14M02AMG6"
+}

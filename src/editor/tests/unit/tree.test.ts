@@ -125,7 +125,7 @@ describe("tree over the billing fixture", () => {
   it("reaches every index row, and places no vocabulary or stereotype", () => {
     expectReachable(forest, rows);
     expectKindFolders(forest);
-    expect(forest.unplaced.length).toBe(8); // five vocabularies and stereotypes of the fixture, the mock's persona, two mappings
+    expect(forest.unplaced.length).toBe(10); // five vocabularies and stereotypes of the fixture, the mock's persona, four mappings
   });
 
   it("reaches physical rows without the E5 database member, in Not in a database", () => {
@@ -166,8 +166,8 @@ describe("tree over the billing fixture", () => {
     expect(tableNames).toContain("invoices");
     expect(main.secondary).toBe("7 tables · 1 view · 1 sequence · 2 routines · 2 database types · 1 SQL object · 3 queries");
     expect(forest.headers.databases).toBe("1 database · 7 tables");
-    // The table overlay file is the invoices row; the junction carries its marker.
-    expect(forest.place.get(rows.find((r) => r.kind === "table")!.id)).toBe(find(forest, "databases", "main", "billing", "Tables", "invoices").key);
+    // The designed invoices table file is the invoices row; the junction carries its marker.
+    expect(forest.place.get(IDS.invoicesTable)).toBe(find(forest, "databases", "main", "billing", "Tables", "invoices").key);
     expect(find(forest, "databases", "main", "billing", "Tables", "payment_invoice").markers).toEqual(["junction"]);
     // The database side names no entity: no mapping rows, no "mapped" counts.
     expect(main.secondary).not.toMatch(/mapp/);
@@ -193,7 +193,7 @@ describe("tree over the billing fixture", () => {
   it("answers an entity's and a relation's children from the index", () => {
     const invoice = node(forest, IDS.invoice);
     expect(invoice.load).toBe("document");
-    // No projected tables or mapping files: an entity's storage is its bindings, read from its document.
+    // No mapping files: an entity's storage is its bindings, read from its document.
     expect(labels(forest, invoice.key)).toEqual(["Relationships", "Lifecycles"]);
     const relations = find(forest, "domain-model", "Billing", "Entities", "Invoice", "Relationships");
     expect(labels(forest, relations.key)).toEqual(["contains", "places", "settles"]);
@@ -211,7 +211,7 @@ describe("tree over the billing fixture", () => {
   it("adds Attributes first once the entity's document is loaded", () => {
     const f = buildForest({ rows, tables });
     const children = documentChildren(f, IDS.invoice, backend.model.get(IDS.invoice)!);
-    expect(children.map((k) => node(f, k).label)).toEqual(["Attributes", "Relationships", "Lifecycles"]);
+    expect(children.map((k) => node(f, k).label)).toEqual(["Attributes", "Relationships", "Lifecycles", "Storage"]);
     const attributes = node(f, children[0]);
     expect(attributes.count).toBeGreaterThan(0);
     expect(node(f, attributes.children![0]).type).toBe("item");
@@ -256,10 +256,11 @@ describe("tree over the billing fixture", () => {
     const invoice = relatedKeys(forest, IDS.invoice);
     for (const name of ["contains", "places", "settles", "InvoiceLine", "Customer", "Payment"]) expect(invoice.has(idOf(rows, name))).toBe(true);
     const invoicesTable = find(forest, "databases", "main", "billing", "Tables", "invoices").key;
-    expect(invoice.has(invoicesTable)).toBe(true);
+    // A table names no entity (storage is a warehouse): the designed invoices table relates to nothing.
+    expect(invoice.has(invoicesTable)).toBe(false);
     const settles = relatedKeys(forest, idOf(rows, "settles"));
     expect(settles).toEqual(new Set([IDS.payment, IDS.invoice, find(forest, "databases", "main", "billing", "Tables", "payment_invoice").key]));
-    expect(relatedKeys(forest, invoicesTable)).toEqual(new Set([IDS.invoice]));
+    expect(relatedKeys(forest, invoicesTable)).toEqual(new Set());
     const counts = relatedCounts(forest, invoice);
     expect(counts.get(find(forest, "domain-model", "Billing", "Entities").key)).toBe(3);
     expect(counts.get(find(forest, "domain-model", "Billing", "Relationships").key)).toBe(3);
@@ -270,7 +271,7 @@ describe("tree over the billing fixture", () => {
 
   it("maps uses and used by from the index", () => {
     expect(usesOf(forest, idOf(rows, "contains"))).toEqual([IDS.invoice, idOf(rows, "InvoiceLine")]);
-    expect(usedByOf(forest, IDS.invoice)).toEqual(expect.arrayContaining([idOf(rows, "contains"), idOf(rows, "Invoice in main")]));
+    expect(usedByOf(forest, IDS.invoice)).toEqual(expect.arrayContaining([idOf(rows, "contains")]));
   });
 
   it("reveals, splices and walks the visible rows", () => {

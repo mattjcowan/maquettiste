@@ -174,7 +174,7 @@ test("a bound entity takes attributes for its table's unmapped columns, all at o
 });
 
 test("the field map adds table columns for unmapped attributes, all at once or one from its Column, each one undo step", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   // Bound to the notes table with its key mapped: entityId and body have columns of those names already, priority and summary none.
   const saved = await page.evaluate(async (pkg) => {
     const res = await fetch("/api/model/elements", {
@@ -235,7 +235,7 @@ test("the field map adds table columns for unmapped attributes, all at once or o
 });
 
 test("Create a table for this entity binds it to a new table, and undo takes it back", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   const tab = await storage(page, "Payment");
   await expect(tab.getByTestId("storage-domain-only")).toContainText("main still projects a table for it");
   await tab.getByTestId("storage-create-table").click();
@@ -271,7 +271,7 @@ test("New entities from tables makes an entity of a view, in one undo step", asy
 });
 
 test("a relationship whose ends are not both bound asks for that; an older shape shows read only", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   const side = explorer(page);
   await side.getByLabel("Search the model").fill("places");
   await side.getByTestId("explorer-row-places").dblclick();
@@ -285,7 +285,7 @@ test("a relationship whose ends are not both bound asks for that; an older shape
 });
 
 test("a relationship between two bound entities names the foreign key that realizes it", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   for (const name of ["Customer", "Invoice"]) {
     const tab = await storage(page, name);
     // Invoice still has an older mapping element for main; Create a table replaces it.

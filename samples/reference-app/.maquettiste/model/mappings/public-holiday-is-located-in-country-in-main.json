@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJJNGKK3D66FH221Z0",
+  "name": "public holiday is located in country in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M31K5YGJMF9WMPW2ZYPV88GH",
+  "foreignKey": "01M8EJX9ABAKZ00FB1D65R13TY"
+}

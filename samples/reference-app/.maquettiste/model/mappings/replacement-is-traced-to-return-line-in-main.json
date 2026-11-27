@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJT70XQ1AD2AKT2PDM",
+  "name": "replacement is traced to return line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M36AEKEEJ7X2HAR2P7YAX9P1",
+  "foreignKey": "01M8EJX9AB88TGNZ3RSE57HE1D"
+}

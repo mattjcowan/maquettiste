@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH34VE74EDD7E71K82",
+  "name": "lead converts to converted customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M25XA3HH3VDBW2HQQFNTHV08",
+  "foreignKey": "01M8EJX9A8TBNY4XGNTEFZPZFG"
+}

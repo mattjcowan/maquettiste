@@ -1,0 +1,20 @@
+{
+  "$schema": "../.schema/v1/extension.json",
+  "name": "persona",
+  "appliesTo": {
+    "kinds": [
+      "actor"
+    ],
+    "stereotypes": [
+      "persona"
+    ]
+  },
+  "properties": {
+    "goals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

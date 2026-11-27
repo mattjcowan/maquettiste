@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CF7EAZQRGYB7BBGC7D",
+  "name": "credit note is authorized by return authorization in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1QTC8B73EXMNS78VF2G1QNS",
+  "foreignKey": "01M8EJX9A3JXNN9DY960MNP4F0"
+}

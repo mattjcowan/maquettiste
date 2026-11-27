@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJTDRFZJMVJK27PJY8",
+  "name": "purchase requisition contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2SG4JZYM29GTHNK128CG2W5",
+  "foreignKey": "01M8EJX9ABC4A07DMNBFG4WR9D"
+}

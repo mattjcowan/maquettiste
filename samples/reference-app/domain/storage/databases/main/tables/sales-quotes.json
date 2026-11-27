@@ -1,0 +1,176 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QZ82S3RASZQXVB1K7",
+  "name": "sales_quotes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q7YYK2GD8QA458252",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the sales quote."
+    },
+    {
+      "id": "01M8EJX99QB0MXRAMVP75E862T",
+      "name": "quote_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Quote number."
+    },
+    {
+      "id": "01M8EJX99Q1CBBZMGBA51QEB91",
+      "name": "issued_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date the quote was sent."
+    },
+    {
+      "id": "01M8EJX99QY1ZVWXKRYYJA6RYM",
+      "name": "valid_until",
+      "type": "date",
+      "nullable": false,
+      "comment": "Last day the prices hold."
+    },
+    {
+      "id": "01M8EJX99Q8QJ048B5YH73R40Z",
+      "name": "status",
+      "type": "string",
+      "length": 6,
+      "nullable": false,
+      "default": "DRAFT",
+      "comment": "Lifecycle state."
+    },
+    {
+      "id": "01M8EJX99Q6CF86FZGGQV5S5DP",
+      "name": "total_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99Q5CXH2E882G6ZDV4T",
+      "name": "total_amount_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QWC8EHMW8V7N4W55A",
+      "name": "notes",
+      "type": "text",
+      "comment": "Terms and remarks."
+    },
+    {
+      "id": "01M8EJX99QSPWNCQJ6VPVB2R8E",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99Q7J2FBPSP825JH5NW",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QFM8PCHGD603H12CD",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QFKPPQFSGY1QP4CEP",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QMC76VG1D2SQ7PGAR",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99QPR4RVBN6W8CAS9JT",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QCXHBY4EJ5NGZQVD9",
+      "name": "currency_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QBTZYSAJX3J9ZJ8H0",
+      "name": "prepared_by_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sales_quotes",
+    "columns": [
+      "01M8EJX99Q7YYK2GD8QA458252"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AC2JQ5572D4DM2QPJ5",
+      "name": "uq_sales_quotes_quote_number",
+      "columns": [
+        "01M8EJX99QB0MXRAMVP75E862T"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AC0W8YRJVG5T2TFDKS",
+      "name": "fk_sales_quotes_customer_id",
+      "columns": [
+        "01M8EJX99QPR4RVBN6W8CAS9JT"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ACCANZ5V8MY2EF1H2B",
+      "name": "fk_sales_quotes_currency_code",
+      "columns": [
+        "01M8EJX99QCXHBY4EJ5NGZQVD9"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ACESND7Q9Q3TYYQ4R8",
+      "name": "fk_sales_quotes_prepared_by_id",
+      "columns": [
+        "01M8EJX99QBTZYSAJX3J9ZJ8H0"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A priced offer to a customer that can be converted into an order."
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ44DBHPKAFNEENXNW",
+  "name": "sales order is payable on payment term in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M24JPSMD13QFM078NKER5KDM",
+  "foreignKey": "01M8EJX9ACWP5PQ1C6ENKMVMT3"
+}

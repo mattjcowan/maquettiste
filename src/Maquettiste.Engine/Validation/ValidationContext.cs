@@ -294,6 +294,25 @@ internal sealed class ValidationContext
         return map.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
+    /// <summary>
+    /// Builds the model-wide indexes most documents ask for side by side, before the per-document loop: built on first use instead, the
+    /// first worker to ask builds one while every other worker that asks waits on it, one index after another. Each is a pure function of the
+    /// snapshot, so building it early changes no finding.
+    /// </summary>
+    /// <param name="parallelism">The most indexes built at once.</param>
+    /// <param name="ct">Cancellation.</param>
+    public void BuildCommonIndexes(int parallelism, CancellationToken ct)
+    {
+        Parallel.Invoke(new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct },
+            () => _ = _names.Value,
+            () => _ = _navigations.Value,
+            () => _ = _compositions.Value,
+            () => _ = _mappings.Value,
+            () => _ = _physicalNames.Value,
+            () => _ = _derived.Value,
+            () => _ = BoundColumnTypes.Of(Model));
+    }
+
     /// <summary>Returns a context that shares this one's indexes but knows the registered JavaScript rule names.</summary>
     /// <param name="ruleNames">The registered rule names (without <c>x/</c>), or <see langword="null"/> when unknown.</param>
     /// <returns>The context.</returns>

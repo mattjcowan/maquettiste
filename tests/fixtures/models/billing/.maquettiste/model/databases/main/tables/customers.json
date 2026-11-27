@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJPZN867GR1CJR5ZERBJ0V",
+  "name": "customers",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "columns": [
+    {
+      "id": "01M8EJPZN8472RRANF8A5EA8GT",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN85K0E011MBM10HXAG",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN8YCG8JHPKYR3AS4S8",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN8BGJ7KV30184YH61V",
+      "name": "customer_since",
+      "type": "date"
+    },
+    {
+      "id": "01M8EJPZN85083M7EFTST05M2C",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN8M1P3MNNTXBN48F9D",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_customers",
+    "columns": [
+      "01M8EJPZN8472RRANF8A5EA8GT"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJPZNE0HN20V2GM55WE6C5",
+      "name": "uq_customers_email",
+      "columns": [
+        "01M8EJPZN8YCG8JHPKYR3AS4S8"
+      ]
+    }
+  ],
+  "comment": "Someone we bill."
+}

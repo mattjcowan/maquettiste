@@ -41,5 +41,63 @@
       "default": false,
       "description": "Shown at the top of the party's page."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BA3AV915F12PKF0ENB",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PMCG16MD02MNZN41P",
+      "fields": [
+        {
+          "attribute": "01M23B69DD4VTQ8CPQW6YT5TD1",
+          "column": "01M8EJX99PQ1CK95W9RNYEQZ34"
+        },
+        {
+          "attribute": "01M267YZA294F3YR536XVPFPF6",
+          "column": "01M8EJX99P0JQ1H263YKJ2K1GK"
+        },
+        {
+          "attribute": "01M2JKBGEY5WP8EYW2RYVC9HXS",
+          "column": "01M8EJX99PNNC16F59SQFNTQ90"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PNVHPFM9DQA3HP9E6"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PHEE4E204S7A6JTF9"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PV5JWBYGJ1ANMQ13K"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PTTYRX23WX6M9VP4M"
+        },
+        {
+          "attribute": "01M2SNR6F0TN49JC4MBBAMYJHW",
+          "column": "01M8EJX99PATNJAJ3HWXM9E64B"
+        },
+        {
+          "attribute": "01M29JY177Z21WQZ2KNFAAJAJD",
+          "column": "01M8EJX99P0F0EW95H11BGC21T"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P0F0EW95H11BGC21T": "9247ae45:d8a57cf9",
+          "01M8EJX99P0JQ1H263YKJ2K1GK": "230d8358:a6883bec",
+          "01M8EJX99PATNJAJ3HWXM9E64B": "5f900b6e:8da1c7b8",
+          "01M8EJX99PHEE4E204S7A6JTF9": "c0d79bde:9599b5fd",
+          "01M8EJX99PNNC16F59SQFNTQ90": "ef35effe:19980141",
+          "01M8EJX99PNVHPFM9DQA3HP9E6": "42049432:e0d08678",
+          "01M8EJX99PQ1CK95W9RNYEQZ34": "a5614527:8da1c7b8",
+          "01M8EJX99PTTYRX23WX6M9VP4M": "0b075263:9599b5fd",
+          "01M8EJX99PV5JWBYGJ1ANMQ13K": "d31d4567:fd717804"
+        }
+      }
+    }
   ]
 }

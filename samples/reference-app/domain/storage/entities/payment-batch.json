@@ -1,0 +1,80 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9BB7MVR6SBK8KP8SYFV",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99N58H37YDCKVGR987A",
+      "fields": [
+        {
+          "attribute": "01M21NFKPAFDSMR4AN93W8GJCZ",
+          "column": "01M8EJX99N5YPZR3E62HQGEKAN"
+        },
+        {
+          "attribute": "01M2NW0C9H0HTWAVJEEG0ESDMN",
+          "column": "01M8EJX99N21SJYR8R8JXV93P7"
+        },
+        {
+          "attribute": "01M1QHABA987EQ6M8RHAB3S1K6",
+          "column": "01M8EJX99NR953CS7PSW1ZXH1W"
+        },
+        {
+          "attribute": "01M2CWP3H27FED42NFQ5VG5ZEY",
+          "column": "01M8EJX99NJ859X68NR3N5KZV3"
+        },
+        {
+          "attribute": "01M2SR7BBJVGXZMC7YRH21CMGW",
+          "column": "01M8EJX99NR6499HJ15MNVMRDY"
+        },
+        {
+          "attribute": "01M26N64DSXFWNNTPDMY12ESZZ.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99NZ1WVSZ4EY8NRNFXZ"
+        },
+        {
+          "attribute": "01M26N64DSXFWNNTPDMY12ESZZ.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99N273JW96Y1SNP3C1Y"
+        },
+        {
+          "attribute": "01M2BEA7MY99KXKRT2FKP818SS",
+          "column": "01M8EJX99N3M1DDDA7DZ8KWVJZ"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99NK2GH4A7XVNHPPY25"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99NG4SDQVTP4Z93Q176"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99N12SPXPS617PNTWRF"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99NDTF364NX9P3QZHQX"
+        },
+        {
+          "attribute": "01M21CS57QZM0RN7R97CGJMQYB",
+          "column": "01M8EJX99NTF11T9HQ643RDD3X"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N12SPXPS617PNTWRF": "d31d4567:fd717804",
+          "01M8EJX99N21SJYR8R8JXV93P7": "7a54b4cb:ef1ae9ec",
+          "01M8EJX99N273JW96Y1SNP3C1Y": "ee860e29:48b85cd3",
+          "01M8EJX99N3M1DDDA7DZ8KWVJZ": "d7257cd6:19980141",
+          "01M8EJX99N5YPZR3E62HQGEKAN": "a5614527:8da1c7b8",
+          "01M8EJX99NDTF364NX9P3QZHQX": "0b075263:9599b5fd",
+          "01M8EJX99NG4SDQVTP4Z93Q176": "c0d79bde:9599b5fd",
+          "01M8EJX99NJ859X68NR3N5KZV3": "41cf6794:ef1ae9ec",
+          "01M8EJX99NK2GH4A7XVNHPPY25": "42049432:e0d08678",
+          "01M8EJX99NR6499HJ15MNVMRDY": "bd23c9d9:53fb88ea",
+          "01M8EJX99NR953CS7PSW1ZXH1W": "0b26dfcc:81884634",
+          "01M8EJX99NTF11T9HQ643RDD3X": "97b4b374:8da1c7b8",
+          "01M8EJX99NZ1WVSZ4EY8NRNFXZ": "eddbdbb2:d46c92d7"
+        }
+      }
+    }
+  ]
+}

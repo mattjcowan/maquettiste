@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJM9FNHRA80KM7E37D",
+  "name": "sales order line is measured in unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1T1BM7QF4YYQ8WR3YDNX18W",
+  "foreignKey": "01M8EJX9AC70N1507GRFQ03F4C"
+}

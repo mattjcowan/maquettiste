@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CGCETDBEP4N48GGZFS",
+  "name": "late fee is settled against invoice in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1Z55B0ZP4CV8NJ6MTZ3T9PJ",
+  "foreignKey": "01M8EJX9A51DJEFZWCEKBMB1JB"
+}

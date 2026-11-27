@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH77NC08R2GQJN2YDP",
+  "name": "employee reports to manager in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1ZG11C96RHWCKNFT9QJ3BW8",
+  "foreignKey": "01M8EJX9A9Q684W4VENZ5NZND2"
+}

@@ -1,0 +1,117 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NGNDYWDS13691DX2X",
+  "name": "product_documents",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N1PWF22ZVS89YKGVZ",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false,
+      "comment": "Surrogate key of the product document."
+    },
+    {
+      "id": "01M8EJX99N9A7NF20XQXFQY33K",
+      "name": "title",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Document title."
+    },
+    {
+      "id": "01M8EJX99NQATVJ051SPRB394D",
+      "name": "document_type",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Kind, such as sds, datasheet or manual."
+    },
+    {
+      "id": "01M8EJX99NQGQWN2RCDQ520NDV",
+      "name": "url",
+      "type": "string",
+      "length": 400,
+      "nullable": false,
+      "comment": "Document URL."
+    },
+    {
+      "id": "01M8EJX99N8TMHE7400CXSV8JR",
+      "name": "language_code",
+      "type": "string",
+      "length": 5,
+      "comment": "Language of the document."
+    },
+    {
+      "id": "01M8EJX99N7D6X4E636QB4TAX6",
+      "name": "revision",
+      "type": "string",
+      "length": 10,
+      "comment": "Revision label."
+    },
+    {
+      "id": "01M8EJX99NS7NYZD1P9GTKTJG0",
+      "name": "published_on",
+      "type": "date",
+      "comment": "Date the revision was published."
+    },
+    {
+      "id": "01M8EJX99NQQNS8JFXR3DNGRZ9",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99N67M6911F96SQZX4N",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99N4DMY4MS394J9CB97",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NZ2N24G353N34NH59",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NDKNX6V9GGMN1G6YA",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_documents",
+    "columns": [
+      "01M8EJX99N1PWF22ZVS89YKGVZ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A743MDF076EGQJXHRN",
+      "name": "fk_product_documents_product_id",
+      "columns": [
+        "01M8EJX99NDKNX6V9GGMN1G6YA"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A document attached to a product, such as a safety data sheet or an installation guide."
+}

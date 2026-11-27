@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJV3AJ799258PHFSFW",
+  "name": "order hold is released by user account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1Y6DS5FG8RYMSF9H137R7K2",
+  "foreignKey": "01M8EJX9ACQEXTKBE6D1TQ7ZTG"
+}

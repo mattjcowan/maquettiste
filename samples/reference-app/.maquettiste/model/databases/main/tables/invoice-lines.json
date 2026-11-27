@@ -1,0 +1,186 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NA18Q5EXP0AQYSB58",
+  "name": "invoice_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N8BGGERWZ04Z6X7AF",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false,
+      "comment": "Surrogate key of the invoice line."
+    },
+    {
+      "id": "01M8EJX99NDTG98EMSA2CZXR60",
+      "name": "line_number",
+      "type": "int32",
+      "nullable": false,
+      "comment": "Line number."
+    },
+    {
+      "id": "01M8EJX99NJYR6RZAKMN450KY9",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "nullable": false,
+      "comment": "Line text."
+    },
+    {
+      "id": "01M8EJX99NV96BCWM5MWA66CKH",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity invoiced."
+    },
+    {
+      "id": "01M8EJX99NW0Q7KG5DK648SBBZ",
+      "name": "unit_price_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99NVXDX55A801RJEWRQ",
+      "name": "unit_price_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99NA3CSVKHT19NFVSTM",
+      "name": "discount",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Discount."
+    },
+    {
+      "id": "01M8EJX99NCBN5AVDN7BQWN1RG",
+      "name": "tax_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Tax rate."
+    },
+    {
+      "id": "01M8EJX99N1G2K833ZPRP5F151",
+      "name": "line_total_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99NHD77J5DEZDC6Q4ZZ",
+      "name": "line_total_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99N9H1DZ0QDT3YSWTD6",
+      "name": "invoice_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99N3SXQXGADD887ACPH",
+      "name": "sales_order_line_id",
+      "type": "ulid"
+    },
+    {
+      "id": "01M8EJX99N73M3Z4YTAVG30RQ6",
+      "name": "product_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NAH8XNAF5CA4P3XYJ",
+      "name": "shipment_line_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NZCM39EMZVP8RWBFQ",
+      "name": "revenue_account_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_invoice_lines",
+    "columns": [
+      "01M8EJX99N8BGGERWZ04Z6X7AF"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A50W4XER16GNTQ4DNS",
+      "name": "fk_invoice_lines_invoice_id",
+      "columns": [
+        "01M8EJX99N9H1DZ0QDT3YSWTD6"
+      ],
+      "referencesTable": "01M2GD6QYSRRK545Z2FCJ57JXN",
+      "referencesColumns": [
+        "01M8EJX99MY2YCY00H3262RRRP"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A5250GSJ48P6Q0EEX1",
+      "name": "fk_invoice_lines_sales_order_line_id",
+      "columns": [
+        "01M8EJX99N3SXQXGADD887ACPH"
+      ],
+      "referencesTable": "01M34B2XCK0G0EW7GX48YPV9R6",
+      "referencesColumns": [
+        "01M8EJX99QB5W684KZRFP37DGQ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A5HK0V3HZYB8XNZ7S5",
+      "name": "fk_invoice_lines_product_id",
+      "columns": [
+        "01M8EJX99N73M3Z4YTAVG30RQ6"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A50KA1NFFQ3A0KWPGJ",
+      "name": "fk_invoice_lines_shipment_line_id",
+      "columns": [
+        "01M8EJX99NAH8XNAF5CA4P3XYJ"
+      ],
+      "referencesTable": "01M8EJX99PTWVK83PWPXCJ2V5K",
+      "referencesColumns": [
+        "01M8EJX99PWARWMWWHCBYP4HHP"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A5WFN0JKF7CXTBCK8T",
+      "name": "fk_invoice_lines_revenue_account_id",
+      "columns": [
+        "01M8EJX99NZCM39EMZVP8RWBFQ"
+      ],
+      "referencesTable": "01M8EJX99P0PRFJXZXM6AR56B8",
+      "referencesColumns": [
+        "01M8EJX99PXZ7RFKDAGWVDWMTX"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A line of an invoice - a shipped product or a charge."
+}

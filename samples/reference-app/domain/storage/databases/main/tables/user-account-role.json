@@ -1,0 +1,77 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QAG65RJ0SE1AGMJFA",
+  "name": "user_account_role",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QYTEG2FWD11E33RWY",
+      "name": "users_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q7GW71R88MZRYEHPC",
+      "name": "roles_id",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QJKDVH9WXJ6VD2G5Y",
+      "name": "granted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the role was granted."
+    },
+    {
+      "id": "01M8EJX99QB4Z79CH5P9NC12H2",
+      "name": "granted_by",
+      "type": "string",
+      "length": 64,
+      "nullable": false,
+      "comment": "User name of the administrator who granted it."
+    },
+    {
+      "id": "01M8EJX99QXSGMMYT9MA5F4BRN",
+      "name": "expires_on",
+      "type": "date",
+      "comment": "Date the grant lapses; null for permanent grants."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_user_account_role",
+    "columns": [
+      "01M8EJX99QYTEG2FWD11E33RWY",
+      "01M8EJX99Q7GW71R88MZRYEHPC"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACD4EXCDDB7YJ2BB0R",
+      "name": "fk_user_account_role_users_id",
+      "columns": [
+        "01M8EJX99QYTEG2FWD11E33RWY"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACX8C6W372H9J4DF5H",
+      "name": "fk_user_account_role_roles_id",
+      "columns": [
+        "01M8EJX99Q7GW71R88MZRYEHPC"
+      ],
+      "referencesTable": "01M8EJX99PCW73JG9FF1X6T8NB",
+      "referencesColumns": [
+        "01M8EJX99P0HZECHHP2T4KZN27"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Roles granted to a user account; the grant records who granted it and when."
+}

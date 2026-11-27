@@ -119,7 +119,9 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     StateCodes: Values(item, "stateCodes"),
                     Stereotype: Text(item, "stereotype"),
                     Verb: Text(item, "verb"),
-                    TriggerPoints: Flag(item, "triggerPoints")));
+                    TriggerPoints: Flag(item, "triggerPoints"),
+                    Hierarchy: Choice(item, "hierarchy"),
+                    ListStorage: Choice(item, "listStorage")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);
@@ -130,6 +132,12 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
             ? [.. value.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!)]
             : null;
+
+    /// <summary>A choice per id, or one for every id (a string, kept under <c>*</c>).</summary>
+    private static Dictionary<string, string>? Choice(JsonElement item, string name) =>
+        !item.TryGetProperty(name, out var value) ? null
+        : value.ValueKind == JsonValueKind.String ? new Dictionary<string, string>(StringComparer.Ordinal) { ["*"] = value.GetString()! }
+        : Map(item, name);
 
     private static Dictionary<string, string>? Map(JsonElement item, string name) =>
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object

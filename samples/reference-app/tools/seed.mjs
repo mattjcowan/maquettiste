@@ -5,8 +5,9 @@
 //
 // The target project must exist and have an empty model: .maquettiste/maquettiste.json plus the sql-ddl and csharp-dapper
 // packs under .maquettiste/templates/ (see README.md, "Seeding through the editor"). Order: settings, vocabularies, packages,
-// types (enums, scalar types, value objects), the database (sequences, views, the designed table), one batch of entities
-// per package, one batch of relations per package, table overlays, mappings, the queries with the entities that read them,
+// the database (sequences, views, the designed tables), types (enums, scalar types, value objects, reference types), one batch
+// of entities per package, one batch of relations per package, the relation mappings together with the bindings of
+// domain/storage/ (each entity and reference type written again whole, by name), the queries with the entities that read them,
 // diagrams.
 //
 // Usage: node seed.mjs [--url http://127.0.0.1:8080] [--host maquettiste.localhost] [--token <t>] [--no-settings]
@@ -63,32 +64,54 @@ function fail(message, res) {
   process.exit(1);
 }
 
-/** The batches, in dependency order: [{ label, docs }]. */
-function batches(documents) {
+/**
+ * The batches, in dependency order: [{ label, operations }]. The database's tables come before the types and entities their
+ * bindings read; a binding of domain/storage/ can name relation ends, so its document is created without it and written whole
+ * (an upsert by name) once the relations and their mappings exist.
+ */
+function batches(documents, storageBindings) {
   const byPhase = new Map();
+  const later = [];
   for (const d of documents) {
     if (!byPhase.has(d.phase)) byPhase.set(d.phase, []);
-    byPhase.get(d.phase).push(d.doc);
+    let doc = d.doc;
+    if (storageBindings.has(d.modelPath)) {
+      const { bindings, ...rest } = doc;
+      doc = rest;
+      later.push({ op: "upsert", id: `@${d.doc.kind}:${d.doc.name}`, element: d.doc });
+    }
+    byPhase.get(d.phase).push(doc);
   }
   const out = [];
-  const take = (phase, label = phase) => { if (byPhase.has(phase)) out.push({ label, docs: byPhase.get(phase) }); };
-  take("vocabularies"); take("packages"); take("types"); take("database");
+  const creates = (docs) => docs.map((element) => ({ op: "create", element }));
+  const take = (phase, label = phase) => { if (byPhase.has(phase)) out.push({ label, operations: creates(byPhase.get(phase)) }); };
+  take("vocabularies"); take("packages"); take("database"); take("types");
   for (const phase of byPhase.keys()) if (phase.startsWith("entities:")) take(phase);
   const relations = byPhase.get("relations") ?? [];
   const packages = [...new Set(relations.map((r) => r.package))];
   const packageName = new Map(documents.filter((d) => d.doc.kind === "package").map((d) => [d.doc.id, d.doc.name]));
-  for (const p of packages) out.push({ label: `relations:${packageName.get(p) ?? p}`, docs: relations.filter((r) => r.package === p) });
-  take("physical", "table overlays"); take("mappings"); take("queries"); take("diagrams");
+  for (const p of packages) out.push({ label: `relations:${packageName.get(p) ?? p}`, operations: creates(relations.filter((r) => r.package === p)) });
+  // The relation mappings and the bindings in one batch: a relation mapping between bound entities and a binding that names a
+  // relation's ends are each incomplete without the other.
+  out.push({ label: "mappings and bindings", operations: [...creates(byPhase.get("mappings") ?? []), ...later] });
+  take("queries"); take("diagrams");
   return out;
 }
 
 async function main() {
-  const { documents, settings, files } = buildModel();
-  const plan = batches(documents);
-  const total = plan.reduce((n, b) => n + b.docs.length, 0);
-  if (total !== documents.length) fail(`internal: ${documents.length} documents but ${total} batched`);
+  const { documents, settings, files, storageBindings } = buildModel();
+  const plan = batches(documents, storageBindings);
+  const count = (op) => plan.reduce((n, b) => n + b.operations.filter((o) => o.op === op).length, 0);
+  const total = count("create");
+  if (total !== documents.length || count("upsert") !== storageBindings.size)
+    fail(`internal: ${documents.length} documents and ${storageBindings.size} bindings but ${total} creates and ${count("upsert")} upserts batched`);
+  const describe = (b) => {
+    const creates = b.operations.filter((o) => o.op === "create").length;
+    const bound = b.operations.length - creates;
+    return [creates ? `${creates} created` : "", bound ? `${bound} bound` : ""].filter(Boolean).join(", ");
+  };
   if (flag("--dry-run")) {
-    for (const b of plan) console.log(`${b.label}: ${b.docs.length} creates`);
+    for (const b of plan) console.log(`${b.label}: ${describe(b)}`);
     console.log(`seed: ${plan.length} batches, ${total} elements (dry run, nothing sent)`);
     return;
   }
@@ -115,10 +138,9 @@ async function main() {
   }
 
   for (const b of plan) {
-    const body = { operations: b.docs.map((element) => ({ op: "create", element })) };
-    const res = await request("POST", "/api/model/batch", body);
+    const res = await request("POST", "/api/model/batch", { operations: b.operations });
     if (res.status !== 200 || res.json?.outcome !== "saved") fail(`batch '${b.label}' was refused (${res.json?.outcome ?? "no outcome"})`, res);
-    console.log(`seed: ${b.label}: ${b.docs.length} created`);
+    console.log(`seed: ${b.label}: ${describe(b)}`);
   }
 
   if (!flag("--no-settings")) {

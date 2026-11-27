@@ -95,6 +95,9 @@ public sealed class ModelSnapshot
     /// <summary>The indexes, kept so the next snapshot of a store can patch them (<see cref="ModelIndexer.Build"/>).</summary>
     internal ModelIndexer.Result Index { get; }
 
+    /// <summary>The shape hashes of this snapshot's column entries, reading the previous snapshot's for entries an edit kept.</summary>
+    internal ColumnShapeCache ColumnShapes { get; private init; } = new(null);
+
     /// <summary>The number of suppression entries the documents hold (next-phase-2-design.md section 5.6), counted by the index walk.</summary>
     internal int SuppressionCount => Index.SuppressionCount;
 
@@ -199,7 +202,10 @@ public sealed class ModelSnapshot
             kinds,
             scriptLibraries ?? previous?.ScriptLibraries ?? [],
             [.. (calculationScripts ?? previous?.CalculationScripts ?? []).OrderBy(s => s.Path, StringComparer.Ordinal)],
-            [.. (declaredRules ?? previous?.DeclaredRules ?? []).OrderBy(d => d.Path, StringComparer.Ordinal)]);
+            [.. (declaredRules ?? previous?.DeclaredRules ?? []).OrderBy(d => d.Path, StringComparer.Ordinal)])
+        {
+            ColumnShapes = new ColumnShapeCache(previous?.ColumnShapes),
+        };
     }
 
     /// <summary>The snapshot version.</summary>

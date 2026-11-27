@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHKVMGHM2ZB39DBXFS",
+  "name": "pick wave is kept at warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1KGP6WRX6TE0TNKH1JQW6JE",
+  "foreignKey": "01M8EJX9A9K0H8B56FFPY8K9YD"
+}

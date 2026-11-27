@@ -1,0 +1,70 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9BXHE09H98J9CA29NY1",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99P8ZZCXDWNCJJKADEZ",
+      "fields": [
+        {
+          "attribute": "01M304A8F7AY9DV0KD2PG3G37A",
+          "column": "01M8EJX99PXEQ6VW19B64F51H5"
+        },
+        {
+          "attribute": "01M2M68PA6ZB1ASX17VH6B0XYT",
+          "column": "01M8EJX99P7J8E5K52RQQ4Y6AR"
+        },
+        {
+          "attribute": "01M2EKX7MTE51F9756RJ97QKPQ",
+          "column": "01M8EJX99PNC6EFPVMAZ0BBVVP"
+        },
+        {
+          "attribute": "01M2Z300RVH6F623DB8FE5QBYP.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PJ52YKZQJ3JBRN1F9"
+        },
+        {
+          "attribute": "01M2Z300RVH6F623DB8FE5QBYP.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PX5NG73P9EP634HFK"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99P2T7AJ7XZGT6KH4ZP"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PEEEVW782WYJRJQFJ"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99P3E1XXSDMNWQTKZ9G"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PTFZ73TPCNMMGBPH7"
+        },
+        {
+          "attribute": "01M1G5R6YA553YATAP07KXRT4Y",
+          "column": "01M8EJX99PVHAPHVYJT99WZE76"
+        },
+        {
+          "attribute": "01M2G4X96KJPFNBYM4VNRYS456",
+          "column": "01M8EJX99P6T97TYMPG6WWAG15"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P2T7AJ7XZGT6KH4ZP": "42049432:e0d08678",
+          "01M8EJX99P3E1XXSDMNWQTKZ9G": "d31d4567:fd717804",
+          "01M8EJX99P6T97TYMPG6WWAG15": "c6dde088:d8a57cf9",
+          "01M8EJX99P7J8E5K52RQQ4Y6AR": "5694d08a:4de12bc4",
+          "01M8EJX99PEEEVW782WYJRJQFJ": "c0d79bde:9599b5fd",
+          "01M8EJX99PJ52YKZQJ3JBRN1F9": "bd3a54b6:d249895e",
+          "01M8EJX99PNC6EFPVMAZ0BBVVP": "82a3537f:6137f4ed",
+          "01M8EJX99PTFZ73TPCNMMGBPH7": "0b075263:9599b5fd",
+          "01M8EJX99PVHAPHVYJT99WZE76": "76798025:d8a57cf9",
+          "01M8EJX99PX5NG73P9EP634HFK": "50e7fdac:75525505",
+          "01M8EJX99PXEQ6VW19B64F51H5": "a5614527:8da1c7b8"
+        }
+      }
+    }
+  ]
+}

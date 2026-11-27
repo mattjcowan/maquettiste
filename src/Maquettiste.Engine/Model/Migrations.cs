@@ -61,6 +61,14 @@ public sealed record Migration : Element
     /// <summary>The keys a <c>rekey</c> moved.</summary>
     public IReadOnlyList<MigrationRekey> Keys { get; init; } = [];
 
+    /// <summary>
+    /// For a <c>rekey</c> written by "Create tables…": the objects the database already holds as the model now declares them (a lookup
+    /// table or a list's table the sql-ddl pack created in seed.sql, a reference column's constraint, a column's default), each by its key
+    /// after the fact (<c>from</c> and <c>to</c> the same; <c>table</c> for a constraint or column). The next schema diff reads them as
+    /// already there, once: the snapshot it saves holds them. Undoing the change removes the fact, and with it the adoption.
+    /// </summary>
+    public IReadOnlyList<MigrationRekey> Adopted { get; init; } = [];
+
     /// <summary>How a <c>change-type</c> converts stored values.</summary>
     public MigrationConversion? Conversion { get; init; }
 

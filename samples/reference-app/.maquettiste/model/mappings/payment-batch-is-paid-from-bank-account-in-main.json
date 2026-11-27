@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CGZ1SX01A529CPTSNX",
+  "name": "payment batch is paid from bank account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M23FZZ7DMERFWJX5K0F84SMA",
+  "foreignKey": "01M8EJX9A5T1N92CRMRZW0DZ2S"
+}

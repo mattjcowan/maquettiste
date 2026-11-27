@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHB1QVA5GZWZWH9CTJ",
+  "name": "write off is recorded in journal entry in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M3560MSJSR2H89ZWV0J9EYKR",
+  "foreignKey": "01M8EJX9A626EA532NT69HWXSD"
+}

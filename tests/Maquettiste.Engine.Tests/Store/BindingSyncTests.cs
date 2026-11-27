@@ -6,6 +6,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Editor;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
@@ -16,6 +17,7 @@ namespace Maquettiste.Engine.Tests.Store;
 /// retypes, maps by name, adds attributes for added columns, removes the fields of removed columns and records provenance again; both
 /// refuse with MQ4089 and never resolve the whole model.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class BindingSyncTests
 {
     private const string Main = EditorRepo.MainDatabaseId;

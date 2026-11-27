@@ -12,14 +12,14 @@ using Dapper;
 
 namespace Processes.Data.Sales;
 
-/// <summary>Reads and writes <see cref="SalesOrderHistory"/> rows in public.sales_order_histories (database main, postgresql).</summary>
+/// <summary>Reads and writes <see cref="SalesOrderHistory"/> rows through its binding to table sales_order_histories (database main, postgresql).</summary>
 public partial interface ISalesOrderHistoryRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<SalesOrderHistory?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<SalesOrderHistory>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<SalesOrderHistory>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(SalesOrderHistory entity, CancellationToken cancellationToken = default);
@@ -34,41 +34,44 @@ public partial interface ISalesOrderHistoryRepository
 /// <summary>The Dapper implementation of <see cref="ISalesOrderHistoryRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class SalesOrderHistoryRepository(IDbConnection connection, IDbTransaction? transaction = null) : ISalesOrderHistoryRepository
 {
-    private const string Columns = """
-        id AS Id,
-        sales_order_id AS SalesOrderId,
-        from_state AS FromState,
-        to_state AS ToState,
-        at AS At
+    private const string SelectSql = """
+        SELECT t.id AS id, t.sales_order_id AS salesOrderId, t.from_state AS fromState, t.to_state AS toState, t.at AS at
+        FROM public.sales_order_histories t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM public.sales_order_histories WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM public.sales_order_histories ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.sales_order_id AS salesOrderId, t.from_state AS fromState, t.to_state AS toState, t.at AS at
+        FROM public.sales_order_histories t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO public.sales_order_histories (id, sales_order_id, from_state, to_state, at)
-        VALUES (@Id, @SalesOrderId, @FromState, @ToState, @At)
+        VALUES (@id, @salesOrderId, @fromState, @toState, @at)
         """;
 
     private const string UpdateSql = """
-        UPDATE public.sales_order_histories SET sales_order_id = @SalesOrderId, from_state = @FromState, to_state = @ToState, at = @At
-        WHERE id = @Id
+        UPDATE public.sales_order_histories SET sales_order_id = @salesOrderId, from_state = @fromState, to_state = @toState, at = @at
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM public.sales_order_histories WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM public.sales_order_histories
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<SalesOrderHistory?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<SalesOrderHistory>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<SalesOrderHistory>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -91,34 +94,34 @@ public partial class SalesOrderHistoryRepository(IDbConnection connection, IDbTr
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of sales_order_histories, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table sales_order_histories as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public Guid SalesOrderId { get; set; }
-        public string? FromState { get; set; }
-        public string ToState { get; set; } = default!;
-        public DateTimeOffset At { get; set; }
+        public Guid id { get; set; }
+        public Guid salesOrderId { get; set; }
+        public string? fromState { get; set; }
+        public string toState { get; set; } = default!;
+        public DateTimeOffset at { get; set; }
 
         public static SalesOrderHistory ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            SalesOrderId = row.SalesOrderId,
-            FromState = row.FromState,
-            ToState = row.ToState,
-            At = row.At,
+            Id = row.id,
+            SalesOrderId = row.salesOrderId,
+            FromState = row.fromState,
+            ToState = row.toState,
+            At = row.at,
         };
 
         public static Row From(SalesOrderHistory entity) => new()
         {
-            Id = entity.Id,
-            SalesOrderId = entity.SalesOrderId,
-            FromState = entity.FromState,
-            ToState = entity.ToState,
-            At = entity.At,
+            id = entity.Id,
+            salesOrderId = entity.SalesOrderId,
+            fromState = entity.FromState,
+            toState = entity.ToState,
+            at = entity.At,
         };
     }
 }

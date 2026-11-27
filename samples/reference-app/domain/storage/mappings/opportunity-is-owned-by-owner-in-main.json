@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHN88WB0TV60VR4P4Z",
+  "name": "opportunity is owned by owner in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2EYEMAB2SA6AXYKS9P1ZFD1",
+  "foreignKey": "01M8EJX9A8705RBY5XP1WQ7REC"
+}

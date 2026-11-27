@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH1PC3WVGQY11EVM71",
+  "name": "product barcode is measured in unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M33019XC5MRMT8VSZ9E84CCP",
+  "foreignKey": "01M8EJX9A70SNH5FQVP8E4C2SS"
+}

@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJPZN9C4NZBD1KXE8NG70G",
+  "name": "payments",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "columns": [
+    {
+      "id": "01M8EJPZN9770GYSTSGBXXDWBK",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity"
+    },
+    {
+      "id": "01M8EJPZN9G2P1GNXW3G5XJANR",
+      "name": "amount_amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN95G9KXYM7H3MEER3X",
+      "name": "amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN9M4Q4C4FTM8YR116Z",
+      "name": "received_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN960X82Y22ZAEA6013",
+      "name": "reference",
+      "type": "string",
+      "length": 64
+    },
+    {
+      "id": "01M8EJPZN9WWYJX5WB75FWNHNJ",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN9VR9X43VFC361E98W",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_payments",
+    "columns": [
+      "01M8EJPZN9770GYSTSGBXXDWBK"
+    ]
+  }
+}

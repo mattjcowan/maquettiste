@@ -1,10 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
 /// <summary><c>maquettiste model export|stats</c>: the model as data, the same pages the editor API and the MCP server serve.</summary>
+[UsesProjectedFixtures]
 public sealed class ModelCommandTests
 {
     [Fact]
@@ -137,6 +139,23 @@ public sealed class ModelCommandTests
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("the model has errors", result.Error, StringComparison.Ordinal);
         Assert.Equal("", result.Out);
+    }
+
+    [Fact]
+    public async Task Materialize_tables_takes_the_hierarchy_and_list_storage_choices()
+    {
+        using var repo = CliRepo.Billing();
+
+        var plain = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--hierarchy", "one-table", "--list-storage", "table", "--dry-run");
+        Assert.True(plain.ExitCode == 0, plain.Error);
+
+        var shape = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--hierarchy", "tpt", "--dry-run");
+        Assert.Equal(1, shape.ExitCode);
+        Assert.Contains("is not one-table, per-concrete or per-type", shape.Error, StringComparison.Ordinal);
+
+        var list = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--list-storage", "Invoice.number=json", "--dry-run");
+        Assert.Equal(1, list.ExitCode);
+        Assert.Contains("is not a list attribute", list.Error, StringComparison.Ordinal);
     }
 
     [Fact]

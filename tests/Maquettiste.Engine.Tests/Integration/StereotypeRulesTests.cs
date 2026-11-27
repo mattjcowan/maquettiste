@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -9,6 +10,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// element, and a stereotype's typed parameters check the values of the elements that carry it, with a pointer to the value.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class StereotypeRulesTests
 {
     private const string InvoiceRegisterTableId = "01J92P0V1T0J6RH4MY9H81NYB4";

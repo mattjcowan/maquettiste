@@ -40,6 +40,7 @@ must help any team whether they use it or not, and it stays optional.
 | | Custom properties and stereotypes on guards, actions, invokes and gates, and custom properties on checks and constraints | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies), decision 9, plus checks and constraints. An operation's guards hold them as well. Properties on a check never reach its SQL. |
 | 4.2 | Shared process guards, actions and gate policies | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies). A library's guard holds an expression, not a condition, since a condition names one process's context. The editor edits a library through the JSON view. |
 | 4.1 | Lifecycles any implementation can follow: a stable code per state, `subjects` for one lifecycle on many types (the one-subject form deprecated with a warning), the state held in an attribute as one option, guard conditions that read the object, and a scenario's objects | yes | Built, 0.13.0 | [The design](lifecycle-design.md), with the owner's decisions of 2026-11-05, checked four times. Built in #36 to #39, each reviewed independently, in about four hours by agents. [What lifecycle systems can do](lifecycle-capabilities.md) is its yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the order of the items that follow. |
+| | Reuse resolve results between edits (speed margin for large bound models) | no | Not started, owner to schedule | Since our models hold designed tables and bindings (0.29.0), the bench model has 61,109 files and gate 1 passes with little margin at 5,000 entities. Keeping unchanged resolved databases and entities from one run to the next is the change that would give it room; the design is in [the Resolution README](../../src/Maquettiste.Engine/Resolution/README.md#not-built-reuse-across-an-edit). |
 
 ## Lifecycles after 4.1 (the owner, 2026-11-05)
 
@@ -287,6 +288,24 @@ Built since:
   MQ4144; MQ4058 counts nested members. `csharp-dapper` loads and writes the rows in one unit, its bases' too, and its delete
   checks the row first. The Storage tab has a Child tables section and a Base table section, the field map walks nested
   paths, and the SQL preview shows every level and child table. [The design](retire-projection-design.md), section 5.
+- **"Create tables…" proposes every shape (0.29.0, pull request 2 of "Retiring projection", step 2a, unreleased).**
+  `materialize-tables` proposes tables with its own designer, outside resolution, only when asked: a hierarchy, named whole,
+  as one table, a table per concrete entity or a table per type (`hierarchy`); a list in a child table with a `childTables`
+  entry, or a JSON column (`listStorage`); a junction table and relation mapping for a many-to-many relationship; a relation
+  mapping naming a one-to-many foreign key; an attribute's default expression as the column's SQL default; a list of a
+  reference type in a table of its own. The preview answers `choices`. The editor's dialog asks once per hierarchy and once
+  per list. Proved on the billing model (every dialect, each hierarchy shape), the reference sample and the bench's
+  synthetic model: the same table scripts but for the reference constraints and lookup tables the pack wrote in seed.sql, now
+  declared, and no schema change (one migration with the rekey fact's ledger rows). Entity seeds now write through bindings and
+  relation mappings in `sql-ddl` (a table per type, child tables, junction and foreign-key relations). Step 2b is
+  done (0.29.0, unreleased): the reference sample (210 designed tables, 439 relation mappings, every entity bound), the
+  billing, processes and schemas fixtures and the bench's synthetic model now use designed tables, bindings and relation
+  mappings, and every database says `byConvention: none`. The generated DDL is the same but for the lookup tables and
+  reference constraints, which move from seed.sql into the schema. The sample's storage lives in `domain/storage/`. The
+  projected copies of the billing and processes fixtures and of the physical and mappings validation families stay until pull
+  request 3, which deletes them and converts or deletes what still projects: the validation fixtures names-keys, values and
+  reference-data (entities broken on purpose), and the editor's several-types, several-types-storage-files and
+  several-types-storage-run fixtures. [The design](retire-projection-design.md), sections 6 and 7.
 - **Queries stop naming entities: removal (0.28.0).** `entity`, `collections` and a select field's `attribute` are gone
   from the query format, the resolved model, the SQL renderer (`query_collection_sql` too), `csharp-dapper` and the
   editor. A file that still has one does not load: MQ4127 is now an error at load that no setting changes, naming the
@@ -313,7 +332,7 @@ design questions on 2026-11-26; their answers are folded in below.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
-- **Retiring projection (tables made from entities).** Pull request 1 of 3 built (the binding shapes), design: [retire-projection-design.md](retire-projection-design.md).
+- **Retiring projection (tables made from entities).** Pull request 1 of 3 built (the binding shapes); pull request 2 step 2a built ("Create tables…" proposes every shape, entity seeds through bindings), step 2b (converting our models) next. Design: [retire-projection-design.md](retire-projection-design.md).
   Asked for by the owner on 2026-11-26 (not requested by a team). One release (0.29.0), three pull requests: bindings
   learn every shape projection makes (table per type with `baseForeignKey`; an attribute in a child table, as a list or
   a single value, with `childTables`; field paths of any depth; relation attributes on a foreign key; entity seeds

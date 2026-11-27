@@ -1,0 +1,110 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QQGCDKCEJHFZ03MW3",
+  "name": "cart_items",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q5X81RC4A37GNJBBC",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the cart item."
+    },
+    {
+      "id": "01M8EJX99QGA3N5KRX8JATHP4F",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity wanted."
+    },
+    {
+      "id": "01M8EJX99QXK7BY8R8TGGJGW7W",
+      "name": "added_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When it was added."
+    },
+    {
+      "id": "01M8EJX99QJMRVN0ESTBM59GY7",
+      "name": "unit_price_snapshot_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QJEFDDTTH2XAQBQBT",
+      "name": "unit_price_snapshot_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QT658YS2F3S192ZH6",
+      "name": "cart_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QN2QHS3EA9JF3P3ND",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QRRZ9ZB0XJXMTDMYM",
+      "name": "variant_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_cart_items",
+    "columns": [
+      "01M8EJX99Q5X81RC4A37GNJBBC"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACRMABNBSG2MXZ7ZSG",
+      "name": "fk_cart_items_cart_id",
+      "columns": [
+        "01M8EJX99QT658YS2F3S192ZH6"
+      ],
+      "referencesTable": "01M8EJX99QKF5ZPT2NDVCBVG29",
+      "referencesColumns": [
+        "01M8EJX99QZM14V9MMNE2MEHV0"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACFD8EEQMH338NMRQD",
+      "name": "fk_cart_items_product_id",
+      "columns": [
+        "01M8EJX99QN2QHS3EA9JF3P3ND"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ACVF1MB17XE6S6417Z",
+      "name": "fk_cart_items_variant_id",
+      "columns": [
+        "01M8EJX99QRRZ9ZB0XJXMTDMYM"
+      ],
+      "referencesTable": "01M8EJX99NFSVDDQ044880ZFVH",
+      "referencesColumns": [
+        "01M8EJX99NWX3PCQ9BSWT8NVJX"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A product in a portal cart."
+}

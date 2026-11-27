@@ -1,0 +1,81 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NPFE7RJN3GP7GGKFE",
+  "name": "communication_preferences",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NFHQPVQFNSZNYVDVP",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the communication preference."
+    },
+    {
+      "id": "01M8EJX99NT3RS50GFKGB7FEA9",
+      "name": "channel",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Channel, such as email or sms."
+    },
+    {
+      "id": "01M8EJX99N0FV9F8X5MNZMASPN",
+      "name": "topic",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Topic, such as promotions or order-updates."
+    },
+    {
+      "id": "01M8EJX99NAY119ZJW2PTTKV9E",
+      "name": "opted_in",
+      "type": "bool",
+      "nullable": false,
+      "comment": "Whether the contact agreed to receive it."
+    },
+    {
+      "id": "01M8EJX99N2QPEXB9EQ93C79QY",
+      "name": "changed_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the preference was last set."
+    },
+    {
+      "id": "01M8EJX99NFEW2F9TB1ZMP15ZK",
+      "name": "source",
+      "type": "string",
+      "length": 40,
+      "comment": "Where it was set, such as portal or phone."
+    },
+    {
+      "id": "01M8EJX99N7PV5AF5DEWBNB36B",
+      "name": "contact_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_communication_preferences",
+    "columns": [
+      "01M8EJX99NFHQPVQFNSZNYVDVP"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8SYJXNBMSYHM1JKT8",
+      "name": "fk_communication_preferences_contact_id",
+      "columns": [
+        "01M8EJX99N7PV5AF5DEWBNB36B"
+      ],
+      "referencesTable": "01M8EJX99NX12803VWGRS1E1KW",
+      "referencesColumns": [
+        "01M8EJX99NRVN9JXZG7T665RP7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A contact's opt-in or opt-out for a channel and topic, kept for anti-spam compliance."
+}

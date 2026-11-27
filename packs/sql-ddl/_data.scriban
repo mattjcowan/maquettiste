@@ -1,19 +1,22 @@
 {{-
-# Table seeds, the entity seeds that reach a table through a binding and the seeds of reference types bound to a table (their rows
-# first in it; database.seed_tables, referenced tables first): seed.sql
+# Table seeds, the entity and relation seeds that reach a table through a binding and the seeds of reference types bound to a table (their
+# rows first in it; database.seed_tables, referenced tables first): seed.sql
 # writes the rows for every environment, seed.<env>.sql an environment's own. A seed applied once inserts the rows whose key is
 # missing; a converging seed also updates the rows whose other columns changed (an upsert on the row key), and with delete it
-# removes the table's rows it does not hold. Entity seeds of a database that projects the entity are written by seed_statements.
+# removes the table's rows it does not hold. An entity seed through its binding writes the binding's tables (with table per type the
+# bases' tables first, and a row per list item in each child table); a relation seed with an end bound here writes rows of its junction
+# table, or, stored on a foreign key, updates the dependent's rows, setting the key and the relation's attribute columns (inserting
+# nothing). Entity and relation seeds of a database that projects the entity are written by seed_statements.
 # A table seed's foreign-key entry names its row by that row's key; where the database fills the referenced value (identity,
 # sequence, a default), the column is written as a lookup of that row on PostgreSQL, and rows of one table that look up rows of the
 # same table go in one INSERT per dependency level, so each lookup sees the rows before it. Elsewhere such a cell is NULL with a
 # TODO comment (MQ4056).
 
-# Whether a row is written here: a table seed's, an entity seed's that reaches the table through a binding, or a bound reference
-# type's (source list; such a type gets no lookup table, check or enum type in this database, _reference.scriban), for this
-# environment ("" for the rows of every environment).
+# Whether a row is written here: a table seed's, an entity seed's that reaches the table through a binding, a relation seed's with an
+# end bound here (relation_bound_here in _reference.scriban), or a bound reference type's (source list; such a type gets no lookup
+# table, check or enum type in this database, _reference.scriban), for this environment ("" for the rows of every environment).
 func data_row_here(r, env, db)
-  if r.source == "relation" || (r.source == "entity" && !r.seed.target.bindings[db.name])
+  if (r.source == "relation" && !relation_bound_here(r.seed.target, db)) || (r.source == "entity" && !r.seed.target.bindings[db.name])
     ret false
   end
   if env == ""
@@ -205,7 +208,21 @@ func data_write_sql(t, keys, columns, rows, update, db)
     end
     ret "INSERT INTO " + qt(t) + " (" + $list + ") VALUES\n    " + ($values | array.join ",\n    ") + "\nON DUPLICATE KEY UPDATE " + $set + ";"
   end
-  # SQL Server and Oracle: MERGE on the row key.
+  # SQL Server and Oracle: MERGE on the row key; without one, a plain insert (it inserts again on every run).
+  if keys.size == 0
+    if $d == "oracle"
+      $s = ""
+      for v in $values
+        $s = $s + (for.first ? "" : "\n") + "INSERT INTO " + qt(t) + " (" + $list + ") VALUES " + v + ";"
+      end
+    else
+      $s = "INSERT INTO " + qt(t) + " (" + $list + ") VALUES\n    " + ($values | array.join ",\n    ") + ";"
+    end
+    if $d == "sqlserver" && $identity
+      $s = "SET IDENTITY_INSERT " + qt(t) + " ON;\n" + $s + "\nSET IDENTITY_INSERT " + qt(t) + " OFF;"
+    end
+    ret $s
+  end
   if $d == "oracle"
     $selects = []
     for r in rows
@@ -238,6 +255,31 @@ func data_write_sql(t, keys, columns, rows, update, db)
     $s = "SET IDENTITY_INSERT " + qt(t) + " ON;\n" + $s + "\nSET IDENTITY_INSERT " + qt(t) + " OFF;"
   end
   ret $s
+end
+
+# UPDATE the rows a relation's links stored on a foreign key name (found by the row key): the key's columns and the relation's attribute
+# columns, one statement per link. Run again, it sets the same values.
+func data_update_sql(t, keys, columns, rows, db)
+  $out = []
+  for r in rows
+    $set = ""
+    $where = ""
+    for c in columns
+      $is_key = false
+      for k in keys
+        if k.name == c.name
+          $is_key = true
+        end
+      end
+      if $is_key
+        $where = $where + ($where == "" ? "" : " AND ") + q(c.name, db) + " = " + data_cell(r, c, t, db)
+      else
+        $set = $set + ($set == "" ? "" : ", ") + q(c.name, db) + " = " + data_cell(r, c, t, db)
+      end
+    end
+    $out[$out.size] = "UPDATE " + qt(t) + " SET " + $set + "\nWHERE " + $where + ";"
+  end
+  ret $out | array.join "\n"
 end
 
 # DELETE the table's rows a converging seed with delete does not hold (by the row key).
@@ -281,6 +323,11 @@ func data_statements(db, env, out)
       end
       $cols = data_columns(st, $rows)
       if $cols.size == 0
+        continue
+      end
+      $m = seed.target.kind == "relation" ? seed.target.mappings[db.name] : null
+      if $m && $m.shape == "foreign-key"
+        out[out.size] = "-- " + $rows.size + ($rows.size == 1 ? " link" : " links") + " set on rows of " + st.table.name + ".\n" + data_update_sql(st.table, st.key_columns, $cols, $rows, db)
         continue
       end
       $converge = seed.apply == "converge"

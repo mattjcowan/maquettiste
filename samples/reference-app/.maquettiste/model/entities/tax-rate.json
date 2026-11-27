@@ -63,5 +63,78 @@
       "required": true,
       "description": "Period the rate applies."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C96TBBMK8YJ5K8Z05W",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PXEB2Q42PAEME2ZKA",
+      "fields": [
+        {
+          "attribute": "01M375H4BBKJ65DJRTVD9ZJA83",
+          "column": "01M8EJX99P1S2N3MH8X4FJPWQB"
+        },
+        {
+          "attribute": "01M1S6CJ8N54BSYNNWCJ8HK9SW",
+          "column": "01M8EJX99PS3M4Z77D1VSQ9CSD"
+        },
+        {
+          "attribute": "01M1MQC93PNDA60AV1AJ571B1C",
+          "column": "01M8EJX99P7ECRDVJK53GAF5EY"
+        },
+        {
+          "attribute": "01M2KEZ1784R5EDMY4VP53DTZ5",
+          "column": "01M8EJX99PH5ESXER0CQZDJA30"
+        },
+        {
+          "attribute": "01M2QNFK2JTRG0GA6SD6N0D7SQ.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99PV3GBSV844GY7AVXY"
+        },
+        {
+          "attribute": "01M2QNFK2JTRG0GA6SD6N0D7SQ.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99PDVWF2EB039SSY0X8"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PBRXZ2MXYQHBZ1FBS"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PFP10HC648P9QMZ92"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99P2X4VX7XAHZD34D4D"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PZGQ09VDE7PQ2BXZT"
+        },
+        {
+          "attribute": "01M2Z8Q75R8RQ76ATJRH63ATC9",
+          "column": "01M8EJX99PK8D8JKZ1WGJMDPV4"
+        },
+        {
+          "attribute": "01M2071ENJ8XF1HRCZN2J0989T",
+          "column": "01M8EJX99P6VYFFSWDFVJA71MX"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P1S2N3MH8X4FJPWQB": "a5614527:8da1c7b8",
+          "01M8EJX99P2X4VX7XAHZD34D4D": "d31d4567:fd717804",
+          "01M8EJX99P6VYFFSWDFVJA71MX": "ae795d39:d8a57cf9",
+          "01M8EJX99P7ECRDVJK53GAF5EY": "c549779d:1a9d8bd8",
+          "01M8EJX99PBRXZ2MXYQHBZ1FBS": "42049432:e0d08678",
+          "01M8EJX99PDVWF2EB039SSY0X8": "2a578471:9b51e601",
+          "01M8EJX99PFP10HC648P9QMZ92": "c0d79bde:9599b5fd",
+          "01M8EJX99PH5ESXER0CQZDJA30": "32189e9e:04146d06",
+          "01M8EJX99PK8D8JKZ1WGJMDPV4": "d464d397:8da1c7b8",
+          "01M8EJX99PS3M4Z77D1VSQ9CSD": "82a3537f:6137f4ed",
+          "01M8EJX99PV3GBSV844GY7AVXY": "2db5d4af:81884634",
+          "01M8EJX99PZGQ09VDE7PQ2BXZT": "0b075263:9599b5fd"
+        }
+      }
+    }
   ]
 }

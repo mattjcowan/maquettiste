@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01J92P0V1ACKN3G6TK3NJDTM82",
+  "name": "places",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "inverseName": "is placed by",
+  "ends": [
+    {
+      "id": "01J92P0V1EHF7PB28CZJG9C5SN",
+      "entity": "01J92P0V0ETQKXXP951CMMNHH3",
+      "role": "customer",
+      "navigation": "customer",
+      "min": 1,
+      "max": 1,
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01J92P0V1F439P4NH5F6HV5QM1",
+      "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+      "role": "invoices",
+      "navigation": "invoices"
+    }
+  ]
+}

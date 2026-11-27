@@ -1,0 +1,60 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NGH11EVKKACXGFBWT",
+  "name": "product_attribute_options",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N1H2SVS2HQE599X3M",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the product attribute option."
+    },
+    {
+      "id": "01M8EJX99NHN04H6YVFM430TZ0",
+      "name": "value",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Option value."
+    },
+    {
+      "id": "01M8EJX99ND8F6CWE2NRYV48XX",
+      "name": "label",
+      "type": "string",
+      "length": 100,
+      "comment": "Display label when it differs from the value."
+    },
+    {
+      "id": "01M8EJX99NCHC2S7ZX8YK4XDDK",
+      "name": "product_attribute_id",
+      "type": "int32",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_attribute_options",
+    "columns": [
+      "01M8EJX99N1H2SVS2HQE599X3M"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7NVNY5HXGT104KGBM",
+      "name": "fk_product_attribute_options_product_attribute_id",
+      "columns": [
+        "01M8EJX99NCHC2S7ZX8YK4XDDK"
+      ],
+      "referencesTable": "01M8EJX99NAKZ2Z45JQRJYGJ6A",
+      "referencesColumns": [
+        "01M8EJX99NXKHGFZ3X72MBE8A3"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "An allowed value of an option attribute, such as Large for Glove size."
+}

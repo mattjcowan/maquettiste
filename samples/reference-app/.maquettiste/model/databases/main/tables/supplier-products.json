@@ -1,0 +1,169 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QJ1NQH5E9FGS20TK9",
+  "name": "supplier_products",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q1R7YCW7M1GNMYC34",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the supplier product."
+    },
+    {
+      "id": "01M8EJX99Q5G6PY6AGNBW9DKDK",
+      "name": "supplier_sku",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Supplier's item number."
+    },
+    {
+      "id": "01M8EJX99QBKP742XFZKEBEFHA",
+      "name": "supplier_description",
+      "type": "string",
+      "length": 300,
+      "comment": "Supplier's item description."
+    },
+    {
+      "id": "01M8EJX99QMH5Q4SP9YR0F2FN4",
+      "name": "unit_cost_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QTHZHTKYGCZC76BQX",
+      "name": "unit_cost_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99Q6DZQQNE709WJ2YAB",
+      "name": "minimum_order_quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "Minimum order quantity."
+    },
+    {
+      "id": "01M8EJX99QZDMVV2CPJTVRP3K2",
+      "name": "pack_size",
+      "type": "int32",
+      "comment": "Base units per purchase unit."
+    },
+    {
+      "id": "01M8EJX99Q1S7R6AQWJ53ER086",
+      "name": "lead_time_days",
+      "type": "int16",
+      "comment": "Lead time for the item."
+    },
+    {
+      "id": "01M8EJX99QPSSG65MXY7B1432D",
+      "name": "is_preferred",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Preferred source for the product."
+    },
+    {
+      "id": "01M8EJX99QBK192RATRHDN3R1P",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QY895S5MRN26JKKFA",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QME81AHX8DH2V2X1T",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QX4EHBAHEFHXDDHKD",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QB36AT567D42FBYB0",
+      "name": "purchase_unit_code",
+      "type": "string",
+      "length": 3
+    },
+    {
+      "id": "01M8EJX99QK652WD81KWZZWHGW",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QT4QC53VZKEZAJ918",
+      "name": "supplier_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_supplier_products",
+    "columns": [
+      "01M8EJX99Q1R7YCW7M1GNMYC34"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABNNW9DF5SCM1PFP3Q",
+      "name": "fk_supplier_products_purchase_unit_code",
+      "columns": [
+        "01M8EJX99QB36AT567D42FBYB0"
+      ],
+      "referencesTable": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "referencesColumns": [
+        "01M8EJX99Q26RFK5STCSH1JBPE"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB4J6GFW2H6033GE7E",
+      "name": "fk_supplier_products_product_id",
+      "columns": [
+        "01M8EJX99QK652WD81KWZZWHGW"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ABB8WNNGFTTJHYNTQG",
+      "name": "fk_supplier_products_supplier_id",
+      "columns": [
+        "01M8EJX99QT4QC53VZKEZAJ918"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A product as offered in a supplier's catalog, with the supplier's SKU, cost and lead time."
+}

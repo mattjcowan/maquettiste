@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHTC25NERRFFFJ6FVY",
+  "name": "pick list is picked by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2KH46KZREKNP4AZMQR6CWN9",
+  "foreignKey": "01M8EJX9A977ZS3FQX935YKW1J"
+}

@@ -7,6 +7,15 @@ one.
 
 ## 0.29.0 (not released yet)
 
+- **The reference sample and the test fixtures use designed tables and bindings.** Each was converted once with "Create
+  tables…": designed tables, a binding per entity and a relation mapping per relation, with `byConvention` set to `none`.
+  The generated DDL is the same, except that a reference type's lookup table and the constraints on its code columns now
+  come from the schema and table scripts, not seed.sql. The `csharp-dapper` pack no longer redeclares, in a derived
+  entity's class, relation keys its base class already declares.
+- **Converting to designed tables changes the generated repositories.** An entity that was mapped and is now bound gets the
+  `csharp-dapper` pack's bound repository: its UPDATE leaves out read-only attributes (such as the `audited` stereotype's
+  `createdAt`), and its list method's paging parameters are named `mq_skip` and `mq_take` instead of `skip` and `take`.
+  Hand-written code that names the old parameters, or the old `Columns` constant, needs a small change.
 - **A table per type.** A derived entity can keep its own attributes in a table of its own, joined to its base's table.
   Its binding names that table's foreign key to the base's table in `baseForeignKey` and maps only the entity's own
   attributes. The key is the foreign key's columns. Reads join the base's table, up the chain for several levels. An insert
@@ -58,6 +67,29 @@ one.
   list in order and each single value object, and writes them again in the same transaction. Its delete reads the row
   through the binding's own filters first and deletes nothing, child rows included, when there is none.
 - **Binding never changes storage.** None of this changes a table, its DDL, a migration snapshot or a fact.
+- **"Create tables…" makes every shape.** `materialize-tables` now proposes the tables itself, only when you ask, and
+  stores a hierarchy too. Name a base with every entity derived from it, and pick the shape with `hierarchy`: `one-table`
+  (a type column the base's binding names), `per-concrete` (a table per concrete entity, every attribute in it) or
+  `per-type` (each derived table keyed by its base's, its binding naming `baseForeignKey`). An older mapping's
+  `discriminatorValue` moves into the binding. A list goes to a table of its own with a `childTables` entry, or to a JSON
+  column with `listStorage: "json"`. A many-to-many relationship between entities you store gets a junction table, and its
+  relation mapping names it with each end's foreign key; a one-to-many relationship's mapping names its foreign key. An
+  attribute's default expression becomes the column's SQL default, and a list of a reference type gets a table of its own.
+  Each parameter takes one value for all, or one per hierarchy or attribute id. The preview answers `choices` with what it
+  used and the defaults, also when it refuses. The defaults keep the shape the older format gave, so storing changes no
+  schema: the next run writes one migration holding only the write's `rekey` fact (its ledger rows and what it adopted), whose `adopted` list
+  takes over what the pack had created outside the snapshot. On the command line: `--hierarchy` and `--list-storage`. The editor's **Create tables…** dialog asks once per
+  hierarchy and once per list.
+- **The migration of "Create tables…" creates what it takes over.** A lookup table or a list's table that seed.sql used to
+  create, and the foreign keys or checks it put on code columns, are now made by the migration that holds the `rekey` fact,
+  only where they are missing (in every dialect). A lookup table gets its rows right after it is created (inserted when
+  missing), so the foreign keys added next accept the codes a table already stores. A database built from the migrations
+  alone then runs the new seed.sql; one that already has them is left as it is. "Create tables…" also sets the reference
+  type's seed to `apply: converge` and `delete: true` (with one seed), so seed.sql still updates its rows by code and deletes
+  retired codes, as it did while the pack owned the lookup table.
+- **Entity seeds through bindings.** The `sql-ddl` pack writes a bound entity's seed rows through its binding: a table per
+  type writes the base's row first, with the entity's type code; each child table gets a row per list item. A relationship's
+  seed between bound entities writes its junction table rows, or sets the foreign key on the rows the entity seeds wrote.
 
 **When you update:**
 
@@ -73,6 +105,31 @@ one.
   object holds nested value objects now gets MQ4058 for their members when no field maps them.
 - A field `attributeId.memberId` that names a nested value object or a list, refused before (MQ4045), now maps a JSON column;
   a column of another type is MQ4045.
+- `materialize-tables` no longer refuses a hierarchy or an abstract entity (MQ4055). Name the whole hierarchy instead: a part
+  of one is refused, and so is a hierarchy with an entity already bound. It now also writes junction tables, child tables and
+  relation mappings, where it left them out before.
+- A projected column that held a reference type's codes becomes a plain column of the code's type, and its table declares the
+  constraint the database has, under the pack's name: a foreign key into the type's table, or a CHECK with today's codes. The
+  lookup table of a type under `lookup-table` becomes a designed table, and the type gets a binding to it, so its rows are
+  written as a bound type's rows (inserted when missing; `apply: converge` with `delete: true` keeps labels and retired codes in step). After
+  "Create tables…" the table owns a CHECK it declares: adding or retiring a code no longer edits it. Use a lookup table for
+  codes that change. A PostgreSQL enum column needs a database type of that name; without one, the operation is refused.
+- Converted entity seeds are written in the table-seed form in seed.sql: the same rows, through other statements.
+- For teams whose bound entities seed today: a relationship's seed through a designed junction table is written in the
+  table-seed form (inserted when missing); a relationship's seed on a foreign key now writes an `UPDATE` of the rows the
+  entity seeds wrote; and the cells of value object members, to any depth, are now written.
+- "Create tables…" never guesses a pack's setting: a reference type with no storage strategy, or a strategy key of the
+  project's own, is refused naming the type; set `conventions.referenceStorage` (or the type's storage) to `lookup-table`,
+  `check` or `native`. A relationship to an abstract base stored as a table per concrete entity is refused too.
+- A rekey fact may list `adopted` objects (a table, a constraint, a column's default): the next schema diff reads them as
+  already there, once. `validate --against` a baseline reads them the same way, and folding keeps them on the kept fact.
+- Undo "Create tables…" before the next generation run to leave the database as it was. Once a run has recorded the change,
+  undoing it is a real change: the next migration drops what the designed tables declared (lookup tables, list tables,
+  constraints), and seed.sql makes the older format's objects again.
+- On SQLite, the triggers earlier seed runs made for a reference column's check or foreign key stay in the database: after
+  "Create tables…" seed.sql no longer manages them.
+- "Create tables…" refuses, naming the attribute, a list attribute of a relationship kept in a table, a list of a reference
+  type kept in a PostgreSQL enum array, and a table inside a child table: these shapes have no binding form yet.
 
 ## 0.28.0 (2026-11-26)
 

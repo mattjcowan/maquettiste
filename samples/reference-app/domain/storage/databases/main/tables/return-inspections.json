@@ -1,0 +1,89 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99Q3QR9G3BV3F8WH8WW",
+  "name": "return_inspections",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QC68412CEM3R2DTBB",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the return inspection."
+    },
+    {
+      "id": "01M8EJX99QNH16R0TT4TBXDXHD",
+      "name": "inspected_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When it was inspected."
+    },
+    {
+      "id": "01M8EJX99Q4G13GX4NY1YMT89J",
+      "name": "outcome",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "resaleable, refurbish or scrap."
+    },
+    {
+      "id": "01M8EJX99Q6JF28XDX0J9MTHPP",
+      "name": "notes",
+      "type": "text",
+      "comment": "Findings."
+    },
+    {
+      "id": "01M8EJX99QABGWRRWFBQYQCVSH",
+      "name": "photo_url",
+      "type": "string",
+      "length": 400,
+      "comment": "Photo of the goods."
+    },
+    {
+      "id": "01M8EJX99QX862BZJX223AZVVH",
+      "name": "inspector_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QRYZHZZCWGR6MR0WG",
+      "name": "return_line_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_return_inspections",
+    "columns": [
+      "01M8EJX99QC68412CEM3R2DTBB"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABXE9FYZQW5K2SBRV9",
+      "name": "fk_return_inspections_inspector_id",
+      "columns": [
+        "01M8EJX99QX862BZJX223AZVVH"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ABGF80R9G4HTW7149K",
+      "name": "fk_return_inspections_return_line_id",
+      "columns": [
+        "01M8EJX99QRYZHZZCWGR6MR0WG"
+      ],
+      "referencesTable": "01M8EJX99QXEX7GTDK877MDV7W",
+      "referencesColumns": [
+        "01M8EJX99QPANF5GW2AG0W0X11"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "An inspection of returned goods that decides the disposition."
+}

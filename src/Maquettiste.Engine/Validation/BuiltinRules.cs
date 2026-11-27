@@ -115,11 +115,32 @@ internal static partial class BuiltinRules
 
     // ---- MQ2001, MQ2002, MQ2005, MQ2010, MQ2011: references ----
 
+    /// <summary>The reference sites of the document a validation worker is checking, reused from one document to the next.</summary>
+    [ThreadStatic]
+    private static List<ReferenceSite>? t_sites;
+
     private static void CheckReferences(ValidationContext context, Report report)
     {
         var model = context.Model;
         HashSet<(string Rule, string Pointer, string Message)>? xrefFindings = null;
-        foreach (var site in context.Walker.Walk(report.Document.Element, model.PropertySchemas, model.PropertyKeys(report.Document.Element)))
+        var sites = context.Walker.Walk(report.Document.Element, model.PropertySchemas, model.PropertyKeys(report.Document.Element), t_sites ??= []);
+        t_sites = null; // taken while in use, so a nested walk on this thread gets a list of its own
+        try
+        {
+            CheckSites(context, report, sites, ref xrefFindings);
+        }
+        finally
+        {
+            if (sites.Capacity <= 4096)
+                t_sites = sites;
+        }
+    }
+
+    private static void CheckSites(ValidationContext context, Report report, List<ReferenceSite> sites,
+        ref HashSet<(string Rule, string Pointer, string Message)>? xrefFindings)
+    {
+        var model = context.Model;
+        foreach (var site in sites)
         {
             if (site.XRef is { } xref)
             {

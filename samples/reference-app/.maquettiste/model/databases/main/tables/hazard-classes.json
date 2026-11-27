@@ -1,0 +1,88 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NM0C9J4V7J9BH1A87",
+  "name": "hazard_classes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NHSPS8W62WZG2DEDP",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the hazard class."
+    },
+    {
+      "id": "01M8EJX99NNQ0P5J1J732K886C",
+      "name": "un_number",
+      "type": "string",
+      "length": 6,
+      "comment": "UN number of the typical substance."
+    },
+    {
+      "id": "01M8EJX99NDJRNE5YM47AMG2AQ",
+      "name": "packing_group",
+      "type": "string",
+      "length": 3,
+      "comment": "Packing group I, II or III."
+    },
+    {
+      "id": "01M8EJX99N2P4ET1FZ6K8VYGPF",
+      "name": "requires_placard",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether vehicles must display a placard."
+    },
+    {
+      "id": "01M8EJX99NJQADG1GDPJCMT5DD",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99N38TD9WMJ3D33MT02",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99NFPA3APY6JPBDE4KH",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99N0Z6RY8X4BBJ91W4T",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_hazard_classes",
+    "columns": [
+      "01M8EJX99NHSPS8W62WZG2DEDP"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A6HBS4AQ02THKBXG12",
+      "name": "uq_hazard_classes_code",
+      "columns": [
+        "01M8EJX99NJQADG1GDPJCMT5DD"
+      ]
+    }
+  ],
+  "comment": "A dangerous goods class for shipping and storage, such as 3 Flammable liquids."
+}

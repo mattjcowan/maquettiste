@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ7TNDRW4T16PFHJH6",
+  "name": "supplier invoice is supplied by supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2PQK6JEDS3MZR14DS9R3EXQ",
+  "foreignKey": "01M8EJX9ABKM8KDN4AERM1EDFH"
+}

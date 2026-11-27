@@ -80,7 +80,7 @@ public sealed class QualifiedNameTests
         { "@relation:\"refers to\"", "01J92P0V1CC98R0RRCAV73SGF4" },
         { "@diagram:Billing.\"Billing overview\"", "01J92P0V2164SDBW687ZV6E1MV" },
         { "@database:main", "01J92P0V1QRN2181XM2ZWE02W4" },
-        { "@mapping:\"Invoice in main\"", "01J92P0V200XW93JQYSRCT2SE3" },
+        { "@mapping:\"settles in main\"", "01J92P0V1ZYK32MC97T5NBB5Y5" },
         { "@stereotype:audited", "01J92P0V25BX5TMQ8N9F6AJE61" },
         { "@table:notes", "01K6BND0000000000000000001" },
         { "@table:billing.notes", "01K6BND0000000000000000001" },

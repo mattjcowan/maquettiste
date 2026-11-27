@@ -161,6 +161,10 @@ internal sealed class FakeRenderer : IRenderer
                     return "-";
                 reads.Read(mapping.Table);
                 return mapping.Table.Name;
+            case "entity-count":
+                // The list's size only: its membership keys, no entity's own.
+                reads.Members(context.Model.Entities);
+                return context.Model.Entities.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
             case "entities":
                 reads.Members(context.Model.Entities);
                 return string.Join(" ", context.Model.Entities.Select(e => { reads.Read(e); return e.Name; }));

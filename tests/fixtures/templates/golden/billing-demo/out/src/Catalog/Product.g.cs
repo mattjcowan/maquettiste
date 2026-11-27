@@ -3,7 +3,6 @@ namespace Acme.Billing.Catalog;
 
 /// Product
 /// Attributes: 5; required: id, sku, name; prefix Acme.Billing
-/// Stored in products
 public partial record Product
 {
     public Guid Id { get; init; }

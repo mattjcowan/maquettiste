@@ -1,0 +1,65 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P83ZGNTW3J3KC9N95",
+  "name": "permissions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PTQWF0YVB24TBWX1P",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the permission."
+    },
+    {
+      "id": "01M8EJX99PKF3PDNKAJAR90WNM",
+      "name": "code",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "Resource and action, such as sales-order:approve."
+    },
+    {
+      "id": "01M8EJX99PFKBYGET4J7NH0YA9",
+      "name": "resource",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "Protected resource."
+    },
+    {
+      "id": "01M8EJX99PRPBV02YSX389FCVX",
+      "name": "action",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Action on the resource."
+    },
+    {
+      "id": "01M8EJX99PBNSFBCGSNJ22YHXQ",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "comment": "What the permission allows."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_permissions",
+    "columns": [
+      "01M8EJX99PTQWF0YVB24TBWX1P"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9Y7ETPHHRDVK9BJHQ",
+      "name": "uq_permissions_code",
+      "columns": [
+        "01M8EJX99PKF3PDNKAJAR90WNM"
+      ]
+    }
+  ],
+  "comment": "A single grantable right on a resource, such as sales-order:approve."
+}

@@ -35,7 +35,7 @@ const setInvoiceStereotypes = (page: Page, stereotypes: string[]) =>
   );
 
 test("the billing InvoicesByCustomer: its tabs, its SQL, a default edited, and a removed column's problem fixed in the editor", async ({ page }) => {
-  await page.goto("/database");
+  await page.goto("/database?mock=projected");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await page.getByTestId("database-list-kind-query").click();
   await expect(page.getByTestId("database-objects-count")).toHaveText("3 queries");

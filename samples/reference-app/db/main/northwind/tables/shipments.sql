@@ -37,7 +37,8 @@ CREATE TABLE northwind.shipments (
     CONSTRAINT fk_shipments_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES northwind.warehouses (id) ON DELETE RESTRICT,
     CONSTRAINT fk_shipments_carrier_id FOREIGN KEY (carrier_id) REFERENCES northwind.parties (id) ON DELETE SET NULL,
     CONSTRAINT fk_shipments_carrier_service_id FOREIGN KEY (carrier_service_id) REFERENCES northwind.carrier_services (id) ON DELETE SET NULL,
-    CONSTRAINT fk_shipments_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE SET NULL
+    CONSTRAINT fk_shipments_delivery_route_id FOREIGN KEY (delivery_route_id) REFERENCES northwind.delivery_routes (id) ON DELETE SET NULL,
+    CONSTRAINT fk_shipments_status_ref FOREIGN KEY (status) REFERENCES northwind.shipment_statuses (code)
 );
 CREATE INDEX ix_shipments_tracking_number ON northwind.shipments (tracking_number);
 COMMENT ON TABLE northwind.shipments IS 'Goods leaving a warehouse for one destination, on a carrier or an own-fleet route.';

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHYRQ0Q6ZHQBAJY8V6",
+  "name": "inventory cost layer is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1PYK277B0HWEPJ6JTTWX703",
+  "foreignKey": "01M8EJX9A9CZ3W8NPYA16KPRGG"
+}

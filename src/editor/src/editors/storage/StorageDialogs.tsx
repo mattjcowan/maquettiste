@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
 import { keys, useElements, useIndex, useSettings } from "@/api/queries";
-import type { DatabaseDoc, ElementSummary, MaterializePlan } from "@/api/types";
+import type { DatabaseDoc, ElementSummary, HierarchyShape, ListStorage, MaterializePlan } from "@/api/types";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
@@ -154,6 +154,70 @@ function useShowStorage() {
 
 // ------------------------------------------------------------------ Create tables…
 
+const HIERARCHY_LABELS: Record<HierarchyShape, string> = {
+  "one-table": "One table for the hierarchy",
+  "per-concrete": "A table per concrete entity",
+  "per-type": "A table per type (each derived table keyed by its base)",
+};
+const LIST_LABELS: Record<ListStorage, string> = { table: "In a table of its own", json: "In a JSON column" };
+
+/** The shapes and list storage picked for one database and entity set (a new scope starts again from the plan's defaults). */
+interface TableChoices {
+  scope: string;
+  hierarchy: Record<string, HierarchyShape>;
+  lists: Record<string, ListStorage>;
+}
+
+const hierarchyLabel = (c: { rootName: string; entities: string[] }) => {
+  const derived = c.entities.length - 1;
+  return derived > 0 ? `${c.rootName} and ${derived} derived ${derived === 1 ? "entity" : "entities"}` : c.rootName;
+};
+
+function TableChoicesView({
+  choices,
+  onHierarchy,
+  onList,
+}: {
+  choices: NonNullable<MaterializePlan["choices"]>;
+  onHierarchy: (root: string, shape: HierarchyShape) => void;
+  onList: (attribute: string, storage: ListStorage) => void;
+}) {
+  if (!choices.hierarchies.length && !choices.lists.length) return null;
+  return (
+    <section className="flex flex-col gap-0.5" data-testid="create-tables-choices">
+      <p className="text-11 font-semibold uppercase tracking-wide text-secondary">How to store them</p>
+      {choices.hierarchies.map((h) => (
+        <div key={h.root} className="flex items-center gap-2 text-13" data-testid={`create-tables-hierarchy-${h.rootName}`}>
+          <label htmlFor={`create-tables-hierarchy-${h.root}`} className="min-w-0 flex-1 truncate" title={h.entities.join(", ")}>
+            {hierarchyLabel(h)}
+          </label>
+          <Select id={`create-tables-hierarchy-${h.root}`} value={h.shape} onChange={(e) => onHierarchy(h.root, e.target.value as HierarchyShape)}>
+            {(Object.keys(HIERARCHY_LABELS) as HierarchyShape[]).map((k) => (
+              <option key={k} value={k}>
+                {HIERARCHY_LABELS[k]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      ))}
+      {choices.lists.map((l) => (
+        <div key={l.attribute} className="flex items-center gap-2 text-13" data-testid={`create-tables-list-${l.entityName}.${l.attributeName}`}>
+          <label htmlFor={`create-tables-list-${l.attribute}`} className="min-w-0 flex-1 truncate font-mono">
+            {l.entityName}.{l.attributeName}
+          </label>
+          <Select id={`create-tables-list-${l.attribute}`} value={l.storage} onChange={(e) => onList(l.attribute, e.target.value as ListStorage)}>
+            {(Object.keys(LIST_LABELS) as ListStorage[]).map((k) => (
+              <option key={k} value={k}>
+                {LIST_LABELS[k]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function CreateTablesDialog({ request, onClose }: { request: StorageRequest; onClose: () => void }) {
   const services = useServices();
   const index = useIndex();
@@ -166,13 +230,31 @@ function CreateTablesDialog({ request, onClose }: { request: StorageRequest; onC
   const status = useMaterializeStatus(database || null);
   // Only the entities with no binding to the database yet.
   const unbound = entities.filter((e) => status.data?.entities.some((s) => s.id === e));
+  const scope = `${database}|${unbound.join(",")}`;
+  const [picked, setPicked] = useState<TableChoices>({ scope, hierarchy: {}, lists: {} });
+  // A different database or entity set starts again from the defaults.
+  const choice: TableChoices = picked.scope === scope ? picked : { scope, hierarchy: {}, lists: {} };
+  const shapes = {
+    ...(Object.keys(choice.hierarchy).length ? { hierarchy: choice.hierarchy } : {}),
+    ...(Object.keys(choice.lists).length ? { listStorage: choice.lists } : {}),
+  };
   const plan = useQuery({
-    queryKey: ["storage-plan", "tables", database, schema, unbound.join(",")],
-    queryFn: () => endpoints.previewMaterialize(database, { op: "materialize-tables", entities: unbound, schema: schema || null }),
+    queryKey: ["storage-plan", "tables", database, schema, unbound.join(","), JSON.stringify(shapes)],
+    queryFn: () => endpoints.previewMaterialize(database, { op: "materialize-tables", entities: unbound, schema: schema || null, ...shapes }),
     enabled: !!database && unbound.length > 0,
+    // The choices stay on screen while a changed choice is planned again.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === database && previousQuery.queryKey[4] === unbound.join(",") ? previous : undefined,
     staleTime: 0,
     gcTime: 0,
   });
+  // Once one choice changes, every choice the plan shows is sent: what the plan used, with the change.
+  const choose = (change: (h: Record<string, HierarchyShape>, l: Record<string, ListStorage>) => void) => {
+    const hierarchy = Object.fromEntries((plan.data?.choices?.hierarchies ?? []).map((h) => [h.root, h.shape]));
+    const lists = Object.fromEntries((plan.data?.choices?.lists ?? []).map((l) => [l.attribute, l.storage]));
+    change(hierarchy, lists);
+    setPicked({ scope, hierarchy, lists });
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const showStorage = useShowStorage();
@@ -207,6 +289,13 @@ function CreateTablesDialog({ request, onClose }: { request: StorageRequest; onC
             </p>
           ) : null}
           {!unbound.length && !status.isPending ? <p className="text-12 text-secondary">Nothing to create here.</p> : null}
+          {plan.data?.choices ? (
+            <TableChoicesView
+              choices={plan.data.choices}
+              onHierarchy={(root, shape) => choose((h) => void (h[root] = shape))}
+              onList={(attribute, storage) => choose((_, l) => void (l[attribute] = storage))}
+            />
+          ) : null}
           <PlanView plan={plan.data} pending={plan.isFetching} />
           {error ? (
             <p role="alert" className="text-12 text-danger">
@@ -218,14 +307,14 @@ function CreateTablesDialog({ request, onClose }: { request: StorageRequest; onC
             busy={busy}
             label={unbound.length === 1 ? "Create the table" : `Create ${unbound.length} tables`}
             testId="create-tables-apply"
-            disabled={!plan.data?.valid || !unbound.length}
+            disabled={!plan.data?.valid || !unbound.length || plan.isFetching}
             onApply={async () => {
               if (!plan.data) return;
               setBusy(true);
               const failed = await commitMaterialize(
                 services,
                 unbound.length === 1 ? `Create a table for ${lookup.nameOf(unbound[0])}` : `Create ${unbound.length} tables`,
-                { op: "materialize-tables", database, entities: unbound, ...(schema ? { schema } : {}) },
+                { op: "materialize-tables", database, entities: unbound, ...(schema ? { schema } : {}), ...shapes },
                 { updates: plan.data.updates.map((u) => u.id), deletes: plan.data.deletes.map((d) => d.id) },
               );
               setBusy(false);

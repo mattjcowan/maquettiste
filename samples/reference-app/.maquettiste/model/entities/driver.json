@@ -62,5 +62,73 @@
       "sensitive": "pii",
       "description": "Phone carried on routes."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B2RH1FMX1WD5DN67P0",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99P49MAF6FNKX4XF4TA",
+      "fields": [
+        {
+          "attribute": "01M36TGMZ84AM0W9TWDAABJ5AC",
+          "column": "01M8EJX99PN9E9BQK4AN4ZMV8P"
+        },
+        {
+          "attribute": "01M1KNMR66ZNJZE5E9SVGTEGG2",
+          "column": "01M8EJX99PRNMBQSF7GM1D6ZD9"
+        },
+        {
+          "attribute": "01M1GX5BQMY5VX7YE0WPX0KM4B",
+          "column": "01M8EJX99PW1Z3HKNYZSAF71HN"
+        },
+        {
+          "attribute": "01M1VZ8M3M9P65X2R1AM8KE0E6",
+          "column": "01M8EJX99P61ED2PWKJZ8GEVN7"
+        },
+        {
+          "attribute": "01M2MXJWN1Z33YPTXB4VZTX0QC.01M2XGCNR9A93G7CMNJFZ726JT",
+          "column": "01M8EJX99PNB1GY9P9CHF7ZZXZ"
+        },
+        {
+          "attribute": "01M2MXJWN1Z33YPTXB4VZTX0QC.01M1MY7VCYQZC3CZTVHX2M3MAP",
+          "column": "01M8EJX99PW7WS9167H707K61K"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99P4A0HTWAFMM363DH6"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PAB8RBVY338TKYDPY"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PCE6RHQXFY6S1QPNA"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99P6TMSQQPE79BH83B4"
+        },
+        {
+          "attribute": "01M1Q72P5XJ3RNDRMXHNSJBSRG",
+          "column": "01M8EJX99PR5AHE9PF6K1J7GFH"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P4A0HTWAFMM363DH6": "42049432:e0d08678",
+          "01M8EJX99P61ED2PWKJZ8GEVN7": "b8943f1b:81884634",
+          "01M8EJX99P6TMSQQPE79BH83B4": "0b075263:9599b5fd",
+          "01M8EJX99PAB8RBVY338TKYDPY": "c0d79bde:9599b5fd",
+          "01M8EJX99PCE6RHQXFY6S1QPNA": "d31d4567:fd717804",
+          "01M8EJX99PN9E9BQK4AN4ZMV8P": "a5614527:8da1c7b8",
+          "01M8EJX99PNB1GY9P9CHF7ZZXZ": "e13fe389:ae2dc2c0",
+          "01M8EJX99PR5AHE9PF6K1J7GFH": "599d33b9:8da1c7b8",
+          "01M8EJX99PRNMBQSF7GM1D6ZD9": "61eb7d4f:04146d06",
+          "01M8EJX99PW1Z3HKNYZSAF71HN": "821cc9b4:b0c85a1f",
+          "01M8EJX99PW7WS9167H707K61K": "cf954fde:b0c85a1f"
+        }
+      }
+    }
   ]
 }

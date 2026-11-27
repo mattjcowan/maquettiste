@@ -13,6 +13,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// check and the fixture's table check, with an extension that types them and links them to an invented kind <c>policy</c>.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class NodePropertyTests
 {
     private const string Policy = "01JRNP00000000000000000001";

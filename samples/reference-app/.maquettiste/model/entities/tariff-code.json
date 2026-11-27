@@ -52,5 +52,43 @@
       },
       "description": "General duty rate."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C8CG6E999Y5N614A6X",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NZV7QZ0ZV49TBQ4TS",
+      "fields": [
+        {
+          "attribute": "01M2VPDPGD18YWB5APW1F9AMPW",
+          "column": "01M8EJX99NQC166H5XPWXQ0CE0"
+        },
+        {
+          "attribute": "01M2PP7AT324JSPD88JQMQNDS9",
+          "column": "01M8EJX99NHFPYREGCN6RXQ0TN"
+        },
+        {
+          "attribute": "01M2BP9FR5CSEYYWV620XN35QN",
+          "column": "01M8EJX99N8HMJKRTMD00QWPZY"
+        },
+        {
+          "attribute": "01M1GEKB6KT47WKRQDV6PNZ1QW",
+          "column": "01M8EJX99NCRCRPQ9H337JKNWR"
+        },
+        {
+          "attribute": "01M1V080Z997PNXX25H8DQMCZX",
+          "column": "01M8EJX99NTR63JR25SPGDG17W"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N8HMJKRTMD00QWPZY": "c9046f7a:e90be005",
+          "01M8EJX99NCRCRPQ9H337JKNWR": "bcd756c5:08b882e7",
+          "01M8EJX99NHFPYREGCN6RXQ0TN": "5694d08a:4de12bc4",
+          "01M8EJX99NQC166H5XPWXQ0CE0": "a5614527:8da1c7b8",
+          "01M8EJX99NTR63JR25SPGDG17W": "38ac8394:641290f5"
+        }
+      }
+    }
   ]
 }

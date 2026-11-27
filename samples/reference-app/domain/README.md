@@ -25,7 +25,8 @@ section 7.1). This folder describes its data model; `tools/build-model.mjs` turn
 A package file has `package` (the identifier), `displayName`, `description`, `enums`, `referenceTypes`, `entities`, `relations` and
 `diagram`. A reference type has `description`, `code` (the code's length), optional `label` (the label's length, 64 by default)
 and `rows`, one `<code>: <label> | <description>` per row; it becomes `model/reference-types/<name>.json` and one seed,
-`model/seeds/<name>/<name>.json`, holding its rows. An attribute names it like any type, and its default is a code.
+`model/seeds/<name>/<name>.json`, holding its rows; optional `apply` and `delete` are the seed's (a type stored in a lookup table
+keeps `apply: converge` and `delete: true`, as "Create tables…" sets them). An attribute names it like any type, and its default is a code.
 Every element and attribute needs a description; the build fails without one.
 
 **Attributes** are one line: `name: <type>[!] [flags] | description`.
@@ -37,10 +38,10 @@ Every element and attribute needs a description; the build fails without one.
 - Descriptions follow ` | `; they must not contain `: ` (YAML would read a nested mapping).
 
 **Entities**: `description`, `displayName`/`pluralName` (derived from the name when omitted), `stereotypes`, `tags`,
-`abstract`, `base`, `key`, `attributes`, `alternateKeys` (`name: [attribute, ...]`), `refs`, `children`, `mapping`, `overlay`.
+`abstract`, `base`, `key`, `attributes`, `alternateKeys` (`name: [attribute, ...]`), `refs`, `children`.
 
 - `key`: `uuid-v7` (the default), `ulid`, `identity` (int64), `identity32`, `sequence` (int64 from a named sequence, see
-  `overlay`), or the name of an attribute for an application-assigned natural key. The surrogate `id` attribute is added.
+  the database's sequences), or the name of an attribute for an application-assigned natural key. The surrogate `id` attribute is added.
   Derived entities (`base`) have no key.
 - `refs` are many-to-one relations: `role: <Entity>[!] [restrict|cascade|set-null|none] [back=<role>] [one] [name=<words>] | description`.
   The role names the navigation on this entity and the foreign key; `!` makes it required (default on delete `restrict`,
@@ -51,28 +52,35 @@ Every element and attribute needs a description; the build fails without one.
 - `children` are compositions: `role: <Entity> [ordered] [aggregation] [name=<words>] | description`. The child gets a
   required navigation back to the parent named after it, deleted with the parent. `name=` as for `refs`
   (`name=sales_order_contains_lines`); without it, `<entity words> <role words>`.
-- `mapping` (only where conventions are not enough): `inheritance` (`tph`, `tpt`), `discriminator`, `storage`
-  (`attribute: int|string|lookup|json|table|embedded`), `prefix` (`attribute: column_prefix_`).
-- `binding` binds the entity to a designed table or a query of `main` (erratum E43) instead of projecting it: `table` (the
+- `binding` binds the entity to a designed table or a query of `main` (erratum E43) (`byConvention` is `none`, so no entity has a table of its own): `table` (the
   designed table's name) or `query` (the query's name), `constants` (`column: value`, a filter on every read and a value on
   every insert), `fields` (`attribute: column`, the surrogate `id` included; for a query, its select fields' names) and
   `columns` (`column: ignored|database|computed`, the columns no field maps). The entity gets no table of its own; `remarks`
   is shared by `CustomerRemark` and `SalesOrderRemark` this way, and `OpenSalesOrder` reads the query `OpenSalesOrders`.
-- `overlay` is a synthesized table overlay in `main`: `columns` (`attribute: {nativeType, defaultSql, sequence, comment}`),
-  `checks` (`name: SQL`), `indexes` (`{name, columns: [attribute [desc]], where, unique}`).
+
+A binding written here is only for the two entities that share or read a table that is not theirs alone. Every other
+entity's binding, and every other table and relation mapping, lives in `storage/` (see Storage below).
 
 **Relations** (many-to-many and anything `refs`/`children` cannot say): `name`, `description`, `kind`, `inverseName`,
 `ends` (`"<Entity> <role> <1|0..1|*|1..*> [nav|nav=<name>] [restrict|cascade|set-null] [ordered]"`; `nav` on an end creates
-the navigation on the other end's entity) and `attributes` (which make the convention map it to a junction table).
+the navigation on the other end's entity) and `attributes` (kept in the relation's junction table in `storage/`).
 
 **Enums**: `description` and `members` (`Name: CODE | description`); values count from 0 in file order.
+
+**Storage** (`storage/`): the designed tables, relation mappings and bindings, as model documents. The paths mirror
+`.maquettiste/model/`: a table or a relation mapping is a whole document, and a file `{ "bindings": [...] }` holds the
+bindings of an entity or reference type that `domain/*.yaml` describes. `build-model.mjs` merges these into the
+YAML's documents. They came from one run of "Create tables…". To change them, edit the project in the editor, then run
+`node tools/take-storage.mjs [--from <project>]`: it copies the project's storage back into `storage/` and refuses any other
+difference from the YAML. The database in `00-project.yaml` says `byConvention: none`, so a table exists only when it is a
+designed table.
 
 **Diagram**: `name`, `description`, `columns` (grid width, default 4). Members are the package's entities in file order and
 every relation between two of them.
 
 **Queries** (`database.queries` in `00-project.yaml`): each one is a query file's JSON tree written as YAML (`parameters`,
-`from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`), with names where the file has ids: a `source` is an entity
-name (its table), a designed table's name or `view:<name>`. Every select field has a `name`: a query's rows have the shape of
+`from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`), with names where the file has ids: a `source` is a designed
+table's name (such as `sales_orders`) or `view:<name>`. Every select field has a `name`: a query's rows have the shape of
 its select list, and `entity` and `collections` (removed in 0.28.0) are refused. Column references are written `alias.column_name`.
 
 ## Ids

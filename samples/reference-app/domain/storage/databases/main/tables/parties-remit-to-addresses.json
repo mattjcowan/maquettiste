@@ -1,0 +1,88 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QRE7YKHFMWF9Z85ET",
+  "name": "parties_remit_to_addresses",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QWDTH7GDPKEKCBN9J",
+      "name": "party_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QXSV0R9KS6BD4B6VM",
+      "name": "position",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QSS85SEPM82H4SH1F",
+      "name": "line1",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Street and number, or PO box."
+    },
+    {
+      "id": "01M8EJX99QA0JH11N7TFEB9Y2W",
+      "name": "line2",
+      "type": "string",
+      "length": 120,
+      "comment": "Suite, floor or building."
+    },
+    {
+      "id": "01M8EJX99Q9E0S5VKTYHVP17H4",
+      "name": "city",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "City or locality."
+    },
+    {
+      "id": "01M8EJX99QTYXY2351ESR34F2T",
+      "name": "region",
+      "type": "string",
+      "length": 80,
+      "comment": "State, province or county."
+    },
+    {
+      "id": "01M8EJX99QZDZDFHH3MZNJBH5J",
+      "name": "postal_code",
+      "type": "string",
+      "length": 20,
+      "comment": "Postal or ZIP code."
+    },
+    {
+      "id": "01M8EJX99QKNV9X06GM2XV58KY",
+      "name": "country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "comment": "ISO country code."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_parties_remit_to_addresses",
+    "columns": [
+      "01M8EJX99QWDTH7GDPKEKCBN9J",
+      "01M8EJX99QXSV0R9KS6BD4B6VM"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACGTBFF50NBHXJPDXB",
+      "name": "fk_parties_remit_to_addresses_party_id",
+      "columns": [
+        "01M8EJX99QWDTH7GDPKEKCBN9J"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Addresses where payments may be sent; kept in a child table."
+}

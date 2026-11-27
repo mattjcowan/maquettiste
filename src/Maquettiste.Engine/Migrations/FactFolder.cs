@@ -258,7 +258,8 @@ internal static class FactFolder
 
             case (MigrationFact.Rekey, MigrationFact.Rekey):
                 var keys = Compose(a, b);
-                return keys.Count == 0 ? (null, null) : (b with { Keys = keys }, null);
+                // What either adopted stays adopted: the next schema diff reads only the objects the model still declares.
+                return keys.Count == 0 ? (null, null) : (b with { Keys = keys, Adopted = [.. a.Adopted, .. b.Adopted.Where(x => !a.Adopted.Contains(x))] }, null);
 
             default:
                 return (null, null);

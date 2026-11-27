@@ -1,0 +1,125 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PKDTGVPEY9GFQP6ZY",
+  "name": "tax_exemption_certificates",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PCQYC3HAT1KG66HAA",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the tax exemption certificate."
+    },
+    {
+      "id": "01M8EJX99PNHEGBYZCFGW3XWCA",
+      "name": "certificate_number",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Number on the certificate."
+    },
+    {
+      "id": "01M8EJX99PGMTNA1EN537VYAT8",
+      "name": "exemption_reason",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "Reason, such as resale or nonprofit."
+    },
+    {
+      "id": "01M8EJX99PYGEJDVR9MN1BVJBT",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99PP81DH9Q8B59VHS6H",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99P9HFJJ1NVBBJBP7KE",
+      "name": "document_url",
+      "type": "string",
+      "length": 400,
+      "comment": "Link to the scanned certificate."
+    },
+    {
+      "id": "01M8EJX99PZN991X6QQKCSNX4P",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P2V2FVV43V78SMXCN",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PK263A2SPE5Y00TR0",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PHY52J6A7FDPX0C1K",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PM52WZB4AQX0VYJZF",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PM68MTEGGXVGA9AAZ",
+      "name": "state_province_id",
+      "type": "int32"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_tax_exemption_certificates",
+    "columns": [
+      "01M8EJX99PCQYC3HAT1KG66HAA"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8KYY7MJ1TGKMVC3YT",
+      "name": "fk_tax_exemption_certificates_customer_id",
+      "columns": [
+        "01M8EJX99PM52WZB4AQX0VYJZF"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A85HR7T1Q8XRX21T1K",
+      "name": "fk_tax_exemption_certificates_state_province_id",
+      "columns": [
+        "01M8EJX99PM68MTEGGXVGA9AAZ"
+      ],
+      "referencesTable": "01M8EJX99QRQPKABA5R9M6C92T",
+      "referencesColumns": [
+        "01M8EJX99QHE998424AKPJB5RN"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A resale or exemption certificate a customer filed to buy without sales tax in a state."
+}

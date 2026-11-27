@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHWGF52WA0SK7JTM7E",
+  "name": "pick list line is drawn from lot in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2JC1WW5MWX50EQ8961N2Y7C",
+  "foreignKey": "01M8EJX9A9E8MNCPAZ5P42CVFW"
+}

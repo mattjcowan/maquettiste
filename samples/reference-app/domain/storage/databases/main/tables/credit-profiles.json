@@ -1,0 +1,124 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NR673DTGK9G3KR2B0",
+  "name": "credit_profiles",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NPQYTESR1P27YJQAZ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the credit profile."
+    },
+    {
+      "id": "01M8EJX99N0YFZAHMGC1KHEM69",
+      "name": "credit_limit_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99NV7TBD2Q07YAN4775",
+      "name": "credit_limit_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99NAJ6V387TPP13TNW1",
+      "name": "risk_rating",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "comment": "Internal rating from A1 (best) to D (worst)."
+    },
+    {
+      "id": "01M8EJX99NP5BCMMVASCBPWE39",
+      "name": "external_score",
+      "type": "int32",
+      "comment": "Score from the credit bureau."
+    },
+    {
+      "id": "01M8EJX99N2KG2H12J4F91WN1D",
+      "name": "last_reviewed_on",
+      "type": "date",
+      "comment": "Date of the last credit review."
+    },
+    {
+      "id": "01M8EJX99NBGW2647RD89QVGTV",
+      "name": "review_notes",
+      "type": "text",
+      "comment": "Reviewer's notes."
+    },
+    {
+      "id": "01M8EJX99NTPS18Q25DQZK7PSV",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99ND08DVKYD19CJ8PWX",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NRJG3QW12092Q407A",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NXWT34K845ADYRBJ4",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NKWFKFTW7J88TX1F9",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_credit_profiles",
+    "columns": [
+      "01M8EJX99NPQYTESR1P27YJQAZ"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A8VK523P6E5FPWHSH9",
+      "name": "uq_credit_profiles_customer_id",
+      "columns": [
+        "01M8EJX99NKWFKFTW7J88TX1F9"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A87GVM8DXGG5PQSQT5",
+      "name": "fk_credit_profiles_customer_id",
+      "columns": [
+        "01M8EJX99NKWFKFTW7J88TX1F9"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "The credit standing of a customer, reviewed by the credit department before limits change."
+}

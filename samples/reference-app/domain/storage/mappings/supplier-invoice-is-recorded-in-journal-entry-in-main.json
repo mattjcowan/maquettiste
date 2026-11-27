@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJA4ZM6EQ2NV0A198Y",
+  "name": "supplier invoice is recorded in journal entry in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2ERX0TK5WPVKTE3PB2GEWH4",
+  "foreignKey": "01M8EJX9ABKZ2RJZSR049MJKJB"
+}

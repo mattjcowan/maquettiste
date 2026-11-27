@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJC6V6ETB6NNXGKPGA",
+  "name": "price list entry is measured in unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2R138JVQ331KWM13FF1QMNA",
+  "foreignKey": "01M8EJX9AARFN3D5NG45849SBD"
+}

@@ -56,6 +56,7 @@ import { unitScope } from "@/workspaces/generate/previewScope";
 import { scopeHelp } from "@/workspaces/generate/unitsModel";
 import { hasEditor } from "@/editors/tabs";
 import { MockBackend } from "@/mocks/backend";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 
 const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
 const INVOICE = "01J92P0V0FJ23CGSNKM7P1W5V7";
@@ -67,7 +68,7 @@ const INVOICE_NUMBER = "01J92P0V0R3VSP7D5238DTNZX1";
 const INVOICE_ISSUED_ON = "01J92P0V0SNXS6PZ42VDK42HP9";
 
 const billing = () => {
-  const backend = new MockBackend();
+  const backend = new MockBackend({ seed: billingProjectedSeed() });
   const view = backend.generation.databaseView(MAIN)!.view!;
   const files = tableFiles(backend.model.index(), MAIN);
   return { backend, view, files };

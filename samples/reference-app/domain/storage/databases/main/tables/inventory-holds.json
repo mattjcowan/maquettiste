@@ -1,0 +1,155 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PNG8PKXT8GMFVK0X9",
+  "name": "inventory_holds",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P4F30MEV1NF06KRVJ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the inventory hold."
+    },
+    {
+      "id": "01M8EJX99PYYH08PQF20P331YB",
+      "name": "reason",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Why the stock is held."
+    },
+    {
+      "id": "01M8EJX99PYVS1Y89FPHN8ASA5",
+      "name": "placed_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the hold was placed."
+    },
+    {
+      "id": "01M8EJX99P36MZB8W24MSW761T",
+      "name": "released_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was released."
+    },
+    {
+      "id": "01M8EJX99P75RYZQCXQ51FWMTH",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "comment": "Quantity held; null for everything in scope."
+    },
+    {
+      "id": "01M8EJX99P3611K6HAWVNNVHC5",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PD3EHM7Y0KDEMAHHY",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PEQY30FTG74SYHSJ1",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PWZFSCD7TAQYJBPS3",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PXKPC1YCDAFGHWHHV",
+      "name": "lot_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P0ER15WZBC9CH7FKH",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PS2T7K61XCW6CRGEX",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P3CEAMZJ2RYV99RQX",
+      "name": "placed_by_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_inventory_holds",
+    "columns": [
+      "01M8EJX99P4F30MEV1NF06KRVJ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9R15ZX2GBZT4JRS7C",
+      "name": "fk_inventory_holds_lot_id",
+      "columns": [
+        "01M8EJX99PXKPC1YCDAFGHWHHV"
+      ],
+      "referencesTable": "01M8EJX99P4YZT0BJ4SBS8XS67",
+      "referencesColumns": [
+        "01M8EJX99PJWQ6NSF0MMBRYXEK"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9K06XS3ZZFP2KE1KR",
+      "name": "fk_inventory_holds_product_id",
+      "columns": [
+        "01M8EJX99P0ER15WZBC9CH7FKH"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A95HDPQKK52C50VTDJ",
+      "name": "fk_inventory_holds_warehouse_id",
+      "columns": [
+        "01M8EJX99PS2T7K61XCW6CRGEX"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AARWH0V1YFMR8XZKWG",
+      "name": "fk_inventory_holds_placed_by_id",
+      "columns": [
+        "01M8EJX99P3CEAMZJ2RYV99RQX"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A hold that blocks stock from being picked, such as a recall or a failed inspection."
+}

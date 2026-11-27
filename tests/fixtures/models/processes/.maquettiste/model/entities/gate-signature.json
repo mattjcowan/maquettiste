@@ -70,5 +70,68 @@
       "type": "datetimeoffset",
       "required": true
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EKC5AZ5GMJ3PRJDCMFYNM5",
+      "database": "01JQDBS0000000000000000001",
+      "source": "01M8EKC5AMMXV0ZQM4X23333N9",
+      "fields": [
+        {
+          "attribute": "01JQATT0000000000000000020",
+          "column": "01M8EKC5AM5AHB19FR83YGWYTQ"
+        },
+        {
+          "attribute": "01JQATT0000000000000000021",
+          "column": "01M8EKC5AM81110YSBWCF79S4P"
+        },
+        {
+          "attribute": "01JQATT0000000000000000022",
+          "column": "01M8EKC5AMB3SMKB0X37J47QCF"
+        },
+        {
+          "attribute": "01JQATT0000000000000000023",
+          "column": "01M8EKC5AMGKVYMD15JKST4BYX"
+        },
+        {
+          "attribute": "01JQATT0000000000000000024",
+          "column": "01M8EKC5AM6HP83AX650E6HC42"
+        },
+        {
+          "attribute": "01JQATT0000000000000000025",
+          "column": "01M8EKC5AMK5RVMXEY3Q0G37FT"
+        },
+        {
+          "attribute": "01JQATT0000000000000000026",
+          "column": "01M8EKC5AMKR27AK1BHK06MXVP"
+        },
+        {
+          "attribute": "01JQATT0000000000000000027",
+          "column": "01M8EKC5AMVTADHXGVF1HDQE11"
+        },
+        {
+          "attribute": "01JQATT0000000000000000028",
+          "column": "01M8EKC5AM8VKQGATJCAESK7N8"
+        },
+        {
+          "attribute": "01JQATT0000000000000000029",
+          "column": "01M8EKC5AMBP5VQBT51QESR0BT"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EKC5AM5AHB19FR83YGWYTQ": "a5614527:8da1c7b8",
+          "01M8EKC5AM6HP83AX650E6HC42": "ffdcc4ba:56f2d579",
+          "01M8EKC5AM81110YSBWCF79S4P": "5e8c03a9:56f2d579",
+          "01M8EKC5AM8VKQGATJCAESK7N8": "25a63e52:56f2d579",
+          "01M8EKC5AMB3SMKB0X37J47QCF": "c974e17b:56f2d579",
+          "01M8EKC5AMBP5VQBT51QESR0BT": "b1d6b91b:e0d08678",
+          "01M8EKC5AMGKVYMD15JKST4BYX": "bf37c7c2:fc034f10",
+          "01M8EKC5AMK5RVMXEY3Q0G37FT": "50c9c4ae:56f2d579",
+          "01M8EKC5AMKR27AK1BHK06MXVP": "e409bfc6:4a370432",
+          "01M8EKC5AMVTADHXGVF1HDQE11": "8fcfccf6:43ec92f3"
+        }
+      }
+    }
   ]
 }

@@ -1,5 +1,6 @@
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -9,6 +10,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// stale when an input or a planned path changed after planning.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class PlanApplyTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

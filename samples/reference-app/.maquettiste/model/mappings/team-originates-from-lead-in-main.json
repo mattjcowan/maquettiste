@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHM50J7NV879XT76TB",
+  "name": "team originates from lead in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M28RD4YTKWHQ4K6QAAHAP0TF",
+  "foreignKey": "01M8EJX9A9HR0RNNWQ5GRRED71"
+}

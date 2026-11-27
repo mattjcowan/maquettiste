@@ -61,5 +61,68 @@
       "required": true,
       "description": "Line total."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C6TP63R54ZRHMVNQXR",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99Q8C715P0CBR4DZ4M5",
+      "fields": [
+        {
+          "attribute": "01M1EKMW1CCNMB0DSBN6TJ44VD",
+          "column": "01M8EJX99QEF0WNKA3YEZH7G7J"
+        },
+        {
+          "attribute": "01M1GE5H2QFH8SAED12BN77ZY5",
+          "column": "01M8EJX99QHK62C72733F7J24G"
+        },
+        {
+          "attribute": "01M1SM3557TG3Z8HM6JP67KQKR",
+          "column": "01M8EJX99Q7X4ZK6DBJVRNKHM2"
+        },
+        {
+          "attribute": "01M29JNNJSHC7H8FGRNJJP5HEE.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QE46J4SDDKFHBRX9B"
+        },
+        {
+          "attribute": "01M29JNNJSHC7H8FGRNJJP5HEE.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QKJ9E8E5BHN5J893Z"
+        },
+        {
+          "attribute": "01M36WSW8S29PEZRDDAAXPFSFK.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QMK8JSR2CEGM683AH"
+        },
+        {
+          "attribute": "01M36WSW8S29PEZRDDAAXPFSFK.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QHGNDGZ2K288ET9E6"
+        },
+        {
+          "attribute": "01M21ESF5KM2GMV8N157QZQ5JQ",
+          "column": "01M8EJX99Q3Z6PPEG82PEEBRE6"
+        },
+        {
+          "attribute": "01M2F2NEAWXM30AAE4V21JEMH0",
+          "column": "01M8EJX99Q7RADNSPFC5YTZR43"
+        },
+        {
+          "attribute": "01M2EHKH38ZGGK69P52CP94Z64",
+          "column": "01M8EJX99QGW912XHPV0T87ACW"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q3Z6PPEG82PEEBRE6": "c38e78df:8da1c7b8",
+          "01M8EJX99Q7RADNSPFC5YTZR43": "c6efb1e6:d8a57cf9",
+          "01M8EJX99Q7X4ZK6DBJVRNKHM2": "1a7b308d:b52e18e1",
+          "01M8EJX99QE46J4SDDKFHBRX9B": "19692048:d46c92d7",
+          "01M8EJX99QEF0WNKA3YEZH7G7J": "a5614527:8da1c7b8",
+          "01M8EJX99QGW912XHPV0T87ACW": "26751212:d8a57cf9",
+          "01M8EJX99QHGNDGZ2K288ET9E6": "a68013a5:48b85cd3",
+          "01M8EJX99QHK62C72733F7J24G": "c9046f7a:e90be005",
+          "01M8EJX99QKJ9E8E5BHN5J893Z": "c29a402e:48b85cd3",
+          "01M8EJX99QMK8JSR2CEGM683AH": "7e56bed9:d46c92d7"
+        }
+      }
+    }
   ]
 }

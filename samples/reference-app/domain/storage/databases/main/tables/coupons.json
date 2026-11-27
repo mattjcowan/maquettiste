@@ -1,0 +1,126 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PXA9HWMV7BZWHZGQJ",
+  "name": "coupons",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P38RYE072G6VMA9KV",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the coupon."
+    },
+    {
+      "id": "01M8EJX99PNM0FVMC7FAP1408V",
+      "name": "code",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Coupon code."
+    },
+    {
+      "id": "01M8EJX99P7A4EWNPSY2AGG6D3",
+      "name": "max_uses",
+      "type": "int32",
+      "comment": "Maximum redemptions of the code."
+    },
+    {
+      "id": "01M8EJX99P3EY8XXNFMGY5J3E1",
+      "name": "used_count",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Redemptions so far."
+    },
+    {
+      "id": "01M8EJX99P5ZE2K19NFG9NS6HH",
+      "name": "expires_on",
+      "type": "date",
+      "comment": "Last day the code works."
+    },
+    {
+      "id": "01M8EJX99PGT7NPXK0X9FZG8NY",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PQQ8NWFPVB6GCPATX",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PS9SRRHPSWHWBJHDR",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PKR24RR32YQ33DT4Y",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PXV9TRAV0DSCJJCYD",
+      "name": "customer_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PPFKGHBABNR9X0RFC",
+      "name": "promotion_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_coupons",
+    "columns": [
+      "01M8EJX99P38RYE072G6VMA9KV"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AARH34DXN6AWJWPTHE",
+      "name": "uq_coupons_code",
+      "columns": [
+        "01M8EJX99PNM0FVMC7FAP1408V"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAY0QVY2PV8SHPKJW2",
+      "name": "fk_coupons_customer_id",
+      "columns": [
+        "01M8EJX99PXV9TRAV0DSCJJCYD"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAC7DJTME8MFHH5QJ4",
+      "name": "fk_coupons_promotion_id",
+      "columns": [
+        "01M8EJX99PPFKGHBABNR9X0RFC"
+      ],
+      "referencesTable": "01M8EJX99QF6C7NWKA4NH5E7W4",
+      "referencesColumns": [
+        "01M8EJX99Q0B4TTWBMHCCEYPKG"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A code customers enter to redeem a promotion."
+}

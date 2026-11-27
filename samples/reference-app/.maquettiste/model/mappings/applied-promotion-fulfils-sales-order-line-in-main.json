@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJBQ1QX34QG4FQFTF6",
+  "name": "applied promotion fulfils sales order line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1RN4NH7V68KAFEADJC30VBS",
+  "foreignKey": "01M8EJX9ACDE4PAPK1M010W64N"
+}

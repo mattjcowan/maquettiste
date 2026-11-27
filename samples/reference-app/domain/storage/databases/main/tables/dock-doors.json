@@ -1,0 +1,75 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PMKRDAGFN7F5V04QG",
+  "name": "dock_doors",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PS3BQA0956QH6H6JG",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the dock door."
+    },
+    {
+      "id": "01M8EJX99P99E5EKNAK25RZYEF",
+      "name": "door_number",
+      "type": "string",
+      "length": 10,
+      "nullable": false,
+      "comment": "Door number."
+    },
+    {
+      "id": "01M8EJX99PH12X4ST1SHMRYYVC",
+      "name": "door_type",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "inbound, outbound or both."
+    },
+    {
+      "id": "01M8EJX99PNTJGHAG8NX7W92R4",
+      "name": "has_leveler",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it has a dock leveler."
+    },
+    {
+      "id": "01M8EJX99PGJBRTFQXFPK385SR",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it can be scheduled."
+    },
+    {
+      "id": "01M8EJX99PQ79679VST0CBD16D",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_dock_doors",
+    "columns": [
+      "01M8EJX99PS3BQA0956QH6H6JG"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9TMBV4G3VD8MBQP67",
+      "name": "fk_dock_doors_warehouse_id",
+      "columns": [
+        "01M8EJX99PQ79679VST0CBD16D"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A loading dock door of a warehouse, scheduled for inbound and outbound trailers."
+}

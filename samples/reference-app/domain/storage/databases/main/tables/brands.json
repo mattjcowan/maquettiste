@@ -1,0 +1,108 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NPRAMFJKXE3SX2DVT",
+  "name": "brands",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NQ14XDDQHTJGW6DZG",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the brand."
+    },
+    {
+      "id": "01M8EJX99N83TPY7RJHNJYTH8R",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Brand name."
+    },
+    {
+      "id": "01M8EJX99NCZQ3T27Z4F0GVVY0",
+      "name": "description",
+      "type": "text",
+      "comment": "Brand story."
+    },
+    {
+      "id": "01M8EJX99NC6DE30J6NR5GJ2HA",
+      "name": "logo_url",
+      "type": "string",
+      "length": 400,
+      "comment": "Logo image URL."
+    },
+    {
+      "id": "01M8EJX99NRY958MV3270BJ33J",
+      "name": "website",
+      "type": "string",
+      "length": 200,
+      "comment": "Brand website."
+    },
+    {
+      "id": "01M8EJX99NZHVE14N98D58ZZSA",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99NT52AJ8WRF42NM17H",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99N7HCRY6BNQXK1FP96",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NFAFJNQG2Y8T9DC7R",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NNJ8T3FCDV4QNGSXR",
+      "name": "manufacturer_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_brands",
+    "columns": [
+      "01M8EJX99NQ14XDDQHTJGW6DZG"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A65B3MKX6CYGKY12EH",
+      "name": "uq_brands_name",
+      "columns": [
+        "01M8EJX99N83TPY7RJHNJYTH8R"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A6H4M3YPMQ9839XFJV",
+      "name": "fk_brands_manufacturer_id",
+      "columns": [
+        "01M8EJX99NNJ8T3FCDV4QNGSXR"
+      ],
+      "referencesTable": "01M8EJX99N266RWXHYX839QRMH",
+      "referencesColumns": [
+        "01M8EJX99NYNWTYGXRBMVEF7ED"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A brand products are marketed under, which may differ from the manufacturer."
+}

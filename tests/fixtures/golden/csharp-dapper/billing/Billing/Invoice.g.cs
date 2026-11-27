@@ -14,6 +14,7 @@ namespace App.Model.Billing;
 public partial class Invoice
 {
     public Guid Id { get; set; }
+    /// <summary>Assigned on issue.</summary>
     public string Number { get; set; } = default!;
     public DateOnly IssuedOn { get; set; }
     public Money? Total { get; set; }
@@ -23,6 +24,6 @@ public partial class Invoice
     public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
 
-    // Columns of table invoices (database main) that no attribute maps, such as foreign keys.
+    // Keys of the relations the entity's binding maps (they lead to the related entities' keys).
     public Guid CustomerId { get; set; }
 }

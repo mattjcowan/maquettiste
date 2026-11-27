@@ -74,20 +74,6 @@ entities:
       statusChanges: SalesOrderStatusChange name=sales_order_contains_status_changes | Status history.
       attachments: SalesOrderAttachment name=sales_order_contains_attachments | Files attached to the order.
       appliedPromotions: AppliedPromotion name=sales_order_contains_applied_promotions | Promotions applied to the order.
-    mapping:
-      description: The two embedded addresses get short bill_ and ship_ column prefixes.
-      prefix:
-        billingAddress: bill_
-        shippingAddress: ship_
-    overlay:
-      description: Order number default, amount checks and the order-date index.
-      columns:
-        orderNumber:
-          defaultSql: "'SO-' || lpad(nextval('northwind.sales_order_number_seq')::text, 6, '0')"
-          comment: Assigned from sales_order_number_seq when the application does not supply one.
-      indexes:
-        - name: ix_sales_orders_ordered_at
-          columns: [orderedAt desc]
 
   SalesOrderLine:
     description: One product ordered on a sales order, with its quantity, price and fulfillment state.
@@ -109,14 +95,6 @@ entities:
       variant: ProductVariant name=sales_order_line_is_for_variant | Variant ordered.
       unit: UnitOfMeasure! name=sales_order_line_is_measured_in_unit | Unit of the quantity.
       warehouse: Warehouse name=sales_order_line_ships_from_warehouse | Warehouse the line ships from, when split.
-    mapping:
-      description: Line status is stored as its integer value to keep this high-volume table narrow.
-      storage:
-        status: int
-    overlay:
-      description: Quantity must be positive.
-      checks:
-        ck_sales_order_lines_quantity_positive: quantity > 0
 
   SalesQuote:
     description: A priced offer to a customer that can be converted into an order.

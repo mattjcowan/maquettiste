@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH0B8GCV7FQ3HT1HCN",
+  "name": "customer is grouped in customer group in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1VJWZTTTSPVR6T3THHHBF5P",
+  "foreignKey": "01M8EJX9A8AHD1KYTWX7JH2ACR"
+}

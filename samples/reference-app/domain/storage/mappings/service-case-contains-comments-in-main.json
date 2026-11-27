@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJWX7N0QGJYR1G1HDC",
+  "name": "service case contains comments in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M352801TZGCKK5TMWSV7JFVX",
+  "foreignKey": "01M8EJX9AB7JPPZ9NMJF23YRQD"
+}

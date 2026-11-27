@@ -105,7 +105,11 @@ internal static class SnapshotAliases
             tables.Add(new TableRekey(from, to, map));
         }
 
-        return tables.Count == 0 && sequences.Count == 0 ? snapshot : SnapshotRekey.Apply(snapshot, tables, sequences);
+        if (tables.Count == 0 && sequences.Count == 0)
+            return snapshot;
+        PhysicalSnapshot? captured = null;
+        return SnapshotRekey.ReadStoredReferenceColumns(SnapshotRekey.Apply(snapshot, tables, sequences), tables,
+            table => (captured ??= SnapshotCapture.Capture(current, snapshot.Revision)).Tables.FirstOrDefault(t => t.Key == table));
     }
 
     /// <summary>A snapshot to save, with the aliases of the one it replaces.</summary>

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJYZJ200MW3XG2Q9GF",
+  "name": "purchase requisition is charged to cost center in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M34XQ15T6J7C0PTDX78E8Q4T",
+  "foreignKey": "01M8EJX9ABK0YSGNXXC2DMMKB2"
+}

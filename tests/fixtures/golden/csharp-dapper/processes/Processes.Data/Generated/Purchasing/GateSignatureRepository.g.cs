@@ -12,14 +12,14 @@ using Dapper;
 
 namespace Processes.Data.Purchasing;
 
-/// <summary>Reads and writes <see cref="GateSignature"/> rows in public.gate_signatures (database main, postgresql).</summary>
+/// <summary>Reads and writes <see cref="GateSignature"/> rows through its binding to table gate_signatures (database main, postgresql).</summary>
 public partial interface IGateSignatureRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<GateSignature?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<GateSignature>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GateSignature>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(GateSignature entity, CancellationToken cancellationToken = default);
@@ -34,46 +34,44 @@ public partial interface IGateSignatureRepository
 /// <summary>The Dapper implementation of <see cref="IGateSignatureRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class GateSignatureRepository(IDbConnection connection, IDbTransaction? transaction = null) : IGateSignatureRepository
 {
-    private const string Columns = """
-        id AS Id,
-        instance AS Instance,
-        gate AS Gate,
-        sequence AS Sequence,
-        signer AS Signer,
-        actor AS Actor,
-        meaning AS Meaning,
-        reason AS Reason,
-        outcome AS Outcome,
-        at AS At
+    private const string SelectSql = """
+        SELECT t.id AS id, t.instance AS instance, t.gate AS gate, t.sequence AS sequence, t.signer AS signer, t.actor AS actor, t.meaning AS meaning, t.reason AS reason, t.outcome AS outcome, t.at AS at
+        FROM public.gate_signatures t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM public.gate_signatures WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM public.gate_signatures ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.instance AS instance, t.gate AS gate, t.sequence AS sequence, t.signer AS signer, t.actor AS actor, t.meaning AS meaning, t.reason AS reason, t.outcome AS outcome, t.at AS at
+        FROM public.gate_signatures t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO public.gate_signatures (id, instance, gate, sequence, signer, actor, meaning, reason, outcome, at)
-        VALUES (@Id, @Instance, @Gate, @Sequence, @Signer, @Actor, @Meaning, @Reason, @Outcome, @At)
+        VALUES (@id, @instance, @gate, @sequence, @signer, @actor, @meaning, @reason, @outcome, @at)
         """;
 
     private const string UpdateSql = """
-        UPDATE public.gate_signatures SET instance = @Instance, gate = @Gate, sequence = @Sequence, signer = @Signer, actor = @Actor, meaning = @Meaning, reason = @Reason, outcome = @Outcome, at = @At
-        WHERE id = @Id
+        UPDATE public.gate_signatures SET instance = @instance, gate = @gate, sequence = @sequence, signer = @signer, actor = @actor, meaning = @meaning, reason = @reason, outcome = @outcome, at = @at
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM public.gate_signatures WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM public.gate_signatures
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<GateSignature?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<GateSignature>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<GateSignature>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -96,49 +94,49 @@ public partial class GateSignatureRepository(IDbConnection connection, IDbTransa
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of gate_signatures, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table gate_signatures as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public string Instance { get; set; } = default!;
-        public string Gate { get; set; } = default!;
-        public long Sequence { get; set; }
-        public string Signer { get; set; } = default!;
-        public string Actor { get; set; } = default!;
-        public string? Meaning { get; set; }
-        public string? Reason { get; set; }
-        public string Outcome { get; set; } = default!;
-        public DateTimeOffset At { get; set; }
+        public Guid id { get; set; }
+        public string instance { get; set; } = default!;
+        public string gate { get; set; } = default!;
+        public long sequence { get; set; }
+        public string signer { get; set; } = default!;
+        public string actor { get; set; } = default!;
+        public string? meaning { get; set; }
+        public string? reason { get; set; }
+        public string outcome { get; set; } = default!;
+        public DateTimeOffset at { get; set; }
 
         public static GateSignature ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Instance = row.Instance,
-            Gate = row.Gate,
-            Sequence = row.Sequence,
-            Signer = row.Signer,
-            Actor = row.Actor,
-            Meaning = row.Meaning,
-            Reason = row.Reason,
-            Outcome = row.Outcome,
-            At = row.At,
+            Id = row.id,
+            Instance = row.instance,
+            Gate = row.gate,
+            Sequence = row.sequence,
+            Signer = row.signer,
+            Actor = row.actor,
+            Meaning = row.meaning,
+            Reason = row.reason,
+            Outcome = row.outcome,
+            At = row.at,
         };
 
         public static Row From(GateSignature entity) => new()
         {
-            Id = entity.Id,
-            Instance = entity.Instance,
-            Gate = entity.Gate,
-            Sequence = entity.Sequence,
-            Signer = entity.Signer,
-            Actor = entity.Actor,
-            Meaning = entity.Meaning,
-            Reason = entity.Reason,
-            Outcome = entity.Outcome,
-            At = entity.At,
+            id = entity.Id,
+            instance = entity.Instance,
+            gate = entity.Gate,
+            sequence = entity.Sequence,
+            signer = entity.Signer,
+            actor = entity.Actor,
+            meaning = entity.Meaning,
+            reason = entity.Reason,
+            outcome = entity.Outcome,
+            at = entity.At,
         };
     }
 }

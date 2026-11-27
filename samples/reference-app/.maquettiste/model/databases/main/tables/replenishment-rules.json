@@ -1,0 +1,142 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P0C6FS0PP9BW8WPQ5",
+  "name": "replenishment_rules",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P2P9K0FYPHXRMEBE2",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the replenishment rule."
+    },
+    {
+      "id": "01M8EJX99P3HF0D4A6MJGP0HW4",
+      "name": "min_quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Reorder when available stock falls below it."
+    },
+    {
+      "id": "01M8EJX99P4G1THZDNR9A1C562",
+      "name": "max_quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Order up to this level."
+    },
+    {
+      "id": "01M8EJX99PFNVP9X40G6F8Q6SA",
+      "name": "reorder_quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "comment": "Fixed order quantity, when used instead of max."
+    },
+    {
+      "id": "01M8EJX99P3AXZ16AVW2E7KQ2G",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the rule is evaluated."
+    },
+    {
+      "id": "01M8EJX99P5G4RV5GX9XYFEDK7",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PCFEQFRMMRJPDGHTK",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PMY5YY1Q8NBDYNVVZ",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PCBHY2J8EEPJSZ77A",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PV1EV3619B605CZ8V",
+      "name": "preferred_supplier_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PSR9HJVGWQ7Y986B9",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PN5N79P8MQD18GCTR",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_replenishment_rules",
+    "columns": [
+      "01M8EJX99P2P9K0FYPHXRMEBE2"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAPD6C0EHAR2TPEMX5",
+      "name": "fk_replenishment_rules_preferred_supplier_id",
+      "columns": [
+        "01M8EJX99PV1EV3619B605CZ8V"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAVSAA2H2NPXBF90M4",
+      "name": "fk_replenishment_rules_product_id",
+      "columns": [
+        "01M8EJX99PSR9HJVGWQ7Y986B9"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AAJAHNQCAK0GT8GCA9",
+      "name": "fk_replenishment_rules_warehouse_id",
+      "columns": [
+        "01M8EJX99PN5N79P8MQD18GCTR"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Min-max replenishment settings of a product in a warehouse."
+}

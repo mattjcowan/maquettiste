@@ -1,0 +1,95 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99N98WFMV4EP2ARBHGH",
+  "name": "product_collections",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NJB3F73HCQN44PCT9",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product collection."
+    },
+    {
+      "id": "01M8EJX99NV5796MSAE99J7ZCW",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Collection name."
+    },
+    {
+      "id": "01M8EJX99NRGF4RHY61HZEXKFN",
+      "name": "description",
+      "type": "text",
+      "comment": "Description shown to customers."
+    },
+    {
+      "id": "01M8EJX99NCFYX1Z0F1H8YF133",
+      "name": "is_featured",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Shown on the portal home page."
+    },
+    {
+      "id": "01M8EJX99N5B74TEJW34Y27XA0",
+      "name": "validity_starts_on",
+      "type": "date",
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99NTS65T6TJQQ76EWJ8",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99N94XDB3KH9CM0JPVP",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99NJNYFC4YDGX0EFFRA",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NMVFPGCJ28MM1Y7EF",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NQ4QTKS00RD6T7REP",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_collections",
+    "columns": [
+      "01M8EJX99NJB3F73HCQN44PCT9"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A73YS68MGSRP30PGAQ",
+      "name": "uq_product_collections_name",
+      "columns": [
+        "01M8EJX99NV5796MSAE99J7ZCW"
+      ]
+    }
+  ],
+  "comment": "A curated set of products, such as Back to school or Top sellers, used by merchandising."
+}

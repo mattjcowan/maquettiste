@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJHSE57FRD5KMM645H",
+  "name": "sales order contains attachments in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1DY7GZXV1857DK200DTMFP5",
+  "foreignKey": "01M8EJX9ACR8N39CA5Q8GS3W2C"
+}

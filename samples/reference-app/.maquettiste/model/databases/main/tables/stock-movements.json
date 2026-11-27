@@ -1,0 +1,173 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M2Q6W70PCXE311J3965E8PFY",
+  "name": "stock_movements",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Movements are read newest first.",
+  "columns": [
+    {
+      "id": "01M8EJX99P9W4CVQB73FY895T8",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the stock movement."
+    },
+    {
+      "id": "01M8EJX99PHQZM43FNGG27H6SB",
+      "name": "movement_type",
+      "type": "string",
+      "length": 5,
+      "nullable": false,
+      "comment": "Kind of movement."
+    },
+    {
+      "id": "01M8EJX99PJ2XYGVXYFMZ2RS7Q",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity moved, in the base unit; negative for issues."
+    },
+    {
+      "id": "01M8EJX99PB030K4RAEBYSBN4C",
+      "name": "occurred_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the movement happened."
+    },
+    {
+      "id": "01M8EJX99PK6005T8FADB5XA07",
+      "name": "reference_document",
+      "type": "string",
+      "length": 40,
+      "comment": "Source document number."
+    },
+    {
+      "id": "01M8EJX99PTTE1JB8VRJ3WVM7F",
+      "name": "unit_cost_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PECNQPPR9WSS68748",
+      "name": "unit_cost_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99PVG492SSK5D4F8PQ2",
+      "name": "lot_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PV7QWD32N4AK37N1Z",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PDT4AXZWSD9DZFECG",
+      "name": "performed_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PQ7YVAHPKY0VSZG7N",
+      "name": "from_bin_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PFR0A32AVN7692AFF",
+      "name": "to_bin_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_stock_movements",
+    "columns": [
+      "01M8EJX99P9W4CVQB73FY895T8"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAC8J13E9TCJ4D1DH5",
+      "name": "fk_stock_movements_lot_id",
+      "columns": [
+        "01M8EJX99PVG492SSK5D4F8PQ2"
+      ],
+      "referencesTable": "01M8EJX99P4YZT0BJ4SBS8XS67",
+      "referencesColumns": [
+        "01M8EJX99PJWQ6NSF0MMBRYXEK"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAF1WMPPRRP55G30FD",
+      "name": "fk_stock_movements_product_id",
+      "columns": [
+        "01M8EJX99PV7QWD32N4AK37N1Z"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AA1TY1A5G4E2W8DPAA",
+      "name": "fk_stock_movements_performed_by_id",
+      "columns": [
+        "01M8EJX99PDT4AXZWSD9DZFECG"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AATTSHHQR71ZEBWNHX",
+      "name": "fk_stock_movements_from_bin_id",
+      "columns": [
+        "01M8EJX99PQ7YVAHPKY0VSZG7N"
+      ],
+      "referencesTable": "01M8EJX99P6T2XHSRWPFJSSPJA",
+      "referencesColumns": [
+        "01M8EJX99PNZ31YCAG0CEXWAPQ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AA168QPRCNWVPBWP52",
+      "name": "fk_stock_movements_to_bin_id",
+      "columns": [
+        "01M8EJX99PFR0A32AVN7692AFF"
+      ],
+      "referencesTable": "01M8EJX99P6T2XHSRWPFJSSPJA",
+      "referencesColumns": [
+        "01M8EJX99PNZ31YCAG0CEXWAPQ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M34SREVAZ2RMTNYNSY17VTYY",
+      "name": "ix_stock_movements_occurred_at",
+      "columns": [
+        {
+          "column": "01M8EJX99PB030K4RAEBYSBN4C",
+          "descending": true
+        }
+      ]
+    }
+  ],
+  "comment": "Movements are read newest first."
+}

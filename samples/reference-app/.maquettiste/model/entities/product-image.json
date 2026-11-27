@@ -64,5 +64,53 @@
       "default": false,
       "description": "Image used in listings."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BFWEEBKMZ946TWRA1P",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NT2QGTHB6BFM6ZZDV",
+      "fields": [
+        {
+          "attribute": "01M363PHST3SPTCGZTKF8CY568",
+          "column": "01M8EJX99N71HCKVEQ0PS2WR6X"
+        },
+        {
+          "attribute": "01M26RS1X0S81ZDB3WB83FSNSX",
+          "column": "01M8EJX99N3ZW1SMA969WT6J93"
+        },
+        {
+          "attribute": "01M1JNEP88WCGF9MFQRZPZJZZJ",
+          "column": "01M8EJX99N53MZYZQTD0T0ZQW9"
+        },
+        {
+          "attribute": "01M1JFBGNJ4FTYQGA9W2FAXJTM",
+          "column": "01M8EJX99NJWGMDVYPVQYJFE6W"
+        },
+        {
+          "attribute": "01M2ZY8SGEQ0MBFHS3BX2GB6EJ",
+          "column": "01M8EJX99NGZ76MRPDY5X92Z3D"
+        },
+        {
+          "attribute": "01M2D4SNK253PZ9FCZVWXMHDHT",
+          "column": "01M8EJX99NHJMB267GGXWWYTRA"
+        },
+        {
+          "attribute": "01M2YR1ER3P2D406V8V21RE5DR",
+          "column": "01M8EJX99NMCZ1Y8QA19SEFSA6"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N3ZW1SMA969WT6J93": "28e5ebab:64f13b8b",
+          "01M8EJX99N53MZYZQTD0T0ZQW9": "a0c1c4d2:6b504d2a",
+          "01M8EJX99N71HCKVEQ0PS2WR6X": "a5614527:4338bc0a",
+          "01M8EJX99NGZ76MRPDY5X92Z3D": "158f1161:d0210786",
+          "01M8EJX99NHJMB267GGXWWYTRA": "3e4b3a44:19980141",
+          "01M8EJX99NJWGMDVYPVQYJFE6W": "b74d7f26:d0210786",
+          "01M8EJX99NMCZ1Y8QA19SEFSA6": "64814827:8da1c7b8"
+        }
+      }
+    }
   ]
 }

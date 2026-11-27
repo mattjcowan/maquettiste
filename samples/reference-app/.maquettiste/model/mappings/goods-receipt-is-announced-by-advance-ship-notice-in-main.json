@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ9C2R4H67ME8GR52M",
+  "name": "goods receipt is announced by advance ship notice in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M382SY6AF9XYABMAEAEF319Y",
+  "foreignKey": "01M8EJX9AA4J8FBE94R44WGPWM"
+}

@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace Maquettiste.Functions.Tests;
 
 /// <summary>Realtime events (phase2-design.md section 3.6): what is published, how often, and within the hub's 256 KB.</summary>
+[UsesProjectedFixtures]
 public sealed class EventTests
 {
     private const int HubLimit = 256 * 1024;

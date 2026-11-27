@@ -56,5 +56,83 @@
       "type": "datetimeoffset",
       "description": "When it was done."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BJFYCH030VDX8K56BH",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PXXHS6E4WMA8849HZ",
+      "fields": [
+        {
+          "attribute": "01M2BY5QYCBB50KYBV833TAAK6",
+          "column": "01M8EJX99PVCYVS0NEBETFJWZ6"
+        },
+        {
+          "attribute": "01M1X5MX37WK634E6K0D9MS5C6",
+          "column": "01M8EJX99P6RMYR4W3XV6RRF22"
+        },
+        {
+          "attribute": "01M1X0XS9FB5X3X8K1XCN53Z4Z",
+          "column": "01M8EJX99PC4TW18J4X5X0BA7D"
+        },
+        {
+          "attribute": "01M2NBZH4VC8SDJC27SD4Q5W8P",
+          "column": "01M8EJX99PMFDFASMKZ4RZ6RS6"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99P26DCK99JJT1E8BXG"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PD3BRV7CMTGFTBN89"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PCSF42NK10P0FG02R"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PPPS9XZ4TE08180CR"
+        },
+        {
+          "attribute": "01M2Z1F6BNG52HAZX3GRFEXGZW",
+          "column": "01M8EJX99PZG80273BJM5JJWDE"
+        },
+        {
+          "attribute": "01M22WFH357PJQ4V31ARGZRZD7",
+          "column": "01M8EJX99PW1TCJJT6JRC6Z3W4"
+        },
+        {
+          "attribute": "01M2MJX6Z4H23VBR934E35GEXD",
+          "column": "01M8EJX99PC6Q68JRP8CVMRSZV"
+        },
+        {
+          "attribute": "01M1FK3FKEY6E8PXAY1R0YYPKG",
+          "column": "01M8EJX99P2KH5PH5ZVEG6M5KG"
+        },
+        {
+          "attribute": "01M2RGP7FYQ48Q0SCTDD4WWRKC",
+          "column": "01M8EJX99P6CZBZ6MX3Y78BNQZ"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P26DCK99JJT1E8BXG": "42049432:e0d08678",
+          "01M8EJX99P2KH5PH5ZVEG6M5KG": "39f24a63:d8a57cf9",
+          "01M8EJX99P6CZBZ6MX3Y78BNQZ": "0f9e8f3c:8da1c7b8",
+          "01M8EJX99P6RMYR4W3XV6RRF22": "073c1634:ef1ae9ec",
+          "01M8EJX99PC4TW18J4X5X0BA7D": "1a7b308d:0495da45",
+          "01M8EJX99PC6Q68JRP8CVMRSZV": "38ce19a5:d8a57cf9",
+          "01M8EJX99PCSF42NK10P0FG02R": "d31d4567:fd717804",
+          "01M8EJX99PD3BRV7CMTGFTBN89": "c0d79bde:9599b5fd",
+          "01M8EJX99PMFDFASMKZ4RZ6RS6": "cf57a7df:fd717804",
+          "01M8EJX99PPPS9XZ4TE08180CR": "0b075263:9599b5fd",
+          "01M8EJX99PVCYVS0NEBETFJWZ6": "a5614527:8da1c7b8",
+          "01M8EJX99PW1TCJJT6JRC6Z3W4": "64814827:8da1c7b8",
+          "01M8EJX99PZG80273BJM5JJWDE": "c9d71618:d8a57cf9"
+        }
+      }
+    }
   ]
 }

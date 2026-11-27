@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJMX5KT4HCP2973Q82",
+  "name": "stock movement is drawn from lot in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2WHWDNEQRA7N9DYZXYKSZ3Y",
+  "foreignKey": "01M8EJX9AAC8J13E9TCJ4D1DH5"
+}

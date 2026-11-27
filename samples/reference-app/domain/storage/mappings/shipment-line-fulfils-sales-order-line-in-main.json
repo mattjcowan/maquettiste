@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHANV3F3CYRW7X1KTN",
+  "name": "shipment line fulfils sales order line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M27JTQ9M8P7Y5EZ522FW2KZS",
+  "foreignKey": "01M8EJX9A97781AKTQM79QRJCZ"
+}

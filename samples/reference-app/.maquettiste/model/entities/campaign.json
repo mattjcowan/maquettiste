@@ -66,5 +66,83 @@
       },
       "description": "Approved spend."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9AT3HEF9BMN1YMXZE8X",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NK3S7EP53CVZSQ961",
+      "fields": [
+        {
+          "attribute": "01M1HDFDKWVYT1NPA70Z5VRZW2",
+          "column": "01M8EJX99NG1GY6QV4S10GS28J"
+        },
+        {
+          "attribute": "01M1QP1N259HFDG8KGWQSQN5T7",
+          "column": "01M8EJX99NCZ2NTKANY6XMWMNF"
+        },
+        {
+          "attribute": "01M1HXTHRHF60KMMDE2C82BHCJ",
+          "column": "01M8EJX99NX0HQ5RGCH4KW5J5S"
+        },
+        {
+          "attribute": "01M2BRKKJCCWPP4V1KC051AN3W",
+          "column": "01M8EJX99N26G0X24M6WNJH3NK"
+        },
+        {
+          "attribute": "01M22K53DGTF786JCR0F14MHT7.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99NC94Y56Z7Z3Y7QYBR"
+        },
+        {
+          "attribute": "01M22K53DGTF786JCR0F14MHT7.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99NEVE9NB2RHJM2NQJD"
+        },
+        {
+          "attribute": "01M29PJB1THHZXE1JPSC5GNXYY.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99NCRQSWG377YDS9CQJ"
+        },
+        {
+          "attribute": "01M29PJB1THHZXE1JPSC5GNXYY.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99N8507X190GJAGGRVY"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99NFY2YWE7XRJ22YMFX"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99NJQPN15D1PHG2RMGR"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99N293767FCJRK5QDT0"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99NJRZ55QWPXPGM094K"
+        },
+        {
+          "attribute": "01M3638MR20107XTMS0Q196C7A",
+          "column": "01M8EJX99N0NQZESW838MX68PX"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N0NQZESW838MX68PX": "1813fb2c:d8a57cf9",
+          "01M8EJX99N26G0X24M6WNJH3NK": "69e36568:6ebc34b1",
+          "01M8EJX99N293767FCJRK5QDT0": "d31d4567:fd717804",
+          "01M8EJX99N8507X190GJAGGRVY": "67f5a246:75525505",
+          "01M8EJX99NC94Y56Z7Z3Y7QYBR": "54d18c92:81884634",
+          "01M8EJX99NCRQSWG377YDS9CQJ": "5ed42970:d249895e",
+          "01M8EJX99NCZ2NTKANY6XMWMNF": "82a3537f:5d28878a",
+          "01M8EJX99NEVE9NB2RHJM2NQJD": "7491d322:9b51e601",
+          "01M8EJX99NFY2YWE7XRJ22YMFX": "42049432:e0d08678",
+          "01M8EJX99NG1GY6QV4S10GS28J": "a5614527:8da1c7b8",
+          "01M8EJX99NJQPN15D1PHG2RMGR": "c0d79bde:9599b5fd",
+          "01M8EJX99NJRZ55QWPXPGM094K": "0b075263:9599b5fd",
+          "01M8EJX99NX0HQ5RGCH4KW5J5S": "c9046f7a:43ec92f3"
+        }
+      }
+    }
   ]
 }

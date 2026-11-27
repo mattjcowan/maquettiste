@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CKT4WQ6TY0A1K4WY0H",
+  "name": "standing order line is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2E42Z7G8N8Q852KNBBDYY9F",
+  "foreignKey": "01M8EJX9ACBCS3TXRA7MZZ16Z9"
+}

@@ -51,5 +51,58 @@
       },
       "description": "Validity within the contract."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9AXBND1B92JFQC4TY01",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QYH94NCHQDVYSN0KS",
+      "fields": [
+        {
+          "attribute": "01M1VMYPVGXJCGZFXG2VFNNPCM",
+          "column": "01M8EJX99QR22N6PTN3XTJX097"
+        },
+        {
+          "attribute": "01M2DPAR6WRKTZAVCZ2M2VBAXZ.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99Q8N2QX56KMSFPD74D"
+        },
+        {
+          "attribute": "01M2DPAR6WRKTZAVCZ2M2VBAXZ.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QG6PBSMQ4GY5TX7RN"
+        },
+        {
+          "attribute": "01M2ZSEDYG9J76C8PQ9RG0NS41",
+          "column": "01M8EJX99QXQHT6X6CFZFX3XR0"
+        },
+        {
+          "attribute": "01M30GQVWSWJ64VGPV8VSN0XHA.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99QKVNVZ79YQ79JZMFR"
+        },
+        {
+          "attribute": "01M30GQVWSWJ64VGPV8VSN0XHA.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99QN442MYN7XM7M0HAG"
+        },
+        {
+          "attribute": "01M1JC98FRZAEBHYF4G9DNEKZ1",
+          "column": "01M8EJX99QY4P1KNEFBPCB1R6N"
+        },
+        {
+          "attribute": "01M1N7Z1YM8FK4819H8T9H6MK3",
+          "column": "01M8EJX99QRBXGMT99BA8W94VB"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q8N2QX56KMSFPD74D": "19692048:d46c92d7",
+          "01M8EJX99QG6PBSMQ4GY5TX7RN": "c29a402e:48b85cd3",
+          "01M8EJX99QKVNVZ79YQ79JZMFR": "2db5d4af:9b51e601",
+          "01M8EJX99QN442MYN7XM7M0HAG": "2a578471:9b51e601",
+          "01M8EJX99QR22N6PTN3XTJX097": "a5614527:8da1c7b8",
+          "01M8EJX99QRBXGMT99BA8W94VB": "f8abcd99:8da1c7b8",
+          "01M8EJX99QXQHT6X6CFZFX3XR0": "feed62cd:17d070b1",
+          "01M8EJX99QY4P1KNEFBPCB1R6N": "64814827:8da1c7b8"
+        }
+      }
+    }
   ]
 }

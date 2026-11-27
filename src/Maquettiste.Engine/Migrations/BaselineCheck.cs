@@ -206,6 +206,16 @@ internal static class BaselineCheck
         ArgumentNullException.ThrowIfNull(working);
         ArgumentNullException.ThrowIfNull(ordered);
         ArgumentNullException.ThrowIfNull(lacking);
+        // A materialize the baseline lacks: its stored reference columns read as the projected ones they replace, and what its rekey
+        // fact adopted (the pack's objects outside the snapshot) as already there, as the next schema diff reads them.
+        var materialized = ordered.Where(f => f.Fact == MigrationFact.Rekey && lacking(f)).ToList();
+        if (materialized.Count > 0)
+        {
+            var rekeys = materialized.SelectMany(f => FactKeys.KeyMaps(f).Tables).ToList();
+            baseline = SnapshotRekey.ReadStoredReferenceColumns(baseline, rekeys, table => working.Tables.FirstOrDefault(t => t.Key == table));
+            baseline = SnapshotRekey.Adopt(baseline, materialized, working);
+        }
+
         var needed = FactClassifier.Classify(new ClassifierInput { DatabaseId = databaseId, Dialect = dialect, Before = baseline, After = working },
             new PlaceholderIds()).Created;
         if (needed.Count == 0)

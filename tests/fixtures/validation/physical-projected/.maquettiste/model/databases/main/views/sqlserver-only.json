@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../../.schema/v1/view.json",
+  "kind": "view",
+  "id": "01JVEW00000000000000000001",
+  "name": "sqlserver_only",
+  "database": "01JDBS00000000000000000001",
+  "body": {
+    "sqlserver": "select 1 as x"
+  }
+}

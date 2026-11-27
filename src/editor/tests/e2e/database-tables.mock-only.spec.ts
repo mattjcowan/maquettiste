@@ -56,7 +56,7 @@ async function openTableEditor(page: Page, name: string) {
 }
 
 test("Store as table files stores every laid-out table in one step, each file with every column, and undo lays them out again", async ({ page }) => {
-  await page.goto("/database");
+  await page.goto("/database?mock=projected");
   const banner = page.getByTestId("store-tables-banner");
   await expect(banner).toHaveText(/5 tables are not stored as table files yet\. Store them as files to edit every part of them\./);
   await page.getByTestId("database-table-customers").click();
@@ -188,7 +188,7 @@ test("each part tab adds, edits and deletes its parts, each one undo step, and a
 });
 
 test("the explorer's table folders open the editor on their tab with the part picked, and offer New and Delete", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   await expandTable(page, "customers");
   for (const folder of ["Columns", "Primary key", "Unique constraints", "Indexes", "Foreign keys", "Checks", "Referenced by"])
     await expect(tree(page).getByTestId(`explorer-folder-${folder}`).first()).toBeVisible();

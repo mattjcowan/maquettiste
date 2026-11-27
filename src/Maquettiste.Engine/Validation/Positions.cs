@@ -20,7 +20,7 @@ namespace Maquettiste.Engine.Validation;
 internal sealed class Positions(EngineOptions options, ModelSnapshot model)
 {
     private readonly Dictionary<string, byte[]?> _bytes = new(StringComparer.Ordinal);
-    private Dictionary<string, (string? Hash, JsonElement? Json)>? _hashes;
+    private Dictionary<string, (string? Hash, ElementDocument? Document)>? _hashes;
 
     /// <summary>Returns the position of a pointer in a file, or <see langword="null"/> when the file or pointer cannot be found.</summary>
     /// <param name="path">The repo-relative path.</param>
@@ -47,7 +47,7 @@ internal sealed class Positions(EngineOptions options, ModelSnapshot model)
     private async Task<byte[]?> ReadAsync(string path, CancellationToken ct)
     {
         _hashes ??= BuildHashIndex();
-        var (expectedHash, json) = _hashes.TryGetValue(path, out var known) ? known : (null, null);
+        var (expectedHash, document) = _hashes.TryGetValue(path, out var known) ? known : (null, null);
 
         var full = FullPath(path);
         if (full is not null && File.Exists(full))
@@ -68,14 +68,15 @@ internal sealed class Positions(EngineOptions options, ModelSnapshot model)
             }
         }
 
-        return json is { } element ? System.Text.Encoding.UTF8.GetBytes(element.GetRawText()) : null;
+        // The document's JSON is read only here, when the file on disk no longer matches (it is parsed on first read).
+        return document is not null ? System.Text.Encoding.UTF8.GetBytes(document.Json.GetRawText()) : null;
     }
 
-    private Dictionary<string, (string? Hash, JsonElement? Json)> BuildHashIndex()
+    private Dictionary<string, (string? Hash, ElementDocument? Document)> BuildHashIndex()
     {
-        var index = new Dictionary<string, (string? Hash, JsonElement? Json)>(StringComparer.Ordinal);
+        var index = new Dictionary<string, (string? Hash, ElementDocument? Document)>(StringComparer.Ordinal);
         foreach (var doc in model.Documents)
-            index.TryAdd(doc.Path, (doc.Hash, doc.Json));
+            index.TryAdd(doc.Path, (doc.Hash, doc));
         foreach (var extension in model.Extensions)
             index.TryAdd(extension.Path, (extension.Hash, null));
         return index;

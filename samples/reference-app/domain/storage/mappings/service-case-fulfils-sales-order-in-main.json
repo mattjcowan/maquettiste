@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJDZ554BSMJYMCFBQT",
+  "name": "service case fulfils sales order in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1Y0QN4N9K1SPQEVCY4FW8RA",
+  "foreignKey": "01M8EJX9AB838M8QPXAJ87AFYM"
+}

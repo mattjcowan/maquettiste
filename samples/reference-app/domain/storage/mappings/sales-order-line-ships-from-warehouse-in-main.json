@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJN6C46MGAWMY01V9B",
+  "name": "sales order line ships from warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1YJ32RYEN06QXVBD74S7KN1",
+  "foreignKey": "01M8EJX9ACD2VC6P1S7X8PGGD8"
+}

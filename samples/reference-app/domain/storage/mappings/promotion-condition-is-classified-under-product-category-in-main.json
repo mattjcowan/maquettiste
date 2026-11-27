@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJYAD8XP54B443D6V4",
+  "name": "promotion condition is classified under product category in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1XMZQNTFAPCY5FE645F90D8",
+  "foreignKey": "01M8EJX9AAW8P9S4WGPD1X4E4T"
+}

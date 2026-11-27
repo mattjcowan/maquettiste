@@ -44,5 +44,43 @@
       "required": true,
       "description": "Price per unit in the tier."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BDAE1NGFGKTHHDMGJ9",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QM0CT7YZ3A3W9NSRZ",
+      "fields": [
+        {
+          "attribute": "01M23NET8FAE718WYE6MQJGR72",
+          "column": "01M8EJX99QA6XZ1HM0KM8Q9FEP"
+        },
+        {
+          "attribute": "01M28GDD7041K2Z0BM05GMR63A",
+          "column": "01M8EJX99QTRB2X7N5JGJZA3CP"
+        },
+        {
+          "attribute": "01M2Y2BGXKY1KRQA52XPGMNT6T.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QMDV14HN3XWX8S06J"
+        },
+        {
+          "attribute": "01M2Y2BGXKY1KRQA52XPGMNT6T.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QN2XX5N9EBN7MSB02"
+        },
+        {
+          "attribute": "01M1MVKYHXYY0H6QT5KJEEJRYD",
+          "column": "01M8EJX99QV6J9D7BA7DBV4KFX"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99QA6XZ1HM0KM8Q9FEP": "a5614527:8da1c7b8",
+          "01M8EJX99QMDV14HN3XWX8S06J": "63d21e41:d46c92d7",
+          "01M8EJX99QN2XX5N9EBN7MSB02": "8c0ec395:48b85cd3",
+          "01M8EJX99QTRB2X7N5JGJZA3CP": "a21ae65c:b52e18e1",
+          "01M8EJX99QV6J9D7BA7DBV4KFX": "6cfb0cac:8da1c7b8"
+        }
+      }
+    }
   ]
 }

@@ -1,17 +1,17 @@
 {
   "table": {
-    "key": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+    "key": "01M8EJPZN867GR1CJR5ZERBJ0V",
     "name": "customers",
     "schema": "billing",
-    "origin": "synthesized",
-    "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
+    "origin": "designed",
+    "entityId": null,
     "relationId": null,
     "isJunction": false,
     "isLookup": false,
     "comment": "Someone we bill.",
     "columns": [
       {
-        "key": "01J92P0V0KGPC29TQQG8R57EBM",
+        "key": "01M8EJPZN8472RRANF8A5EA8GT",
         "name": "id",
         "type": "uuid",
         "nativeType": "uuid",
@@ -22,8 +22,8 @@
         "defaultSql": null,
         "identity": false,
         "computed": null,
-        "attributeId": "01J92P0V0KGPC29TQQG8R57EBM",
-        "attributePath": "01J92P0V0KGPC29TQQG8R57EBM",
+        "attributeId": null,
+        "attributePath": null,
         "isPrimaryKey": true,
         "isForeignKey": false,
         "isDiscriminator": false,
@@ -41,10 +41,13 @@
         "tags": [],
         "category": null,
         "properties": {},
-        "generation": {}
+        "generation": {},
+        "boundType": null,
+        "sensitive": null,
+        "memberOrigin": null
       },
       {
-        "key": "01J92P0V0MS09YFZHX07JQ3KMN",
+        "key": "01M8EJPZN85K0E011MBM10HXAG",
         "name": "name",
         "type": "string",
         "nativeType": "varchar(120)",
@@ -55,8 +58,8 @@
         "defaultSql": null,
         "identity": false,
         "computed": null,
-        "attributeId": "01J92P0V0MS09YFZHX07JQ3KMN",
-        "attributePath": "01J92P0V0MS09YFZHX07JQ3KMN",
+        "attributeId": null,
+        "attributePath": null,
         "isPrimaryKey": false,
         "isForeignKey": false,
         "isDiscriminator": false,
@@ -74,10 +77,13 @@
         "tags": [],
         "category": null,
         "properties": {},
-        "generation": {}
+        "generation": {},
+        "boundType": null,
+        "sensitive": null,
+        "memberOrigin": null
       },
       {
-        "key": "01J92P0V0NRX99014KNVAZGPEW",
+        "key": "01M8EJPZN8YCG8JHPKYR3AS4S8",
         "name": "email",
         "type": "string",
         "nativeType": "varchar(254)",
@@ -88,8 +94,8 @@
         "defaultSql": null,
         "identity": false,
         "computed": null,
-        "attributeId": "01J92P0V0NRX99014KNVAZGPEW",
-        "attributePath": "01J92P0V0NRX99014KNVAZGPEW",
+        "attributeId": null,
+        "attributePath": null,
         "isPrimaryKey": false,
         "isForeignKey": false,
         "isDiscriminator": false,
@@ -107,10 +113,21 @@
         "tags": [],
         "category": null,
         "properties": {},
-        "generation": {}
+        "generation": {},
+        "boundType": {
+          "kind": "scalar",
+          "name": "EmailAddress",
+          "builtin": "string",
+          "enum": null,
+          "valueObject": null,
+          "scalar": "01J92P0V04TDYE2C73WMNXVDBV",
+          "referenceType": null
+        },
+        "sensitive": "pii",
+        "memberOrigin": null
       },
       {
-        "key": "01J92P0V0P4MBJRM6QN6H0RSVP",
+        "key": "01M8EJPZN8BGJ7KV30184YH61V",
         "name": "customer_since",
         "type": "date",
         "nativeType": "date",
@@ -121,8 +138,8 @@
         "defaultSql": null,
         "identity": false,
         "computed": null,
-        "attributeId": "01J92P0V0P4MBJRM6QN6H0RSVP",
-        "attributePath": "01J92P0V0P4MBJRM6QN6H0RSVP",
+        "attributeId": null,
+        "attributePath": null,
         "isPrimaryKey": false,
         "isForeignKey": false,
         "isDiscriminator": false,
@@ -140,10 +157,13 @@
         "tags": [],
         "category": null,
         "properties": {},
-        "generation": {}
+        "generation": {},
+        "boundType": null,
+        "sensitive": null,
+        "memberOrigin": null
       },
       {
-        "key": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+        "key": "01M8EJPZN85083M7EFTST05M2C",
         "name": "created_at",
         "type": "datetimeoffset",
         "nativeType": "timestamptz(6)",
@@ -154,8 +174,8 @@
         "defaultSql": null,
         "identity": false,
         "computed": null,
-        "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
-        "attributePath": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+        "attributeId": null,
+        "attributePath": null,
         "isPrimaryKey": false,
         "isForeignKey": false,
         "isDiscriminator": false,
@@ -173,10 +193,13 @@
         "tags": [],
         "category": null,
         "properties": {},
-        "generation": {}
+        "generation": {},
+        "boundType": null,
+        "sensitive": null,
+        "memberOrigin": null
       },
       {
-        "key": "01J92P0V27P8NW8KPEDG0RBZ4W",
+        "key": "01M8EJPZN8M1P3MNNTXBN48F9D",
         "name": "updated_at",
         "type": "datetimeoffset",
         "nativeType": "timestamptz(6)",
@@ -187,8 +210,8 @@
         "defaultSql": null,
         "identity": false,
         "computed": null,
-        "attributeId": "01J92P0V27P8NW8KPEDG0RBZ4W",
-        "attributePath": "01J92P0V27P8NW8KPEDG0RBZ4W",
+        "attributeId": null,
+        "attributePath": null,
         "isPrimaryKey": false,
         "isForeignKey": false,
         "isDiscriminator": false,
@@ -206,21 +229,26 @@
         "tags": [],
         "category": null,
         "properties": {},
-        "generation": {}
+        "generation": {},
+        "boundType": null,
+        "sensitive": null,
+        "memberOrigin": null
       }
     ],
     "primaryKey": {
       "name": "pk_customers",
       "columns": [
-        "01J92P0V0KGPC29TQQG8R57EBM"
-      ]
+        "01M8EJPZN8472RRANF8A5EA8GT"
+      ],
+      "memberOrigin": null
     },
     "uniques": [
       {
         "name": "uq_customers_email",
         "columns": [
-          "01J92P0V0NRX99014KNVAZGPEW"
-        ]
+          "01M8EJPZN8YCG8JHPKYR3AS4S8"
+        ],
+        "memberOrigin": null
       }
     ],
     "foreignKeys": [],
@@ -233,7 +261,17 @@
     "category": null,
     "properties": {},
     "generation": {},
-    "boundBy": []
+    "boundBy": [
+      {
+        "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
+        "entityName": "Customer",
+        "bindingId": "01M8EJPZNRW3DF4MD51RVRWD77",
+        "reads": true,
+        "writes": true,
+        "constants": []
+      }
+    ],
+    "referenceBindings": []
   },
   "diagnostics": [],
   "partial": false

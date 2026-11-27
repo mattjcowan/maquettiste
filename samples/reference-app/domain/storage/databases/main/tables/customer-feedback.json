@@ -1,0 +1,129 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QET4KJQPZKMNN23HN",
+  "name": "customer_feedback",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QK0WHGKW6K177079K",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the customer feedback."
+    },
+    {
+      "id": "01M8EJX99QA9SRR8SV0S38RA3M",
+      "name": "submitted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When it was submitted."
+    },
+    {
+      "id": "01M8EJX99QAJVP6435A3TJSHPE",
+      "name": "rating",
+      "type": "int16",
+      "nullable": false,
+      "comment": "Rating from 1 to 5."
+    },
+    {
+      "id": "01M8EJX99QHEJC095VTRXDJ7W5",
+      "name": "channel",
+      "type": "string",
+      "length": 20,
+      "comment": "survey, portal or phone."
+    },
+    {
+      "id": "01M8EJX99QXDWY2X7Z4BYKXH1B",
+      "name": "comments",
+      "type": "text",
+      "comment": "Free text."
+    },
+    {
+      "id": "01M8EJX99Q6V26D19BCTEXM2N3",
+      "name": "follow_up_required",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether someone should call back."
+    },
+    {
+      "id": "01M8EJX99QR4F7KFY5JS5A1067",
+      "name": "customer_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QY8VR5NFVAG5R34VR",
+      "name": "sales_order_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QMJ1QG9VRGBZ75BAE",
+      "name": "contact_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QGH9JXC93FPZ2T9ER",
+      "name": "service_case_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_customer_feedback",
+    "columns": [
+      "01M8EJX99QK0WHGKW6K177079K"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABBNE4FJJYJ8805QWP",
+      "name": "fk_customer_feedback_customer_id",
+      "columns": [
+        "01M8EJX99QR4F7KFY5JS5A1067"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB1Z8B6F0F8G3A6Q30",
+      "name": "fk_customer_feedback_sales_order_id",
+      "columns": [
+        "01M8EJX99QY8VR5NFVAG5R34VR"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB62G66VM130T73NGB",
+      "name": "fk_customer_feedback_contact_id",
+      "columns": [
+        "01M8EJX99QMJ1QG9VRGBZ75BAE"
+      ],
+      "referencesTable": "01M8EJX99NX12803VWGRS1E1KW",
+      "referencesColumns": [
+        "01M8EJX99NRVN9JXZG7T665RP7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB31Z63EMEM35YX0W8",
+      "name": "fk_customer_feedback_service_case_id",
+      "columns": [
+        "01M8EJX99QGH9JXC93FPZ2T9ER"
+      ],
+      "referencesTable": "01M8EJX99QXZ6GNTWBN29N1326",
+      "referencesColumns": [
+        "01M8EJX99Q063NTEPFVE7DA9C1"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A rating and comment from a customer after a delivery or a service case."
+}

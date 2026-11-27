@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH2QZCBRK7FFR01WBR",
+  "name": "tax jurisdiction is nested under parent in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1HNQYM4R6RBVC2Q48RR2722",
+  "foreignKey": "01M8EJX9A8NSGWH1NWBCQ17TVB"
+}

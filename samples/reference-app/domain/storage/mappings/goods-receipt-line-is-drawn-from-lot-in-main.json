@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJFWQGTJ8APWF0FYGY",
+  "name": "goods receipt line is drawn from lot in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2KSKM7H30S2E59P2JTM6KBP",
+  "foreignKey": "01M8EJX9AB5919ZEYKJAN74DH3"
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKC7QHVCHYCX437BY0CSS1",
+  "name": "audits",
+  "database": "01JSCH00000000000000000021",
+  "schema": "01JSCH00000000000000000024",
+  "columns": [
+    {
+      "id": "01M8EKC7QHXR7QE41TARJ7BJ3A",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_audits",
+    "columns": [
+      "01M8EKC7QHXR7QE41TARJ7BJ3A"
+    ]
+  }
+}

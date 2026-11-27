@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CF09EXBJY2KWHW96X4",
+  "name": "collection case belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1QBKKJ3HDABJ6WP9FF41P4P",
+  "foreignKey": "01M8EJX9A3RSGFTMMX45F340R3"
+}

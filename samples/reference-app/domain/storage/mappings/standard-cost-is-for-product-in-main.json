@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJZQSSWZ1X1FBQMYJY",
+  "name": "standard cost is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M33FZT1NDGG4B1DRTV8BHJHC",
+  "foreignKey": "01M8EJX9AAMT0X1AAPE08NHHY8"
+}

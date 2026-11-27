@@ -1,0 +1,182 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NX12803VWGRS1E1KW",
+  "name": "contacts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NRVN9JXZG7T665RP7",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the contact."
+    },
+    {
+      "id": "01M8EJX99NGJKQMTA90GY0PCA7",
+      "name": "name_given_name",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "First or given name."
+    },
+    {
+      "id": "01M8EJX99NQ7M9Y4PNY0C0VRDE",
+      "name": "name_family_name",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "Last or family name."
+    },
+    {
+      "id": "01M8EJX99N1D5ZXPZD7MCW7MHT",
+      "name": "name_title",
+      "type": "string",
+      "length": 20,
+      "comment": "Salutation, such as Dr. or Ms."
+    },
+    {
+      "id": "01M8EJX99N5PYDVAXQTZBVZJ18",
+      "name": "job_title",
+      "type": "string",
+      "length": 100,
+      "comment": "Position at the party."
+    },
+    {
+      "id": "01M8EJX99NQ4PAT65CKPSDRFMV",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "comment": "Work email."
+    },
+    {
+      "id": "01M8EJX99NQB6C3SCHKFCQTM7F",
+      "name": "phone_number",
+      "type": "string",
+      "length": 20,
+      "comment": "Number in E.164 form, such as +14155550100."
+    },
+    {
+      "id": "01M8EJX99NYWJ1BWF32KJ1F6TV",
+      "name": "phone_extension",
+      "type": "string",
+      "length": 10,
+      "comment": "Internal extension."
+    },
+    {
+      "id": "01M8EJX99NV64FN6R2AYY7K0Z0",
+      "name": "additional_phones",
+      "type": "json",
+      "comment": "Mobile and other numbers."
+    },
+    {
+      "id": "01M8EJX99NMQWY95NCAW4HV4V6",
+      "name": "is_primary",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Main contact of the party."
+    },
+    {
+      "id": "01M8EJX99N10KAD6SMPNKF0GEF",
+      "name": "is_billing_contact",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Receives invoices and statements."
+    },
+    {
+      "id": "01M8EJX99NYVQ009C48VZGD4G6",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99N767J41KSB0KG9CKK",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NEH7R3FGJP2TDTWPP",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NR96E4KY26ZTJYRSB",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99N75ZAFVA73233ARSM",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99NFC5GFCDX8TC9XJX8",
+      "name": "party_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99NXRMCZ5GWT5VGX169",
+      "name": "language_code",
+      "type": "string",
+      "length": 5
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_contacts",
+    "columns": [
+      "01M8EJX99NRVN9JXZG7T665RP7"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8E9QVFXESQ24K031F",
+      "name": "fk_contacts_party_id",
+      "columns": [
+        "01M8EJX99NFC5GFCDX8TC9XJX8"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A83EAT2SH4VEA71CC6",
+      "name": "fk_contacts_language_code",
+      "columns": [
+        "01M8EJX99NXRMCZ5GWT5VGX169"
+      ],
+      "referencesTable": "01M8EJX99QX72730HBK6DTHVZ6",
+      "referencesColumns": [
+        "01M8EJX99QGA8NZXPN6C3FH2FN"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A80WZB8NN2ZED26E8Z",
+      "name": "ix_contacts_email",
+      "columns": [
+        {
+          "column": "01M8EJX99NQ4PAT65CKPSDRFMV"
+        }
+      ]
+    }
+  ],
+  "comment": "A person at a party that Northwind deals with, such as a buyer, an accounts payable clerk or a dispatcher."
+}

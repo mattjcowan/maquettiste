@@ -9,6 +9,7 @@ import { renderQuery, splitWith } from "@/mocks/model/querySql";
 import { bindingProblems, sourceOf } from "@/editors/storage/fieldMap";
 import { namedOptions, renameNamedField, renameNamedQuery, scopeOf, type NamedQuery, type QueryDoc } from "@/model/queryTree";
 import type { DatabaseView } from "@/api/types";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 
 type Json = Record<string, unknown>;
 
@@ -51,7 +52,7 @@ const query = (extra: Json = {}): Json => ({
 });
 
 function bind(json: Json, dialect?: string) {
-  const backend = new MockBackend();
+  const backend = new MockBackend({ seed: billingProjectedSeed() });
   const view = { ...backend.generation.databaseView(MAIN)!.view!, ...(dialect ? { dialect } : {}) } as DatabaseView;
   const docs = new Map(backend.model.docs());
   docs.set(QUERY, { kind: "query", database: MAIN, ...json });
@@ -159,7 +160,7 @@ describe("named queries: rendering", () => {
   });
 
   it("puts the WITH of a built query first in a binding's select over it", () => {
-    const backend = new MockBackend();
+    const backend = new MockBackend({ seed: billingProjectedSeed() });
     backend.model.create({ kind: "query", database: MAIN, ...query() });
     const sql = backend.generation.databaseView(MAIN)!.view!.queries!.find((x) => x.id === QUERY)!.sql!;
     const { with: head, statement } = splitWith(sql);
@@ -174,7 +175,7 @@ describe("hand-written queries under a binding", () => {
   const NOTE = "01K6BND0000000000000000010";
   const BINDING = "01K6BND0000000000000000015";
   const bound = (sql: string) => {
-    const backend = new MockBackend();
+    const backend = new MockBackend({ seed: billingProjectedSeed() });
     backend.model.create({
       kind: "query",
       database: MAIN,

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ7A4DYMSD5DYTQNSV",
+  "name": "landed cost pays supplier invoice in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1EE8VQ1AA27ST991YXZMZHR",
+  "foreignKey": "01M8EJX9ABVX8V4QHN9F2VY8QK"
+}

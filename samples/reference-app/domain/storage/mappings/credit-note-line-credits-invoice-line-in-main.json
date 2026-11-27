@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CFTX0N1MEH9SQFGWRN",
+  "name": "credit note line credits invoice line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2NQTBG7Z2SVNGSHJ8NAFYSV",
+  "foreignKey": "01M8EJX9A3ZST6Y0DWPNE9EJYF"
+}

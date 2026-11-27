@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CKE8Z7BM7GFZX784CX",
+  "name": "sales quote line is measured in unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2Q3JZATGC47B602M2DSQYP8",
+  "foreignKey": "01M8EJX9ACPWME409D4F80680F"
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJM3TYH84FSWM3YFFQ",
+  "name": "return authorization is settled against invoice in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2ZA59511GHAHJDZM45RAQRS",
+  "foreignKey": "01M8EJX9AB2XRTH78ZJRM335VX"
+}

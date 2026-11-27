@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJNJK62XMRTRDY6B19",
+  "name": "warranty claim belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2B8GNK1TH1R1DPB5H40CC0B",
+  "foreignKey": "01M8EJX9AB1ADXAR8FYB4XKEWE"
+}

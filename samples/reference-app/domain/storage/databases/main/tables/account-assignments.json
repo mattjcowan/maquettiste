@@ -1,0 +1,119 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NVTMR11RNB8116RVH",
+  "name": "account_assignments",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NK1ZJHZ221T3JSD3A",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the account assignment."
+    },
+    {
+      "id": "01M8EJX99NQ9S44WSFA19WMQ8X",
+      "name": "assignment_role",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Role on the account, such as key-account."
+    },
+    {
+      "id": "01M8EJX99NPTAJSC3CEA7SEGRN",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99N6T5X2VMPM7SK2FJS",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99NDRVS1NA4WBVV4H56",
+      "name": "is_primary",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Primary owner of the account."
+    },
+    {
+      "id": "01M8EJX99NZPM4PHFTBZGC7DD3",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99NFPNC5A4DYVBY90VQ",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NHHYSXP7XCJKHCR1Z",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NX1DEBBA402ZD4RAV",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NBA2MBB4QJH05F6FK",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99N5FQA967N02HCEH42",
+      "name": "employee_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_account_assignments",
+    "columns": [
+      "01M8EJX99NK1ZJHZ221T3JSD3A"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A70R6A7ZNZ07AEAJYT",
+      "name": "fk_account_assignments_customer_id",
+      "columns": [
+        "01M8EJX99NBA2MBB4QJH05F6FK"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A7J5VB7Y96RA28095W",
+      "name": "fk_account_assignments_employee_id",
+      "columns": [
+        "01M8EJX99N5FQA967N02HCEH42"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "Assignment of an employee to a customer account in a role, such as inside sales or key account manager."
+}

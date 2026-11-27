@@ -1,0 +1,152 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01J92P0V1T0J6RH4MY9H81NYB4",
+  "name": "invoices",
+  "displayName": "Invoice register",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "description": "One row per issued invoice; finance reconciles it monthly.",
+  "stereotypes": [
+    "audited"
+  ],
+  "tags": [
+    "billing"
+  ],
+  "category": "01J92P0V06TYE8P8990AV35A8K",
+  "columns": [
+    {
+      "id": "01M8EJPZN8P9AWRMABQ8VM73RS",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01J92P0V1VQAA9FW71PKYWWHKN",
+      "name": "number",
+      "type": "string",
+      "length": 32,
+      "nativeType": "varchar(32)",
+      "nullable": false,
+      "comment": "Assigned on issue.",
+      "description": "The number printed on the invoice; customers quote it when they pay.",
+      "stereotypes": [
+        "audited"
+      ],
+      "properties": {
+        "classification": "internal"
+      }
+    },
+    {
+      "id": "01M8EJPZN8RF69424595Z93TBZ",
+      "name": "issued_on",
+      "type": "date",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN81N1AY89T2YY52EQC",
+      "name": "total_amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2
+    },
+    {
+      "id": "01M8EJPZN8E3K4QAZEP5F52DXA",
+      "name": "total_currency",
+      "type": "string",
+      "length": 3
+    },
+    {
+      "id": "01M8EJPZN8DEZ6EM0M25ZCHNPZ",
+      "name": "status",
+      "type": "string",
+      "length": 1,
+      "nullable": false,
+      "default": "D"
+    },
+    {
+      "id": "01M8EJPZN8DNZMM57CDYT1P8DX",
+      "name": "notes",
+      "type": "text"
+    },
+    {
+      "id": "01M8EJPZN8NQHHH3BFZMS10JT0",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN8P1AVSF3JB5N1A9VG",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    },
+    {
+      "id": "01M8EJPZN8N06DCGNFY5P3V81K",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    },
+    {
+      "id": "01M8EJPZN80NTY1M4QZCPKETNX",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_invoices",
+    "columns": [
+      "01M8EJPZN8P9AWRMABQ8VM73RS"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJPZNMT17ZP081WXQ8QYNJ",
+      "name": "uq_invoices_number",
+      "columns": [
+        "01J92P0V1VQAA9FW71PKYWWHKN"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJPZNMYYNR51WCGPX2KQEG",
+      "name": "fk_invoices_customer_id",
+      "columns": [
+        "01M8EJPZN80NTY1M4QZCPKETNX"
+      ],
+      "referencesTable": "01M8EJPZN867GR1CJR5ZERBJ0V",
+      "referencesColumns": [
+        "01M8EJPZN8472RRANF8A5EA8GT"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "checks": [
+    {
+      "id": "01J92P0V1W3BP53NMDVMSQSRQV",
+      "name": "ck_invoice_status",
+      "expression": {
+        "*": "status in ('D', 'I', 'P', 'V')"
+      }
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01J92P0V1XETXS1K25N66WP3HY",
+      "name": "ix_invoices_issued_on",
+      "columns": [
+        {
+          "column": "01M8EJPZN8RF69424595Z93TBZ",
+          "descending": true
+        }
+      ]
+    }
+  ],
+  "comment": "One row per issued invoice; finance reconciles it monthly.",
+  "properties": {
+    "tablespace": "billing_data"
+  }
+}

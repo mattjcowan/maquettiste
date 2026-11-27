@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJJKQ3FXQ7Z9JVZRX5",
+  "name": "supplier scorecard is supplied by supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M232FG8XDCAZQ88ZFGXQHFMG",
+  "foreignKey": "01M8EJX9AB9RGDF7J4P3M5X7CR"
+}

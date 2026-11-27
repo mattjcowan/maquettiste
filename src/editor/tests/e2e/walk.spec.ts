@@ -59,7 +59,8 @@ test("open, select Invoice, rename, problems, DDL, plan and apply", async ({ pag
   await page.getByRole("group", { name: "Table invoices", exact: true }).click();
   await expect(ddl).toContainText("sql-ddl/table");
   await expect(ddl).toContainText("CREATE TABLE");
-  await expect(ddl).toContainText("invoice_no");
+  // The table is designed on its own: renaming the attribute leaves its column alone.
+  await expect(ddl).toContainText("number varchar(32)");
 
   // Generate: plan with progress, then apply.
   await workspace(page, "Generate");

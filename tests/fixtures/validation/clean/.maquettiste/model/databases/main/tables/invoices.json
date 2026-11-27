@@ -1,0 +1,129 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000002",
+  "name": "invoices",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKD8XPKFG34MTQMG5YJGH1",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01JCMN00000000000000000004",
+      "name": "invoice_no",
+      "type": "string",
+      "length": 32,
+      "nativeType": "varchar(32)",
+      "nullable": false,
+      "default": "INV-0000"
+    },
+    {
+      "id": "01JCMN00000000000000000005",
+      "name": "total_amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "default": 0.5
+    },
+    {
+      "id": "01M8EKD8XP9HCBJ4P0KT1WN10H",
+      "name": "total_currency",
+      "type": "string",
+      "length": 3,
+      "default": "EUR"
+    },
+    {
+      "id": "01M8EKD8XPPNVSY578DEZKPHWF",
+      "name": "status",
+      "type": "string",
+      "length": 1,
+      "nullable": false,
+      "default": "D"
+    },
+    {
+      "id": "01M8EKD8XP47GX5TAXHYZKEQR1",
+      "name": "issued_on",
+      "type": "date",
+      "default": "2024-01-31"
+    },
+    {
+      "id": "01M8EKD8XP9Q43WC081ZYXT8P3",
+      "name": "due_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "default": "2024-02-29T12:00:00+01:00"
+    },
+    {
+      "id": "01M8EKD8XPJPQW0CB9GB83F8D5",
+      "name": "line_count",
+      "type": "int32",
+      "default": 0
+    },
+    {
+      "id": "01M8EKD8XPYBQCPYFJ98XAPE3T",
+      "name": "reference",
+      "type": "uuid",
+      "default": "0f8fad5b-d9cb-469f-a165-70867728950e"
+    },
+    {
+      "id": "01M8EKD8XP95A9Y999CNH635A3",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "defaultSql": {
+        "postgresql": "CURRENT_TIMESTAMP"
+      }
+    },
+    {
+      "id": "01M8EKD8XP018JAN0212WNSK6H",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_invoices",
+    "columns": [
+      "01M8EKD8XPKFG34MTQMG5YJGH1"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EKD8Y58F49C21G9Y6FKMRR",
+      "name": "uq_invoices_invoice_no",
+      "columns": [
+        "01JCMN00000000000000000004"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EKD8Y5M1FYK2796MQRT242",
+      "name": "fk_invoices_customer_id",
+      "columns": [
+        "01M8EKD8XP018JAN0212WNSK6H"
+      ],
+      "referencesTable": "01M8EKD8XNDSPCQ1ZY8NH71VG3",
+      "referencesColumns": [
+        "01M8EKD8XP020JJG2BWX82FNHD"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01JKEY00000000000000000002",
+      "name": "ix_invoices_issued_on",
+      "columns": [
+        {
+          "column": "01M8EKD8XP47GX5TAXHYZKEQR1",
+          "descending": true
+        }
+      ]
+    }
+  ]
+}

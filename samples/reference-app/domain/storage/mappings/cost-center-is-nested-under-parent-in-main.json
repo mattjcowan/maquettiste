@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHYDRBH08AD6Z7T8CT",
+  "name": "cost center is nested under parent in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1WFP7A54RMMWE7GG70X9M88",
+  "foreignKey": "01M8EJX9A8DF4AJE7J6N6B1J0Q"
+}

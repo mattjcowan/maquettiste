@@ -11,6 +11,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// table overlay, a relation) re-render its readers, so an incremental run equals a forced one.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class IncrementalTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

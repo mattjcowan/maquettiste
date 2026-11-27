@@ -3098,7 +3098,7 @@ paths:
       summary: What a materialize operation would do
       description: |
         Plans a materialize operation over the route's database and validates the result, writing nothing: the body is the batch
-        operation without its database, `{ "op": "materialize-tables", "entities": [...], "schema"?: <schema id> }` (a designed
+        operation without its database, `{ "op": "materialize-tables", "entities": [...], "schema"?: <schema id>, "hierarchy"?: <shape or root id to shape>, "listStorage"?: <choice or attribute id to choice> }` (a designed
         table per entity with the shape its projection has, and a binding), `{ "op": "materialize-entities", "tables": [...],
         "package": <package id> }` (an entity per table or view, bound to it, and a relation per foreign key between them) or
         `{ "op": "materialize-attributes", "entities": [...], "columns"?: [...] }` (per bound entity, an attribute per column of its
@@ -8933,7 +8933,7 @@ components:
         with a `subjects` list of one entry, with a new id, holding its `subject` and `boundAttribute`; a listed process
         already using `subjects`, or with no subject, is left as it is, and nothing to convert writes nothing). They expand into updates the same way, and a refusal is MQ9019 at
         `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional
-        `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay
+        `schema`, `hierarchy`, `listStorage`: a designed table per entity with the shape its projection has and a binding of the entity to it; `hierarchy` picks one table, a table per concrete entity or a table per type for each inheritance hierarchy, and `listStorage` a table of its own or a JSON column for each list attribute (the preview's `choices` lists both with their defaults); the overlay
         folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the
         committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the
         materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the
@@ -9107,6 +9107,28 @@ components:
           type: [array, 'null']
           items:
             type: string
+        hierarchy:
+          description: |
+            `materialize-tables`: the shape of the tables for an inheritance hierarchy. Either one shape for every hierarchy in
+            the request, or an object from a hierarchy's root entity id to its shape. `one-table`: one table for the whole
+            hierarchy, with a type column; `per-concrete`: a table per concrete entity, with every attribute, inherited ones
+            included; `per-type`: a table per entity, each derived table keyed by its base's table. Absent: each hierarchy
+            takes its default (the shape its entity mapping's `inheritance` gives, else one table).
+          oneOf:
+            - $ref: '#/components/schemas/HierarchyShape'
+            - type: object
+              additionalProperties:
+                $ref: '#/components/schemas/HierarchyShape'
+        listStorage:
+          description: |
+            `materialize-tables`: where a list attribute is stored. Either one choice for every list in the request, or an object
+            from an attribute id to its choice. `table`: a table of its own (a child table, with an order column); `json`: a JSON
+            column. Absent: each list takes its default (what its mapping gives, else a table).
+          oneOf:
+            - $ref: '#/components/schemas/ListStorage'
+            - type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ListStorage'
         tables:
           description: The tables and views (`materialize-entities`), each an id, a qualified name or a placeholder.
           type: [array, 'null']
@@ -14441,6 +14463,20 @@ components:
             type: string
         schema:
           type: [string, 'null']
+        hierarchy:
+          description: '`materialize-tables`: one shape for every inheritance hierarchy, or an object from a hierarchy''s root entity id to its shape. Absent: each hierarchy''s default.'
+          oneOf:
+            - $ref: '#/components/schemas/HierarchyShape'
+            - type: object
+              additionalProperties:
+                $ref: '#/components/schemas/HierarchyShape'
+        listStorage:
+          description: '`materialize-tables`: one choice for every list attribute, or an object from an attribute id to its choice. Absent: each list''s default.'
+          oneOf:
+            - $ref: '#/components/schemas/ListStorage'
+            - type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ListStorage'
         package:
           type: [string, 'null']
         columns:
@@ -14454,11 +14490,74 @@ components:
         keepNames:
           description: '`resync-binding`: keep every attribute''s name, even one that followed its column''s name.'
           type: [boolean, 'null']
+    HierarchyShape:
+      description: 'How an inheritance hierarchy is stored: one table for all of it, a table per concrete entity, or a table per type.'
+      type: string
+      enum: [one-table, per-concrete, per-type]
+    ListStorage:
+      description: 'Where a list attribute is stored: a table of its own, or a JSON column.'
+      type: string
+      enum: [table, json]
+    MaterializeChoices:
+      x-engine-record: Maquettiste.Engine.MaterializeChoices
+      description: The choices a `materialize-tables` plan made for the entities in the request, with what each would be by default.
+      type: object
+      required: [hierarchies, lists]
+      properties:
+        hierarchies:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeHierarchyChoice'
+        lists:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaterializeListChoice'
+    MaterializeHierarchyChoice:
+      x-engine-record: Maquettiste.Engine.MaterializeHierarchyChoice
+      type: object
+      required: [root, rootName, entities, shape, default]
+      properties:
+        root:
+          description: The root entity's id.
+          type: string
+        rootName:
+          type: string
+        entities:
+          description: The names of the hierarchy's entities in the request, the root first.
+          type: array
+          items:
+            type: string
+        shape:
+          description: The shape this plan used (the request's, else the default).
+          $ref: '#/components/schemas/HierarchyShape'
+        default:
+          $ref: '#/components/schemas/HierarchyShape'
+    MaterializeListChoice:
+      x-engine-record: Maquettiste.Engine.MaterializeListChoice
+      type: object
+      required: [entity, entityName, attribute, attributeName, storage, default]
+      properties:
+        entity:
+          type: string
+        entityName:
+          type: string
+        attribute:
+          type: string
+        attributeName:
+          type: string
+        storage:
+          description: What this plan used (the request's, else the default).
+          $ref: '#/components/schemas/ListStorage'
+        default:
+          $ref: '#/components/schemas/ListStorage'
     MaterializePlan:
       x-engine-record: Maquettiste.Engine.MaterializePlan
       type: object
       required: [operation, database, valid, creates, updates, deletes, notes, diagnostics]
       properties:
+        choices:
+          description: '`materialize-tables` only: the hierarchy shapes and list storage choices this plan made, so a caller can offer them.'
+          $ref: '#/components/schemas/MaterializeChoices'
         operation:
           type: string
         database:

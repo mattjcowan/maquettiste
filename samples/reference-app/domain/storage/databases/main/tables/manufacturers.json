@@ -1,0 +1,104 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99N266RWXHYX839QRMH",
+  "name": "manufacturers",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NYNWTYGXRBMVEF7ED",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the manufacturer."
+    },
+    {
+      "id": "01M8EJX99NFTVMVAHBW9ZR8P4Z",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Manufacturer name."
+    },
+    {
+      "id": "01M8EJX99N2468Q1V317PHBES8",
+      "name": "website",
+      "type": "string",
+      "length": 200,
+      "comment": "Website."
+    },
+    {
+      "id": "01M8EJX99NZGMDF30QWJYM1QYF",
+      "name": "support_email",
+      "type": "string",
+      "length": 254,
+      "comment": "Technical support mailbox."
+    },
+    {
+      "id": "01M8EJX99N0N6Z38E211YK0VFA",
+      "name": "support_phone_number",
+      "type": "string",
+      "length": 20,
+      "comment": "Number in E.164 form, such as +14155550100."
+    },
+    {
+      "id": "01M8EJX99NZ3EECANXRRSXXH8Y",
+      "name": "support_phone_extension",
+      "type": "string",
+      "length": 10,
+      "comment": "Internal extension."
+    },
+    {
+      "id": "01M8EJX99NXTV7QQZQDQSSMACH",
+      "name": "country_code",
+      "type": "string",
+      "length": 2,
+      "comment": "Country of the head office."
+    },
+    {
+      "id": "01M8EJX99N33M7BAACPJ3CQJ2R",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99NWBJFECKGHMWGZ02D",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NJBNSX3XEF5KR6ABN",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NP9435M8WE7F0R48H",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_manufacturers",
+    "columns": [
+      "01M8EJX99NYNWTYGXRBMVEF7ED"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A6Y9JZJ4CYWCETAXFX",
+      "name": "uq_manufacturers_name",
+      "columns": [
+        "01M8EJX99NFTVMVAHBW9ZR8P4Z"
+      ]
+    }
+  ],
+  "comment": "A company that produces goods Northwind sells."
+}

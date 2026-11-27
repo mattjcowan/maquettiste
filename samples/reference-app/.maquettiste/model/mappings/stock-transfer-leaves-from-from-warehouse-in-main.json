@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ73VGYSHR3GFWY25R",
+  "name": "stock transfer leaves from from warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2Z2Z11M4DPRJ91JV3Q7MGRA",
+  "foreignKey": "01M8EJX9AAVEFSQ41A0CCV6JT1"
+}

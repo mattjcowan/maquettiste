@@ -45,7 +45,7 @@ const cell = (page: Page, column: string, field: string) => grid(page).getByTest
 
 async function openTable(page: Page, name: string, reload = true) {
   // The mock keeps its model in the page: a later step of a test switches screens without reloading.
-  if (reload) await page.goto("/database");
+  if (reload) await page.goto("/database?mock=projected");
   else await workspace(page, "Databases");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await page.getByTestId(`database-table-${name}`).click();
@@ -118,7 +118,7 @@ test("edits made in quick succession on a laid-out table store it once, not twic
 // speed: storing the table takes several answers, and the second edit is made while it is under way. The screen is still loading
 // its parts then, so each key waits for the editor it is meant for.
 async function commentThenDescription(page: Page, description: string) {
-  await page.goto("/database?mock=slow");
+  await page.goto("/database?mock=projected,slow");
   // Picked and edited at once: the screen may not know yet which tables can be stored (that answer is slow too).
   await page.getByTestId("database-table-customers").click();
   await expect(grid(page)).toBeVisible();
@@ -201,7 +201,7 @@ test("a table with an adjusting file is stored as that file: Space toggles Null,
 });
 
 test("Settings > Conventions sets comments to none: descriptions stop filling comments", async ({ page }) => {
-  await page.goto("/settings/conventions");
+  await page.goto("/settings/conventions?mock=projected");
   const control = page.getByTestId("conv-comments");
   await expect(control.locator("option:checked")).toHaveText("inherit: descriptions (engine default)");
   await control.selectOption("none");

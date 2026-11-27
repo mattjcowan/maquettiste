@@ -1,0 +1,109 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q42BKJ3B5VDBD3AHV",
+  "name": "promotion_conditions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QGKR155MF0S2S6G59",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the promotion condition."
+    },
+    {
+      "id": "01M8EJX99QY91AGSW01Y37AJBR",
+      "name": "condition_type",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Kind of condition - product-quantity, category-amount or order-amount."
+    },
+    {
+      "id": "01M8EJX99QR1YX0H4DWCKN8HWH",
+      "name": "threshold_quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "Minimum quantity."
+    },
+    {
+      "id": "01M8EJX99QZXSND3SN464RVV6W",
+      "name": "threshold_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QMQKQSDRQKY0X7NGG",
+      "name": "threshold_amount_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QG13YS5N9YJADX9AV",
+      "name": "product_category_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QHCFZ891NTZK14GGQ",
+      "name": "product_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99Q2TG98F04AF8EFWVK",
+      "name": "promotion_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_promotion_conditions",
+    "columns": [
+      "01M8EJX99QGKR155MF0S2S6G59"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAW8P9S4WGPD1X4E4T",
+      "name": "fk_promotion_conditions_product_category_id",
+      "columns": [
+        "01M8EJX99QG13YS5N9YJADX9AV"
+      ],
+      "referencesTable": "01M8EJX99NQ4YTPRWGEB5NP3V1",
+      "referencesColumns": [
+        "01M8EJX99NSKK4SVQ4V8E5P14K"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AA9J8CSNY2WBFYBTXX",
+      "name": "fk_promotion_conditions_product_id",
+      "columns": [
+        "01M8EJX99QHCFZ891NTZK14GGQ"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAQ13A5SGST6NRTF5B",
+      "name": "fk_promotion_conditions_promotion_id",
+      "columns": [
+        "01M8EJX99Q2TG98F04AF8EFWVK"
+      ],
+      "referencesTable": "01M8EJX99QF6C7NWKA4NH5E7W4",
+      "referencesColumns": [
+        "01M8EJX99Q0B4TTWBMHCCEYPKG"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A condition an order must meet for a promotion to apply."
+}

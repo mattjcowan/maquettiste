@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
 
@@ -9,6 +10,7 @@ namespace Maquettiste.Packs.Tests;
 /// mapping (SalesOrder in the processes fixture, string codes) or its binding (Customer in the bindings fixture, integer codes).
 /// The scripts run twice on SQLite when sqlite3 is on the PATH, and on each database server whose container is set.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ProcessLifecycleSqlTests
 {
     private const string Check = "ck_sales_orders_status_states";
@@ -265,6 +267,32 @@ public sealed class ProcessLifecycleSqlTests
         Assert.Contains("-- customers.stage (states of CustomerLifecycle, CustomerSupport).\n", seed, StringComparison.Ordinal);
         Assert.Contains("ADD CONSTRAINT ck_customers_stage_states CHECK (stage IN (1, 2, 3, 4));", seed, StringComparison.Ordinal);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(seed, "ADD CONSTRAINT ck_customers_stage_states"));
+    }
+
+    [Fact]
+    public async Task A_bound_subtype_gets_a_check_in_a_table_of_its_own_and_none_in_its_base_s_table()
+    {
+        using var repo = Customers("postgresql", new JsonObject { ["lifecycleChecks"] = true });
+        // BankTransfer shares payments with Payment (the type column kind): a check of its codes on payments.reference would refuse the
+        // rows of the other payments. CardPayment keeps last4 in card_payments, a table of its own (a base foreign key).
+        foreach (var (name, n, entity, attribute) in new[] { ("TransferReview", 0, "67", "68"), ("CardReview", 5, "70", "71") })
+        {
+            string Id(int k) => "01K6BFX00000000000000000D" + (n + k).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            repo.Write($".maquettiste/model/processes/{name.ToLowerInvariant()}.json", $$"""
+                {"kind":"process","id":"{{Id(0)}}","name":"{{name}}","package":"01K6BFX0000000000000000001","use":"lifecycle",
+                 "subjects":[{"id":"{{Id(1)}}","entity":"01K6BFX00000000000000000{{entity}}","boundAttribute":"01K6BFX00000000000000000{{attribute}}"}],
+                 "events":[{"id":"{{Id(2)}}","name":"check"}],
+                 "states":[{"id":"{{Id(3)}}","name":"Open","code":"open"},{"id":"{{Id(4)}}","name":"Done","type":"final","code":"done"}],
+                 "initial":"{{Id(3)}}",
+                 "transitions":[{"id":"01K6BFX00000000000000000E{{n}}","source":"{{Id(3)}}","event":"{{Id(2)}}","targets":["{{Id(4)}}"]}]}
+                """);
+        }
+
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        var seed = repo.Read("db/main/seed.sql");
+        Assert.Contains("ADD CONSTRAINT ck_card_payments_last4_states CHECK (last4 IN ('open', 'done'));", seed, StringComparison.Ordinal);
+        Assert.Contains("-- payments.reference (states of TransferReview): its table also holds rows of other entities, so it gets no check.", seed, StringComparison.Ordinal);
+        Assert.DoesNotContain("ADD CONSTRAINT ck_payments_reference_states", seed, StringComparison.Ordinal);
     }
 
     [Fact]

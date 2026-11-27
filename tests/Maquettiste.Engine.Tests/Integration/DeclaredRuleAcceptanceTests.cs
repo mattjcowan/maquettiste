@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Validation;
 using static Maquettiste.Engine.Tests.Validation.SuppressionHarness;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -12,6 +13,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// built-in rule.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class DeclaredRuleAcceptanceTests
 {
     private const string Rule = "x/audited-tables-have-updated-at";

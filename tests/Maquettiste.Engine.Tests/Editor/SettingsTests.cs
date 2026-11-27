@@ -9,6 +9,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>E3: <see cref="ModelStore.GetSettingsAsync"/> and <see cref="ModelStore.SaveSettingsAsync"/> (phase2-design.md section 3.8).</summary>
+[UsesProjectedFixtures]
 public sealed class SettingsTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);

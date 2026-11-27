@@ -7,7 +7,7 @@
 // Runs on `npm install` (postinstall) and before dev, build and test; the copy is gitignored.
 import fs from "node:fs";
 import path from "node:path";
-import { billingFixture, editorRoot, fixtureCopy, repoRoot } from "./paths.mjs";
+import { billingFixture, billingProjectedFixture, editorRoot, fixtureCopy, projectedFixtureCopy, repoRoot } from "./paths.mjs";
 
 const packsCopy = path.join(editorRoot, "src/mocks/fixture/packs");
 const packs = ["sql-ddl", "csharp-dapper"];
@@ -34,6 +34,9 @@ if (!fs.existsSync(billingFixture)) {
 
 fs.rmSync(path.join(editorRoot, "src/mocks/fixture"), { recursive: true, force: true });
 copyTree(billingFixture, fixtureCopy);
+// The projected copy of billing (tables and mappings the engine synthesized), kept for the mock's tests of projection
+// until projection is retired; the editor itself runs on the billing fixture.
+if (fs.existsSync(billingProjectedFixture)) copyTree(billingProjectedFixture, projectedFixtureCopy);
 for (const pack of packs) {
   const manifest = path.join(repoRoot, "packs", pack, "pack.json");
   if (!fs.existsSync(manifest)) continue;

@@ -1,0 +1,70 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9C8077Y0VERGFNZ139M",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99P0R2MTZEVENPJNMRR",
+      "fields": [
+        {
+          "attribute": "01M38M8A60Q4JMY5SBBNKVV29W",
+          "column": "01M8EJX99P50CT3Q74SN6644PH"
+        },
+        {
+          "attribute": "01M28AGFXBC89D7CCZCDHJYDKR",
+          "column": "01M8EJX99P803M66TFKZZ1Z28E"
+        },
+        {
+          "attribute": "01M30MFT6ZMPPFX9M2KJE4TYX0",
+          "column": "01M8EJX99P68RJXGH88SFMYPJR"
+        },
+        {
+          "attribute": "01M2DY9Y9D0KFXV4FSGZWHG96Z",
+          "column": "01M8EJX99PDEEX0PDK7Y8SD88F"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99P21NT5VGMAM3ZKSQC"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PEAWTR5GJDXMZ5K52"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99P7NPS03PMFKXN252Q"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99P9C4JE09PNG690TRZ"
+        },
+        {
+          "attribute": "01M2KC9B0D91JHJE6JH4R32AH2",
+          "column": "01M8EJX99PWWDHGPPH448PNCZP"
+        },
+        {
+          "attribute": "01M2PVQGBZ0GJ5TEDT3CMT1QYP",
+          "column": "01M8EJX99P18KRRYW392QAY12X"
+        },
+        {
+          "attribute": "01M1EV7H83QQTGYX5J6AXAS187",
+          "column": "01M8EJX99PQ27ESRH5B4PYENGK"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P18KRRYW392QAY12X": "b3287dee:d0210786",
+          "01M8EJX99P21NT5VGMAM3ZKSQC": "42049432:e0d08678",
+          "01M8EJX99P50CT3Q74SN6644PH": "a5614527:8da1c7b8",
+          "01M8EJX99P68RJXGH88SFMYPJR": "82a3537f:6e0602bf",
+          "01M8EJX99P7NPS03PMFKXN252Q": "d31d4567:fd717804",
+          "01M8EJX99P803M66TFKZZ1Z28E": "5694d08a:ef1ae9ec",
+          "01M8EJX99P9C4JE09PNG690TRZ": "0b075263:9599b5fd",
+          "01M8EJX99PDEEX0PDK7Y8SD88F": "0081779c:ef1ae9ec",
+          "01M8EJX99PEAWTR5GJDXMZ5K52": "c0d79bde:9599b5fd",
+          "01M8EJX99PQ27ESRH5B4PYENGK": "76798025:d8a57cf9",
+          "01M8EJX99PWWDHGPPH448PNCZP": "38ac8394:ee79e9fe"
+        }
+      }
+    }
+  ]
+}

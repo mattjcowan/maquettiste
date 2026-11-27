@@ -43,7 +43,8 @@ public sealed class WriteModelTests
         Assert.Equal(0, report.Warnings);
         Assert.Equal(64, snapshot.All<Entity>().Count);                     // 60 + 4 lookups
         Assert.Equal(20, snapshot.All<Diagram>().Count);
-        Assert.Equal(7, snapshot.All<Table>().Count);
+        Assert.Equal(7, snapshot.All<Table>().Count(t => t.Comment?.StartsWith("Designed table ", StringComparison.Ordinal) == true));
+        Assert.All(snapshot.All<Entity>(), e => Assert.NotEmpty(e.Bindings));               // every entity stored by "Create tables…"
         Assert.Equal(5, snapshot.All<View>().Count);
         Assert.Equal(3, snapshot.All<Sequence>().Count);
         Assert.True(files > 60 + 150 + 20);
@@ -94,7 +95,9 @@ public sealed class WriteModelTests
 
         static string Json(IEnumerable<Element> elements) =>
             string.Join('\n', elements.Select(e => System.Text.Json.JsonSerializer.Serialize(e, e.GetType())));
-        Assert.True(Json(plain.Elements.OfType<Entity>()) == Json(scaled.Elements.OfType<Entity>().Where(e => !e.Tags.Contains("lookup"))));
+        // The bindings "Create tables…" writes draw their ids after the scale shape's elements: the entities compare without them.
+        Assert.True(Json(plain.Elements.OfType<Entity>().Select(e => e with { Bindings = [] }))
+            == Json(scaled.Elements.OfType<Entity>().Where(e => !e.Tags.Contains("lookup")).Select(e => e with { Bindings = [] })));
         Assert.True(Json(plain.Elements.OfType<Relation>()) == Json(scaled.Elements.OfType<Relation>()));
         Assert.Empty(plain.Elements.OfType<Diagram>());
         Assert.All(plain.Elements.OfType<Package>(), p => Assert.Null(p.Parent));
@@ -123,7 +126,8 @@ public sealed class WriteModelTests
         var on = SyntheticModel.Build(Scaled() with { DomainVocabularies = true });
         static string Json(IEnumerable<Element> elements) =>
             string.Join('\n', elements.Select(e => System.Text.Json.JsonSerializer.Serialize(e, e.GetType())));
-        Assert.True(Json(plain.Elements.Where(e => e is not Entity)) == Json(on.Elements.Where(e => e is not (Entity or TagVocabulary or CategoryTree))));
+        // The tables, bindings and relation mappings "Create tables…" writes draw their ids after the vocabularies: left out.
+        Assert.True(Json(plain.Elements.Where(e => e is not (Entity or Table or Mapping))) == Json(on.Elements.Where(e => e is not (Entity or TagVocabulary or CategoryTree or Table or Mapping))));
         Assert.True(Json(plain.Elements) == Json(SyntheticModel.Build(Scaled() with { DomainVocabularies = false }).Elements));
     }
 

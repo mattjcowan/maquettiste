@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJEAR1FQT9PEEAXEZ7",
+  "name": "warehouse is charged to cost center in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M294DQA8R8Q6AJK0XDCAZ2D7",
+  "foreignKey": "01M8EJX9AAMMZEGHH6ZM7850B5"
+}

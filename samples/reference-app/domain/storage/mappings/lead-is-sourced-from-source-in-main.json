@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH455NCR63VFMPQEGH",
+  "name": "lead is sourced from source in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M31R0XCAF8JTFZJX20VRM8N4",
+  "foreignKey": "01M8EJX9A8GSBFN4MZQ92RNTVD"
+}

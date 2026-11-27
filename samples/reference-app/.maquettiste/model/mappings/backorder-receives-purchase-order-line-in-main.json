@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ8BRW8ZVB2CRTKS04",
+  "name": "backorder receives purchase order line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2GW7K1YJKMTZRM5KRGNXKGT",
+  "foreignKey": "01M8EJX9ACVW1HDMF9EFYDRAXP"
+}

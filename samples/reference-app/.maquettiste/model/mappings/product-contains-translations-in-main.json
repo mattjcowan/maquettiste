@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH5XWPHMNY546WQDW9",
+  "name": "product contains translations in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1W2KZGJYMDJZK8EN6M59V0V",
+  "foreignKey": "01M8EJX9A7EDACN44WM3X6CG8M"
+}
