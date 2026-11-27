@@ -1,0 +1,63 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BND0000000000000000001",
+  "name": "notes",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "description": "Free-text notes on invoices and customers: one table, told apart by entity_type.",
+  "columns": [
+    {
+      "id": "01K6BND0000000000000000002",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01K6BND0000000000000000003",
+      "name": "entity_type",
+      "type": "string",
+      "length": 32,
+      "nullable": false
+    },
+    {
+      "id": "01K6BND0000000000000000004",
+      "name": "entity_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01K6BND0000000000000000005",
+      "name": "body",
+      "type": "text",
+      "nullable": false
+    },
+    {
+      "id": "01K6BND0000000000000000006",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "nullable": false,
+      "defaultSql": {
+        "*": "CURRENT_TIMESTAMP"
+      }
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BND0000000000000000002"
+    ]
+  },
+  "indexes": [
+    {
+      "id": "01K6BND0000000000000000007",
+      "columns": [
+        {
+          "column": "01K6BND0000000000000000003"
+        },
+        {
+          "column": "01K6BND0000000000000000004"
+        }
+      ]
+    }
+  ]
+}

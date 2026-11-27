@@ -1,0 +1,77 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BND0000000000000000010",
+  "name": "InvoiceNote",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "description": "A note on an invoice. Stored in the shared notes table with entity_type 'invoice'.",
+  "key": {
+    "attributes": [
+      "01K6BND0000000000000000011"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K6BND0000000000000000011",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K6BND0000000000000000012",
+      "name": "invoiceId",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K6BND0000000000000000013",
+      "name": "body",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "01K6BND0000000000000000014",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "readOnly": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BND0000000000000000015",
+      "database": "01J92P0V1QRN2181XM2ZWE02W4",
+      "source": "01K6BND0000000000000000001",
+      "constants": [
+        {
+          "column": "01K6BND0000000000000000003",
+          "value": "invoice"
+        }
+      ],
+      "fields": [
+        {
+          "attribute": "01K6BND0000000000000000011",
+          "column": "01K6BND0000000000000000002"
+        },
+        {
+          "attribute": "01K6BND0000000000000000012",
+          "column": "01K6BND0000000000000000004"
+        },
+        {
+          "attribute": "01K6BND0000000000000000013",
+          "column": "01K6BND0000000000000000005"
+        },
+        {
+          "attribute": "01K6BND0000000000000000014",
+          "column": "01K6BND0000000000000000006"
+        }
+      ],
+      "columns": [
+        {
+          "column": "01K6BND0000000000000000006",
+          "status": "database"
+        }
+      ]
+    }
+  ]
+}

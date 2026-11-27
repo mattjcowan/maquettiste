@@ -1,0 +1,18 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHRKP1H6W32FSM9NSE",
+  "name": "role grants permission in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M34KE653F8CFW9VYB8CF31HE",
+  "junctionTable": "01M8EJX99Q4PFN9H5NT8J5K422",
+  "ends": [
+    {
+      "end": "01M2R5Z5GRMNN8PXHM0Y8WR769",
+      "foreignKey": "01M8EJX9AC3BQDZQZ20WH7YCXK"
+    },
+    {
+      "end": "01M2WH2227ZAHAGGQTDTJZPZ8C",
+      "foreignKey": "01M8EJX9AC1SH0A3GHT8XGYG1B"
+    }
+  ]
+}

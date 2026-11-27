@@ -14,7 +14,7 @@ async function selectEntity(page: Page, name: string) {
 }
 
 test("an entity with relations: the plan names the relation, clearing alone cannot work, deleting with dependents undoes in one step", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   await selectEntity(page, "Product");
   await page.getByRole("button", { name: "Delete Product" }).click();
 
@@ -49,7 +49,7 @@ test("an entity with relations: the plan names the relation, clearing alone cann
 test("a database with tables: deleting with dependents takes its tables, views, sequences, routines, database types, SQL objects, queries and mappings", async ({
   page,
 }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   await workspace(page, "Databases");
   const tree = explorer(page).getByTestId("explorer-tree");
   await tree.getByTestId("explorer-folder-main").click();

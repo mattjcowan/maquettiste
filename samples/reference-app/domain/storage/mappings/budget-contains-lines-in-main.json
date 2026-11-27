@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHJX3DBMPSB0F068BK",
+  "name": "budget contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2SASW8TM64KDTV4696CVT3K",
+  "foreignKey": "01M8EJX9A82WVHWBQPD7SEKHF6"
+}

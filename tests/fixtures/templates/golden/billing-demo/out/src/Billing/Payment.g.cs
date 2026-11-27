@@ -3,7 +3,6 @@ namespace Acme.Billing.Billing;
 
 /// Payment
 /// Attributes: 6; required: id, amount, receivedAt, createdAt; prefix Acme.Billing
-/// Stored in payments
 public partial record Payment
 {
     public long Id { get; init; }

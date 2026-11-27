@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJD9KGYQKSJJ9E4Q64",
+  "name": "sales order line is for variant in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2W1PFWH2PAX1Q9K27WEQQMK",
+  "foreignKey": "01M8EJX9ACBPEMNG1TY1ZZ6P7X"
+}

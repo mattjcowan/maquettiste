@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CGGRCJH6VT9JQ7NKGD",
+  "name": "dunning notice is pursued in collection case in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M30Z3D3SQA4XASCN6H42JG8R",
+  "foreignKey": "01M8EJX9A3Q6TS85Y445XB78JM"
+}

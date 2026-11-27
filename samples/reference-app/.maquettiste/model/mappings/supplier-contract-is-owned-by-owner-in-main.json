@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJB4F035JA95YPF7EY",
+  "name": "supplier contract is owned by owner in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2MV56BKEJ7SGW35YJVD8EYR",
+  "foreignKey": "01M8EJX9ABNP71P5HQS6NM53ZE"
+}

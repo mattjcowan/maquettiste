@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH3DWPCMK59G9NN817",
+  "name": "journal entry falls in fiscal period in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2GCBA159D9N8FPTMETM2MMJ",
+  "foreignKey": "01M8EJX9A8W0R4MJXSY8FRGPM2"
+}

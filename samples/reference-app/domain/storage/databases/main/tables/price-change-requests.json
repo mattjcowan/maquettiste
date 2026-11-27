@@ -1,0 +1,153 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QRZNKEWVC53KAW6YJ",
+  "name": "price_change_requests",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QXWRHHE60Z7MACMBR",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the price change request."
+    },
+    {
+      "id": "01M8EJX99QKE7RQK4ZADFKAHVF",
+      "name": "requested_price_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QZQC30F6X08AEZFT5",
+      "name": "requested_price_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99Q06W3XD16N6A1YCCV",
+      "name": "effective_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date the new price should apply."
+    },
+    {
+      "id": "01M8EJX99QR6SNWY68Y6TVG207",
+      "name": "justification",
+      "type": "text",
+      "comment": "Reason, such as supplier cost increase."
+    },
+    {
+      "id": "01M8EJX99QKNW7FPFQBE9RB4SG",
+      "name": "decision",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "pending",
+      "comment": "pending, approved or rejected."
+    },
+    {
+      "id": "01M8EJX99QKRP0YKTDTQPV8XC1",
+      "name": "decided_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the decision was made."
+    },
+    {
+      "id": "01M8EJX99QQXKDKW61GXX80DGA",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QF3SQD86PJG5NPRTS",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QB94HPBSAGAN1R7N4",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QVH3B982PR03GMPJC",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99Q9VVV79EN812Y072C",
+      "name": "decided_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QDR7C0CZFBG0GE0MG",
+      "name": "price_list_entry_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QNVY0GVRREZ310KR8",
+      "name": "requested_by_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_price_change_requests",
+    "columns": [
+      "01M8EJX99QXWRHHE60Z7MACMBR"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AARB6KK73QC02PC3H4",
+      "name": "fk_price_change_requests_decided_by_id",
+      "columns": [
+        "01M8EJX99Q9VVV79EN812Y072C"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AA0SJNKWS56T8A1CM8",
+      "name": "fk_price_change_requests_price_list_entry_id",
+      "columns": [
+        "01M8EJX99QDR7C0CZFBG0GE0MG"
+      ],
+      "referencesTable": "01M8EJX99QVVFRDVYF4Z9PKJ0Q",
+      "referencesColumns": [
+        "01M8EJX99Q3ZV6THCY8BHFDVAH"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AARDCTCZ189JNR4Y8S",
+      "name": "fk_price_change_requests_requested_by_id",
+      "columns": [
+        "01M8EJX99QNVY0GVRREZ310KR8"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A requested change to a list price, reviewed by pricing before it takes effect."
+}

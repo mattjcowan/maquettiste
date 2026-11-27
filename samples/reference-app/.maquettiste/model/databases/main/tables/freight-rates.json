@@ -1,0 +1,138 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PK5EP76GYFYVV5QZN",
+  "name": "freight_rates",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PQJVCM3V32C28257C",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the freight rate."
+    },
+    {
+      "id": "01M8EJX99PN2Q2VSA2CXFH6GQW",
+      "name": "weight_from_kg",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Lower bound of the weight band."
+    },
+    {
+      "id": "01M8EJX99PYBBNB17PP46QH34M",
+      "name": "weight_to_kg",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Upper bound; null for no limit."
+    },
+    {
+      "id": "01M8EJX99PZK1WV04CQ4Z8X6SD",
+      "name": "rate_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PGPMFV4MEKGN0T8XG",
+      "name": "rate_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99P4HEFEX06ZJ1XD3PE",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99PSDQS11KYVZ422JVP",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99PFDWDXR44R4BRQ8FZ",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PV2KJ7N7SX1XX5D5V",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P7XHEBZK5ZA2ZX9AW",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P09MZ5CXSJYFKNHRN",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PT8GV5F7M8MCWZ1BK",
+      "name": "carrier_service_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PJCWJQA0XNPDHBE44",
+      "name": "shipping_zone_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_freight_rates",
+    "columns": [
+      "01M8EJX99PQJVCM3V32C28257C"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9RM12JVAMP3Z0A1NM",
+      "name": "fk_freight_rates_carrier_service_id",
+      "columns": [
+        "01M8EJX99PT8GV5F7M8MCWZ1BK"
+      ],
+      "referencesTable": "01M8EJX99PA7MTD0KWX8FXWCM0",
+      "referencesColumns": [
+        "01M8EJX99P6N7K7H260YR5XY22"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A9F0BFVDVD7FFAVMGM",
+      "name": "fk_freight_rates_shipping_zone_id",
+      "columns": [
+        "01M8EJX99PJCWJQA0XNPDHBE44"
+      ],
+      "referencesTable": "01M8EJX99P62WSPXSP72QQVNQQ",
+      "referencesColumns": [
+        "01M8EJX99P4B20ZTJGAXQADHE7"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A contracted rate of a carrier service for a zone and weight band."
+}

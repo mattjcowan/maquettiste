@@ -1,0 +1,50 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKC5AMNQNQA56FAV8CA3Y1",
+  "name": "sales_orders",
+  "database": "01JQDBS0000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKC5AM8R47MBKBVSW6169Q",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMRG4QP4RPEQ8RSNHE",
+      "name": "status",
+      "type": "int32",
+      "nullable": false,
+      "default": 0
+    },
+    {
+      "id": "01M8EKC5AMTCK99M9G0TWT0QN5",
+      "name": "configuration",
+      "type": "json",
+      "comment": "The active states of the lifecycle, for the nested states the status cannot hold."
+    },
+    {
+      "id": "01M8EKC5AMFT5R216HDVWNEB8M",
+      "name": "total",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AM8BA61XB4B4A0YJ4N",
+      "name": "credit_limit",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sales_orders",
+    "columns": [
+      "01M8EKC5AM8R47MBKBVSW6169Q"
+    ]
+  }
+}

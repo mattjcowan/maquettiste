@@ -411,9 +411,9 @@ public sealed class ModelLoaderTests
         await h.NewLoader().LoadAsync(new LoadRequest(null, null, false), new SyncProgress(u => { lock (updates) updates.Add(u); }), Ct);
 
         Assert.All(updates, u => Assert.Equal(PipelineStage.Load, u.Stage));
-        Assert.Equal(35, updates.Count); // 33 elements, maquettiste.json, one extension (the sidecar is not a primary file)
-        Assert.Equal(35, updates.Max(u => u.Done));
-        Assert.All(updates, u => Assert.Equal(35, u.Total));
+        Assert.Equal(42, updates.Count); // 40 elements, maquettiste.json, one extension (the sidecar is not a primary file)
+        Assert.Equal(42, updates.Max(u => u.Done));
+        Assert.All(updates, u => Assert.Equal(42, u.Total));
         Assert.All(updates, u => Assert.StartsWith(".maquettiste/", u.CurrentPath, StringComparison.Ordinal));
     }
 
@@ -436,7 +436,7 @@ public sealed class ModelLoaderTests
         Assert.InRange(seen, 5, 6);
         Assert.False(File.Exists(loader.CachePath)); // nothing half-written
         var result = await LoadAsync(loader);
-        Assert.Equal(33, result.Snapshot.Documents.Count);
+        Assert.Equal(40, result.Snapshot.Documents.Count);
         Assert.Equal(1, result.Snapshot.Version);
     }
 
@@ -542,7 +542,7 @@ public sealed class ModelLoaderTests
         Assert.Same(first, again.Snapshot);
         Assert.True(again.Changes.IsEmpty);
         Assert.Equal(0, loader.LastStatistics.ReadFromDisk);
-        Assert.Equal(35 + 1, loader.LastStatistics.Reused);
+        Assert.Equal(42 + 1, loader.LastStatistics.Reused);
         Assert.False(loader.LastStatistics.CacheWritten);
     }
 }

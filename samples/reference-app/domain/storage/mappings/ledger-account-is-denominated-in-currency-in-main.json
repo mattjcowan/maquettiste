@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH507DCRFNRQJDJNT2",
+  "name": "ledger account is denominated in currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2K2AESKPVA2GWAH916SG5T1",
+  "foreignKey": "01M8EJX9A8FTEVW0M7HBW2WQY6"
+}

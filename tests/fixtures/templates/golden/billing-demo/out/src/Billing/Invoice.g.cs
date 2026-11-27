@@ -3,7 +3,6 @@ namespace Acme.Billing.Billing;
 
 /// Invoice: # Invoice
 /// Attributes: 9; required: id, number, issuedOn, status, createdAt; prefix Acme.Billing
-/// Stored in invoices
 public partial record Invoice
 {
     public Guid Id { get; init; }

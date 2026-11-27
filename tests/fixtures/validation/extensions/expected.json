@@ -52,22 +52,22 @@
   {
     "rule": "MQ5001",
     "severity": "error",
-    "message": "Extension 'entity-team': properties/team type: Value is \"integer\" but should be \"string\"",
-    "elementId": "01JENT00000000000000000001",
-    "filePath": ".maquettiste/model/entities/customer.json",
-    "jsonPointer": "/properties/team",
-    "line": 7,
-    "column": 13
-  },
-  {
-    "rule": "MQ5001",
-    "severity": "error",
     "message": "Extension 'attribute-ui': properties/maxWidth type: Value is \"string\" but should be \"integer\"",
     "elementId": "01JATT00000000000000000102",
     "filePath": ".maquettiste/model/entities/customer.json",
     "jsonPointer": "/attributes/1/properties/maxWidth",
-    "line": 27,
+    "line": 24,
     "column": 21
+  },
+  {
+    "rule": "MQ5001",
+    "severity": "error",
+    "message": "Extension 'entity-team': properties/team type: Value is \"integer\" but should be \"string\"",
+    "elementId": "01JENT00000000000000000001",
+    "filePath": ".maquettiste/model/entities/customer.json",
+    "jsonPointer": "/properties/team",
+    "line": 52,
+    "column": 13
   },
   {
     "rule": "MQ5001",

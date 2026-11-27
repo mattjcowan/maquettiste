@@ -1,0 +1,125 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P16QEFM8E6XDTPW5C",
+  "name": "reorder_suggestions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PR2F5MT9SZ8MAKK6B",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the reorder suggestion."
+    },
+    {
+      "id": "01M8EJX99P8BBJX45A5TRRY1C6",
+      "name": "suggested_quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity to order."
+    },
+    {
+      "id": "01M8EJX99PPC37BGK4XD9A9VVB",
+      "name": "suggested_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date computed."
+    },
+    {
+      "id": "01M8EJX99P9VA77ASKY9PD8829",
+      "name": "is_accepted",
+      "type": "bool",
+      "comment": "Whether the buyer accepted it; null while undecided."
+    },
+    {
+      "id": "01M8EJX99PA1YQG5V5987XDC2E",
+      "name": "dismissed_reason",
+      "type": "string",
+      "length": 200,
+      "comment": "Why it was dismissed."
+    },
+    {
+      "id": "01M8EJX99PYB319Z8FZA4Q94FH",
+      "name": "purchase_order_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PRVV69K9YW7NHXFTF",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PPS41TQKK3MWTAZDM",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PYKZ87D256M98FP48",
+      "name": "supplier_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_reorder_suggestions",
+    "columns": [
+      "01M8EJX99PR2F5MT9SZ8MAKK6B"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAB2ME905E74HFQVCR",
+      "name": "fk_reorder_suggestions_purchase_order_id",
+      "columns": [
+        "01M8EJX99PYB319Z8FZA4Q94FH"
+      ],
+      "referencesTable": "01M20RTE9GYMJF4W6ZSG87Y5T2",
+      "referencesColumns": [
+        "01M8EJX99Q0CGM80EJ972RZV09"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAFNW9KBHYWT6Q8RD7",
+      "name": "fk_reorder_suggestions_product_id",
+      "columns": [
+        "01M8EJX99PRVV69K9YW7NHXFTF"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AADPYMDZ282Y62AKNS",
+      "name": "fk_reorder_suggestions_warehouse_id",
+      "columns": [
+        "01M8EJX99PPS41TQKK3MWTAZDM"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AAFYFKRTAWQZF3VDJF",
+      "name": "fk_reorder_suggestions_supplier_id",
+      "columns": [
+        "01M8EJX99PYKZ87D256M98FP48"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A replenishment proposal computed nightly for a buyer to accept or dismiss."
+}

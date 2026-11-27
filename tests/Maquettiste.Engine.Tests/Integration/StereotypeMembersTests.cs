@@ -15,6 +15,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// has its own <c>created_at</c>, excludes that member and the index on it. The shared fixture does not change.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class StereotypeMembersTests
 {
     private const string Audited = "01J92P0V25BX5TMQ8N9F6AJE61";

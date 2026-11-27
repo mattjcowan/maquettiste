@@ -2,6 +2,7 @@
 // MQ4115 with the design's texts, the references of an entry, and the cascade when an entity or stereotype is deleted.
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 
 type Json = Record<string, unknown>;
 
@@ -23,7 +24,7 @@ const types = (...entries: Json[]) => entries;
 
 /** The model with the entities and the relation. The relation is created plain, then edited into the form under test, as an outside edit would. */
 function backendWith(ends: [Json, Json], relation: Json = {}, stereotypes: boolean = false) {
-  const backend = new MockBackend();
+  const backend = new MockBackend({ seed: billingProjectedSeed() });
   const make = (json: Json) => expect(backend.model.create(json).outcome).toBe("saved");
   make(entity(ID.part, "Part"));
   make(entity(ID.purchased, "PurchasedPart", { base: ID.part }));

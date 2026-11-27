@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHC7A07DKZ2BDT8EH2",
+  "name": "sales activity involves contact in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2NVPC8FA3RKDHD1W7NPRW68",
+  "foreignKey": "01M8EJX9A8JEM99M8XK8SC3VQ6"
+}

@@ -31,7 +31,7 @@ internal sealed record BoundColumnUse(string EntityId, int Binding, int Field, M
 /// </remarks>
 internal sealed class BoundColumnTypes
 {
-    private static readonly ConditionalWeakTable<ModelSnapshot, BoundColumnTypes> Cache = new();
+    private static readonly ConditionalWeakTable<ModelSnapshot, Lazy<BoundColumnTypes>> Cache = new();
 
     private readonly Dictionary<(string Table, string Column), List<BoundColumnUse>> _uses = [];
     private readonly Dictionary<(string Table, string Column), string> _types = [];
@@ -69,6 +69,7 @@ internal sealed class BoundColumnTypes
 
         foreach (var columns in _byType.Values)
             columns.Sort((a, b) => string.CompareOrdinal(a.Table, b.Table) is var c and not 0 ? c : string.CompareOrdinal(a.Column, b.Column));
+        _tables.Clear(); // the column indexes serve only the collection, and the instance lives as long as its snapshot
     }
 
     /// <summary>The bound column types of a snapshot.</summary>
@@ -77,7 +78,9 @@ internal sealed class BoundColumnTypes
     public static BoundColumnTypes Of(ModelSnapshot model)
     {
         ArgumentNullException.ThrowIfNull(model);
-        return Cache.GetValue(model, static m => new BoundColumnTypes(m));
+        // A Lazy, so the parallel validation workers that ask first wait for one build instead of each building their own (the table's
+        // factory runs outside its lock).
+        return Cache.GetValue(model, static m => new Lazy<BoundColumnTypes>(() => new BoundColumnTypes(m), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
     }
 
     /// <summary>The enum, reference type or scalar type a column holds, by its bindings; <see langword="null"/> when it has none.</summary>
@@ -181,18 +184,44 @@ internal sealed class BoundColumnTypes
     /// </summary>
     private sealed class ColumnLookup
     {
-        private readonly Dictionary<string, Column> _byId = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, Column> _byName = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, Column?> _byLowerName = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, Column?> _byFoldedName = new(StringComparer.Ordinal);
+        private readonly IReadOnlyList<Column> _columns;
+        private readonly Dictionary<string, Column> _byId;
+        private Dictionary<string, Column>? _byName;
+        private Dictionary<string, Column?>? _byLowerName;
+        private Dictionary<string, Column?>? _byFoldedName;
 
         public ColumnLookup(ModelSnapshot model, Table table)
         {
             Table = table;
             var members = TableMembers.Of(model, table);
-            foreach (var column in members.Columns.Count == 0 ? table.Columns : [.. table.Columns, .. members.Columns.Select(m => m.Member)])
-            {
+            _columns = members.Columns.Count == 0 ? table.Columns : [.. table.Columns, .. members.Columns.Select(m => m.Member)];
+            _byId = new Dictionary<string, Column>(_columns.Count, StringComparer.Ordinal);
+            foreach (var column in _columns)
                 _byId.TryAdd(column.Id, column);
+        }
+
+        public Table Table { get; }
+
+        // Fields name columns by id, so the name indexes are built only when a reference is not one (lookups run only while the types are
+        // worked out, on one thread).
+        public Column? Find(string reference)
+        {
+            if (_byId.TryGetValue(reference, out var column))
+                return column;
+            if (_byName is null)
+                BuildNames();
+            return _byName!.TryGetValue(reference, out column) ? column
+                : _byLowerName!.TryGetValue(reference, out var loose) ? loose
+                : _byFoldedName!.GetValueOrDefault(Fold(reference));
+        }
+
+        private void BuildNames()
+        {
+            _byName = new Dictionary<string, Column>(_columns.Count, StringComparer.Ordinal);
+            _byLowerName = new Dictionary<string, Column?>(_columns.Count, StringComparer.OrdinalIgnoreCase);
+            _byFoldedName = new Dictionary<string, Column?>(_columns.Count, StringComparer.Ordinal);
+            foreach (var column in _columns)
+            {
                 _byName.TryAdd(column.Name, column);
                 // A second column of the same loose name makes the loose match ambiguous: null.
                 _byLowerName[column.Name] = _byLowerName.ContainsKey(column.Name) ? null : column;
@@ -200,14 +229,6 @@ internal sealed class BoundColumnTypes
                 _byFoldedName[folded] = _byFoldedName.ContainsKey(folded) ? null : column;
             }
         }
-
-        public Table Table { get; }
-
-        public Column? Find(string reference) =>
-            _byId.TryGetValue(reference, out var column) ? column
-            : _byName.TryGetValue(reference, out column) ? column
-            : _byLowerName.TryGetValue(reference, out var loose) ? loose
-            : _byFoldedName.GetValueOrDefault(Fold(reference));
 
         private static string Fold(string text) => text.Replace("_", "", StringComparison.Ordinal).ToUpperInvariant();
     }

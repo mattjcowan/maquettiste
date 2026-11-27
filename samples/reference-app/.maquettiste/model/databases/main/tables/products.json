@@ -1,0 +1,412 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+  "name": "products",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Product search and integrity tuning.",
+  "columns": [
+    {
+      "id": "01M8EJX99N5GA9DADXJNF2YAZ2",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product."
+    },
+    {
+      "id": "01M8EJX99NSBJKRVKFM4XN5GFR",
+      "name": "sku",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Stock keeping unit of the base product."
+    },
+    {
+      "id": "01M38BN06FY3KH4QY5S0V08BVN",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Searched with a trigram index in production."
+    },
+    {
+      "id": "01M8EJX99N4RVZ22C9WZM3A207",
+      "name": "short_description",
+      "type": "string",
+      "length": 500,
+      "comment": "One-paragraph description for listings."
+    },
+    {
+      "id": "01M8EJX99NNGK8AZXN77ZVN5KT",
+      "name": "long_description",
+      "type": "text",
+      "comment": "Full description in Markdown."
+    },
+    {
+      "id": "01M8EJX99NNZXSV4YVWTKMA143",
+      "name": "status",
+      "type": "string",
+      "length": 8,
+      "nullable": false,
+      "default": "DRAFT",
+      "comment": "Lifecycle state."
+    },
+    {
+      "id": "01M8EJX99N7F0KRA0CQND3AW4R",
+      "name": "is_serialized",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether each unit carries a serial number."
+    },
+    {
+      "id": "01M8EJX99NJQMPSDDFKXSMXV6M",
+      "name": "is_lot_controlled",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether stock is tracked by lot or batch."
+    },
+    {
+      "id": "01M8EJX99N0T8KE2Z4XXYNS099",
+      "name": "shelf_life_days",
+      "type": "int16",
+      "comment": "Days from production to expiry, for perishables."
+    },
+    {
+      "id": "01M8EJX99NFA217VJR8YM8XWEF",
+      "name": "dimensions_length",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Longest side."
+    },
+    {
+      "id": "01M8EJX99NRY79CMW6EYW272MV",
+      "name": "dimensions_width",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Second side."
+    },
+    {
+      "id": "01M8EJX99NHM0FH42GHN1305N7",
+      "name": "dimensions_height",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Vertical side."
+    },
+    {
+      "id": "01M8EJX99NG7CBTN73FS6ET7B6",
+      "name": "dimensions_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the three measures."
+    },
+    {
+      "id": "01M8EJX99N21K78B2HFKYK5KBW",
+      "name": "weight_value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "The weight."
+    },
+    {
+      "id": "01M8EJX99NE6RSD1EWDF8DX21Y",
+      "name": "weight_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the weight."
+    },
+    {
+      "id": "01M8EJX99N1MS11281Q66WDRCJ",
+      "name": "list_price_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99NJCTDMHKCA0031SB6",
+      "name": "list_price_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99NVGGC2SCSYYE2YJEW",
+      "name": "country_of_origin",
+      "type": "string",
+      "length": 2,
+      "comment": "Where the goods were produced, for customs."
+    },
+    {
+      "id": "01M8EJX99NZZZSYBAX5QQ9NRDP",
+      "name": "launched_on",
+      "type": "date",
+      "comment": "First sale date."
+    },
+    {
+      "id": "01M8EJX99N6ZRTWMMJPJ0YDEHZ",
+      "name": "discontinued_on",
+      "type": "date",
+      "comment": "Last sale date."
+    },
+    {
+      "id": "01M8EJX99NT714X45HQRB6P0FW",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99N96D15PACT8ZKBT87",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99N1ERP5P21PJD3SGC1",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NQYJ846J4EC2A4YXY",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NGHC8S4TW9BNRD2A7",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99NPPNH18GX4DVCMEP8",
+      "name": "preferred_supplier_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99N1330ZCTVQMFGVDY4",
+      "name": "hazard_class_id",
+      "type": "int32"
+    },
+    {
+      "id": "01M8EJX99NK5D1FDSVG3R6C4G2",
+      "name": "tariff_code_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NBQEY5VZFMZZACJ2K",
+      "name": "category_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99NRC05SCQ9TEF9V3E1",
+      "name": "manufacturer_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NHPNACDVDVDAXWJPT",
+      "name": "sales_unit_code",
+      "type": "string",
+      "length": 3
+    },
+    {
+      "id": "01M8EJX99NQ2A4S979NEYA1CPN",
+      "name": "brand_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NSP5BST8AN95596RT",
+      "name": "base_unit_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99NYEYENNF01MAHMPXH",
+      "name": "storage_condition_id",
+      "type": "int32"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_products",
+    "columns": [
+      "01M8EJX99N5GA9DADXJNF2YAZ2"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A7H8CZD45NQ47KXBQG",
+      "name": "uq_products_sku",
+      "columns": [
+        "01M8EJX99NSBJKRVKFM4XN5GFR"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7VF4VJ6V3WW6YDH5W",
+      "name": "fk_products_preferred_supplier_id",
+      "columns": [
+        "01M8EJX99NPPNH18GX4DVCMEP8"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7XHGXXKG4DC4E494P",
+      "name": "fk_products_hazard_class_id",
+      "columns": [
+        "01M8EJX99N1330ZCTVQMFGVDY4"
+      ],
+      "referencesTable": "01M8EJX99NM0C9J4V7J9BH1A87",
+      "referencesColumns": [
+        "01M8EJX99NHSPS8W62WZG2DEDP"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7C74M5S8HDBRYYYAA",
+      "name": "fk_products_tariff_code_id",
+      "columns": [
+        "01M8EJX99NK5D1FDSVG3R6C4G2"
+      ],
+      "referencesTable": "01M8EJX99NZV7QZ0ZV49TBQ4TS",
+      "referencesColumns": [
+        "01M8EJX99NQC166H5XPWXQ0CE0"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7X1VR9TZFRWEKDGS9",
+      "name": "fk_products_category_id",
+      "columns": [
+        "01M8EJX99NBQEY5VZFMZZACJ2K"
+      ],
+      "referencesTable": "01M8EJX99NQ4YTPRWGEB5NP3V1",
+      "referencesColumns": [
+        "01M8EJX99NSKK4SVQ4V8E5P14K"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A7WN6EKSAZKHMDDE06",
+      "name": "fk_products_manufacturer_id",
+      "columns": [
+        "01M8EJX99NRC05SCQ9TEF9V3E1"
+      ],
+      "referencesTable": "01M8EJX99N266RWXHYX839QRMH",
+      "referencesColumns": [
+        "01M8EJX99NYNWTYGXRBMVEF7ED"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7AAW2QKMKHTHKP2A2",
+      "name": "fk_products_sales_unit_code",
+      "columns": [
+        "01M8EJX99NHPNACDVDVDAXWJPT"
+      ],
+      "referencesTable": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "referencesColumns": [
+        "01M8EJX99Q26RFK5STCSH1JBPE"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7GPPSDH1YMH8WQQ11",
+      "name": "fk_products_brand_id",
+      "columns": [
+        "01M8EJX99NQ2A4S979NEYA1CPN"
+      ],
+      "referencesTable": "01M8EJX99NPRAMFJKXE3SX2DVT",
+      "referencesColumns": [
+        "01M8EJX99NQ14XDDQHTJGW6DZG"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7XNDBS3JGAKQEP37A",
+      "name": "fk_products_base_unit_code",
+      "columns": [
+        "01M8EJX99NSP5BST8AN95596RT"
+      ],
+      "referencesTable": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "referencesColumns": [
+        "01M8EJX99Q26RFK5STCSH1JBPE"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A7STN8M7XBBWPR0Q40",
+      "name": "fk_products_storage_condition_id",
+      "columns": [
+        "01M8EJX99NYEYENNF01MAHMPXH"
+      ],
+      "referencesTable": "01M8EJX99PMPXTQCAXW5GPZB1R",
+      "referencesColumns": [
+        "01M8EJX99PG6PCMKKQWS22FTRX"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A7CY7P11JH3EQAAVW4",
+      "name": "fk_products_status_ref",
+      "columns": [
+        "01M8EJX99NNZXSV4YVWTKMA143"
+      ],
+      "referencesTable": "01M8EJX99Q9QKY4DEDT32R0FFA",
+      "referencesColumns": [
+        "01M8EJX99Q6ZJ1YSNRKJ84N774"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "01M20K5EZS2M75Q0JYDXHBM8R1",
+      "name": "ck_products_discontinued_after_launch",
+      "expression": {
+        "*": "discontinued_on IS NULL OR launched_on IS NULL OR discontinued_on >= launched_on"
+      }
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M311KNX8DFB2WWFHKTEQJKB4",
+      "name": "ix_products_status_name",
+      "columns": [
+        {
+          "column": "01M8EJX99NNZXSV4YVWTKMA143"
+        },
+        {
+          "column": "01M38BN06FY3KH4QY5S0V08BVN"
+        }
+      ]
+    },
+    {
+      "id": "01M8EJX9A7HWXAD7V757V7V3WC",
+      "name": "ix_products_name",
+      "columns": [
+        {
+          "column": "01M38BN06FY3KH4QY5S0V08BVN"
+        }
+      ]
+    }
+  ],
+  "comment": "Product search and integrity tuning."
+}

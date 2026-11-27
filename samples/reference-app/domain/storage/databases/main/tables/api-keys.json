@@ -1,0 +1,117 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P4EZMA1R009HMH8M4",
+  "name": "api_keys",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P4KX44Q4YYE7KHC8T",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false,
+      "comment": "Surrogate key of the api key."
+    },
+    {
+      "id": "01M8EJX99PYTK84R79A0VJ0AY2",
+      "name": "prefix",
+      "type": "string",
+      "length": 12,
+      "nullable": false,
+      "comment": "Public prefix shown in the console to identify the key."
+    },
+    {
+      "id": "01M8EJX99PE87VRBPHP2DQA5D5",
+      "name": "key_hash",
+      "type": "string",
+      "length": 128,
+      "nullable": false,
+      "comment": "SHA-256 hash of the secret."
+    },
+    {
+      "id": "01M8EJX99P0FZ8NGNNTY8MZHZ1",
+      "name": "expires_on",
+      "type": "date",
+      "comment": "Expiry date; null for no expiry."
+    },
+    {
+      "id": "01M8EJX99PQH7903DYPJGAG47H",
+      "name": "last_used_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "Most recent use."
+    },
+    {
+      "id": "01M8EJX99PRCRBYHJJZESN6M5W",
+      "name": "revoked_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the key was revoked."
+    },
+    {
+      "id": "01M8EJX99P2XE2CYV0ZK8YRHX6",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PHZVS4C8R859MZA0W",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PZJ3DVKM9MV97EZ3N",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P924C6DYMMYNPN8ZR",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PFWP4W3KJF34BENBV",
+      "name": "api_client_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_api_keys",
+    "columns": [
+      "01M8EJX99P4KX44Q4YYE7KHC8T"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A91D29JMH3PCX8ZQTQ",
+      "name": "uq_api_keys_prefix",
+      "columns": [
+        "01M8EJX99PYTK84R79A0VJ0AY2"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9XNAB4QCQ9JEZT2SB",
+      "name": "fk_api_keys_api_client_id",
+      "columns": [
+        "01M8EJX99PFWP4W3KJF34BENBV"
+      ],
+      "referencesTable": "01M8EJX99PP4N2TRAWZE99QEBQ",
+      "referencesColumns": [
+        "01M8EJX99PC1D60E7P4ASZS5S4"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A secret credential of an API client; only a hash is stored."
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH76W0TZNRRD44KZ05",
+  "name": "lead operates in industry in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2HQYB95X5N5KYTGG7Z2TBNR",
+  "foreignKey": "01M8EJX9A8D1CVXGNC3J9ZXTCB"
+}

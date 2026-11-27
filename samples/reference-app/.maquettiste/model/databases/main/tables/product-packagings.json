@@ -1,0 +1,131 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NAEKAFW0PSZNYH88E",
+  "name": "product_packagings",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99N0WWTDBP2XA5Y8V9Q",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product packaging."
+    },
+    {
+      "id": "01M8EJX99N81557RDHGP0K7J7W",
+      "name": "packaging_level",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Packaging level - each, inner, case or pallet."
+    },
+    {
+      "id": "01M8EJX99N96P5CPRE9ZVRNJF7",
+      "name": "units_per_package",
+      "type": "int32",
+      "nullable": false,
+      "comment": "Base units in one package."
+    },
+    {
+      "id": "01M8EJX99NCYE5KBP2FMMCVK74",
+      "name": "dimensions_length",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Longest side."
+    },
+    {
+      "id": "01M8EJX99NTFN3Q4WHS404F22C",
+      "name": "dimensions_width",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Second side."
+    },
+    {
+      "id": "01M8EJX99N6NV25JP465X8NVM0",
+      "name": "dimensions_height",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 3,
+      "comment": "Vertical side."
+    },
+    {
+      "id": "01M8EJX99NFY5M6WTF8RTVRD7N",
+      "name": "dimensions_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the three measures."
+    },
+    {
+      "id": "01M8EJX99NC52BMYBA9E20DZWY",
+      "name": "gross_weight_value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "The weight."
+    },
+    {
+      "id": "01M8EJX99NJ13CBJJ3KKGRKD99",
+      "name": "gross_weight_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the weight."
+    },
+    {
+      "id": "01M8EJX99N4359PF96EYP0MXQ7",
+      "name": "gtin",
+      "type": "string",
+      "length": 14,
+      "comment": "GTIN of the package."
+    },
+    {
+      "id": "01M8EJX99NX0YD4KQ32ZCN5HH4",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99NWFMH6XKJMH4SXZFE",
+      "name": "unit_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_packagings",
+    "columns": [
+      "01M8EJX99N0WWTDBP2XA5Y8V9Q"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A70847W70FS9TZGSH6",
+      "name": "fk_product_packagings_product_id",
+      "columns": [
+        "01M8EJX99NX0YD4KQ32ZCN5HH4"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A78A1F3J42Y2RJT2N4",
+      "name": "fk_product_packagings_unit_code",
+      "columns": [
+        "01M8EJX99NWFMH6XKJMH4SXZFE"
+      ],
+      "referencesTable": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "referencesColumns": [
+        "01M8EJX99Q26RFK5STCSH1JBPE"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A packaging level of a product, such as a case of 12 or a pallet of 60 cases."
+}

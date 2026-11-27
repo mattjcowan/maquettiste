@@ -1,0 +1,72 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PKDR3T8F03SN0PFYW",
+  "name": "industries",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P32VY2C89WYH022P1",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the industry."
+    },
+    {
+      "id": "01M8EJX99PD1JRPJRDTMTJ1VAH",
+      "name": "naics_code",
+      "type": "string",
+      "length": 6,
+      "comment": "NAICS code of the sector."
+    },
+    {
+      "id": "01M8EJX99PD2T5ZC75A4DQ1AHA",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99PSP6ZQGCRMVFBJJV5",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99P232WEBADRYQE729E",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99PEWMPVDS54P3N2T8B",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_industries",
+    "columns": [
+      "01M8EJX99P32VY2C89WYH022P1"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A86HBVJC8NK8X8KM24",
+      "name": "uq_industries_code",
+      "columns": [
+        "01M8EJX99PD2T5ZC75A4DQ1AHA"
+      ]
+    }
+  ],
+  "comment": "Industry classification of a customer or lead, based on NAICS sectors."
+}

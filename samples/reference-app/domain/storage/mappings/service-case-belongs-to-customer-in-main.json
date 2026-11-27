@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJNPH92VTNAGMH3X6D",
+  "name": "service case belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1RP3BDM6DHEM6N1HS9Q843J",
+  "foreignKey": "01M8EJX9ABVJ164GNGD21HZE8W"
+}

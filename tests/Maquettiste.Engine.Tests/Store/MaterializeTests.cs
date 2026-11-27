@@ -22,6 +22,7 @@ namespace Maquettiste.Engine.Tests.Store;
 /// attribute its binding leaves unmapped; each previews without
 /// writing and refuse what is already bound; deletes drop bindings and keep the entities.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class MaterializeTests
 {
     private const string NotesTableId = "01K6BND0000000000000000001";

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ0WXN737CXA7S6EP7",
+  "name": "agreement line is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M298XZCQYBXG0KHPBST6VG4J",
+  "foreignKey": "01M8EJX9AA219CCVF59XA1FCVN"
+}

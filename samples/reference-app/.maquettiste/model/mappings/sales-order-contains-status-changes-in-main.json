@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJFSCYWRME61RBPQ1D",
+  "name": "sales order contains status changes in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1HKPRWNB5CG1MH9CAYFCGXH",
+  "foreignKey": "01M8EJX9AC727DNN3X8GM9TW1N"
+}

@@ -69,5 +69,73 @@
       },
       "description": "Country of the head office."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B8T3MMB7HY557NC4B4",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99N266RWXHYX839QRMH",
+      "fields": [
+        {
+          "attribute": "01M2Y9BGF1Z4F2PMQJBN1C56J9",
+          "column": "01M8EJX99NYNWTYGXRBMVEF7ED"
+        },
+        {
+          "attribute": "01M1GKPACJ9C3WXN0EGFQ2STTJ",
+          "column": "01M8EJX99NFTVMVAHBW9ZR8P4Z"
+        },
+        {
+          "attribute": "01M2C8R9CBJEXR9595GCQT0B5S",
+          "column": "01M8EJX99N2468Q1V317PHBES8"
+        },
+        {
+          "attribute": "01M1JS8FS1P5W06R75SZ4SS75G",
+          "column": "01M8EJX99NZGMDF30QWJYM1QYF"
+        },
+        {
+          "attribute": "01M2C4PWY2ZCDMGCKYM2WWJABS.01M2XGCNR9A93G7CMNJFZ726JT",
+          "column": "01M8EJX99N0N6Z38E211YK0VFA"
+        },
+        {
+          "attribute": "01M2C4PWY2ZCDMGCKYM2WWJABS.01M1MY7VCYQZC3CZTVHX2M3MAP",
+          "column": "01M8EJX99NZ3EECANXRRSXXH8Y"
+        },
+        {
+          "attribute": "01M2T3MN2PJ22C8PP7MJFRWEB6",
+          "column": "01M8EJX99NXTV7QQZQDQSSMACH"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99N33M7BAACPJ3CQJ2R"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99NWBJFECKGHMWGZ02D"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99NJBNSX3XEF5KR6ABN"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99NP9435M8WE7F0R48H"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N0N6Z38E211YK0VFA": "706ac9a9:ae2dc2c0",
+          "01M8EJX99N2468Q1V317PHBES8": "747a8f39:6b504d2a",
+          "01M8EJX99N33M7BAACPJ3CQJ2R": "42049432:e0d08678",
+          "01M8EJX99NFTVMVAHBW9ZR8P4Z": "82a3537f:35f1a519",
+          "01M8EJX99NJBNSX3XEF5KR6ABN": "d31d4567:fd717804",
+          "01M8EJX99NP9435M8WE7F0R48H": "0b075263:9599b5fd",
+          "01M8EJX99NWBJFECKGHMWGZ02D": "c0d79bde:9599b5fd",
+          "01M8EJX99NXTV7QQZQDQSSMACH": "38ac8394:641290f5",
+          "01M8EJX99NYNWTYGXRBMVEF7ED": "a5614527:8da1c7b8",
+          "01M8EJX99NZ3EECANXRRSXXH8Y": "58659937:b0c85a1f",
+          "01M8EJX99NZGMDF30QWJYM1QYF": "080a3a61:a9c53dee"
+        }
+      }
+    }
   ]
 }

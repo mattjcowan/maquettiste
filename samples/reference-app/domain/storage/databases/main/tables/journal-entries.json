@@ -1,0 +1,165 @@
+{
+  "kind": "table",
+  "id": "01M38K2QP4Y617PVRRC6BZ9TCJ",
+  "name": "journal_entries",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Journal entry keys come from the named, uncached journal_entry_seq.",
+  "columns": [
+    {
+      "id": "01M1XTAK24VMJ86QYB1WBKGP0T",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "sequence",
+      "sequence": "01M31G9BMK4DRC7GQFT8V9Q9G0",
+      "comment": "Drawn from journal_entry_seq."
+    },
+    {
+      "id": "01M8EJX99P36CN3Z9RPN3JC0JH",
+      "name": "entry_date",
+      "type": "date",
+      "nullable": false,
+      "comment": "Accounting date."
+    },
+    {
+      "id": "01M8EJX99PHNS5HWQ7BFAR7FNZ",
+      "name": "reference",
+      "type": "string",
+      "length": 40,
+      "comment": "Source document number."
+    },
+    {
+      "id": "01M8EJX99PFS4Q31W1845GPW29",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "nullable": false,
+      "comment": "What the entry records."
+    },
+    {
+      "id": "01M8EJX99P6755TKZ6087XSRKA",
+      "name": "status",
+      "type": "string",
+      "length": 1,
+      "nullable": false,
+      "default": "D",
+      "comment": "Posting state."
+    },
+    {
+      "id": "01M8EJX99PMPK9M3CHEVAEXBMC",
+      "name": "source_document",
+      "type": "string",
+      "length": 40,
+      "comment": "Kind of source, such as invoice or goods-receipt."
+    },
+    {
+      "id": "01M8EJX99P4F85Z11YF5TVHQED",
+      "name": "posted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was posted."
+    },
+    {
+      "id": "01M8EJX99PYM82RS5BNQQN8V5R",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PB4HRZNF3R27XCS70",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PSD43JASK5SDE5V6C",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PWJ3W6HJVN4AKZAZH",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PZ3ZVFB2SQHY7RQX6",
+      "name": "fiscal_period_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PB4J9H97E37C69K9J",
+      "name": "posted_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PA3K61DYAMMHPT9FK",
+      "name": "reversal_of_id",
+      "type": "int64"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_journal_entries",
+    "columns": [
+      "01M1XTAK24VMJ86QYB1WBKGP0T"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8W0R4MJXSY8FRGPM2",
+      "name": "fk_journal_entries_fiscal_period_id",
+      "columns": [
+        "01M8EJX99PZ3ZVFB2SQHY7RQX6"
+      ],
+      "referencesTable": "01M8EJX99PQGDAZ8G4N907SBFG",
+      "referencesColumns": [
+        "01M8EJX99PA2921A0TER2S0BDK"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A8QT8M0TE051ZQS2X3",
+      "name": "fk_journal_entries_posted_by_id",
+      "columns": [
+        "01M8EJX99PB4J9H97E37C69K9J"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A83GETEDPRE6AAZ5VQ",
+      "name": "fk_journal_entries_reversal_of_id",
+      "columns": [
+        "01M8EJX99PA3K61DYAMMHPT9FK"
+      ],
+      "referencesTable": "01M38K2QP4Y617PVRRC6BZ9TCJ",
+      "referencesColumns": [
+        "01M1XTAK24VMJ86QYB1WBKGP0T"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A84TB120164FM3YWRC",
+      "name": "ix_journal_entries_entry_date",
+      "columns": [
+        {
+          "column": "01M8EJX99P36CN3Z9RPN3JC0JH"
+        }
+      ]
+    }
+  ],
+  "comment": "Journal entry keys come from the named, uncached journal_entry_seq."
+}

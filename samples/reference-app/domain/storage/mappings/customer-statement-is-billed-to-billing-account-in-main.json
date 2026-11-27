@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CGH6DJ228HP2XTCEBK",
+  "name": "customer statement is billed to billing account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M32YEQQH9J2RFHXF3H6E679S",
+  "foreignKey": "01M8EJX9A3PV4QRP0PYB19TYD7"
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JQENT0000000000000000001",
+  "name": "SalesOrder",
+  "package": "01JQPKG0000000000000000001",
+  "lifecycle": "01JQPRC0000000000000000001",
+  "key": {
+    "attributes": [
+      "01JQATT0000000000000000001"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01JQATT0000000000000000001",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000002",
+      "name": "status",
+      "type": {
+        "ref": "01JQENM0000000000000000001"
+      },
+      "required": true,
+      "default": "Draft"
+    },
+    {
+      "id": "01JQATT0000000000000000003",
+      "name": "configuration",
+      "type": "json",
+      "description": "The active states of the lifecycle, for the nested states the status cannot hold."
+    },
+    {
+      "id": "01JQATT0000000000000000004",
+      "name": "total",
+      "type": "decimal",
+      "required": true
+    },
+    {
+      "id": "01JQATT0000000000000000005",
+      "name": "creditLimit",
+      "type": "decimal",
+      "required": true
+    }
+  ]
+}

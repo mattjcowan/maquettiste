@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHBZDAFXY8A0EKMH2G",
+  "name": "sales territory reports to manager in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M36EZCVD89W0FJ5TCQ8CQ203",
+  "foreignKey": "01M8EJX9A87F8YWD586JZJERFX"
+}

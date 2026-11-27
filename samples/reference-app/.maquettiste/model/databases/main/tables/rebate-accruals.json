@@ -1,0 +1,110 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QVHS8V36PE6B11JS4",
+  "name": "rebate_accruals",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QVDPR8D7ZA8DJMVWG",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the rebate accrual."
+    },
+    {
+      "id": "01M8EJX99QTP2S8YZ9GZ0TX403",
+      "name": "accrued_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date of accrual."
+    },
+    {
+      "id": "01M8EJX99QBK7DD934Y6PB5XET",
+      "name": "base_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QF0SDG0D9CR04584C",
+      "name": "base_amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QWVJFVAY65F04RFE0",
+      "name": "rebate_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99Q1S6A5XW1A5KYWS8Y",
+      "name": "rebate_amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99Q33F5DW8WYATH0QSK",
+      "name": "is_settled",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether it was paid out or credited."
+    },
+    {
+      "id": "01M8EJX99QKCJYEHA72JZ0WWCX",
+      "name": "rebate_program_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q9427ZHGNVMJ9B0VJ",
+      "name": "invoice_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_rebate_accruals",
+    "columns": [
+      "01M8EJX99QVDPR8D7ZA8DJMVWG"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAFCPCRJ1W5YBVEM5E",
+      "name": "fk_rebate_accruals_rebate_program_id",
+      "columns": [
+        "01M8EJX99QKCJYEHA72JZ0WWCX"
+      ],
+      "referencesTable": "01M8EJX99Q01ZCP7FPGZ6KZBR5",
+      "referencesColumns": [
+        "01M8EJX99Q997N2ZPTD37ZW0PQ"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AA6EMT07P701SBD6S7",
+      "name": "fk_rebate_accruals_invoice_id",
+      "columns": [
+        "01M8EJX99Q9427ZHGNVMJ9B0VJ"
+      ],
+      "referencesTable": "01M2GD6QYSRRK545Z2FCJ57JXN",
+      "referencesColumns": [
+        "01M8EJX99MY2YCY00H3262RRRP"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A rebate accrued on an invoice under a rebate program."
+}

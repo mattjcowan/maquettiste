@@ -1,0 +1,124 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q01ZCP7FPGZ6KZBR5",
+  "name": "rebate_programs",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q997N2ZPTD37ZW0PQ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the rebate program."
+    },
+    {
+      "id": "01M8EJX99Q4JZRVE1GNPDSJPNR",
+      "name": "name",
+      "type": "string",
+      "length": 150,
+      "nullable": false,
+      "comment": "Program name."
+    },
+    {
+      "id": "01M8EJX99QVCTCHS6SH4NNYF1Q",
+      "name": "description",
+      "type": "text",
+      "comment": "Program terms."
+    },
+    {
+      "id": "01M8EJX99QXA9SRTTB564JYYRG",
+      "name": "period_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99QY1JK5RC0Y08VBAV0",
+      "name": "period_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99Q5DRRDFVQQ9QDMG71",
+      "name": "rebate_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "nullable": false,
+      "comment": "Rebate percentage of eligible sales."
+    },
+    {
+      "id": "01M8EJX99Q8AF1SBH58QG5EWAM",
+      "name": "threshold_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QEYTTGTT36AEQ2E7B",
+      "name": "threshold_amount_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QFK616X6E539Z1F6N",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QQSJKJSTS3DRT1R8T",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QJXZGNB7Y29Q3HM5J",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99Q1CKXVDPHWA2TCTXV",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QT2C4CEMAS45NCCWB",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_rebate_programs",
+    "columns": [
+      "01M8EJX99Q997N2ZPTD37ZW0PQ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA3CWR6XNPQNRRCVZ5",
+      "name": "fk_rebate_programs_customer_id",
+      "columns": [
+        "01M8EJX99QT2C4CEMAS45NCCWB"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A volume rebate agreement that pays a customer back a percentage of purchases over a period."
+}

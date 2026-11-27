@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHNVJ3G1B7MNZCJ5G4",
+  "name": "product lifecycle event is changed by user account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1T07TCTAPTHSVX1XXJD47ZZ",
+  "foreignKey": "01M8EJX9A79Q6SW814DMKF0FF3"
+}

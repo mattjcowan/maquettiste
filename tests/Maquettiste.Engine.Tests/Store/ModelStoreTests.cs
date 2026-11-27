@@ -37,7 +37,7 @@ public sealed class ModelStoreTests
         await store.LoadAsync(Ct);
 
         Assert.Equal(1, loader.Calls);
-        Assert.Equal(33, store.Current!.Documents.Count);
+        Assert.Equal(40, store.Current!.Documents.Count);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class ModelStoreTests
         var index = await s.Store.GetIndexAsync(Ct);
 
         Assert.NotNull(s.Store.Current);
-        Assert.Equal(33, index.Count);
+        Assert.Equal(40, index.Count);
         foreach (var summary in index)
         {
             Assert.Equal(ContentHash.Of(File.ReadAllBytes(s.Harness.Repo.PathOf(summary.Path))), summary.Hash);
@@ -62,7 +62,7 @@ public sealed class ModelStoreTests
         Assert.Same(document, await s.Store.GetElementAsync(attributeId, Ct)); // a sub-element id returns its owner
         Assert.Null(await s.Store.GetElementAsync("01J92P0V0000000000000000ZZ", Ct));
         var references = await s.Store.GetReferencesAsync(invoice, Ct);
-        Assert.Contains(references, r => r.FromElementId == s.Id("mapping", "Invoice in main") && r.Field == "entity");
+        Assert.Contains(references, r => r.FromElementId == s.Id("relation", "places") && r.Field == "entity");
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public sealed class ModelStoreTests
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.Equal(".maquettiste/model/databases/primary-store/database.json", result.Current!.Path);
         Assert.False(Directory.Exists(s.Harness.Model("model/databases/main")));
-        Assert.Equal(8, children.Count);
+        Assert.Equal(13, children.Count);
         foreach (var id in children)
             Assert.StartsWith(".maquettiste/model/databases/primary-store/", s.Store.Current!.GetDocument(id)!.Path, StringComparison.Ordinal);
         Assert.Equal(children.Order(StringComparer.Ordinal), result.Changes!.Changed.Select(c => c.Id).Where(children.Contains).Order(StringComparer.Ordinal));
@@ -288,8 +288,8 @@ public sealed class ModelStoreTests
     public async Task A_save_that_adds_a_package_default_judges_its_members()
     {
         await using var s = await BillingStore.OpenAsync();
-        // The real validator, with its scope: a child package's members and an overlay whose entity is in Billing do not reference
-        // Billing, they are its conflict peers (next-phase-2-design.md section 3.1, D4).
+        // The real validator, with its scope: a child package's members do not reference Billing, they are its conflict peers
+        // (next-phase-2-design.md section 3.1, D4).
         var validator = Validation.ValidationFixture.Validator();
         s.Harness.Validator.Rule = (model, scope) => validator.ValidateAsync(model, scope, null, Ct).GetAwaiter().GetResult().Diagnostics;
         const string Owned = "01K9PKG0000000000000000011";
@@ -306,10 +306,10 @@ public sealed class ModelStoreTests
 
         Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
         var judged = refused.Diagnostics.Where(d => d.Rule == "MQ2018").Select(d => (d.ElementId!, d.JsonPointer!)).ToList();
-        // Product is in Catalog, a child of Billing; the invoices overlay takes its entity's package; both list stereotypes, so the
-        // finding points at the list, not at an entry.
+        // Product is in Catalog, a child of Billing; it lists stereotypes, so the finding points at the list, not at an entry. The
+        // invoices table is a designed table in no package, so the package's defaults do not reach it.
         Assert.Contains((s.Id("entity", "Product"), "/stereotypes"), judged);
-        Assert.Contains(("01J92P0V1T0J6RH4MY9H81NYB4", "/stereotypes"), judged);
+        Assert.DoesNotContain(judged, j => j.Item1 == s.Id("table", "invoices"));
         Assert.Contains((s.Id("entity", "Customer"), "/stereotypes"), judged);
         Assert.Equal(before, s.Files());
     }
@@ -361,7 +361,8 @@ public sealed class ModelStoreTests
         Assert.Equal("MQ3018", Assert.Single(refused.Diagnostics).Rule);
         Assert.Equal(before, s.Files());
         var (candidate, scope) = validator.Calls.First();
-        Assert.Equal([customer.Element.Id], scope.ElementIds);
+        // The scope holds the entity and the table its binding reads.
+        Assert.Equal([customer.Element.Id, s.Id("table", "customers")], scope.ElementIds);
         Assert.True(scope.IncludeReferrers);
         Assert.Equal("Bad", candidate.Get<Entity>(customer.Element.Id)!.DisplayName);
 
@@ -481,7 +482,7 @@ public sealed class ModelStoreTests
         var changes = await s.Store.RefreshAsync(["model/entities/customer.json"], Ct);
 
         Assert.True(changes.IsEmpty);
-        Assert.Equal(33, s.Store.Current!.Documents.Count);
+        Assert.Equal(40, s.Store.Current!.Documents.Count);
     }
 
     [Fact]

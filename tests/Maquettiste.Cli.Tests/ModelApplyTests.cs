@@ -5,6 +5,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Cli.Tests;
 
 /// <summary><c>maquettiste model apply</c>: a batch file applied all or nothing, by name, with ids minted (next-phase-1-design.md 5.1).</summary>
+[UsesProjectedFixtures]
 public sealed class ModelApplyTests
 {
     private const string Main = "01J92P0V1QRN2181XM2ZWE02W4";

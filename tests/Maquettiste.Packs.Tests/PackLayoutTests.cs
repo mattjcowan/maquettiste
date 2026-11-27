@@ -4,6 +4,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Packs.Tests;
 
 /// <summary>The shape of the example packs themselves: manifests, documentation and file hygiene.</summary>
+[UsesProjectedFixtures]
 public sealed class PackLayoutTests
 {
     public static TheoryData<string> PackNames => ["sql-ddl", "csharp-dapper", "process-docs", "seed-data"];

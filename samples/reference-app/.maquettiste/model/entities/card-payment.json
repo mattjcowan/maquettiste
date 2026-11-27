@@ -64,5 +64,55 @@
       "indexed": true,
       "description": "Processor transaction id."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9ATBXGQTZ4J1M4T3MSV",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99MH617GC54BZJP6869",
+      "baseForeignKey": "01M8EJX9A36P7TM1J7B3C1Y84K",
+      "fields": [
+        {
+          "attribute": "01M2PMAPNZA43DDKKWHWJXAZ6D",
+          "column": "01M8EJX99MCHAP5SBKKCD7C5SP"
+        },
+        {
+          "attribute": "01M1YVBQ0G1XZMJQK99X5HAAS1",
+          "column": "01M8EJX99MNE99300B7NN6JXQ3"
+        },
+        {
+          "attribute": "01M23HV475EH618FQRSPWYTWWB",
+          "column": "01M8EJX99MY3G0MRYJZ7RNTHGV"
+        },
+        {
+          "attribute": "01M1JYTCPCM744TF6B7D7ANHQ4",
+          "column": "01M8EJX99MBHK27QEZBQR6JSF4"
+        },
+        {
+          "attribute": "01M2GA4ZDBTYSPV445G90G70VA",
+          "column": "01M8EJX99MKS7062PTDJTRRF94"
+        },
+        {
+          "attribute": "01M1M513DRFV7KPGVYNPSV74AP",
+          "column": "01M8EJX99MJSJQ45XPE1FA2675"
+        },
+        {
+          "attribute": "01M20BJGXTT2NZKVX4P07MSV6M",
+          "column": "01M8EJX99MBX41B0MMQZCY299H"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99M9YCFPN0G6B9WWS6T": "a5614527:8da1c7b8",
+          "01M8EJX99MBHK27QEZBQR6JSF4": "9aa88de1:d9a25069",
+          "01M8EJX99MBX41B0MMQZCY299H": "10685efa:d8a57cf9",
+          "01M8EJX99MCHAP5SBKKCD7C5SP": "00327328:f80b7728",
+          "01M8EJX99MJSJQ45XPE1FA2675": "021f79d3:9599b5fd",
+          "01M8EJX99MKS7062PTDJTRRF94": "cc5e4a31:ae2dc2c0",
+          "01M8EJX99MNE99300B7NN6JXQ3": "2fe9ad60:f80b7728",
+          "01M8EJX99MY3G0MRYJZ7RNTHGV": "51ca0ff0:d9a25069"
+        }
+      }
+    }
   ]
 }

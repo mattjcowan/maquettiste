@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Tests.Editor;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
@@ -10,6 +11,7 @@ namespace Maquettiste.Engine.Tests.Store;
 /// its script returns them, with ids and keys in seed terms, or in a database's terms with stable ids, the values foreign-key entries
 /// fill and their refs, running only the scripts of the seed and of the seeds its entries name.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class SeedPreviewTests
 {
     internal const string P = "01K9SPV00000000000000000";

@@ -1,0 +1,113 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P7JAMY9SR8BXA4Y94",
+  "name": "pick_waves",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PB7TB0Z2XR72AHXAK",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the pick wave."
+    },
+    {
+      "id": "01M8EJX99PV0XSDQM8E8Z0361A",
+      "name": "wave_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Wave number."
+    },
+    {
+      "id": "01M8EJX99PMZZHHAP0SKQGKZN0",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "planned",
+      "comment": "planned, released or complete."
+    },
+    {
+      "id": "01M8EJX99PYKDC085B6GEWEJKY",
+      "name": "planned_start_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "Planned release time."
+    },
+    {
+      "id": "01M8EJX99PA8QZ4KZZEFS91YFJ",
+      "name": "released_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "Actual release time."
+    },
+    {
+      "id": "01M8EJX99PKQ6X42J5MM0HG0Q6",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P6E878G6Q2NYFDG1H",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PEJMW7KW81M0FJFH7",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PBW2XHX355ZH47X45",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PB7TA13D0DJAZNBSM",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_pick_waves",
+    "columns": [
+      "01M8EJX99PB7TB0Z2XR72AHXAK"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A99QDH1NSV2T81V23M",
+      "name": "uq_pick_waves_wave_number",
+      "columns": [
+        "01M8EJX99PV0XSDQM8E8Z0361A"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9K0H8B56FFPY8K9YD",
+      "name": "fk_pick_waves_warehouse_id",
+      "columns": [
+        "01M8EJX99PB7TA13D0DJAZNBSM"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A batch of orders released to the warehouse floor together, such as the 10:00 parcel wave."
+}

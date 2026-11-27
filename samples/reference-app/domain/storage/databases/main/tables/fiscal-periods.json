@@ -1,0 +1,111 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PQGDAZ8G4N907SBFG",
+  "name": "fiscal_periods",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PA2921A0TER2S0BDK",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the fiscal period."
+    },
+    {
+      "id": "01M8EJX99P4GYWSP10WGZY83HP",
+      "name": "name",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Period name, such as FY2026-09."
+    },
+    {
+      "id": "01M8EJX99PSNH0F87F7YWBKWEY",
+      "name": "fiscal_year",
+      "type": "int16",
+      "nullable": false,
+      "comment": "Fiscal year."
+    },
+    {
+      "id": "01M8EJX99P4N58SD34Y5M08WFE",
+      "name": "period_number",
+      "type": "int16",
+      "nullable": false,
+      "comment": "Period within the year; 13 is the adjustment period."
+    },
+    {
+      "id": "01M8EJX99PX2E19RAZN4QRYHMQ",
+      "name": "period_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99P7B68E6ZBKWZ032XH",
+      "name": "period_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99PVTD4ABNGBB68CBNP",
+      "name": "is_closed",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether posting is closed."
+    },
+    {
+      "id": "01M8EJX99P830DRBVNT0ZN13E6",
+      "name": "closed_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was closed."
+    },
+    {
+      "id": "01M8EJX99PRDA4E5B9JZ30SA0R",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PHWXMHES213JM96S6",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P2EF1168P9R90RC09",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P6TKXA46BEPZR1ZHT",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_fiscal_periods",
+    "columns": [
+      "01M8EJX99PA2921A0TER2S0BDK"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A84VMJ235Y1TE5EC51",
+      "name": "uq_fiscal_periods_name",
+      "columns": [
+        "01M8EJX99P4GYWSP10WGZY83HP"
+      ]
+    }
+  ],
+  "comment": "A monthly accounting period of a fiscal year."
+}

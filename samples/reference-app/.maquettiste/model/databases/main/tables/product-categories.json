@@ -1,0 +1,119 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NQ4YTPRWGEB5NP3V1",
+  "name": "product_categories",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NSKK4SVQ4V8E5P14K",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product category."
+    },
+    {
+      "id": "01M8EJX99N97TNWEPG9R2KDE13",
+      "name": "code",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Stable category code used in feeds."
+    },
+    {
+      "id": "01M8EJX99N83XR8HV13S781VJS",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Category name."
+    },
+    {
+      "id": "01M8EJX99N9HY6TR87Z3ZR5P6A",
+      "name": "description",
+      "type": "text",
+      "comment": "Category landing page copy."
+    },
+    {
+      "id": "01M8EJX99NBJQ280YMMFSFPS19",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position among its siblings."
+    },
+    {
+      "id": "01M8EJX99N7W4AZQ8WQZ8SMPD8",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the category is shown."
+    },
+    {
+      "id": "01M8EJX99N9H17CPDCNWJ42V65",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99N46Q9DMC90XY570HK",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NX817ZZ0G1123S31R",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NJE4HC9JS6ZHJCZJ7",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NDB64H0JMDYK0KJN1",
+      "name": "parent_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_categories",
+    "columns": [
+      "01M8EJX99NSKK4SVQ4V8E5P14K"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A72EGJKPA1CTHSXCGV",
+      "name": "uq_product_categories_code",
+      "columns": [
+        "01M8EJX99N97TNWEPG9R2KDE13"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7FVV4Y02DKZJ3XZJT",
+      "name": "fk_product_categories_parent_id",
+      "columns": [
+        "01M8EJX99NDB64H0JMDYK0KJN1"
+      ],
+      "referencesTable": "01M8EJX99NQ4YTPRWGEB5NP3V1",
+      "referencesColumns": [
+        "01M8EJX99NSKK4SVQ4V8E5P14K"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A node of the catalog tree (Janitorial > Gloves > Nitrile gloves)."
+}

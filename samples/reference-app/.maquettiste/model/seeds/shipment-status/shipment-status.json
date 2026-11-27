@@ -9,6 +9,8 @@
     "label",
     "description"
   ],
+  "apply": "converge",
+  "delete": true,
   "rows": [
     { "id": "01M2J9DM53XJ5AWZX3TRZVRF4Z", "values": ["PLAN", "Planned", "Created from an order, not yet picked."] },
     { "id": "01M1J0FH45ZVA7F9MJRH6C1534", "values": ["PICK", "Picking", "Being picked."] },

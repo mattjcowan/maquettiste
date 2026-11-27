@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ6WP72PFPRZCDJCN6",
+  "name": "supplier quote is supplied by supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2WGRSPAVT3FQ03ZCEJDH3JJ",
+  "foreignKey": "01M8EJX9ABA8TA5R39JDQAXHW9"
+}

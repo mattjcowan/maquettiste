@@ -11,6 +11,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>Pack authoring, the unit rules and the plan explanation (generation-ui.md sections 3, 4 and 5).</summary>
+[UsesProjectedFixtures]
 public sealed class PackAuthoringTests
 {
     private static CancellationToken Ct => EditorRepo.Ct;

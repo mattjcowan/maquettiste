@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJKCYZ3086R6W8ERNQ",
+  "name": "sales order is cancelled for cancellation reason in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2AXDYBBVY3WBEKB1E4RMC5Y",
+  "foreignKey": "01M8EJX9AC8V1CJ9PHS6Y89SAF"
+}

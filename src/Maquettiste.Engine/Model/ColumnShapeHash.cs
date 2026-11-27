@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -98,6 +99,22 @@ internal static class ColumnShapeHash
 
     private static string Number(int? value) => value?.ToString(CultureInfo.InvariantCulture) ?? "";
 
-    private static string Digest(string text) =>
-        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)).AsSpan(0, PartLength / 2));
+    private static string Digest(string text)
+    {
+        var count = Encoding.UTF8.GetMaxByteCount(text.Length);
+        var rented = count <= 512 ? null : ArrayPool<byte>.Shared.Rent(count);
+        try
+        {
+            Span<byte> bytes = rented ?? stackalloc byte[512];
+            var written = Encoding.UTF8.GetBytes(text, bytes);
+            Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+            SHA256.HashData(bytes[..written], hash);
+            return Convert.ToHexStringLower(hash[..(PartLength / 2)]);
+        }
+        finally
+        {
+            if (rented is not null)
+                ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
 }

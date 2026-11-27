@@ -3,7 +3,6 @@ namespace Acme.Billing.Billing;
 
 /// InvoiceLine
 /// Attributes: 4; required: id, quantity, unitPrice; prefix Acme.Billing
-/// Stored in invoice_lines
 public partial record InvoiceLine
 {
     public Ulid Id { get; init; }

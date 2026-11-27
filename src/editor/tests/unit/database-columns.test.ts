@@ -25,6 +25,7 @@ import { mergeDatabaseView } from "@/api/queries";
 import { MockBackend } from "@/mocks/backend";
 import { foreignKeyMismatches, resolveDatabase } from "@/mocks/model/physical";
 import { commentsAt } from "@/workspaces/settings/CommentsConvention";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 
 const DB = "01J92P0V1QRN2181XM2ZWE02W4";
 const ENTITY = "01J92P0V0ETQKXXP951CMMNHH3";
@@ -336,7 +337,7 @@ describe("the database view while the model has errors", () => {
 describe("the mock resolver applies an overlay's physical fields as the engine does", () => {
   const CUSTOMER_ID = "01J92P0V0KGPC29TQQG8R57EBM";
   const resolve = (overlay: Record<string, unknown> | null) => {
-    const backend = new MockBackend();
+    const backend = new MockBackend({ seed: billingProjectedSeed() });
     const docs = new Map(backend.model.docs());
     if (overlay) docs.set(String(overlay.id), overlay);
     const view = resolveDatabase({ docs, conventions: {}, databaseConventions: {} }, DB)!;
@@ -364,7 +365,7 @@ describe("the mock resolver applies an overlay's physical fields as the engine d
     expect(fkColumn).toMatchObject({ type: pk.type, nativeType: pk.nativeType });
     expect(foreignKeyMismatches(plain.view, plain.docs)).toEqual([]);
 
-    const backend = new MockBackend();
+    const backend = new MockBackend({ seed: billingProjectedSeed() });
     const docs = new Map(backend.model.docs());
     // The holder's own overlay (the fixture's invoices table has one) takes the entry, after its existing ones.
     const existing = [...docs.values()].find((d) => d.kind === "table" && d.entity === holder.entityId && d.origin === "synthesized");
@@ -403,5 +404,16 @@ describe("commentsAt", () => {
       value: "descriptions",
       inherited: "none (project)",
     });
+  });
+});
+
+describe("a custom type's native types in a projected column", () => {
+  it("name the column's native type in the database view", () => {
+    const backend = new MockBackend({ seed: billingProjectedSeed() });
+    backend.model.externalEdit("01J92P0V04TDYE2C73WMNXVDBV", (json) => {
+      json.nativeTypes = { postgresql: "character varying({length})", sqlserver: "nvarchar({length})" };
+    });
+    const customers = backend.generation.databaseView(DB)!.view!.tables.find((t) => t.name === "customers")!;
+    expect(customers.columns.find((c) => c.name === "email")?.nativeType).toBe("character varying(254)");
   });
 });

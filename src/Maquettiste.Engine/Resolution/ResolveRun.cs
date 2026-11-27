@@ -168,14 +168,21 @@ internal sealed partial class ResolveRun
         ResolveConceptual();
 
         var resolvedDatabases = new List<RDatabase>();
-        foreach (var database in databases)
+        if (CanRunDatabasesSideBySide(databases))
         {
-            Ct.ThrowIfCancellationRequested();
-            var run = new DatabaseRun(this, database);
-            var resolved = run.Run();
-            ResolveMigrations(resolved, database);
-            resolvedDatabases.Add(resolved);
-            Report();
+            RunDatabasesSideBySide(databases, resolvedDatabases);
+        }
+        else
+        {
+            foreach (var database in databases)
+            {
+                Ct.ThrowIfCancellationRequested();
+                var run = new DatabaseRun(this, database);
+                var resolved = run.Run();
+                ResolveMigrations(resolved, database);
+                resolvedDatabases.Add(resolved);
+                Report();
+            }
         }
 
         FinishConceptual();
@@ -383,7 +390,17 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>Registers an object for <see cref="ResolvedModel.Find"/>; the first registration of an id wins.</summary>
-    public void Register(IResolvedObject value) => _byId.TryAdd(value.Id, value);
+    public void Register(IResolvedObject value)
+    {
+        if (_capture.Value is { } capture)
+        {
+            lock (capture)
+                capture.Registered.Add(value);
+            return;
+        }
+
+        _byId.TryAdd(value.Id, value);
+    }
 
     /// <summary>The dependency set of an object, created on first use.</summary>
     /// <remarks>
@@ -486,7 +503,153 @@ internal sealed partial class ResolveRun
             }
         }
 
-        Diagnostics.Add(new Diagnostic(rule, severity, message, elementId, path, pointer, null, null));
+        var diagnostic = new Diagnostic(rule, severity, message, elementId, path, pointer, null, null);
+        if (_capture.Value is { } capture)
+        {
+            lock (capture)
+                capture.Diagnostics.Add(diagnostic);
+            return;
+        }
+
+        Diagnostics.Add(diagnostic);
+    }
+
+    // ---- databases side by side ---------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// What a database run holds back while it runs beside the others: its findings, its registrations and its additions to lists the
+    /// conceptual objects share, each applied in database order once every run is done, so the result is that of the runs one by one.
+    /// </summary>
+    private sealed class DatabaseCapture
+    {
+        public List<Diagnostic> Diagnostics { get; } = [];
+
+        public List<IResolvedObject> Registered { get; } = [];
+
+        public List<Action> Deferred { get; } = [];
+    }
+
+    /// <summary>Called as the database runs start side by side (tests: a cancellation that only the runs can meet).</summary>
+    internal Action? DatabaseRunsStarting { get; init; }
+
+    /// <summary>The capture of the database run the current flow belongs to (it flows into that run's parallel loops), or none.</summary>
+    private readonly AsyncLocal<DatabaseCapture?> _capture = new();
+
+    /// <summary>Guards the per-database maps of conceptual objects (mappings, bindings, joins, key sequences) written by runs side by side.</summary>
+    private readonly Lock _databaseMaps = new();
+
+    /// <summary>
+    /// Lists a binding on an entity check (<see cref="REntityCheck.ListedBy"/>, in database order): held back while database runs go side by
+    /// side, applied directly otherwise.
+    /// </summary>
+    /// <param name="check">The entity check.</param>
+    /// <param name="binding">The binding that lists it.</param>
+    internal void ListBinding(REntityCheck check, REntityBinding binding)
+    {
+        if (_capture.Value is { } capture)
+        {
+            lock (capture)
+                capture.Deferred.Add(() => ListBinding(check, binding));
+            return;
+        }
+
+        if (!check.ListedBy.Contains(binding))
+            check.ListedBy.Add(binding);
+    }
+
+    /// <summary>
+    /// Whether the database runs can go side by side with the result of running them one by one. They share the conceptual objects, and
+    /// the one link between runs that a later run reads is what an earlier run adds to a relation's dependency keys (in
+    /// <c>FinishRelationMappings</c>), which a later run's relations copy (<c>ResolveRelation</c>): each run waits for the run before it
+    /// to finish its relation mappings before it resolves its relations. A model where a relation can be promoted (promotion adds entities
+    /// and relations every run reads) or with an end of several types (whose storage reads relation keys after its own run's mappings)
+    /// runs them one by one.
+    /// </summary>
+    private bool CanRunDatabasesSideBySide(List<Database> databases) =>
+        databases.Count > 1 && _parallelism > 1 && _severalTypeEnds.Count == 0 && !EffectiveConventions.AnyPromotes(Settings)
+        && !Model.All<Mapping>().Any(m => m.Relation is not null && m.Shape == RelationShape.Promoted);
+
+    /// <summary>
+    /// Runs every database at once (see <see cref="CanRunDatabasesSideBySide"/>), then, in database order, applies each run's findings,
+    /// registrations and held-back additions and resolves its migration facts, as the one-by-one loop does.
+    /// </summary>
+    private void RunDatabasesSideBySide(List<Database> databases, List<RDatabase> resolvedDatabases)
+    {
+        // What the runs read of the conceptual objects settles first: a dependency set settles its list on first read, which two runs must
+        // not do at once. The lazily built lookups the runs share are built now.
+        foreach (var e in _entities.Values)
+            _ = DepsOf(e).ToList();
+        foreach (var r in _relations.Values)
+            _ = DepsOf(r).ToList();
+        foreach (var e in _enums.Values)
+            _ = DepsOf(e).ToList();
+        foreach (var s in _scalars.Values)
+            _ = DepsOf(s).ToList();
+        foreach (var v in _valueObjects.Values)
+            _ = DepsOf(v).ToList();
+        _ = ConceptualElementKeys;
+        _ = RelationsWithEnd("");
+
+        var runs = new DatabaseRun[databases.Count];
+        var captures = new DatabaseCapture[databases.Count];
+        var relationsDone = new TaskCompletionSource[databases.Count];
+        for (var i = 0; i < databases.Count; i++)
+        {
+            runs[i] = new DatabaseRun(this, databases[i]);
+            captures[i] = new DatabaseCapture();
+            relationsDone[i] = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            runs[i].RelationsAfter = i == 0 ? null : relationsDone[i - 1].Task;
+            runs[i].RelationsDone = relationsDone[i];
+        }
+
+        var results = new RDatabase?[databases.Count];
+        var failures = new Exception?[databases.Count];
+        var tasks = new Task[databases.Count];
+        DatabaseRunsStarting?.Invoke();
+        for (var i = 0; i < databases.Count; i++)
+        {
+            var index = i;
+            tasks[i] = Task.Factory.StartNew(() =>
+            {
+                _capture.Value = captures[index];
+                try
+                {
+                    results[index] = runs[index].Run();
+                }
+                catch (Exception ex)
+                {
+                    failures[index] = ex;
+                }
+                finally
+                {
+                    _capture.Value = null;
+                    relationsDone[index].TrySetResult(); // a run that failed lets the next one go on; its failure is rethrown below
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default); // every run starts; each observes Ct itself
+        }
+
+        Task.WaitAll(tasks);
+        // A cancelled run surfaces as the one-by-one loop surfaces it: an OperationCanceledException, not an aggregate.
+        Ct.ThrowIfCancellationRequested();
+        for (var i = 0; i < databases.Count; i++)
+        {
+            if (failures[i] is { } failure)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw(); // the failure a one-by-one loop meets first
+        }
+
+        for (var i = 0; i < databases.Count; i++)
+        {
+            Ct.ThrowIfCancellationRequested();
+            var capture = captures[i];
+            Diagnostics.AddRange(capture.Diagnostics);
+            foreach (var value in capture.Registered)
+                _byId.TryAdd(value.Id, value);
+            foreach (var action in capture.Deferred)
+                action();
+            ResolveMigrations(results[i]!, databases[i]);
+            resolvedDatabases.Add(results[i]!);
+            Report();
+        }
     }
 
     private void FreezeDependencies()

@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q2X39FG0PM1C3KHDB",
+  "name": "promotion_customer_segment",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QPKB7837C8AFF3DG2",
+      "name": "promotions_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QWB0BZ9326803E44J",
+      "name": "segments_id",
+      "type": "int32",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_promotion_customer_segment",
+    "columns": [
+      "01M8EJX99QPKB7837C8AFF3DG2",
+      "01M8EJX99QWB0BZ9326803E44J"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AC4BZHETDKQNFPYT2J",
+      "name": "fk_promotion_customer_segment_promotions_id",
+      "columns": [
+        "01M8EJX99QPKB7837C8AFF3DG2"
+      ],
+      "referencesTable": "01M8EJX99QF6C7NWKA4NH5E7W4",
+      "referencesColumns": [
+        "01M8EJX99Q0B4TTWBMHCCEYPKG"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AC6Q95T3WXSMG1R5H6",
+      "name": "fk_promotion_customer_segment_segments_id",
+      "columns": [
+        "01M8EJX99QWB0BZ9326803E44J"
+      ],
+      "referencesTable": "01M8EJX99P6W7GAWNGRRP2JFNF",
+      "referencesColumns": [
+        "01M8EJX99PBKVQ2PCHTWRY0Q81"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Customer segments a promotion is offered to; none means everyone."
+}

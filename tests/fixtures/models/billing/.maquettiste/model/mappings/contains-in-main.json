@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJPZP48MNPCSEXHYASNATD",
+  "name": "contains in main",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "relation": "01J92P0V1BWHG0REWKSTR292RS",
+  "foreignKey": "01M8EJPZNN1H52GX7W2HDGDX7H"
+}

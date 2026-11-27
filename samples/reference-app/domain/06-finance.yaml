@@ -65,12 +65,6 @@ entities:
       reversalOf: JournalEntry name=journal_entry_reverses_reversal_of | Entry this one reverses.
     children:
       lines: JournalLine ordered name=journal_entry_contains_lines | Debit and credit lines.
-    overlay:
-      description: Journal entry keys come from the named, uncached journal_entry_seq.
-      columns:
-        id:
-          sequence: journal_entry_seq
-          comment: Drawn from journal_entry_seq.
 
   JournalLine:
     description: A debit or credit to one ledger account within a journal entry.

@@ -1,10 +1,12 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
 
 /// <summary>The packs across runs: incremental runs, <c>--check</c>, migrations, protected regions and owned files.</summary>
+[UsesProjectedFixtures]
 public sealed class LifecycleTests
 {
     private static readonly FileChangeKind[] Writes = [FileChangeKind.Added, FileChangeKind.Modified, FileChangeKind.Deleted, FileChangeKind.HandEdited, FileChangeKind.Conflict, FileChangeKind.OrphanedOwned];

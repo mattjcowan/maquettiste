@@ -1,0 +1,114 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M363SQ4N8SHCCK8A874K7DDX",
+  "name": "audit_events",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Details are stored as jsonb so auditors can query inside them.",
+  "columns": [
+    {
+      "id": "01M8EJX99P2Y6A4HT5VZF73JEM",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the audit event."
+    },
+    {
+      "id": "01M8EJX99PPFJ7B3MGAGAGB7F2",
+      "name": "occurred_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the action happened."
+    },
+    {
+      "id": "01M8EJX99PJ8TD9YQ893NE547Z",
+      "name": "action",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "What happened, such as role.granted."
+    },
+    {
+      "id": "01M8EJX99PDGEA22FHXD9VZAGS",
+      "name": "entity_type",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "Kind of record affected."
+    },
+    {
+      "id": "01M8EJX99PDSC3Y6RSKE4NTQ8G",
+      "name": "entity_key",
+      "type": "string",
+      "length": 64,
+      "nullable": false,
+      "comment": "Key of the record affected."
+    },
+    {
+      "id": "01M1WPASMQA834D5F5X2Y579DS",
+      "name": "details",
+      "type": "json",
+      "nativeType": "jsonb",
+      "comment": "Before and after values, queried with jsonb operators."
+    },
+    {
+      "id": "01M8EJX99PBQVTM0TZ3F6X2R7J",
+      "name": "ip_address",
+      "type": "string",
+      "length": 45,
+      "comment": "Client IP address."
+    },
+    {
+      "id": "01M8EJX99PM7XY0XBXBAGX4T99",
+      "name": "actor_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_audit_events",
+    "columns": [
+      "01M8EJX99P2Y6A4HT5VZF73JEM"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A92VCXZVHYGTF0RD3W",
+      "name": "fk_audit_events_actor_id",
+      "columns": [
+        "01M8EJX99PM7XY0XBXBAGX4T99"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M1Q1YXTTXH48MWXYSG5S4WVE",
+      "name": "ix_audit_events_entity",
+      "columns": [
+        {
+          "column": "01M8EJX99PDGEA22FHXD9VZAGS"
+        },
+        {
+          "column": "01M8EJX99PDSC3Y6RSKE4NTQ8G"
+        }
+      ]
+    },
+    {
+      "id": "01M8EJX9A9Y3XASFRW087R9S0Q",
+      "name": "ix_audit_events_occurred_at",
+      "columns": [
+        {
+          "column": "01M8EJX99PPFJ7B3MGAGAGB7F2"
+        }
+      ]
+    }
+  ],
+  "comment": "Details are stored as jsonb so auditors can query inside them."
+}

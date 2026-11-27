@@ -58,5 +58,78 @@
       "type": "datetimeoffset",
       "description": "When it went live."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9AXG5J0XY83DSYCQMBW",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NKDJGETR7CA3DADK7",
+      "fields": [
+        {
+          "attribute": "01M1PGKD89XMY64FVEY7E7JR0K",
+          "column": "01M8EJX99NWJGG80S7VS5QXPNB"
+        },
+        {
+          "attribute": "01M1HE4TZXFBX35XJNN8VRZ3R1",
+          "column": "01M8EJX99NM9Q9136QG0M5GSNT"
+        },
+        {
+          "attribute": "01M2KN74ZZ0AM4BG856VHFFD87.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99N4CHVT2VGM7XXETQ6"
+        },
+        {
+          "attribute": "01M2KN74ZZ0AM4BG856VHFFD87.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99NTDV6CAAW6R4C9KXE"
+        },
+        {
+          "attribute": "01M2X873TDMMVEV1QBPYMNZWYC",
+          "column": "01M8EJX99NQE3BBG8GFK8Y7383"
+        },
+        {
+          "attribute": "01M20MYG4KDAGWGZJ47R90BKRZ",
+          "column": "01M8EJX99NZGPEWFQGPBCQD69P"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99N29DAVB0HQQ7HNKYV"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99NHA5RE8NYEKC0FP1Q"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99NA6K0NDX7N96SDD06"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99NAGQ5DN7NEQ79BEP1"
+        },
+        {
+          "attribute": "01M1HFG4RPT5ZF599SAPZVN4J8",
+          "column": "01M8EJX99NGRZHTYGG355QB82B"
+        },
+        {
+          "attribute": "01M2AEXETN244V46EXYB14J94X",
+          "column": "01M8EJX99NEJ4QEKJ27GAN0FDB"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N29DAVB0HQQ7HNKYV": "42049432:e0d08678",
+          "01M8EJX99N4CHVT2VGM7XXETQ6": "21fc155c:d249895e",
+          "01M8EJX99NA6K0NDX7N96SDD06": "d31d4567:fd717804",
+          "01M8EJX99NAGQ5DN7NEQ79BEP1": "0b075263:9599b5fd",
+          "01M8EJX99NEJ4QEKJ27GAN0FDB": "d946ef98:8da1c7b8",
+          "01M8EJX99NGRZHTYGG355QB82B": "64814827:8da1c7b8",
+          "01M8EJX99NHA5RE8NYEKC0FP1Q": "c0d79bde:9599b5fd",
+          "01M8EJX99NM9Q9136QG0M5GSNT": "f0aa0b0e:9599b5fd",
+          "01M8EJX99NQE3BBG8GFK8Y7383": "b7dfb583:19980141",
+          "01M8EJX99NTDV6CAAW6R4C9KXE": "b57677f6:75525505",
+          "01M8EJX99NWJGG80S7VS5QXPNB": "a5614527:8da1c7b8",
+          "01M8EJX99NZGPEWFQGPBCQD69P": "f0eb33ab:fd717804"
+        }
+      }
+    }
   ]
 }

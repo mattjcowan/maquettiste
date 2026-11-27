@@ -890,7 +890,8 @@ database shows on the Database screen at once. The explorers remember which rows
     materialized view outside PostgreSQL and Oracle, `withCheckOption` on SQLite or a materialized view, a sequence on
     SQLite or MySQL. A `range` or `multirange` column outside PostgreSQL is MQ4056 too and is stored as the dialect's
     text type. Migration facts outside PostgreSQL are MQ4056 too: a fact's migration keeps TODO comments where its steps
-    would go (a rekey writes no DDL on any dialect) and no ledger rows are written (see "Migration facts"). So is a
+    would go (a rekey writes no DDL on any dialect, beyond creating what it adopted where it is missing) and no ledger
+    rows are written (see "Migration facts"). So is a
     run-once SQL object outside PostgreSQL, which every script leaves out.
 
   The sql-ddl pack writes all of it for PostgreSQL, SQL Server, MySQL and MariaDB, SQLite and Oracle, and migrates every
@@ -2052,9 +2053,13 @@ format), the tables have exactly the projection's shape, so the next generation 
 The table's overlay, when there was one, becomes the designed table and keeps its id, so queries and keys naming it keep
 working; the entity's mapping element for the database is deleted; and the committed schema snapshot follows, so the schema
 does not change. The next run writes one migration that holds only the write's `rekey` fact: its ledger rows, wrapped in a
-transaction, and no schema statement. That fact also adopts what the sql-ddl pack had created outside the snapshot (a lookup
+transaction, and no other schema change. That fact also adopts what the sql-ddl pack had created outside the snapshot (a lookup
 table, a list's table, a reference column's constraint, a default expression) so the run reads it as already there; an undo
-before that run gives it back to the pack. Undone and run again, it gives the tables, their columns and the key sequences the ids they
+before that run gives it back to the pack. Since seed.sql no longer creates those tables and constraints, the migration creates
+them where they are missing (`CREATE TABLE IF NOT EXISTS` and the dialect's guards): a database built from the migrations alone
+gets them, with a lookup table's rows before the foreign keys that reach them, and one where the earlier seed.sql made them is
+left as it is. The reference type's seed is set to `apply: converge` and `delete: true` (when it has one seed), so seed.sql keeps
+updating its rows by code and deleting retired codes, as it did for the lookup table. Undone and run again, it gives the tables, their columns and the key sequences the ids they
 had the first time (the snapshot remembers them), so the snapshot still reads them as the same tables. From then on the
 tables are yours. An entity already bound to the database is refused (MQ4055), so running it twice is harmless.
 

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ4NPDATQTJPQM0DTR",
+  "name": "putaway task moves from from bin in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2VKC3N1ANYZC4KF4P0WBGTA",
+  "foreignKey": "01M8EJX9AAQQ50J0M2BMJGM658"
+}

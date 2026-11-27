@@ -13,6 +13,7 @@ namespace Maquettiste.Engine.Tests.Expressions;
 /// Expressions on the write path (next-phase-3-design.md section 3.1, task H6): text is stored as a tree on every write surface, bad
 /// text refuses the write, <c>text-to-trees</c> converts files, and deletes treat a tree as a whole.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ExpressionWriteTests
 {
     private const string ConstraintId = "01K9EXW0000000000000000K01";

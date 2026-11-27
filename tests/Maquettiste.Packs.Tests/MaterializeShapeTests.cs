@@ -6,17 +6,19 @@ namespace Maquettiste.Packs.Tests;
 /// "Create tables…" (materialize-tables) proposes tables with its own designer, outside resolution (retire-projection-design.md section
 /// 7). These tests prove the designer gives exactly the projection's shapes: every projected entity of a model is stored as designed
 /// tables with bindings, in the default shapes (the shape an older mapping or the conventions give), and the sql-ddl pack then writes the
-/// same scripts byte for byte and no migration. The write's rekey fact is left out (<see cref="MaterializeProof"/>): it only adds ledger
-/// rows, and without it the snapshot's aliases alone must make the next migration empty.
+/// same scripts byte for byte and no migration. The write's rekey fact is left out (<see cref="MaterializeProof"/>): it adds only ledger
+/// rows and guarded adoptions, and without it the snapshot's aliases alone must make the next migration empty.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class MaterializeShapeTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>
     /// No error, no fact but the rekey, nothing still projected; the run after the conversion writes one migration per database that holds
-    /// only its rekey fact's ledger rows (no schema statement); with that fact rendered, no further migration; and every script equal to
-    /// the one before but for the differences <see cref="MaterializeProofCheck"/> names, each matched to what the pack wrote.
+    /// only its rekey fact's ledger rows and the guarded statements that create what the fact adopted where it is missing (no other
+    /// schema statement); with that fact rendered, no further migration; and every script equal to the one before but for the
+    /// differences <see cref="MaterializeProofCheck"/> names, each matched to what the pack wrote.
     /// </summary>
     internal static void AssertSameDdl(MaterializeProofResult proof)
     {
@@ -24,6 +26,9 @@ public sealed class MaterializeShapeTests
         Assert.True(proof.OtherFacts.Count == 0, string.Join("\n", proof.OtherFacts));
         Assert.True(proof.Projected.Count == 0, "Still projected: " + string.Join(", ", proof.Projected));
         Assert.All(proof.RekeyMigrations, m => Assert.True(MaterializeAdoptionTests.SchemaLines(m.Value).Count == 0, m.Key + ":\n" + string.Join("\n", MaterializeAdoptionTests.SchemaLines(m.Value))));
+        // What the rekey fact adopted is created there only where it is missing: every statement of the adoption blocks is guarded.
+        Assert.All(proof.RekeyMigrations.SelectMany(m => MaterializeAdoptionTests.AdoptionLines(m.Value).Select(s => (m.Key, s))),
+            x => Assert.True(MaterializeAdoptionTests.IsIdempotent(x.s), x.Key + ":\n" + x.s));
         Assert.Equal(proof.MigrationsBefore, proof.MigrationsAfter);
         var problems = MaterializeProofCheck.Problems(proof);
         Assert.True(problems.Count == 0, string.Join("\n", problems));
@@ -33,11 +38,9 @@ public sealed class MaterializeShapeTests
     [Fact]
     public async Task The_proof_fails_on_a_dropped_row_table_or_script()
     {
-        using var temp = new TempRepo();
-        var sample = Path.Combine(Fixtures.RepoRoot, "samples", "reference-app");
-        PackRepo.CopyTree(Path.Combine(sample, ".maquettiste"), temp.ModelRoot);
-        PackRepo.CopyTree(Path.Combine(sample, "db"), Path.Combine(temp.RepoRoot, "db"));
-        var proof = await MaterializeProof.RunAsync(temp.Options, "db", Ct);
+        // The SQLite database of the dialects variant keeps PaymentMethod in a lookup table the pack created in seed.sql.
+        using var repo = PackRepo.BillingDialects();
+        var proof = await MaterializeProof.RunAsync(repo.Repo.Options, "db", Ct);
         Assert.Empty(MaterializeProofCheck.Problems(proof));
 
         MaterializeProofResult With(string path, string? text)
@@ -50,16 +53,21 @@ public sealed class MaterializeShapeTests
             return proof with { After = after };
         }
 
-        var seed = proof.After["db/main/seed.sql"];
-        var row = seed.Split('\n').First(l => l.StartsWith("    ('ACTIVE'", StringComparison.Ordinal));
-        Assert.NotEmpty(MaterializeProofCheck.Problems(With("db/main/seed.sql", seed.Replace(row + "\n", "", StringComparison.Ordinal))));
+        var keys = string.Join(", ", proof.After.Keys);
+        var seed = proof.After["db/local/seed.sql"];
+        var row = seed.Split('\n').First(l => l.StartsWith("    ('card'", StringComparison.Ordinal));
+        Assert.NotEmpty(MaterializeProofCheck.Problems(With("db/local/seed.sql", seed.Replace(row + "\n", "", StringComparison.Ordinal))));
         var schema = proof.After["db/main/schema.sql"];
-        var start = schema.IndexOf("CREATE TABLE northwind.shipments (", StringComparison.Ordinal);
+        var start = schema.IndexOf("CREATE TABLE billing.payments (", StringComparison.Ordinal);
         var end = schema.IndexOf(");", start, StringComparison.Ordinal) + 2;
         Assert.NotEmpty(MaterializeProofCheck.Problems(With("db/main/schema.sql", schema.Remove(start, end - start))));
-        Assert.NotEmpty(MaterializeProofCheck.Problems(With("db/main/northwind/tables/shipments.sql", null)));
-        var lookup = proof.After["db/main/northwind/tables/product_statuses.sql"];
-        Assert.NotEmpty(MaterializeProofCheck.Problems(With("db/main/northwind/tables/product_statuses.sql", lookup.Replace("    label varchar(64) NOT NULL,\n", "", StringComparison.Ordinal))));
+        var script = proof.After.Keys.Single(k => k.StartsWith("db/main/", StringComparison.Ordinal) && k.EndsWith("/tables/payments.sql", StringComparison.Ordinal));
+        Assert.NotEmpty(MaterializeProofCheck.Problems(With(script, null)));
+        var lookupPath = proof.After.Keys.SingleOrDefault(k => k.StartsWith("db/local/", StringComparison.Ordinal) && k.EndsWith("payment_methods.sql", StringComparison.Ordinal));
+        Assert.True(lookupPath is not null, keys);
+        var lookup = proof.After[lookupPath!];
+        var label = lookup.Split('\n').First(l => l.TrimStart().StartsWith("label ", StringComparison.Ordinal));
+        Assert.NotEmpty(MaterializeProofCheck.Problems(With(lookupPath!, lookup.Replace(label + "\n", "", StringComparison.Ordinal))));
     }
 
     [Fact]
@@ -140,10 +148,14 @@ public sealed class MaterializeShapeTests
         return script[(at + start.Length)..end];
     }
 
+    /// <summary>
+    /// The reference sample was converted with this proof in 0.29.0 (about 200 entities: one table for a hierarchy, a table per type, a
+    /// child table, a list in a JSON column, overlays), every difference one <see cref="MaterializeProofCheck"/> accepts. Since then it
+    /// holds designed tables and bindings only: nothing is left to store, no entity mapping, no overlay, no table laid out by convention.
+    /// </summary>
     [Fact]
-    public async Task The_reference_sample_keeps_its_ddl_when_every_entity_gets_a_designed_table()
+    public async Task The_reference_sample_holds_designed_tables_and_bindings_only()
     {
-        // About 200 projected entities: one table for a hierarchy, a table per type, a child table, a list in a JSON column, overlays.
         using var temp = new TempRepo();
         var sample = Path.Combine(Fixtures.RepoRoot, "samples", "reference-app");
         PackRepo.CopyTree(Path.Combine(sample, ".maquettiste"), temp.ModelRoot);
@@ -151,7 +163,13 @@ public sealed class MaterializeShapeTests
 
         var proof = await MaterializeProof.RunAsync(temp.Options, "db", Ct);
 
-        Assert.True(proof.Materialized["main"] > 150);
-        AssertSameDdl(proof);
+        Assert.Empty(proof.Materialized);
+        Assert.True(proof.Errors.Count == 0, proof.Describe());
+        Assert.True(proof.Changed.Count == 0, proof.Describe());
+        Assert.Equal(proof.MigrationsAtStart, proof.MigrationsAfter);
+        var mappings = Directory.EnumerateFiles(Path.Combine(temp.ModelRoot, "model", "mappings"), "*.json")
+            .Select(f => System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(f))!).ToList();
+        Assert.NotEmpty(mappings);
+        Assert.All(mappings, m => Assert.Null(m["entity"]));
     }
 }

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJJ51BNC9R5DJHRDKF",
+  "name": "sales order contains charges in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M33C3XBDEQTZ5A16R0CY872C",
+  "foreignKey": "01M8EJX9AC3XMXSS1TQ55CJDKJ"
+}

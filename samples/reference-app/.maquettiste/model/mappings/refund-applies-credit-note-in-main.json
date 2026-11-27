@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHDX3GA9T7JSD76G4Y",
+  "name": "refund applies credit note in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M31TG271K8B1JQ08EGYY5Y73",
+  "foreignKey": "01M8EJX9A6FWCB4CC8JQ6D4F6Y"
+}

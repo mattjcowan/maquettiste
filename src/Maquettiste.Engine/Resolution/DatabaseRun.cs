@@ -82,10 +82,19 @@ internal sealed partial class DatabaseRun
             PackageId = p.Package,
             Schema = p.Schema is { } schemaId ? db.Schemas.FirstOrDefault(s => string.Equals(s.Id, schemaId, StringComparison.Ordinal))?.Name : null,
         })];
-        var deps = new DependencySet(run.Keys).Element(db.Id).Referrers(db.Id);
+        // The database's own values come from its file. What refers to it (its tables, views, queries, and every binding to it) reaches
+        // its lists, which carry their own keys, the referrers among them: a unit that reads only the database's name or dialect does
+        // not render again when a bound entity changes.
+        var deps = new DependencySet(run.Keys).Element(db.Id);
         run.FillPhysicalAnnotations(_rdb, db, deps);
         _rdb.Dependencies = deps.ToList();
     }
+
+    /// <summary>When runs go side by side: finished once the run before this one has added its relation mappings' keys.</summary>
+    internal Task? RelationsAfter { get; set; }
+
+    /// <summary>When runs go side by side: set once this run has added its relation mappings' keys.</summary>
+    internal TaskCompletionSource? RelationsDone { get; set; }
 
     /// <summary>Resolves the database.</summary>
     public RDatabase Run()
@@ -96,6 +105,8 @@ internal sealed partial class DatabaseRun
         CollectPhysicalFiles();
         ComputePlacements();
         CreateEntityTables();
+        // Beside the other databases' runs: the relations copy the keys earlier runs' relation mappings add, so wait for those.
+        RelationsAfter?.Wait(_run.Ct);
         foreach (var relation in _run.RelationOrder)
         {
             _run.Ct.ThrowIfCancellationRequested();
@@ -106,6 +117,7 @@ internal sealed partial class DatabaseRun
         CheckForeignKeyColumns();
         CheckOnDeleteSets();
         FinishRelationMappings();
+        RelationsDone?.TrySetResult();
         ReportUnusedOverlays();
         BuildEntityMappings();
         BuildJoins();
@@ -1052,7 +1064,14 @@ internal sealed partial class DatabaseRun
     }
 
     private static bool HasPathUnder(TableBuild t, string attributeId) =>
-        t.Columns.Any(c => c.AttributePath is { } path && path.StartsWith(attributeId + ".", StringComparison.Ordinal));
+        t.Columns.Any(c => c.AttributePath is { } path && IsBelow(path, attributeId));
+
+    /// <summary>
+    /// Whether a dotted path lies below a head: it starts with the head and a dot (<c>path.StartsWith(head + ".")</c>, without building the
+    /// string, which the binding checks did for every pair of fields).
+    /// </summary>
+    internal static bool IsBelow(string path, string head) =>
+        path.Length > head.Length && path[head.Length] == '.' && path.StartsWith(head, StringComparison.Ordinal);
 
     private static IEnumerable<Placement> Descendants(Placement p)
     {
@@ -1067,7 +1086,7 @@ internal sealed partial class DatabaseRun
     private static IEnumerable<string> KeyColumnKeys(TableBuild t, Placement p) =>
         (p.Root.Entity.Key?.Attributes ?? p.Entity.Key?.Attributes ?? RList<RAttribute>.Empty)
             .SelectMany(k => t.Columns.Where(c => c.AttributePath is { } path
-                && (string.Equals(path, k.Id, StringComparison.Ordinal) || path.StartsWith(k.Id + ".", StringComparison.Ordinal))))
+                && (string.Equals(path, k.Id, StringComparison.Ordinal) || IsBelow(path, k.Id))))
             .Select(c => c.Key);
 
     private AttributeMapping? AttributeMappingFor(Placement p, RAttribute a)
@@ -1156,7 +1175,7 @@ internal sealed partial class DatabaseRun
 
     private static List<string> ColumnsOf(TableBuild t, string attributeId) =>
         [.. t.Columns.Where(c => c.AttributePath is { } path
-                && (string.Equals(path, attributeId, StringComparison.Ordinal) || path.StartsWith(attributeId + ".", StringComparison.Ordinal)))
+                && (string.Equals(path, attributeId, StringComparison.Ordinal) || IsBelow(path, attributeId)))
             .Select(c => c.Key)];
 
     /// <summary>Binds attributes to the columns of a designed or imported table: <c>AttributeMapping.Column</c>, else by name.</summary>

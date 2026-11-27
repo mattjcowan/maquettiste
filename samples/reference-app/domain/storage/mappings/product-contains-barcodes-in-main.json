@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHGNS3P1SSTY52693D",
+  "name": "product contains barcodes in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2JHAB22ARQ12KT76S8W8NYZ",
+  "foreignKey": "01M8EJX9A7DVNY4NYS02NFNDZD"
+}

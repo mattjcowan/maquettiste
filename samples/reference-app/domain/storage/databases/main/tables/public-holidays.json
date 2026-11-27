@@ -1,0 +1,79 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QM0NC57HRQ9DV7HFX",
+  "name": "public_holidays",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QVP3HHJMX8WMEE47R",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the public holiday."
+    },
+    {
+      "id": "01M8EJX99QPRN6EKY96NE8Q974",
+      "name": "observed_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date the holiday is observed."
+    },
+    {
+      "id": "01M8EJX99QT2YY55KJWF77SKNS",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Name of the holiday."
+    },
+    {
+      "id": "01M8EJX99QXJ3A77FJ8XXHKMBM",
+      "name": "is_nationwide",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it applies to the whole country rather than some regions."
+    },
+    {
+      "id": "01M8EJX99QWGE64S8YZ67SE2PS",
+      "name": "country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_public_holidays",
+    "columns": [
+      "01M8EJX99QVP3HHJMX8WMEE47R"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABAKZ00FB1D65R13TY",
+      "name": "fk_public_holidays_country_code",
+      "columns": [
+        "01M8EJX99QWGE64S8YZ67SE2PS"
+      ],
+      "referencesTable": "01M8EJX99QM2593EWW3DNC676T",
+      "referencesColumns": [
+        "01M8EJX99QZYYZX93FNJF0W9JT"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9AB75KASYZQ7VJTSXPQ",
+      "name": "ix_public_holidays_observed_on",
+      "columns": [
+        {
+          "column": "01M8EJX99QPRN6EKY96NE8Q974"
+        }
+      ]
+    }
+  ],
+  "comment": "A non-working day in a country, used for delivery date promises and payment due dates."
+}

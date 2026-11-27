@@ -1,0 +1,115 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9B3N55B4KJNJ2DCH8C3",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "fields": [
+        {
+          "attribute": "01M1MB28Y14M89NZJKW1YHW3QQ",
+          "column": "01M8EJX99PAQ89357DJKNG6ZE4"
+        },
+        {
+          "attribute": "01M2BJ4SMVG6FTWDA5DRJ9701Q",
+          "column": "01M8EJX99PEJPZ2BPN21200M9Y"
+        },
+        {
+          "attribute": "01M1M7221K9RQ1RSF99WPWM4ND.01M2SE2PD23MMVJ8C1W4TJ4MXC",
+          "column": "01M8EJX99P1BG1AMTBVSC44E7D"
+        },
+        {
+          "attribute": "01M1M7221K9RQ1RSF99WPWM4ND.01M1RCZ8W26X73GNAPPTSWQEP8",
+          "column": "01M8EJX99PFD2S7W22MCVTEJDK"
+        },
+        {
+          "attribute": "01M1M7221K9RQ1RSF99WPWM4ND.01M29PBJAP4MKX1DHTZSG7253V",
+          "column": "01M8EJX99PQ12DV2SV30R9X1GA"
+        },
+        {
+          "attribute": "01M2YJGG5GE0Z9DBEVCPQ273DR",
+          "column": "01M8EJX99PXR31S9ZSB6YCRF61"
+        },
+        {
+          "attribute": "01M1DG7VVTWMS67ASS19SD0KMN.01M2XGCNR9A93G7CMNJFZ726JT",
+          "column": "01M8EJX99PTZN5TDVESD0YHZTX"
+        },
+        {
+          "attribute": "01M1DG7VVTWMS67ASS19SD0KMN.01M1MY7VCYQZC3CZTVHX2M3MAP",
+          "column": "01M8EJX99P0XCW5BK5SCJ7QFNC"
+        },
+        {
+          "attribute": "01M2GA9T5GTTKT567M9EJPNV5X",
+          "column": "01M8EJX99P6QVQQRMNMQWTB943"
+        },
+        {
+          "attribute": "01M34BW471R4X27C5KA1GAM0G5",
+          "column": "01M8EJX99P7BVP75T5QBQ2728V"
+        },
+        {
+          "attribute": "01M2P4Z1ZFM5XVAKT2QPNKZZQC",
+          "column": "01M8EJX99P4XG46NY36AYPY66S"
+        },
+        {
+          "attribute": "01M1WCM83VXFBCWGJMXJNMJ6JJ",
+          "column": "01M8EJX99P1SB1BTN8NWZEY83Z"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PPE0QCVZAA0PC6JAQ"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99P4M980PKQH8SEZ9W3"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PH3YYP439V0RWMZ74"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PHWRKQSAKEHXX7G3M"
+        },
+        {
+          "attribute": "01M33A5T6SBSH45N4QS0Q3R59H",
+          "column": "01M8EJX99PZ0S80P5S9KZSG3TQ"
+        },
+        {
+          "attribute": "01M1F5P2RAKNFGC0B2JCPB7RMZ",
+          "column": "01M8EJX99PRXZVV45MK11AJZD9"
+        },
+        {
+          "attribute": "01M2SXC7G7NW4E1J28BEFC5XDD",
+          "column": "01M8EJX99PXEN2NWQMEH5ZR3J5"
+        },
+        {
+          "attribute": "01M1J9N5CC8R7W104D2YABYFZN",
+          "column": "01M8EJX99PV6HZNDJ8HZ5DMD1B"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P0XCW5BK5SCJ7QFNC": "8ed7416b:b0c85a1f",
+          "01M8EJX99P1BG1AMTBVSC44E7D": "55e0c843:449863fc",
+          "01M8EJX99P1SB1BTN8NWZEY83Z": "47c7c599:19980141",
+          "01M8EJX99P4M980PKQH8SEZ9W3": "c0d79bde:9599b5fd",
+          "01M8EJX99P4XG46NY36AYPY66S": "e0ea5fb1:9b51e601",
+          "01M8EJX99P6QVQQRMNMQWTB943": "68b4a3fa:6137f4ed",
+          "01M8EJX99P7BVP75T5QBQ2728V": "cb0b380f:81884634",
+          "01M8EJX99PAQ89357DJKNG6ZE4": "a5614527:8da1c7b8",
+          "01M8EJX99PEJPZ2BPN21200M9Y": "0beac209:4de12bc4",
+          "01M8EJX99PFD2S7W22MCVTEJDK": "35fb6b4c:449863fc",
+          "01M8EJX99PH3YYP439V0RWMZ74": "d31d4567:fd717804",
+          "01M8EJX99PHWRKQSAKEHXX7G3M": "0b075263:9599b5fd",
+          "01M8EJX99PPE0QCVZAA0PC6JAQ": "42049432:e0d08678",
+          "01M8EJX99PQ12DV2SV30R9X1GA": "50e8bc57:ae2dc2c0",
+          "01M8EJX99PRXZVV45MK11AJZD9": "96cdc177:8da1c7b8",
+          "01M8EJX99PTZN5TDVESD0YHZTX": "0ebd68df:ae2dc2c0",
+          "01M8EJX99PV6HZNDJ8HZ5DMD1B": "c6dde088:d8a57cf9",
+          "01M8EJX99PXEN2NWQMEH5ZR3J5": "8bf14db2:d8a57cf9",
+          "01M8EJX99PXR31S9ZSB6YCRF61": "4181efbc:36d8b8c8",
+          "01M8EJX99PZ0S80P5S9KZSG3TQ": "7e7e7ac8:fd717804"
+        }
+      }
+    }
+  ]
+}

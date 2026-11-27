@@ -1,0 +1,84 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NB0DA99GXVMAVN0Z3",
+  "name": "product_translations",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NSEM469ET7C61K914",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product translation."
+    },
+    {
+      "id": "01M8EJX99N329VWYMBR48R15HG",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Translated name."
+    },
+    {
+      "id": "01M8EJX99N20KDS7ADN60Y12E5",
+      "name": "short_description",
+      "type": "string",
+      "length": 500,
+      "comment": "Translated short description."
+    },
+    {
+      "id": "01M8EJX99N1K6TCWNQWF7TZJBZ",
+      "name": "long_description",
+      "type": "text",
+      "comment": "Translated long description."
+    },
+    {
+      "id": "01M8EJX99N4MJ6HSV1SG0JS9RR",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99N4BMCZ0H3PQZBR2Y1",
+      "name": "language_code",
+      "type": "string",
+      "length": 5,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_translations",
+    "columns": [
+      "01M8EJX99NSEM469ET7C61K914"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7EDACN44WM3X6CG8M",
+      "name": "fk_product_translations_product_id",
+      "columns": [
+        "01M8EJX99N4MJ6HSV1SG0JS9RR"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A76WG4J2YJFHG0WQEC",
+      "name": "fk_product_translations_language_code",
+      "columns": [
+        "01M8EJX99N4BMCZ0H3PQZBR2Y1"
+      ],
+      "referencesTable": "01M8EJX99QX72730HBK6DTHVZ6",
+      "referencesColumns": [
+        "01M8EJX99QGA8NZXPN6C3FH2FN"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "The name and descriptions of a product in another language."
+}

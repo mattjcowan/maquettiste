@@ -3,9 +3,6 @@
   "kind": "entity",
   "id": "01JENT00000000000000000001",
   "name": "Customer",
-  "properties": {
-    "team": 7
-  },
   "key": {
     "attributes": [
       "01JATT00000000000000000101"
@@ -27,5 +24,31 @@
         "maxWidth": "wide"
       }
     }
-  ]
+  ],
+  "bindings": [
+    {
+      "id": "01M8EKDBZH0C5AVEGFD6QKGVK1",
+      "database": "01JDBS00000000000000000001",
+      "source": "01M8EKDBZ7GP9Q83PTQKE5XNJV",
+      "fields": [
+        {
+          "attribute": "01JATT00000000000000000101",
+          "column": "01M8EKDBZ8JS9DTJ2M93MAZ7B6"
+        },
+        {
+          "attribute": "01JATT00000000000000000102",
+          "column": "01M8EKDBZ8ZPA7DAMHYZ70SY0E"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EKDBZ8JS9DTJ2M93MAZ7B6": "a5614527:8da1c7b8",
+          "01M8EKDBZ8ZPA7DAMHYZ70SY0E": "82a3537f:4a370432"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "team": 7
+  }
 }

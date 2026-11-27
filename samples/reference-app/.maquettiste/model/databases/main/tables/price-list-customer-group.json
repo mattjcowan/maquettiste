@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q9Z4A3AVFM8YCDP86",
+  "name": "price_list_customer_group",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QXF7JRF2ZCHZW4BWD",
+      "name": "price_lists_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q4JVCBKB0SDXDR5J7",
+      "name": "customer_groups_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_price_list_customer_group",
+    "columns": [
+      "01M8EJX99QXF7JRF2ZCHZW4BWD",
+      "01M8EJX99Q4JVCBKB0SDXDR5J7"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AC2ZMS5DXZ3BXR7PGF",
+      "name": "fk_price_list_customer_group_price_lists_id",
+      "columns": [
+        "01M8EJX99QXF7JRF2ZCHZW4BWD"
+      ],
+      "referencesTable": "01M8EJX99QF1QP1GBNQV5VSCTM",
+      "referencesColumns": [
+        "01M8EJX99QQPDTW28VGP2HRSM9"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACTAFBKPSZ5R3QCE5G",
+      "name": "fk_price_list_customer_group_customer_groups_id",
+      "columns": [
+        "01M8EJX99Q4JVCBKB0SDXDR5J7"
+      ],
+      "referencesTable": "01M8EJX99NMC4QYC80P8BY26XA",
+      "referencesColumns": [
+        "01M8EJX99NJ66NG53750KF0MBD"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Customer groups that buy from a price list."
+}

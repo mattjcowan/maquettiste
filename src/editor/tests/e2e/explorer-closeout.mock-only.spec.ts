@@ -12,7 +12,7 @@ async function menu(page: Page, row: string, item: string) {
 }
 
 test("Promote to entity rewrites the uses, and refuses a use it cannot rewrite", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   const side = explorer(page);
   await side.getByLabel("Search the model").fill("Money");
   await menu(page, "Money", "Promote to entity");

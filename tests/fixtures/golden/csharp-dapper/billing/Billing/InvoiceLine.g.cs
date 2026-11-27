@@ -14,7 +14,7 @@ public partial class InvoiceLine
     public Money UnitPrice { get; set; } = default!;
     public string? Description { get; set; }
 
-    // Columns of table invoice_lines (database main) that no attribute maps, such as foreign keys.
+    // Keys of the relations the entity's binding maps (they lead to the related entities' keys).
     public Guid InvoiceId { get; set; }
     public Guid ProductId { get; set; }
 }

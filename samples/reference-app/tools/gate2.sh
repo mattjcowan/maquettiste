@@ -8,8 +8,9 @@
 # prepare  copy samples/reference-app to tmp/gate2 without its model, db/ and build output; start the image over it
 #          (tools/empty-editor.sh) and wait for GET /api/health to report ok
 # seed     tools/seed.mjs: the whole model through POST /api/model/batch, validate, compare with build-model.mjs
-# walk     Playwright project live, src/editor/tests/e2e/gate2.spec.ts: open an entity, add an attribute in the grid, rename
-#          a relation in the inspector, plan all packs, open a diff, apply, applyResult.outcome == succeeded
+# walk     Playwright project live, src/editor/tests/e2e/gate2.spec.ts: open an entity, add an attribute in the grid and its
+#          column in the bound table (Storage tab), rename a relation in the inspector, plan all packs, open a diff, apply,
+#          applyResult.outcome == succeeded
 # check    stop the editor (its files are already the caller's; any other owner is named); the walk's edits are in the model and in both packs' output;
 #          the editor's apply created src/ReferenceApp.Data/.gitignore holding the csharp-dapper block (createFile);
 #          maquettiste validate; generate --check (every root equals the CLI's output); Generated/ equals what the CLI
@@ -111,6 +112,7 @@ step_check() {
   # The walk's two edits reached the model and both packs' output.
   model="$dir/.maquettiste/model"
   grep -q '"name": "receivingHours"' "$model/entities/warehouse.json" || { echo "gate2: attribute receivingHours is not in the model" >&2; exit 1; }
+  grep -q '"name": "receiving_hours"' "$model/databases/main/tables/warehouses.json" || { echo "gate2: table warehouses has no column receiving_hours" >&2; exit 1; }
   test -f "$model/relations/delivery-route-departs-from-depot.json" || { echo "gate2: relation delivery route departs from depot is not in the model" >&2; exit 1; }
   grep -q receiving_hours "$dir/db/main/northwind/tables/warehouses.sql" || { echo "gate2: warehouses.sql lacks receiving_hours" >&2; exit 1; }
   grep -q ReceivingHours "$gen/Inventory/Warehouse.g.cs" || { echo "gate2: Warehouse.g.cs lacks ReceivingHours" >&2; exit 1; }

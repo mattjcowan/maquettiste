@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJE9KW8KA0Y9T8AX43",
+  "name": "goods receipt is received by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M29MFEM4AG9K6X8Y3G6ERXEB",
+  "foreignKey": "01M8EJX9AAHVPVBZXBZXFV6SM6"
+}

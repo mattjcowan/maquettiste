@@ -35,6 +35,7 @@ import {
 } from "@/editors/storage/relationStorage";
 import { MockBackend } from "@/mocks/backend";
 import { bindingSql } from "@/mocks/model/bindings";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 
 const col = (key: string, name: string, extra: Partial<SourceColumn> = {}): SourceColumn => ({
   key,
@@ -357,7 +358,7 @@ const INVOICE_NOTE = "01K6BND0000000000000000010";
 
 describe("the mock's materialize", () => {
   it("lists what is unbound, and the bindings of each table", () => {
-    const model = new MockBackend().model;
+    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
     const status = model.materializeStatus(MAIN)!;
     expect(status.entities.find((e) => e.id === INVOICE)).toMatchObject({ projected: true });
     expect(status.entities.some((e) => e.id === INVOICE_NOTE)).toBe(false);
@@ -368,7 +369,7 @@ describe("the mock's materialize", () => {
   });
 
   it("creates the tables of two related entities in one batch: bindings, the overlay kept, the foreign key named", () => {
-    const model = new MockBackend().model;
+    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
     const plan = model.previewMaterialize(MAIN, { op: "materialize-tables", entities: [CUSTOMER, INVOICE] });
     expect(plan.valid).toBe(true);
     expect(plan.deletes.map((d) => d.id)).toEqual([INVOICE_MAPPING]);
@@ -390,7 +391,7 @@ describe("the mock's materialize", () => {
   });
 
   it("makes entities from a table and refuses a bound one", () => {
-    const model = new MockBackend().model;
+    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
     const notes = "01K6BND0000000000000000001";
     expect(model.previewMaterialize(MAIN, { op: "materialize-entities", tables: [notes], package: BILLING }).diagnostics.map((d) => d.rule)).toEqual([
       "MQ4055",
@@ -405,7 +406,7 @@ describe("the mock's materialize", () => {
   });
 
   it("renders a binding's statements, constants as a filter and a value", () => {
-    const model = new MockBackend().model;
+    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
     const settings = model.projectSettings();
     const input = {
       docs: model.docs(),

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHX0BB40TV68Y80QZQ",
+  "name": "product contains images in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1Q4W3FEK5KA403BVSF38KBK",
+  "foreignKey": "01M8EJX9A7M08NY9AQJ8S4D78A"
+}

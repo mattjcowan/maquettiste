@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJG9C07ERJG6065QZG",
+  "name": "putaway task is traced to goods receipt line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M34BTTJZ422WGVP2R7BEDTVD",
+  "foreignKey": "01M8EJX9AAE2MNERJDK0BZ5PTH"
+}

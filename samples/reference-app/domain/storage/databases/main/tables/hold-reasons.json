@@ -1,0 +1,73 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QQJ8W7TXE75G7BQZY",
+  "name": "hold_reasons",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QJY23QQKRN2JF5F0D",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the hold reason."
+    },
+    {
+      "id": "01M8EJX99QJTY4X8HMEDW64CEN",
+      "name": "requires_credit_approval",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether only the credit department can release it."
+    },
+    {
+      "id": "01M8EJX99QGB16A7RZW11H81SE",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99QS71GDB40YANYYQAF",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99Q6PQ10XWH1ZWDXJMD",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99Q7JD3D7P28166NS1X",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_hold_reasons",
+    "columns": [
+      "01M8EJX99QJY23QQKRN2JF5F0D"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AC72MNFAPM0JWNR891",
+      "name": "uq_hold_reasons_code",
+      "columns": [
+        "01M8EJX99QGB16A7RZW11H81SE"
+      ]
+    }
+  ],
+  "comment": "A reason for holding an order, such as Credit limit exceeded or Price below cost."
+}

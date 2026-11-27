@@ -1329,9 +1329,16 @@ internal sealed class TableDesigner
             t.LookupFields.Add((key, key));
     }
 
-    /// <summary>The SQL type the sql-ddl pack gives a code or a label (its <c>ref_sql_type</c>).</summary>
+    /// <summary>
+    /// The SQL type the sql-ddl pack gives a code or a label (its <c>ref_sql_type</c>): on Oracle the type map's, as the columns holding
+    /// the codes have it (<c>varchar2(n char)</c>, <c>clob</c> without a length, <c>number(5)</c>, <c>number(10)</c>), so the foreign keys
+    /// from them join columns of one type (MQ4005).
+    /// </summary>
     private string CodeSqlType(string type, int? length) => type switch
     {
+        "int16" when _dialect == "oracle" => "number(5)",
+        "int32" when _dialect == "oracle" => "number(10)",
+        not ("uuid" or "int64") when _dialect == "oracle" => length is { } o ? "varchar2(" + o.ToString(CultureInfo.InvariantCulture) + " char)" : "clob",
         "uuid" => _dialect switch { "postgresql" => "uuid", "sqlserver" => "uniqueidentifier", "sqlite" => "TEXT", _ => "char(36)" },
         "int16" => _dialect == "sqlite" ? "INTEGER" : "smallint",
         "int32" => _dialect == "sqlite" ? "INTEGER" : _dialect == "sqlserver" ? "int" : "integer",

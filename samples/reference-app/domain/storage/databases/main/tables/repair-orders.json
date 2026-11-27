@@ -1,0 +1,207 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QXVVYBB4MCEVXHETQ",
+  "name": "repair_orders",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QEA1EYT45V5EMA5B6",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the repair order."
+    },
+    {
+      "id": "01M8EJX99Q0WP4XM5X73FYHJ2K",
+      "name": "repair_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Repair number."
+    },
+    {
+      "id": "01M8EJX99QDTY6MSZPRTS91D6X",
+      "name": "received_on",
+      "type": "date",
+      "comment": "Date the unit arrived."
+    },
+    {
+      "id": "01M8EJX99QPQMX0CHMGTYRC6NZ",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "open",
+      "comment": "open, diagnosing, repairing or done."
+    },
+    {
+      "id": "01M8EJX99Q6JBW5A19SVGSB53F",
+      "name": "diagnosis",
+      "type": "text",
+      "comment": "Technician's diagnosis."
+    },
+    {
+      "id": "01M8EJX99QYJ09PVFA7KARVGFA",
+      "name": "labor_hours",
+      "type": "decimal",
+      "precision": 6,
+      "scale": 2,
+      "comment": "Hours worked."
+    },
+    {
+      "id": "01M8EJX99QBSXFCFYYR8W57B46",
+      "name": "cost_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QD7ZMTXHDG3HYYC1S",
+      "name": "cost_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QWT9RRHPTK9KFY6SN",
+      "name": "completed_on",
+      "type": "date",
+      "comment": "Date finished."
+    },
+    {
+      "id": "01M8EJX99QDKC5A66CCCJ42WJJ",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QANCPPJETG7XPQE2D",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q4HV35N4069A6G3WC",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99Q4MVWCZ7AW65DNQZP",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QGJBEHR2WYZGSVZ48",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QGGZS6W0127104FGQ",
+      "name": "service_case_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99Q397DNDJKTA99S0MP",
+      "name": "warranty_claim_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QQ1VR6QZ00Y8AZ1JB",
+      "name": "technician_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99Q3DCPZPGPJQX6PBQJ",
+      "name": "serial_number_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_repair_orders",
+    "columns": [
+      "01M8EJX99QEA1EYT45V5EMA5B6"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ABXN0DHZH5CAKD2J6J",
+      "name": "uq_repair_orders_repair_number",
+      "columns": [
+        "01M8EJX99Q0WP4XM5X73FYHJ2K"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AB5KSENDPVP87TJA32",
+      "name": "fk_repair_orders_product_id",
+      "columns": [
+        "01M8EJX99QGJBEHR2WYZGSVZ48"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ABY649SY1ARGQBNBZK",
+      "name": "fk_repair_orders_service_case_id",
+      "columns": [
+        "01M8EJX99QGGZS6W0127104FGQ"
+      ],
+      "referencesTable": "01M8EJX99QXZ6GNTWBN29N1326",
+      "referencesColumns": [
+        "01M8EJX99Q063NTEPFVE7DA9C1"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ABZEDQKMF8TV9SS80V",
+      "name": "fk_repair_orders_warranty_claim_id",
+      "columns": [
+        "01M8EJX99Q397DNDJKTA99S0MP"
+      ],
+      "referencesTable": "01M8EJX99QYR8VEJ29FV08BKVZ",
+      "referencesColumns": [
+        "01M8EJX99QNSG175N89ETFJ1AP"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ABBESFB8AZSRS3NBFW",
+      "name": "fk_repair_orders_technician_id",
+      "columns": [
+        "01M8EJX99QQ1VR6QZ00Y8AZ1JB"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ABF1410EQ52TH0XC0H",
+      "name": "fk_repair_orders_serial_number_id",
+      "columns": [
+        "01M8EJX99Q3DCPZPGPJQX6PBQJ"
+      ],
+      "referencesTable": "01M8EJX99PWE8JFBJRHYEBTQPV",
+      "referencesColumns": [
+        "01M8EJX99P3ARH4W6ATBW4C20V"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A repair of a returned or warranty unit, in house or at a service partner."
+}

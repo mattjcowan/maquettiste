@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHVVJ5NJG18HSHK3HH",
+  "name": "cycle count line is drawn from lot in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M25K9JEDZ95CAQX4S11AT8QZ",
+  "foreignKey": "01M8EJX9A950PDMNXMCF3SJ1CX"
+}

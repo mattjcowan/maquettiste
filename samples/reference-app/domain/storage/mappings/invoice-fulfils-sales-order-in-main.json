@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CG18NSS6PRX240YZ7S",
+  "name": "invoice fulfils sales order in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1H2GS7GZMJ4WAEXGRKAEWRW",
+  "foreignKey": "01M8EJX9A42PJXYJDTH3E7EPPE"
+}

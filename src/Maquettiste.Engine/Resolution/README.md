@@ -64,9 +64,13 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
   `r:<id>` for every entity and relation an object derives from (lookup tables: `r:<enumId>`; designed tables: `r:<tableId>`).
   A foreign-key relation also lists what its resolved `RForeignKey`'s name and actions come from (the host table's designed or
   overlay file, the host entity, the principal's key, `s:conventions`, `s:inflection`), since `RForeignKey` is not tracked.
-  List membership keys: `model.entities`/`relations` → `k:entity`, `k:relation`, `k:mapping`, `s:conventions` and relation mapping
-  files, plus every mapping and database file when any relation can be promoted (by a mapping's `shape` or by conventions);
+  List membership keys: `model.entities`/`relations` → `k:entity`, `k:relation`, `k:mapping`, `s:conventions` and, when the model has
+  relation mappings, `pm:relation-mappings` (`Planning/PromotionNaming`: each relation mapping's id, relation, database, shape, ignore
+  flag and promoted name; before 0.29.0 every relation mapping file's own key), plus every mapping and database file when any relation
+  can be promoted (by a mapping's `shape` or by conventions);
   an entity's `Relations` adds those keys when the entity has relations; database lists → every `k:` kind, the settings keys, every conceptual file and the union of their tables' keys.
+  The database object itself carries only its file's `e:` key (since 0.29.0): every binding refers to its database, so an `r:` key
+  there re-rendered every unit that reads a database's name or dialect whenever a bound entity changed. The lists keep `r:<dbId>`.
 
 ## Choices and deviations (see the W3 report for the full list)
 
@@ -291,6 +295,83 @@ resolved objects, and every template and resolved rule that reads `calculated` r
 Tests: `tests/Maquettiste.Engine.Tests/Resolution/ProcessResolutionTests.cs` (golden `Golden/processes/resolved.txt` over the gate 3
 fixture, ordering, keys, the interpreter's chart, the duration rules), `Planning/ProcessScopeTests.cs`,
 `Rendering/ProcessRenderTests.cs`, `Integration/ProcessGenerationTests.cs` (incremental runs).
+
+## Bindings at benchmark scale (0.29.0, retiring projection)
+
+The benchmark model now holds designed tables, entity bindings and relation mappings (about 5,000 tables, 7,000 bindings and 20,000
+relation mappings for 5,000 entities). Resolve took 10.6 s on it; the costs found and fixed, measured on that model:
+
+- `BindingDrift.RelationAttributeColumnsOf` scanned every mapping of the model for each binding (about 90% of resolve). Relation
+  mappings are indexed once per snapshot by the foreign key they name.
+- Every entity's `Relations` list carried every relation mapping file's key (20,000 keys merged into 5,000 lists: 0.6 s, gigabytes of
+  key arrays, and every unit that read a relation list re-rendered on any mapping edit). It carries `pm:relation-mappings` instead
+  (see "Dependency keys").
+- The resolver's drift check (MQ4087, MQ4088) worked out the full drift report of every binding; it asks only for the renamed and
+  retyped mapped columns (`BindingDrift.Of(..., mappedOnly: true)`). A column's shape hash is computed on first read and kept per
+  immutable column entry (`ColumnShapeHash.Of`), so a resolve after one edit hashes only the changed tables' columns.
+- Bindings build side by side (`DatabaseRun.BuildInWaves`): a binding that reads its base's resolved binding waits for its base's wave;
+  each builder writes only its own binding and holds its findings, which are reported in one-by-one order afterwards. The shared memos
+  are filled and every table's keys frozen first. A cycle of bases, or fewer than 64 bindings, builds one by one as before.
+- The `field` overlap check built `prefix + "."` strings for every pair of fields (`DatabaseRun.IsBelow` compares in place).
+- A database's membership merge sorted every key again (every conceptual file's key, for each database); the conceptual keys are a
+  frozen sorted run, and `DependencySet` merges only the keys outside the largest run.
+- Validation built `BoundColumnTypes` once per waiting worker (a `ConditionalWeakTable` runs its factory outside its lock; now a
+  `Lazy`), and builds the indexes most documents ask for side by side before the per-document loop (`BuildCommonIndexes`). The loader
+  sorts its entries once and sizes its id table up front. A full index build works out each document's summary row on its walk threads
+  and groups references and kinds side by side (`ModelIndexer.BuildFull`); validation reuses one reference-site list per worker and keeps
+  a table's columns by id per table entry. Entity parts are built side by side (`FinishPartsAndCopy`).
+- The loader's rescan after an edit: an assembly over the same files with a few changed reuses the previous path order and id table,
+  patched for the changed files (`ModelLoader.AssembleMemo`; any id collision rebuilds it as before). Taking file stats from the directory
+  listing was tried and dropped (no measurable gain).
+- A loaded element's JSON (`ElementDocument.Json`) is parsed from the file's bytes on first read (`Model/LazyJson`) instead of kept as a
+  clone beside the bytes the loader already holds; load, validate and resolve of the benchmark model read none of it.
+- Databases resolve side by side (`ResolveRun.RunDatabasesSideBySide`). The runs share the conceptual objects; the one link between them
+  a later run reads is what an earlier run's relation mappings add to a relation's dependency keys (`FinishRelationMappings`), which the
+  later run's relations copy (`ResolveRelation`): each run waits for the run before it to finish its relation mappings before it resolves
+  its relations, so every copy sees what it saw one by one. Each run's findings, registrations and check listings are held back and applied
+  in database order, followed by its migration facts; the per-database maps of conceptual objects are written under a lock (their entries
+  are keyed and sorted by database). The conceptual dependency sets the runs read are settled first. A model where a relation can be
+  promoted, or with an end of several types, resolves its databases one by one as before. `ParallelDatabaseRunTests` (bench tests) compares
+  repeated side-by-side runs with a one-by-one run: generated files, manifests and resolved records.
+- Not built: dropping each file's bytes once the index cache is written. On the benchmark model they are 91 MB of byte arrays, which hold no
+  references, so garbage collection scans them at almost no cost. Dropping them means the lazy JSON and the next cache write read them back
+  from the cache file, and a document of an older snapshot whose file and cache entry have both changed since could then not give its own
+  JSON back, which breaks the byte-identical rule.
+- Tried and dropped: building designed tables side by side. It cut the incremental resolve by about 0.1 s but made the cold one (the
+  first in a process) about 0.4 s slower, measured twice each way.
+
+Output is byte-identical (goldens, pack and determinism tests). Gate 1 on the 5,000-entity model (24 cores, `--jobs 8`): load, validate
+and resolve 13.0 s before, about 3.8 s after (load 1.3 s, validate 0.5 s, resolve 1.9 s cold); incremental 14.8 s to about 2.15 s. Both
+still miss their budgets (3 s, 2 s). Where the cold time goes: the model has 61,000 files where the projection-era one had 26,000 (load
+reads, parses, schema-checks, canonical-checks and deserializes each, about 110 microseconds of work per file); about 0.9 s of the three
+stages is garbage collection pauses (everything loaded and resolved survives); about 0.5 s of resolve is first-run compilation. At 2,500
+entities both pass (1.5 s, 0.8 s).
+
+## Not built: reuse across an edit
+
+What a one-entity edit costs after the above is a full resolve of the new snapshot (about 1.2 s of the 2.2 s incremental run on the
+benchmark model). Reusing the previous run's resolved objects for what the edit cannot reach would remove most of it. It is not built;
+this is the design it needs.
+
+- **Ids only does not work.** Resolved objects hold each other directly, in both directions (an entity's bindings, a table's `BoundBy`, a
+  relation's ends and their entities, navigations, a database's lists). Rewriting those links as ids resolved through an owner fails for a
+  reused object: it belongs to two resolved models at once (the previous one, still shared by previews and the store, and the new one), so
+  one owner pointer cannot answer for both, and the previous model must not change.
+- **Two layers.** An inner, immutable layer per object holds only the object's own values and the ids it links to; it is what a run
+  reuses. The public classes (`REntity`, `RTable`, `RColumn`, `REntityBinding`, `RRelation`, `REnd`, `RNavigation`, `RDatabase`,
+  `RSchema` and the other resolved types, about 60) become thin views made per run over the inner layer, each link resolved through the
+  run's id table on first read. No public signature changes; every public resolved type's members become forwarding properties, and
+  `Dependencies` and `MembershipKeys`, which template tracking reads, are served by the views from the inner layer.
+- **Invalidation.** An inner object is reused when none of its inputs changed: its own file's `e:` key and every key in its dependency set
+  hash the same in the new snapshot (the dependency hasher already answers this per key), and no list it belongs to changed membership
+  (`k:` keys, `r:` keys of the ids it derives from, `pm:relation-mappings`, `s:` settings keys). A changed object invalidates the objects that
+  copied its keys (a table copies its relations' and bound entities' keys), so invalidation follows the dependency sets upward; the database
+  lists and every list keyed on `k:` kinds are rebuilt each run (cheap: they hold views). Findings are re-reported from the reused inner
+  objects in the order a full run reports them, or the run falls back to a full resolve for any edit that adds or removes a file.
+- **Scope.** About 4,000 lines of resolved types become views; about 25,000 lines of `DatabaseRun*` and `ResolveRun*` write the inner layer
+  instead of the public classes; the dependency keys, findings order and generated output must stay byte-identical, proved by an edit
+  sequence (add, change and remove a binding, an entity, a table and a relation mapping) whose every incremental result equals a cold run.
+  Several days of work and a review; its own pull request, with this section as its design.
 
 ## Large models (2026-10-05, generation-ui.md section 5.2 "Bounds")
 

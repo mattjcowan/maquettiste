@@ -5,7 +5,8 @@ namespace Maquettiste.Bench.Tests;
 /// <summary>
 /// The bench's synthetic model at a small size, every projected entity stored with "Create tables…" (materialize-tables): the sql-ddl
 /// pack writes the same table scripts byte for byte and no migration (retire-projection-design.md section 7). The synthetic model has
-/// no reference types, so seed.sql must not change either.
+/// no reference types, so seed.sql must not change either. It starts from the projected model (<c>Projected</c>), as the generator
+/// wrote it before 0.29.0; the generator itself now stores the tables the same way (temporary: pull request 3 deletes this test).
 /// </summary>
 public sealed class MaterializeShapeTests
 {
@@ -15,7 +16,7 @@ public sealed class MaterializeShapeTests
         var ct = TestContext.Current.CancellationToken;
         using var temp = new TempFolder();
         var repo = Path.Combine(temp.Path, "repo");
-        await SyntheticModelGenerator.WriteAsync(repo, BenchTestModels.Small(), ct);
+        await SyntheticModelGenerator.WriteAsync(repo, BenchTestModels.Small() with { Projected = true }, ct);
 
         var proof = await MaterializeProof.RunAsync(temp.Options(repo), "db", ct);
 

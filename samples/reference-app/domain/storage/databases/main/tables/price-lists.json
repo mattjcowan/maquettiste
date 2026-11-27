@@ -1,0 +1,127 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QF1QP1GBNQV5VSCTM",
+  "name": "price_lists",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QQPDTW28VGP2HRSM9",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the price list."
+    },
+    {
+      "id": "01M8EJX99QJBT9Q2VZ75Y78BQ8",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Price list code."
+    },
+    {
+      "id": "01M8EJX99QPDZ33ZYARXPASK3K",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Price list name."
+    },
+    {
+      "id": "01M8EJX99QZE9RBK18R08SV9QD",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99Q6XAHG0792PX1R5G5",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99Q6KJNKZZ8B4V4PFS5",
+      "name": "is_default",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "List used when a customer has no other list."
+    },
+    {
+      "id": "01M8EJX99QDZQMT93RHM8QY4WC",
+      "name": "prices_include_tax",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether prices are tax-inclusive."
+    },
+    {
+      "id": "01M8EJX99QC4GBQEDZJF4VDJEF",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QH8HM46DHAMT56PK3",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q6KW15TAX395DXE97",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QB2Y750YA9QN1K4GY",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QHG9ZP539N501V3DD",
+      "name": "currency_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_price_lists",
+    "columns": [
+      "01M8EJX99QQPDTW28VGP2HRSM9"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AAQT5RZRG0FJB5ZWZ2",
+      "name": "uq_price_lists_code",
+      "columns": [
+        "01M8EJX99QJBT9Q2VZ75Y78BQ8"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA94D00FQW6Y4NMW6V",
+      "name": "fk_price_lists_currency_code",
+      "columns": [
+        "01M8EJX99QHG9ZP539N501V3DD"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A list of prices in one currency, such as the US wholesale list or the Canada distributor list."
+}

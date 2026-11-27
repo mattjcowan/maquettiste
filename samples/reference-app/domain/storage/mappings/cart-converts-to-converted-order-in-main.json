@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJBCZME12F2H4EFX4P",
+  "name": "cart converts to converted order in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1JH26AMHHBKD738KDD46GDP",
+  "foreignKey": "01M8EJX9AC1Y6WQ4PN4EA9RTSW"
+}

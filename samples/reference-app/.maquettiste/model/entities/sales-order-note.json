@@ -41,5 +41,63 @@
       "default": false,
       "description": "Shown on the customer portal."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BWH41AA54KA2FRHZJ2",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99Q339KYHM3JMRMWTXP",
+      "fields": [
+        {
+          "attribute": "01M1G6D80AAWB77Y72ZBYFHC29",
+          "column": "01M8EJX99QMJS27BZJJY2AX56W"
+        },
+        {
+          "attribute": "01M2JZEX2P8WEGV78EFWZYBG83",
+          "column": "01M8EJX99QDHP38BD3VV4Z9VC2"
+        },
+        {
+          "attribute": "01M2KA19N1Q764THWAB53VHKGC",
+          "column": "01M8EJX99Q1F3KR0KGWE2NZPBC"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99QMT824RJR4YCB392Z"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99QMVWADKKMTCK4YBY5"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99Q0B8DZC8B27GWNMHK"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99QMN1W9XA29T88B6FH"
+        },
+        {
+          "attribute": "01M20Z1MTS5PN7KPNF43YKYQ53",
+          "column": "01M8EJX99Q8BRY1YTV5SE5TPZP"
+        },
+        {
+          "attribute": "01M2K7R1Y2FZ57ZKNANSBP42GM",
+          "column": "01M8EJX99QG345PXT54GJTKN7B"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q0B8DZC8B27GWNMHK": "d31d4567:fd717804",
+          "01M8EJX99Q1F3KR0KGWE2NZPBC": "7fc6a1ba:19980141",
+          "01M8EJX99Q8BRY1YTV5SE5TPZP": "8071acdb:8da1c7b8",
+          "01M8EJX99QDHP38BD3VV4Z9VC2": "230d8358:a6883bec",
+          "01M8EJX99QG345PXT54GJTKN7B": "9247ae45:d8a57cf9",
+          "01M8EJX99QMJS27BZJJY2AX56W": "a5614527:8da1c7b8",
+          "01M8EJX99QMN1W9XA29T88B6FH": "0b075263:9599b5fd",
+          "01M8EJX99QMT824RJR4YCB392Z": "42049432:e0d08678",
+          "01M8EJX99QMVWADKKMTCK4YBY5": "c0d79bde:9599b5fd"
+        }
+      }
+    }
   ]
 }

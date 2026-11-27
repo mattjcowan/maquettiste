@@ -1,0 +1,96 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PQMWCPQHSP40PBC3K",
+  "name": "budget_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PHAB5SC7QQ8WJDAQT",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the budget line."
+    },
+    {
+      "id": "01M8EJX99PSW1QX14PAA99N0XW",
+      "name": "amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99P879YCJR74F8Z38YE",
+      "name": "amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99PB0ZFFC2AJKSJM5QQ",
+      "name": "budget_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PHJRKS8EGFJBHZ45B",
+      "name": "fiscal_period_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P472FMYASRNH8M4G3",
+      "name": "ledger_account_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_budget_lines",
+    "columns": [
+      "01M8EJX99PHAB5SC7QQ8WJDAQT"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A82WVHWBQPD7SEKHF6",
+      "name": "fk_budget_lines_budget_id",
+      "columns": [
+        "01M8EJX99PB0ZFFC2AJKSJM5QQ"
+      ],
+      "referencesTable": "01M8EJX99PGW02W7JRZTW07JH5",
+      "referencesColumns": [
+        "01M8EJX99PX6S68WKVGARZQ6H5"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A81Z0C2M87KT659K5Z",
+      "name": "fk_budget_lines_fiscal_period_id",
+      "columns": [
+        "01M8EJX99PHJRKS8EGFJBHZ45B"
+      ],
+      "referencesTable": "01M8EJX99PQGDAZ8G4N907SBFG",
+      "referencesColumns": [
+        "01M8EJX99PA2921A0TER2S0BDK"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A811JC5NNCTXNAKZCX",
+      "name": "fk_budget_lines_ledger_account_id",
+      "columns": [
+        "01M8EJX99P472FMYASRNH8M4G3"
+      ],
+      "referencesTable": "01M8EJX99P0PRFJXZXM6AR56B8",
+      "referencesColumns": [
+        "01M8EJX99PXZ7RFKDAGWVDWMTX"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A budgeted amount for one ledger account and period."
+}

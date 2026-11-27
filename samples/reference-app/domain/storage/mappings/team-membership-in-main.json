@@ -1,0 +1,18 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHVQYB2NPZVCZ2GTE3",
+  "name": "team membership in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2FGZABF4E9KBAP72JVG64VB",
+  "junctionTable": "01M8EJX99QD6R1DJ7A05VJSKCG",
+  "ends": [
+    {
+      "end": "01M2C2MYK0F6THDA283MQA2FJQ",
+      "foreignKey": "01M8EJX9ACNN1THSFQ06FVYCT1"
+    },
+    {
+      "end": "01M2A7TDKXS4XP5N5136NE3HZ8",
+      "foreignKey": "01M8EJX9ACA4K4HR3NXF337SP9"
+    }
+  ]
+}

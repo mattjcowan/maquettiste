@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHFW8EFPA3M5A25VGF",
+  "name": "journal entry reverses reversal of in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2ENYY4H8ST8HKAG08S9YF3V",
+  "foreignKey": "01M8EJX9A83GETEDPRE6AAZ5VQ"
+}

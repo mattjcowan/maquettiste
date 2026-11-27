@@ -51,12 +51,6 @@ entities:
       preferredLanguage: Language name=party_prefers_preferred_language | Language for documents and messages.
       preferredCurrency: Currency name=party_prefers_preferred_currency | Currency used on documents by default.
       paymentTerm: PaymentTerm name=party_is_payable_on_payment_term | Payment terms agreed with the party, both directions.
-    mapping:
-      description: Customers, suppliers and carriers share the parties table (TPH) with a readable discriminator; the headquarters address columns get a short hq_ prefix.
-      inheritance: tph
-      discriminator: PARTY
-      prefix:
-        headquarters: hq_
 
   Customer:
     description: A business that buys from Northwind on account.
@@ -75,9 +69,6 @@ entities:
       territory: SalesTerritory name=customer_is_covered_by_territory | Sales territory of the account.
       industry: Industry name=customer_operates_in_industry | Industry the customer operates in.
       parentCustomer: Customer back=subsidiaries name=customer_is_a_subsidiary_of_parent_customer | Parent account for consolidated billing.
-    mapping:
-      description: Discriminator value of customers in the parties table.
-      discriminator: CUSTOMER
 
   Supplier:
     description: A vendor Northwind buys goods from.
@@ -88,9 +79,6 @@ entities:
       isPreferred: bool! default=false | Whether buyers should source from this supplier first.
       onboardedOn: date | Date the supplier passed vendor onboarding.
       remitToAddresses: Address[] | Addresses where payments may be sent; kept in a child table.
-    mapping:
-      description: Discriminator value of suppliers in the parties table.
-      discriminator: SUPPLIER
 
   Carrier:
     description: A freight or parcel company that moves Northwind shipments.
@@ -101,9 +89,6 @@ entities:
       trackingUrlTemplate: string(300) | URL with a {tracking} placeholder.
       offersLtl: bool! default=false | Whether the carrier moves less-than-truckload freight.
       insuranceExpiresOn: date | Expiry of the carrier's cargo insurance certificate.
-    mapping:
-      description: Discriminator value of carriers in the parties table.
-      discriminator: CARRIER
 
   Contact:
     description: A person at a party that Northwind deals with, such as a buyer, an accounts payable clerk or a dispatcher.
@@ -120,10 +105,6 @@ entities:
     refs:
       party: Party! cascade back=contacts name=contact_concerns_party | Organization the contact works for.
       language: Language name=contact_is_written_in_language | Language the contact prefers.
-    mapping:
-      description: Additional phone numbers are stored as a JSON array rather than a child table.
-      storage:
-        additionalPhones: json
 
   PartyAddress:
     description: A named address of a party, such as a ship-to location of a customer with several branches.

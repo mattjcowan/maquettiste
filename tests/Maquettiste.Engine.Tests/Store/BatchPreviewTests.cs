@@ -3,10 +3,12 @@ using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
 /// <summary>A batch's dry run: diffs, the diagnostics the change adds and removes, and its facts (next-phase-1-design.md section 5.1).</summary>
+[UsesProjectedFixtures]
 public sealed class BatchPreviewTests
 {
     private const string Customer = "01J92P0V0ETQKXXP951CMMNHH3";

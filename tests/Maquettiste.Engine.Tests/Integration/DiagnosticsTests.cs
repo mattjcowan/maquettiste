@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -10,6 +11,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// W2), resolver identifier-limit errors surfaced by the orchestrator (W3 → W6), and the stereotype-key save rule (W2 → W1).
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class DiagnosticsTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

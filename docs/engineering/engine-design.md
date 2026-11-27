@@ -1,6 +1,6 @@
 # Engine design (phase 1)
 
-**Status (2026-09-29): phase 1 is complete and gate 1 passes** (README.md, "What is built"; `bench/README.md` and `bench/baseline.json`: 100,050 files, cold total 6.7 s against 60 s, incremental 1.4 s against 2 s).
+**Status (2026-09-29): phase 1 is complete and gate 1 passes** (README.md, "What is built"; `bench/README.md` and `bench/baseline.json`: 100,050 files, cold total 6.7 s against 60 s, incremental 1.4 s against 2 s; re-recorded on 2026-11-27 for the bound model: cold total 9.8 s, incremental 1.9 s, load, validate and resolve 2.99 s against 3 s).
 
 The contract that the phase 1 workers implement against: `Maquettiste.Engine`, `Maquettiste.Cli`, the JSON schemas, two example packs and the benchmark. `SPEC.md` is the authority; section numbers written as S12 refer to it. Where the spec leaves a choice, this file decides, and each such choice is listed in §19 with an id (D1, D2…). Type and member names here are binding: implement them verbatim. A worker who needs a contract change edits this file first, in the same commit as the code.
 
@@ -670,6 +670,12 @@ descriptor reads "Project validation rule <id>.". `Validation/README.md` has the
 ## 7. Resolver (W3)
 
 The resolver turns a valid `ModelSnapshot` into the S10 resolved model in one pass, deterministically (every list below is sorted as stated, never by hash order). Each resolved object lists its **dependency keys** (§11): the `e:` keys of every file that contributed to any of its members, plus `s:conventions` / `s:typeMaps` / `s:inflection` when those were used, plus **`r:<id>`** for every entity and relation it derives from. `e:` keys cannot see a file that did not contribute when the unit was last rendered, such as a mapping, a table overlay or a relation created later; `r:<id>` changes whenever a file starts or stops referencing that id (D38). So every `REntity`, `RRelation`, promoted entity, synthesized `RTable` (entity, child and junction tables), each of their `RColumn`s, `RForeignKey`s and indexes, `REntityMapping`, `RRelationMapping` and `RNavigation` lists `r:<entityId>` for each entity it comes from and `r:<relationId>` for each relation.
+
+Databases may resolve side by side (0.29.0): the result is that of one-by-one runs in database-name order. A later run reads one thing an
+earlier run writes, the dependency keys its relation mappings add to a relation, so each run waits for the run before it to finish its
+relation mappings before it resolves its relations; findings, registrations and check listings are applied in database order afterwards,
+each database followed by its migration facts. Models where a relation can be promoted, or with an end of several types, resolve their
+databases one by one (Resolution/README.md, "Bindings at benchmark scale").
 
 ```csharp
 namespace Maquettiste.Engine.Resolution;
@@ -1427,6 +1433,7 @@ Exception { public Diagnostic Diagnostic { get; } }   // MQ6007 / MQ5003
 | `n:<kind>:<form>` | the sorted ids the kind's name index finds under the canonical form, or absent; `seed_named` records `n:seed:<form>`, `custom_named` `n:custom:<type>.<name>` (the batch form), and `table_named` `n:table:<text>` over resolved table names |
 | `ix:<index>:<value>`, `rt:<id>` | as `RuleKeyHasher` hashes them for the rule cache: `ix:` the sorted ids a `withStereotype`, `withTag`, `withProperty` or `byQualifiedName` lookup returns, `rt:` every reference entry to the id; recorded by a scripted seed's rows through the reads of its script run |
 | `cv:<kind>` | `CalculationHost.DeclarationHash(kind)`: `H` over the kind's declared (name, declaring file, file hash) in ordinal order, or absent when the kind declares none; recorded by `has_calculated`, a key enumeration or `in` test of `calculated`, and an undeclared read (next-phase-2-design.md section 5.5) |
+| `pm:relation-mappings` | `PromotionNaming.Hash`: `H` over each relation mapping by id, its id, relation, database, shape, ignore flag and promoted name; recorded by the entity and relation lists (and an entity's `relations`) in place of every relation mapping file's `e:` key (0.29.0) |
 | any key that no longer resolves | `"absent"` |
 
 A seed's scripted rows carry, as their list's membership keys and each row's keys, the seed's keys, the script's `x:`

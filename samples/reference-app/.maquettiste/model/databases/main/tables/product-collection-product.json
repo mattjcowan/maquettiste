@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QKXZ0DNXSJVPP89E7",
+  "name": "product_collection_product",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q6Z9TTSR6N9RAYM18",
+      "name": "collections_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q9TG3580PSQ1CYAXG",
+      "name": "products_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_collection_product",
+    "columns": [
+      "01M8EJX99Q6Z9TTSR6N9RAYM18",
+      "01M8EJX99Q9TG3580PSQ1CYAXG"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACB0DEWY3NH6KJRGVW",
+      "name": "fk_product_collection_product_collections_id",
+      "columns": [
+        "01M8EJX99Q6Z9TTSR6N9RAYM18"
+      ],
+      "referencesTable": "01M8EJX99N98WFMV4EP2ARBHGH",
+      "referencesColumns": [
+        "01M8EJX99NJB3F73HCQN44PCT9"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACAP0ZEYJXP3SACS55",
+      "name": "fk_product_collection_product_products_id",
+      "columns": [
+        "01M8EJX99Q9TG3580PSQ1CYAXG"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Products in a merchandising collection; a product may appear in many collections."
+}

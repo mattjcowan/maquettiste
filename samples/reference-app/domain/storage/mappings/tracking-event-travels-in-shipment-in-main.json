@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHVJHV71RTRAGVVKV6",
+  "name": "tracking event travels in shipment in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M38FK2K708R3GY30G88QN7ZK",
+  "foreignKey": "01M8EJX9A9DGSB5NY1SZDT4D0N"
+}

@@ -15,8 +15,18 @@ internal sealed record ParsedFile
     /// <summary>The element, for a valid element file.</summary>
     public Element? Element { get; init; }
 
-    /// <summary>The parsed JSON (a clone that owns its memory); <c>default</c> when the file is not JSON.</summary>
-    public JsonElement Json { get; init; }
+    /// <summary>
+    /// The parsed JSON (a clone that owns its memory, or for a valid element file parsed from its bytes on first read, <see cref="JsonSource"/>);
+    /// <c>default</c> when the file is not JSON.
+    /// </summary>
+    public JsonElement Json
+    {
+        get => JsonSource is { } source ? source.Value : field;
+        init => field = value;
+    }
+
+    /// <summary>For a valid element file: its JSON, parsed from its bytes on first read instead of kept as a clone.</summary>
+    public LazyJson? JsonSource { get; init; }
 
     /// <summary>The settings, for a valid <c>maquettiste.json</c>.</summary>
     public ProjectSettings? Settings { get; init; }
@@ -98,7 +108,6 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
         using (document)
         {
             var root = document.RootElement;
-            var json = root.Clone();
             var elementId = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("id", out var idValue) && idValue.ValueKind == JsonValueKind.String
                 ? idValue.GetString()
                 : null;
@@ -111,7 +120,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
                 var message = root.ValueKind != JsonValueKind.Object
                     ? "A model file must hold a JSON object."
                     : $"{pointer} The file has no known 'kind'; expected one of {string.Join(", ", KindInfo.All.Select(k => k.Name))}.";
-                return new ParsedFile { Json = json, Diagnostics = [Locate(RuleCatalog.Create("MQ1002", message, elementId, repoPath, pointer), bytes)] };
+                return new ParsedFile { Json = root.Clone(), Diagnostics = [Locate(RuleCatalog.Create("MQ1002", message, elementId, repoPath, pointer), bytes)] };
             }
 
             var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
@@ -121,7 +130,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
                 foreach (var d in schemaDiagnostics)
                     diagnostics.Add(Locate(d, bytes));
                 if (schemaDiagnostics.Any(d => d.Severity == DiagnosticSeverity.Error))
-                    return new ParsedFile { Json = json, Diagnostics = Sorted(diagnostics), SchemaEvaluated = true };
+                    return new ParsedFile { Json = root.Clone(), Diagnostics = Sorted(diagnostics), SchemaEvaluated = true };
             }
 
             Element element;
@@ -132,7 +141,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
             catch (Exception ex) when (IsDeserializationFailure(ex))
             {
                 diagnostics.Add(RuleCatalog.Create("MQ1002", $"The element does not deserialize: {ex.Message}", elementId, repoPath, ""));
-                return new ParsedFile { Json = json, Diagnostics = Sorted(diagnostics), SchemaEvaluated = !trusted };
+                return new ParsedFile { Json = root.Clone(), Diagnostics = Sorted(diagnostics), SchemaEvaluated = !trusted };
             }
 
             var isCanonical = trusted ? trustedCanonical : IsCanonical(bytes, root, info.SchemaFile, repoPath);
@@ -143,7 +152,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
             return new ParsedFile
             {
                 Element = element,
-                Json = json,
+                JsonSource = new LazyJson(StripBom(bytes), ParseOptions),
                 Diagnostics = Sorted(diagnostics),
                 Valid = true,
                 Canonical = isCanonical,

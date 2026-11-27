@@ -61,5 +61,78 @@
       "length": 400,
       "description": "Link to the scanned certificate."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C8MCE6T9HAATW5ZT8R",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PKDTGVPEY9GFQP6ZY",
+      "fields": [
+        {
+          "attribute": "01M1ZCA1QDAVWCM1KDA511FZ7H",
+          "column": "01M8EJX99PCQYC3HAT1KG66HAA"
+        },
+        {
+          "attribute": "01M280BPT5289H1DS6FQFE50NP",
+          "column": "01M8EJX99PNHEGBYZCFGW3XWCA"
+        },
+        {
+          "attribute": "01M1N1T3M4BH49SGFS1D7DRRBQ",
+          "column": "01M8EJX99PGMTNA1EN537VYAT8"
+        },
+        {
+          "attribute": "01M2PG485NFQD772J1JV82GFZE.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99PYGEJDVR9MN1BVJBT"
+        },
+        {
+          "attribute": "01M2PG485NFQD772J1JV82GFZE.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99PP81DH9Q8B59VHS6H"
+        },
+        {
+          "attribute": "01M1N8Z1PX756VW64D8GE2ARN9",
+          "column": "01M8EJX99P9HFJJ1NVBBJBP7KE"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PZN991X6QQKCSNX4P"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99P2V2FVV43V78SMXCN"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PK263A2SPE5Y00TR0"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PHY52J6A7FDPX0C1K"
+        },
+        {
+          "attribute": "01M1H2N0S43369AGBXZ98Q5DMH",
+          "column": "01M8EJX99PM52WZB4AQX0VYJZF"
+        },
+        {
+          "attribute": "01M1W27HT817KM6B0FKBN4T3YP",
+          "column": "01M8EJX99PM68MTEGGXVGA9AAZ"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P2V2FVV43V78SMXCN": "c0d79bde:9599b5fd",
+          "01M8EJX99P9HFJJ1NVBBJBP7KE": "2748e744:5c7847da",
+          "01M8EJX99PCQYC3HAT1KG66HAA": "a5614527:8da1c7b8",
+          "01M8EJX99PGMTNA1EN537VYAT8": "585b0d55:047ca306",
+          "01M8EJX99PHY52J6A7FDPX0C1K": "0b075263:9599b5fd",
+          "01M8EJX99PK263A2SPE5Y00TR0": "d31d4567:fd717804",
+          "01M8EJX99PM52WZB4AQX0VYJZF": "c001011d:8da1c7b8",
+          "01M8EJX99PM68MTEGGXVGA9AAZ": "b3287dee:d0210786",
+          "01M8EJX99PNHEGBYZCFGW3XWCA": "f17efcf2:6ebc34b1",
+          "01M8EJX99PP81DH9Q8B59VHS6H": "2a578471:9b51e601",
+          "01M8EJX99PYGEJDVR9MN1BVJBT": "2db5d4af:81884634",
+          "01M8EJX99PZN991X6QQKCSNX4P": "42049432:e0d08678"
+        }
+      }
+    }
   ]
 }

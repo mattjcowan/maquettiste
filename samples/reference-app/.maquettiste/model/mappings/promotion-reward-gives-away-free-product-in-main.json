@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJSARVS5W79GA07N22",
+  "name": "promotion reward gives away free product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2CZN98YH7SNF8E3030X78AW",
+  "foreignKey": "01M8EJX9AA9YGQAECXXE2S8QS5"
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000007",
+  "name": "RepeatSignerRefused",
+  "displayName": "Repeat signer refused",
+  "process": "01JQPRC0000000000000000001",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000101": 5000,
+      "01JQATT0000000000000000102": 1000
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000022",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000003"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000023",
+      "event": "01JQPRX0000000000000000002",
+      "actor": "01JQACT0000000000000000001",
+      "signer": "carol",
+      "meaning": "01JQPRX0000000000000000013",
+      "reason": "Long-standing customer",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000003"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000024",
+      "event": "01JQPRX0000000000000000002",
+      "actor": "01JQACT0000000000000000002",
+      "signer": "carol",
+      "meaning": "01JQPRX0000000000000000013",
+      "reason": "Signing again",
+      "expect": {
+        "accepted": false,
+        "states": [
+          "01JQSTA0000000000000000003"
+        ]
+      },
+      "description": "The same person may not sign twice."
+    }
+  ]
+}

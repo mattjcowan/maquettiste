@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHBKMZM7VPYFGWW76N",
+  "name": "cycle count is assigned to employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1RFZBRPFHD11RVFAZ2M83DP",
+  "foreignKey": "01M8EJX9A9Z3QW8FYDM1WHJYEY"
+}

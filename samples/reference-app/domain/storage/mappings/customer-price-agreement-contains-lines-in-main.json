@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJA8YQHCC888MVMKMD",
+  "name": "customer price agreement contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M22AP2CHZVZNBBH2F1D37R8F",
+  "foreignKey": "01M8EJX9AAPQWBMRJQ89384AVV"
+}

@@ -1,0 +1,35 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9B7T3ZDHVPR03KB6B4W",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QX72730HBK6DTHVZ6",
+      "fields": [
+        {
+          "attribute": "01M1TF916ABJEJQXR22N7PJZ1G",
+          "column": "01M8EJX99QGA8NZXPN6C3FH2FN"
+        },
+        {
+          "attribute": "01M2TR99RQFWV7P88W9C3ZYC8P",
+          "column": "01M8EJX99QZ61DF2MFDYKNA19Y"
+        },
+        {
+          "attribute": "01M381K9E79ZNRDJNKCQR113YY",
+          "column": "01M8EJX99Q47W35T8RZNNQRY8N"
+        },
+        {
+          "attribute": "01M2B43CGPFVZZ81Q657RXM707",
+          "column": "01M8EJX99QCF3EQAEA4FAHXG15"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q47W35T8RZNNQRY8N": "4830785e:307d3116",
+          "01M8EJX99QCF3EQAEA4FAHXG15": "7ac9b896:19980141",
+          "01M8EJX99QGA8NZXPN6C3FH2FN": "5694d08a:c1db413a",
+          "01M8EJX99QZ61DF2MFDYKNA19Y": "82a3537f:047ca306"
+        }
+      }
+    }
+  ]
+}

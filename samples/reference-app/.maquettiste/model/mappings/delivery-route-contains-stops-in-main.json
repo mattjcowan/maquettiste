@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHQ8MPNCP3QW10FR8Q",
+  "name": "delivery route contains stops in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M38N99F4W1V0KEYC689JF46B",
+  "foreignKey": "01M8EJX9A9XMJ0J1EY9S8WTVAM"
+}

@@ -85,6 +85,12 @@ them) the GC heap count and the runtime-overriding `DOTNET_` variables. Otherwis
 class (a CI runner) should record its own baseline before relying on the gate. `bench.yml` passes `--baseline` only when the file
 exists and otherwise emits a `::warning::`; an explicit `--baseline` path that does not exist fails the run.
 
+The baseline was re-recorded on 2026-11-27, from one fresh run on a quiet machine, because the bench model is now bound, not
+projected: since 0.29.0 the generator stores every entity with "Create tables…", so the model holds designed tables, bindings
+and relation mappings, 61,109 model files instead of about 26,000. Load, validate and resolve went from 1.72 s to 2.99 s
+(budget 3 s) and the incremental run from 1.43 s to 1.91 s (budget 2 s). Writing the model now takes about 40 s instead of
+2 s, because the generator runs "Create tables…" in memory; that time is reported, not a budget.
+
 **`bench/baseline-ci.json`** is the CI runner's own baseline (round 7). Record it with the `bench` workflow's dispatch input
 `record-ci-baseline` (on the runner the tag runs use, default `ubuntu-latest`): the run uses `--advisory-budgets`, writes its report
 as `baseline-ci.json`, uploads it as the `bench-baseline-ci` artifact, and the `commit-baseline` job commits it as

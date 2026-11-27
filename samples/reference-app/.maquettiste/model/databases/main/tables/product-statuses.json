@@ -1,0 +1,35 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q9QKY4DEDT32R0FFA",
+  "name": "product_statuses",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q6ZJ1YSNRKJ84N774",
+      "name": "code",
+      "type": "string",
+      "length": 8,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q244C7334FVN0C9V5",
+      "name": "label",
+      "type": "string",
+      "length": 64,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q0A73M6WM07MTQ4YK",
+      "name": "description",
+      "type": "text"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_statuses",
+    "columns": [
+      "01M8EJX99Q6ZJ1YSNRKJ84N774"
+    ]
+  }
+}

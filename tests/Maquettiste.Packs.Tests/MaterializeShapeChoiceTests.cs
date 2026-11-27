@@ -14,6 +14,7 @@ namespace Maquettiste.Packs.Tests;
 /// (<c>listStorage</c>), a many-to-many relation in a junction table with its relation mapping, the plan's choices, and the refusals.
 /// Over the billing model's dialects variant, where CreditNote derives from Invoice.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class MaterializeShapeChoiceTests
 {
     private const string Main = "01J92P0V1QRN2181XM2ZWE02W4";

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJVWQ90CJZ0H8A9M3Y",
+  "name": "blanket order is denominated in currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1EZES0M8V8PNT8Q8W9KQV3K",
+  "foreignKey": "01M8EJX9AC5HSZ4JMRYWFV7EP0"
+}

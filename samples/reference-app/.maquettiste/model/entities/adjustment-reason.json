@@ -37,5 +37,48 @@
       "default": true,
       "description": "Whether it posts a write-off to the ledger."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9AN34801WG1BTDWKX2J",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PNMJGC9K0B0DFDMJT",
+      "fields": [
+        {
+          "attribute": "01M1EJVYX0QYWNMXRVMT6B4XZY",
+          "column": "01M8EJX99P1MZJPR63SVXN49PQ"
+        },
+        {
+          "attribute": "01M1QNYT1GDMR8Z95ANN5EG25X",
+          "column": "01M8EJX99PKVD3W50B51455RWK"
+        },
+        {
+          "attribute": "01M1Q2XEZTSQ4A7SG2QB2MDQ7G",
+          "column": "01M8EJX99PF17R554W7NNWHV97"
+        },
+        {
+          "attribute": "01M32VYTXQMHC0TM6FHBHKHE4T",
+          "column": "01M8EJX99PD76TX45VSJPRHRME"
+        },
+        {
+          "attribute": "01M2WVYB596ZFE7XF9DEVKTVCD",
+          "column": "01M8EJX99PP400D34NJ0421VGX"
+        },
+        {
+          "attribute": "01M352J3V77SWZZE4X5PY7GPHN",
+          "column": "01M8EJX99PP42TA5JQCGKFAW9P"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P1MZJPR63SVXN49PQ": "a5614527:53fb88ea",
+          "01M8EJX99PD76TX45VSJPRHRME": "82a3537f:6137f4ed",
+          "01M8EJX99PF17R554W7NNWHV97": "5694d08a:461bd2c5",
+          "01M8EJX99PKVD3W50B51455RWK": "204d6515:19980141",
+          "01M8EJX99PP400D34NJ0421VGX": "d0efd4f6:53fb88ea",
+          "01M8EJX99PP42TA5JQCGKFAW9P": "0a2438db:19980141"
+        }
+      }
+    }
   ]
 }

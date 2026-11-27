@@ -6,11 +6,13 @@ using Maquettiste.Engine.Snapshots;
 using Maquettiste.Engine.Tests.Integration;
 using Maquettiste.Engine.Validation;
 using static Maquettiste.Engine.Tests.Validation.SuppressionHarness;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Validation;
 
 /// <summary>Suppressions apply (next-phase-2-design.md section 5.6): to the validator's, the resolver's and the checks' findings, after
 /// severities, with MQ5020 for an entry nothing matched.</summary>
+[UsesProjectedFixtures]
 public sealed class SuppressionTests
 {
     private const string InvoiceOverlayColumn = "/columns/0";

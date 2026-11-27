@@ -6,9 +6,10 @@ import { MockBackend } from "@/mocks/backend";
 import type { TableSummary } from "@/api/types";
 import { buildForest, childKeys, databaseOf, nodeOf, readAheadIdOf, relatedKeys, tableChildren, tableOf, type TablesInput } from "@/explorer/tree";
 import { filterTables } from "@/workspaces/database/tableList";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 
 function billing() {
-  const backend = new MockBackend();
+  const backend = new MockBackend({ seed: billingProjectedSeed() });
   const rows = backend.model.index();
   const tables = new Map<string, TablesInput>();
   for (const db of rows.filter((r) => r.kind === "database")) tables.set(db.id, backend.generation.databaseTables(db.id)!);

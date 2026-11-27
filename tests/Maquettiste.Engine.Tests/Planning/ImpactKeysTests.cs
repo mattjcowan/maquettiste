@@ -3,10 +3,12 @@ using System.Text.Json.Nodes;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Tests.Store;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Planning;
 
 /// <summary>When a dry run's change touches a stored read key (next-phase-2-design.md section 6.1, decision 3).</summary>
+[UsesProjectedFixtures]
 public sealed class ImpactKeysTests
 {
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";

@@ -9,6 +9,8 @@
     "label",
     "description"
   ],
+  "apply": "converge",
+  "delete": true,
   "rows": [
     { "id": "01M22HT4TBC6BDRF815BHW92PY", "values": ["DRAFT", "Draft", "Being set up; not sellable."] },
     { "id": "01M2E1Y2B50MBH4TBQMR79NR1F", "values": ["ACTIVE", "Active", "Sellable and replenished."] },

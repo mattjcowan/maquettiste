@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJXJK14VWSTXQ5CMQ2",
+  "name": "replenishment rule replenishes warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1SQVTWJ5EBRHXN29A5DJ3AQ",
+  "foreignKey": "01M8EJX9AAJAHNQCAK0GT8GCA9"
+}

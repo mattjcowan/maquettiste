@@ -11,7 +11,9 @@
 # stay owned while they exist (a once file nothing produces is kept), so no placeholder keeps them.
 #
 # On PostgreSQL each fact renders a step (see the fact builders in _migration.scriban) followed by its migration ledger row, inside
-# the file's one transaction; outside PostgreSQL the diff's statements and TODO lines are written as they always were (MQ4056). A
+# the file's one transaction; outside PostgreSQL the diff's statements and TODO lines are written as they always were (MQ4056). In
+# every dialect, what a rekey fact of "Create tables..." adopted (a table or a constraint the earlier seed.sql made) is created where
+# it is missing (adopted_table_statements, adopted_constraint_statements in _migration.scriban). A
 # run-once SQL object runs inside its ledger guard, so the file writes the ledger DDL for it too; SQL objects with environments run
 # only in objects.<env>.sql.
 include "_sql.scriban"
@@ -369,6 +371,8 @@ if diff && !diff.is_empty
   added_spec = dependency_spec(added)
   added_breaks = ddl_cycle_breaks added_spec
   added_skip = cycle_skip(added, added_breaks, db)
+  # What a rekey fact adopted first (adopted_table_statements in _migration.scriban): a new table may reference an adopted one.
+  adopted_table_statements(db, diff, statements)
   # One added table gives the spec "", which ddl_order reads as no tables.
   for i in (added.size == 1 ? [0] : (ddl_order added_spec))
     emit(statements, include "_table.scriban" added[i] added_skip)
@@ -392,6 +396,8 @@ if diff && !diff.is_empty
       produced[tc.key] = produced[tc.key] + statements.size - n
     end
   end
+  # The constraints a rekey fact adopted on the tables the database had, now that every table and column is in place.
+  adopted_constraint_statements(db, diff, statements)
   # A note for tables whose change has no statement.
   for tc in diff.tables
     if tc.kind == "renamed" || tc.kind == "altered"

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJZGFYJCSGCRJP5M6X",
+  "name": "promotion condition is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1RM5QAMG3K14BG6PCTAZWMT",
+  "foreignKey": "01M8EJX9AA9J8CSNY2WBFYBTXX"
+}

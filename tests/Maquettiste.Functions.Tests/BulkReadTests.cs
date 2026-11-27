@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Functions.Tests.Support;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Functions.Tests;
 
@@ -47,6 +48,7 @@ public sealed class BulkReadTests
         Assert.Equal(Math.Min(100, index.Count), all.Json["items"]!.AsArray().Count);
     }
 
+    [UsesProjectedFixtures]
     [Fact]
     public async Task Elements_take_the_index_filters_ids_and_fields()
     {
@@ -222,9 +224,11 @@ public sealed class BulkReadTests
         Assert.True(customer["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == "id")!["isKey"]!.GetValue<bool>());
         Assert.False(email["isKey"]!.GetValue<bool>());
         Assert.NotEmpty(customer["relations"]!.AsArray());
-        var mapping = Assert.Single(customer["mappings"]!.AsArray())!;
-        Assert.Equal(EditorHost.MainDatabaseId, mapping["database"]!.GetValue<string>());
-        Assert.Contains(customer["key"]!["attributes"]![0]!.GetValue<string>(), mapping["columns"]!.AsArray().Select(c => c!["attributePath"]!.GetValue<string>()));
+        // Customer is bound to its designed table, so nothing projects it.
+        Assert.Empty(customer["mappings"]!.AsArray());
+        var binding = Assert.Single(customer["bindings"]!.AsArray())!;
+        Assert.Equal(EditorHost.MainDatabaseId, binding["database"]!.GetValue<string>());
+        Assert.Equal("customers", binding["sourceName"]!.GetValue<string>());
         Assert.Contains("aggregate-root", customer["stereotypes"]!.AsArray().Select(s => s!.GetValue<string>()));
 
         // The page records the engine's answer for the editor's mock layer (all scopes, one page).
@@ -412,6 +416,7 @@ public sealed class BulkReadTests
         Assert.Equal("bad-request", (await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql?placeholder=%3F")).ProblemCode);
     }
 
+    [UsesProjectedFixtures]
     [Fact]
     public async Task Bindings_show_on_the_tables_their_sql_comes_back_and_materialize_previews_without_writing()
     {

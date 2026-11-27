@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHEXW8FW59SEJJ8VAD",
+  "name": "department is nested under parent in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2VVN3RR1RXH90VJZQ1SJAS9",
+  "foreignKey": "01M8EJX9A969ZF92FS22F982VF"
+}

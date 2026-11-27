@@ -1,0 +1,108 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q8RZP6HV465711PDM",
+  "name": "supplier_certifications",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q5C2EPV6R4886QB9T",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the supplier certification."
+    },
+    {
+      "id": "01M8EJX99QKR90VCBRAAHVA5FK",
+      "name": "certification_type",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "Scheme."
+    },
+    {
+      "id": "01M8EJX99QANMZXG8VZ4R863WD",
+      "name": "certificate_number",
+      "type": "string",
+      "length": 60,
+      "comment": "Certificate number."
+    },
+    {
+      "id": "01M8EJX99QK01SR6Y18G908VS7",
+      "name": "validity_starts_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99QKPW7DDHCQVTN9NNV",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99Q6TWQC1BNY5V1V71N",
+      "name": "document_url",
+      "type": "string",
+      "length": 400,
+      "comment": "Scanned certificate."
+    },
+    {
+      "id": "01M8EJX99QRGD23X5XVJTD8A8H",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QR3M2GQKYVBY2M8TD",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QFPX8MYQ2NT1T01M5",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QST8A8K1TJ56SMWX1",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99Q3FC2TZ99W1QGTARX",
+      "name": "supplier_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_supplier_certifications",
+    "columns": [
+      "01M8EJX99Q5C2EPV6R4886QB9T"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABPGZ9JM5R8N73NQV1",
+      "name": "fk_supplier_certifications_supplier_id",
+      "columns": [
+        "01M8EJX99Q3FC2TZ99W1QGTARX"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A certification held by a supplier, such as ISO 9001 or a food safety audit."
+}

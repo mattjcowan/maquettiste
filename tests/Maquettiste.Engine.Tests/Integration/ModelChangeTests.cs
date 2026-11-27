@@ -11,6 +11,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// element, pack filters and roots, preview, and cancelling a running pack script.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class ModelChangeTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

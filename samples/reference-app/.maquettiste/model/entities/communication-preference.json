@@ -63,5 +63,53 @@
       "length": 40,
       "description": "Where it was set, such as portal or phone."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9AX3KSQQ6GT2A87YJTD",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NPFE7RJN3GP7GGKFE",
+      "fields": [
+        {
+          "attribute": "01M24KHTF1TKM1NXJMSMGZZP1K",
+          "column": "01M8EJX99NFHQPVQFNSZNYVDVP"
+        },
+        {
+          "attribute": "01M2NR4DTNE86SBXK77X98TFB1",
+          "column": "01M8EJX99NT3RS50GFKGB7FEA9"
+        },
+        {
+          "attribute": "01M2MAWVCH69RB44YT931AMCYA",
+          "column": "01M8EJX99N0FV9F8X5MNZMASPN"
+        },
+        {
+          "attribute": "01M1T12PZV1R3SETNQRDSXKTT8",
+          "column": "01M8EJX99NAY119ZJW2PTTKV9E"
+        },
+        {
+          "attribute": "01M1VDPVV344PHSXGGE07QVYKY",
+          "column": "01M8EJX99N2QPEXB9EQ93C79QY"
+        },
+        {
+          "attribute": "01M2K16MM95XPHP1AZ3XWDMFBM",
+          "column": "01M8EJX99NFEW2F9TB1ZMP15ZK"
+        },
+        {
+          "attribute": "01M2BPN2ZJ24D4HT3HZRBBF7HA",
+          "column": "01M8EJX99N7PV5AF5DEWBNB36B"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N0FV9F8X5MNZMASPN": "23d611a6:6ebc34b1",
+          "01M8EJX99N2QPEXB9EQ93C79QY": "0b784c0e:e0d08678",
+          "01M8EJX99N7PV5AF5DEWBNB36B": "670bcdb5:8da1c7b8",
+          "01M8EJX99NAY119ZJW2PTTKV9E": "1dd84f1a:19980141",
+          "01M8EJX99NFEW2F9TB1ZMP15ZK": "41cf6794:014c4aec",
+          "01M8EJX99NFHQPVQFNSZNYVDVP": "a5614527:8da1c7b8",
+          "01M8EJX99NT3RS50GFKGB7FEA9": "69e36568:ef1ae9ec"
+        }
+      }
+    }
   ]
 }

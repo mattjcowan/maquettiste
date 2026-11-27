@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKC7QHW1RX263AB2ZCZ72N",
+  "name": "logs",
+  "database": "01JSCH00000000000000000021",
+  "schema": "01JSCH00000000000000000023",
+  "columns": [
+    {
+      "id": "01M8EKC7QHARQD769RFDZ84XS8",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_logs",
+    "columns": [
+      "01M8EKC7QHARQD769RFDZ84XS8"
+    ]
+  }
+}

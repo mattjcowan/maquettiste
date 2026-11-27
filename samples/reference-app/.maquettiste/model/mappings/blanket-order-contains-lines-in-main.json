@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJMXG818MBX7A5T5VQ",
+  "name": "blanket order contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2C31Z3A70TZ34535BSXPRWQ",
+  "foreignKey": "01M8EJX9ACZACPM6TB524E56XH"
+}

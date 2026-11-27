@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CGPTSTYGFFCWY25673",
+  "name": "payment is deposited to deposit account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M3039900H78EK9SR4N3MGASX",
+  "foreignKey": "01M8EJX9A55QBH8DESAHX7J37C"
+}

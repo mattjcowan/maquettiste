@@ -1,0 +1,186 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QYR8VEJ29FV08BKVZ",
+  "name": "warranty_claims",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QNSG175N89ETFJ1AP",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the warranty claim."
+    },
+    {
+      "id": "01M8EJX99Q6MHPKC2P3W800EYK",
+      "name": "claim_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Claim number."
+    },
+    {
+      "id": "01M8EJX99Q1YW36SHZ4X70CMTR",
+      "name": "filed_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Filing date."
+    },
+    {
+      "id": "01M8EJX99Q7V3VCC0W0N1G0YQD",
+      "name": "failure_description",
+      "type": "text",
+      "nullable": false,
+      "comment": "What failed."
+    },
+    {
+      "id": "01M8EJX99QFD3TGY3T9YWPNDB3",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "filed",
+      "comment": "filed, approved, denied or reimbursed."
+    },
+    {
+      "id": "01M8EJX99QF6SECCPVSTVRE2CN",
+      "name": "claim_amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QKVZJZ0XX5RVY2DPN",
+      "name": "claim_amount_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99Q7Z6M07BME2FBMQEM",
+      "name": "resolution",
+      "type": "string",
+      "length": 500,
+      "comment": "Outcome."
+    },
+    {
+      "id": "01M8EJX99QXC2NR6EMQDP2SQA3",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99Q2AQ0Q6A0XYYKXEN6",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QGX2G02C32YH4HZW6",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QE2D8ERHKXTX2Z5C8",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QJF9185C5TCXNAJAG",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QBC678FVVSV34CTPK",
+      "name": "manufacturer_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QC25D2X95VARZJZT1",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QXXPQQ86NXR3S3BPW",
+      "name": "serial_number_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_warranty_claims",
+    "columns": [
+      "01M8EJX99QNSG175N89ETFJ1AP"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ABMS5DAQ9B19XFWP97",
+      "name": "uq_warranty_claims_claim_number",
+      "columns": [
+        "01M8EJX99Q6MHPKC2P3W800EYK"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AB1ADXAR8FYB4XKEWE",
+      "name": "fk_warranty_claims_customer_id",
+      "columns": [
+        "01M8EJX99QJF9185C5TCXNAJAG"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ABNF6NYBV9TP05PY39",
+      "name": "fk_warranty_claims_manufacturer_id",
+      "columns": [
+        "01M8EJX99QBC678FVVSV34CTPK"
+      ],
+      "referencesTable": "01M8EJX99N266RWXHYX839QRMH",
+      "referencesColumns": [
+        "01M8EJX99NYNWTYGXRBMVEF7ED"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB45T5G23YV5AG3DE3",
+      "name": "fk_warranty_claims_product_id",
+      "columns": [
+        "01M8EJX99QC25D2X95VARZJZT1"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ABZ57SRN4W94VJB6K5",
+      "name": "fk_warranty_claims_serial_number_id",
+      "columns": [
+        "01M8EJX99QXXPQQ86NXR3S3BPW"
+      ],
+      "referencesTable": "01M8EJX99PWE8JFBJRHYEBTQPV",
+      "referencesColumns": [
+        "01M8EJX99P3ARH4W6ATBW4C20V"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A claim that a product failed within its warranty, passed on to the manufacturer."
+}

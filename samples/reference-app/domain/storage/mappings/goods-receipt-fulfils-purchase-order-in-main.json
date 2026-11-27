@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ1E77V1K0WSC0B48V",
+  "name": "goods receipt fulfils purchase order in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1J4HAX42MXHNKJ6Y8MM3430",
+  "foreignKey": "01M8EJX9AA2SYH25AZNWR7F2C4"
+}

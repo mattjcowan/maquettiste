@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
@@ -7,6 +8,7 @@ namespace Maquettiste.Cli.Tests;
 /// CustomerNote share the table <c>notes</c>: a re-sync records InvoiceNote's provenance, a change to the table is drift, and the
 /// operations catch up as <c>model materialize</c> does.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class BindingCommandTests
 {
     private const string Notes = ".maquettiste/model/databases/main/tables/notes.json";

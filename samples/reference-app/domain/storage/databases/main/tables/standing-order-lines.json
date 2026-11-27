@@ -1,0 +1,88 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QNER360WVAWCA56RY",
+  "name": "standing_order_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q91S7WAS5H47CQZZJ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the standing order line."
+    },
+    {
+      "id": "01M8EJX99QEW371SV88A6JBYB2",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity per run."
+    },
+    {
+      "id": "01M8EJX99QB72WV26JHPGWG3BF",
+      "name": "standing_order_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q0YJJ0PT1MZ9YZ932",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QKHW0N9HGAHGWAPA5",
+      "name": "unit_code",
+      "type": "string",
+      "length": 3
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_standing_order_lines",
+    "columns": [
+      "01M8EJX99Q91S7WAS5H47CQZZJ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACZD9MM59FVK5QM3YW",
+      "name": "fk_standing_order_lines_standing_order_id",
+      "columns": [
+        "01M8EJX99QB72WV26JHPGWG3BF"
+      ],
+      "referencesTable": "01M8EJX99QNZWP4NMWV6A84VGN",
+      "referencesColumns": [
+        "01M8EJX99QJEXHM5J5HFRQWBD6"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACBCS3TXRA7MZZ16Z9",
+      "name": "fk_standing_order_lines_product_id",
+      "columns": [
+        "01M8EJX99Q0YJJ0PT1MZ9YZ932"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ACD90P0S4ABZ42JYAZ",
+      "name": "fk_standing_order_lines_unit_code",
+      "columns": [
+        "01M8EJX99QKHW0N9HGAHGWAPA5"
+      ],
+      "referencesTable": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "referencesColumns": [
+        "01M8EJX99Q26RFK5STCSH1JBPE"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A product and quantity ordered on every run of a standing order."
+}

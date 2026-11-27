@@ -211,6 +211,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var cacheTask = full && Documents.UsesIndexCache ? WriteCacheIfChangedAsync(entries, ct) : Task.FromResult(false);
         ModelSnapshot snapshot;
         IReadOnlyDictionary<string, ElementDocument> documents;
+        AssembleMemo? memo = null;
         ChangeSet changes;
         try
         {
@@ -218,11 +219,12 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             {
                 snapshot = previous.Snapshot;
                 documents = previous.Documents;
+                memo = previous.Memo;
             }
             else
             {
                 var version = (request.Previous?.Version ?? previous.Snapshot?.Version ?? 0) + 1;
-                (snapshot, documents) = Assemble(entries, previous.Documents, version, previous.Snapshot, ct);
+                (snapshot, documents, memo) = Assemble(entries, previous.Documents, version, previous.Snapshot, previous.Memo, ct);
             }
 
             changes = Compare(request.Previous, snapshot);
@@ -234,7 +236,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         }
 
         var cacheWritten = await cacheTask.ConfigureAwait(false);
-        _state = new LoaderState(entries, documents, snapshot) { MissingSidecars = missingSidecars };
+        _state = new LoaderState(entries, documents, snapshot) { MissingSidecars = missingSidecars, Memo = memo };
 
         LastStatistics = new LoadStatistics(entries.Count, counters.Read, counters.FromCache, counters.Reused, counters.Parsed, counters.SchemaEvaluations, cacheWritten);
         return new LoadResult(snapshot, changes);
@@ -560,11 +562,12 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         return new FileEntry(modelPath, kind, length, ticks, hash, bytes, parsed) { OwnDependencyHash = ownDependencyHash };
     }
 
-    private (ModelSnapshot Snapshot, IReadOnlyDictionary<string, ElementDocument> Documents) Assemble(
+    private (ModelSnapshot Snapshot, IReadOnlyDictionary<string, ElementDocument> Documents, AssembleMemo? Memo) Assemble(
         Dictionary<string, FileEntry> entries,
         IReadOnlyDictionary<string, ElementDocument> previousDocuments,
         long version,
         ModelSnapshot? previousSnapshot,
+        AssembleMemo? memo,
         CancellationToken ct)
     {
         var diagnostics = new List<Diagnostic>();
@@ -579,15 +582,45 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                 settings = loaded;
         }
 
-        var documents = new List<ElementDocument>();
-        var byPath = new Dictionary<string, ElementDocument>(StringComparer.Ordinal);
-        var ids = new Dictionary<string, (string Path, string Pointer)>(StringComparer.Ordinal);
-        foreach (var entry in entries.Values.Where(e => e.Kind == ModelFileKind.Element).OrderBy(e => e.ModelPath, StringComparer.Ordinal))
+        // The entries in path order, sorted once for both passes below, and the table of every id with where it is first held. After a
+        // load whose ids were all distinct, a load of the same files with a few changed reuses both, patching the table for the changed
+        // files only (a large model has hundreds of thousands of ids, rebuilt on every edit otherwise).
+        var (ordered, ids, patched) = memo?.TryReuse(entries, _paths) ?? default;
+        if (ordered is null || ids is null)
         {
+            ordered = entries.Values.ToArray();
+            Array.Sort(ordered, static (a, b) => string.CompareOrdinal(a.ModelPath, b.ModelPath));
+            var idCount = 0;
+            foreach (var entry in ordered)
+            {
+                if (entry.Kind == ModelFileKind.Element)
+                    idCount += entry.Parsed.Ids.Length + 1;
+            }
+
+            ids = new Dictionary<string, (string Path, string Pointer)>(idCount, StringComparer.Ordinal);
+            patched = false;
+        }
+
+        var distinct = true; // no id held twice: the table can serve the next load
+        var documents = new List<ElementDocument>(entries.Count);
+        var byPath = new Dictionary<string, ElementDocument>(entries.Count, StringComparer.Ordinal);
+        foreach (var entry in ordered)
+        {
+            if (entry.Kind != ModelFileKind.Element)
+                continue;
             diagnostics.AddRange(entry.Parsed.Diagnostics);
             if (entry.Parsed.Element is not { } element || !entry.Parsed.Valid)
                 continue;
             var repoPath = _paths.ToRepoPath(entry.ModelPath);
+            if (patched)
+            {
+                // Every id is in the table, each held once (the patch checked the changed files).
+                var reused = BuildDocument(entry, repoPath, entries, previousDocuments);
+                documents.Add(reused);
+                byPath[repoPath] = reused;
+                continue;
+            }
+
             if (ids.TryGetValue(element.Id, out var first))
             {
                 var duplicate = RuleCatalog.Create(
@@ -597,6 +630,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                     repoPath,
                     "/id");
                 diagnostics.Add(_reader.Locate(duplicate, entry.Bytes));
+                distinct = false;
                 continue;
             }
 
@@ -604,6 +638,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             {
                 if (ids.TryAdd(id, (repoPath, pointer)))
                     continue;
+                distinct = false;
                 if (pointer.Length == 0)
                     continue; // the element's own id, added above
                 var other = ids[id];
@@ -625,7 +660,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var shards = new List<LocaleShardDocument>();
         var customKinds = new List<CustomKindDocument>();
         var declaredRules = new List<DeclaredRuleDocument>();
-        foreach (var entry in entries.Values.OrderBy(e => e.ModelPath, StringComparer.Ordinal))
+        foreach (var entry in ordered)
         {
             switch (entry.Kind)
             {
@@ -679,7 +714,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         diagnostics.Sort(Diagnostic.Order);
         var snapshot = ModelSnapshot.CreateAfter(previousSnapshot, documents, settings, settingsHash, extensions, scripts, version, diagnostics,
             options.EffectiveParallelism, ct, shards, seedScripts, customKinds, libraries, calculationScripts, declaredRules);
-        return (snapshot, byPath);
+        return (snapshot, byPath, distinct ? new AssembleMemo(ordered, ids) : null);
     }
 
     /// <summary>
@@ -777,10 +812,16 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var dependencyHash = sidecarHash is null && entry.OwnDependencyHash is { } bytesOnly ? bytesOnly : HashBuilder.Of(entry.Hash, sidecarHash);
         if (previousDocuments.TryGetValue(repoPath, out var previous) && previous.Hash == entry.Hash && previous.DependencyHash == dependencyHash)
             return previous;
-        var (element, json) = entry.Parsed.Element is Seed { RowsFrom.File: { } rowsFile } seed
-            ? WithCsvRows(seed, rowsFile, entry.ModelPath, entry.Parsed.Json, entries)
-            : (entry.Parsed.Element!, entry.Parsed.Json);
-        return new ElementDocument(element, repoPath, entry.Hash, dependencyHash, json, sidecarText);
+        if (entry.Parsed.Element is Seed { RowsFrom.File: { } rowsFile } seed)
+        {
+            var (element, json) = WithCsvRows(seed, rowsFile, entry.ModelPath, entry.Parsed.Json, entries);
+            return new ElementDocument(element, repoPath, entry.Hash, dependencyHash, json, sidecarText);
+        }
+
+        // The JSON stays unparsed until something reads it (most documents' never is during generation).
+        return entry.Parsed.JsonSource is { } source
+            ? ElementDocument.WithLazyJson(entry.Parsed.Element!, repoPath, entry.Hash, dependencyHash, source, sidecarText)
+            : new ElementDocument(entry.Parsed.Element!, repoPath, entry.Hash, dependencyHash, entry.Parsed.Json, sidecarText);
     }
 
     /// <summary>
@@ -927,6 +968,75 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         [.. Documents.List(modelFolder, recursive)
             .Where(p => (extension is null || p.EndsWith(extension, StringComparison.Ordinal)) && ModelPaths.Classify(p) is not null)];
 
+    /// <summary>
+    /// What an assembly whose ids were all distinct leaves for the next one: its entries in path order and its id table. The table is
+    /// handed on, not copied: the first later assembly takes it (once) and patches it for the files that changed; a load that fails after
+    /// taking it leaves nothing to reuse, and the one after rebuilds.
+    /// </summary>
+    private sealed class AssembleMemo(FileEntry[] ordered, Dictionary<string, (string Path, string Pointer)> ids)
+    {
+        /// <summary>The most changed files a patch handles; more rebuild the table.</summary>
+        private const int PatchLimit = 256;
+
+        private int _taken;
+
+        /// <summary>
+        /// The entries in path order and the id table patched for them, when the files are the same paths with at most
+        /// <see cref="PatchLimit"/> changed and no id of a changed file collides; otherwise <see langword="default"/> (rebuild).
+        /// </summary>
+        public (FileEntry[]? Ordered, Dictionary<string, (string Path, string Pointer)>? Ids, bool Patched) TryReuse(
+            Dictionary<string, FileEntry> entries, ModelPaths paths)
+        {
+            if (ordered.Length != entries.Count || Interlocked.Exchange(ref _taken, 1) != 0)
+                return default;
+            var now = new FileEntry[ordered.Length];
+            var changed = new List<int>();
+            for (var i = 0; i < ordered.Length; i++)
+            {
+                if (!entries.TryGetValue(ordered[i].ModelPath, out var entry))
+                    return default;
+                now[i] = entry;
+                if (!ReferenceEquals(entry, ordered[i]))
+                {
+                    changed.Add(i);
+                    if (changed.Count > PatchLimit)
+                        return default;
+                }
+            }
+
+            // Out with the ids the changed files held, in with the ones they hold now; a collision rebuilds (the table is spent).
+            foreach (var i in changed)
+            {
+                if (Contributes(ordered[i]) is not { } before)
+                    continue;
+                var repoPath = paths.ToRepoPath(before.ModelPath);
+                foreach (var (id, pointer) in before.Parsed.Ids)
+                {
+                    if (ids.TryGetValue(id, out var held) && string.Equals(held.Path, repoPath, StringComparison.Ordinal)
+                        && string.Equals(held.Pointer, pointer, StringComparison.Ordinal))
+                        ids.Remove(id);
+                }
+            }
+
+            foreach (var i in changed)
+            {
+                if (Contributes(now[i]) is not { } after)
+                    continue;
+                var repoPath = paths.ToRepoPath(after.ModelPath);
+                foreach (var (id, pointer) in after.Parsed.Ids)
+                {
+                    if (!ids.TryAdd(id, (repoPath, pointer)))
+                        return default;
+                }
+            }
+
+            return (now, ids, true);
+        }
+
+        private static FileEntry? Contributes(FileEntry entry) =>
+            entry.Kind == ModelFileKind.Element && entry.Parsed is { Element: not null, Valid: true } ? entry : null;
+    }
+
     /// <summary>One file of the last load.</summary>
     private sealed record FileEntry(string ModelPath, ModelFileKind Kind, long Length, long LastWriteTicks, string Hash, byte[] Bytes, ParsedFile Parsed)
     {
@@ -944,6 +1054,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     {
         /// <summary>Sidecars the elements reference that did not exist at the load.</summary>
         public IReadOnlyList<string> MissingSidecars { get; init; } = [];
+
+        /// <summary>What the next assembly can reuse (<see cref="AssembleMemo"/>), or <see langword="null"/>.</summary>
+        public AssembleMemo? Memo { get; init; }
 
         public static LoaderState Empty { get; } = new(
             FrozenDictionary<string, FileEntry>.Empty,

@@ -22,7 +22,10 @@ public sealed record MaterializeProofResult(IReadOnlyDictionary<string, int> Mat
     /// <summary>The migration facts the conversion recorded other than its rekey facts (a change the database would see).</summary>
     public IReadOnlyList<string> OtherFacts { get; init; } = [];
 
-    /// <summary>The migrations the run after the conversion wrote (path to text): the rekey fact's ledger rows, no schema statement.</summary>
+    /// <summary>
+    /// The migrations the run after the conversion wrote (path to text): the rekey fact's ledger rows and the guarded statements that
+    /// create what it adopted where it is missing, no other schema statement.
+    /// </summary>
     public IReadOnlyDictionary<string, string> RekeyMigrations { get; init; } = new Dictionary<string, string>();
 
     /// <summary>The migration scripts before the conversion.</summary>
@@ -140,8 +143,8 @@ public static class MaterializeProof
                         applied.Items.SelectMany(i => i.Diagnostics).Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.Rule + " " + d.Message).Take(20)));
                 }
 
-                // The write records a rekey fact, which only adds ledger rows to the scripts; without it, the snapshot's aliases alone
-                // must make the next migration empty, and the scripts compare byte for byte.
+                // The write records a rekey fact, which adds only ledger rows and guarded adoptions to the scripts; without it, the
+                // snapshot's aliases alone must make the next migration empty, and the scripts compare byte for byte.
                 foreach (var fact in applied.Facts ?? [])
                 {
                     if (fact.Fact == "rekey")
@@ -164,7 +167,7 @@ public static class MaterializeProof
         }
 
         _ = first;
-        // The run after the write renders its rekey fact: a migration with the fact's ledger rows and no schema statement, and the
+        // The run after the write renders its rekey fact: a migration with the fact's ledger rows and guarded adoptions only, and the
         // snapshot it saves holds what the fact adopted. With the fact rendered and removed, a third run must find nothing to migrate,
         // and its scripts are what is compared.
         var second = await GenerateAsync(options, ct, throwOnFailure: false).ConfigureAwait(false);

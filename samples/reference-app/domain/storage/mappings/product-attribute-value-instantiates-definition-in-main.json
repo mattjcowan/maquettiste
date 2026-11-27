@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHWKZH1TWXNCSD949Z",
+  "name": "product attribute value instantiates definition in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M32NVKJZ3MMYFB6T2F69YWKR",
+  "foreignKey": "01M8EJX9A7RD206NZ33JCM3NJF"
+}

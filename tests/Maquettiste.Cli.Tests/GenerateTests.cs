@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Writing;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
+[UsesProjectedFixtures]
 public sealed class GenerateTests
 {
     private const string CustomerFile = ".maquettiste/model/entities/customer.json";

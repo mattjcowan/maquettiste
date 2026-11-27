@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH7TT5JYD5RE5JG4A7",
+  "name": "tax exemption certificate belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2W24ENEKCX72V710GMY87A7",
+  "foreignKey": "01M8EJX9A8KYY7MJ1TGKMVC3YT"
+}

@@ -7,9 +7,6 @@
   "stereotypes": [
     "audited"
   ],
-  "properties": {
-    "auditLevel": "full"
-  },
   "key": {
     "attributes": [
       "01JATT00000000000000000201"
@@ -29,8 +26,8 @@
       "type": "string",
       "length": 32,
       "required": true,
-      "unique": true,
-      "default": "INV-0000"
+      "default": "INV-0000",
+      "unique": true
     },
     {
       "id": "01JATT00000000000000000203",
@@ -76,5 +73,76 @@
       "type": "uuid",
       "default": "0f8fad5b-d9cb-469f-a165-70867728950e"
     }
-  ]
+  ],
+  "bindings": [
+    {
+      "id": "01M8EKD8YE0YG4XGBBBK33M5D8",
+      "database": "01JDBS00000000000000000001",
+      "source": "01JTAB00000000000000000002",
+      "fields": [
+        {
+          "attribute": "01JATT00000000000000000201",
+          "column": "01M8EKD8XPKFG34MTQMG5YJGH1"
+        },
+        {
+          "attribute": "01JATT00000000000000000202",
+          "column": "01JCMN00000000000000000004"
+        },
+        {
+          "attribute": "01JATT00000000000000000203.01JATT00000000000000008001",
+          "column": "01JCMN00000000000000000005"
+        },
+        {
+          "attribute": "01JATT00000000000000000203.01JATT00000000000000008002",
+          "column": "01M8EKD8XP9HCBJ4P0KT1WN10H"
+        },
+        {
+          "attribute": "01JATT00000000000000000204",
+          "column": "01M8EKD8XPPNVSY578DEZKPHWF"
+        },
+        {
+          "attribute": "01JATT00000000000000000205",
+          "column": "01M8EKD8XP47GX5TAXHYZKEQR1"
+        },
+        {
+          "attribute": "01JATT00000000000000000206",
+          "column": "01M8EKD8XP9Q43WC081ZYXT8P3"
+        },
+        {
+          "attribute": "01JATT00000000000000000207",
+          "column": "01M8EKD8XPJPQW0CB9GB83F8D5"
+        },
+        {
+          "attribute": "01JATT00000000000000000208",
+          "column": "01M8EKD8XPYBQCPYFJ98XAPE3T"
+        },
+        {
+          "attribute": "01JATT00000000000000009001",
+          "column": "01M8EKD8XP95A9Y999CNH635A3"
+        },
+        {
+          "attribute": "01JEND00000000000000000001",
+          "column": "01M8EKD8XP018JAN0212WNSK6H"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01JCMN00000000000000000004": "77ead61b:8d6df7d5",
+          "01JCMN00000000000000000005": "6a31bb87:8922ffc1",
+          "01M8EKD8XP018JAN0212WNSK6H": "c001011d:8da1c7b8",
+          "01M8EKD8XP47GX5TAXHYZKEQR1": "1d320e02:9b51e601",
+          "01M8EKD8XP95A9Y999CNH635A3": "42049432:e0d08678",
+          "01M8EKD8XP9HCBJ4P0KT1WN10H": "90d51eb0:75525505",
+          "01M8EKD8XP9Q43WC081ZYXT8P3": "b3031c23:fd717804",
+          "01M8EKD8XPJPQW0CB9GB83F8D5": "8c1f50ba:d0210786",
+          "01M8EKD8XPKFG34MTQMG5YJGH1": "a5614527:8da1c7b8",
+          "01M8EKD8XPPNVSY578DEZKPHWF": "073c1634:dddfaca1",
+          "01M8EKD8XPYBQCPYFJ98XAPE3T": "52367a66:d8a57cf9"
+        }
+      }
+    }
+  ],
+  "properties": {
+    "auditLevel": "full"
+  }
 }

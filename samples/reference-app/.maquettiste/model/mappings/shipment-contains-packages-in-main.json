@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHJS967MFVVSR2ETMM",
+  "name": "shipment contains packages in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1DPHX9MNS37M53X920A260Z",
+  "foreignKey": "01M8EJX9A9SXMB81NMD99WQY7Z"
+}

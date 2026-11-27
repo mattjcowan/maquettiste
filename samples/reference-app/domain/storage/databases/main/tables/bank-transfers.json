@@ -1,0 +1,65 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99MG1ENWBB0T9W3D3QJ",
+  "name": "bank_transfers",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99MWZDR14PA8KMGGDHZ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the payment."
+    },
+    {
+      "id": "01M8EJX99MXY5D3D5YCKXHCX7Q",
+      "name": "transfer_reference",
+      "type": "string",
+      "length": 64,
+      "nullable": false,
+      "comment": "Reference on the bank statement."
+    },
+    {
+      "id": "01M8EJX99M7ZPXKKCPH79VFHZF",
+      "name": "payer_bank_name",
+      "type": "string",
+      "length": 100,
+      "comment": "Payer's bank."
+    },
+    {
+      "id": "01M8EJX99MKKS6CEF2XTX92A2F",
+      "name": "payer_account_last4",
+      "type": "string",
+      "length": 4,
+      "comment": "Last digits of the payer's account."
+    },
+    {
+      "id": "01M8EJX99M0YSD4FNTJ59EBYCW",
+      "name": "value_date",
+      "type": "date",
+      "comment": "Date the funds became available."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_bank_transfers",
+    "columns": [
+      "01M8EJX99MWZDR14PA8KMGGDHZ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX99Z268BAJBN34QGY0P2",
+      "name": "fk_bank_transfers_id",
+      "columns": [
+        "01M8EJX99MWZDR14PA8KMGGDHZ"
+      ],
+      "referencesTable": "01M8EJX99N5EKCG57ND8KZGHZ4",
+      "referencesColumns": [
+        "01M8EJX99NBRGNW4MREK7W6QYQ"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A payment by ACH, wire or SEPA transfer, identified on the bank statement."
+}

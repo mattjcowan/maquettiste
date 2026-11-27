@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJJ3W1PJ1040WDFXQ0",
+  "name": "cart item is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M29J8HSMDVQYEWC5SCTQ1DW0",
+  "foreignKey": "01M8EJX9ACFD8EEQMH338NMRQD"
+}

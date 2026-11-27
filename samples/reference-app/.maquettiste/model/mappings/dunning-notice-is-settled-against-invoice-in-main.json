@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CGMJ7Q836D8RW9ZQQX",
+  "name": "dunning notice is settled against invoice in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1YXNCKXFZ1YRA5ANM05YQ4H",
+  "foreignKey": "01M8EJX9A32VP4DY95Y6SEHAX2"
+}

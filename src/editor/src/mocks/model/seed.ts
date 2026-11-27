@@ -9,6 +9,10 @@ import { MOCK_RULE } from "./extensions";
 import { databaseObjectFiles } from "./databaseObjectSeed";
 
 const fixture = import.meta.glob("../fixture/billing/**/*.{json,md}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+const projectedFixture = import.meta.glob("../fixture/billing-projected/**/*.{json,md}", { query: "?raw", import: "default", eager: true }) as Record<
+  string,
+  string
+>;
 const packFiles = import.meta.glob("../fixture/packs/*/pack.json", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /** The pack manifests the mock carries (the fixture copies of sql-ddl and csharp-dapper). */
@@ -19,9 +23,22 @@ export function packs(): Record<string, unknown>[] {
 }
 
 export function billingSeed(): Seed {
-  const files: SeedFile[] = Object.keys(fixture)
+  return seedFrom(fixture, "../fixture/billing/");
+}
+
+/**
+ * The billing model as it was before its tables were designed: one table overlay and one entity mapping, every other
+ * table and mapping projected by the engine's conventions. For the mock's tests of projection only; a backend seeded
+ * with it serves no recorded answers.
+ */
+export function billingProjectedSeed(): Seed {
+  return seedFrom(projectedFixture, "../fixture/billing-projected/");
+}
+
+function seedFrom(source: Record<string, string>, prefix: string): Seed {
+  const files: SeedFile[] = Object.keys(source)
     .sort()
-    .map((key) => ({ path: key.replace("../fixture/billing/", ""), text: fixture[key] }));
+    .map((key) => ({ path: key.replace(prefix, ""), text: source[key] }));
   if (files.length === 0) throw new Error("The billing fixture is missing from src/mocks/fixture; run `npm run copy-fixture`.");
   // The processes, actors and scenarios of the mock (processSeed.ts), which the shared billing fixture does not hold.
   files.push(...processFiles(), ...processDiagramFiles());

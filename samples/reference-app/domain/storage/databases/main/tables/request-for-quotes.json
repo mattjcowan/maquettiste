@@ -1,0 +1,134 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QZ70E612H7EY72E6Y",
+  "name": "request_for_quotes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QW4MBVVP6369VPAQ4",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the request for quote."
+    },
+    {
+      "id": "01M8EJX99QQTRN37Y1K1ZES3G3",
+      "name": "rfq_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "RFQ number."
+    },
+    {
+      "id": "01M8EJX99QX2PGAQKGBYG2ZQ41",
+      "name": "issued_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date sent."
+    },
+    {
+      "id": "01M8EJX99QR5JDBMPV2V851CFA",
+      "name": "response_due_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Deadline for quotes."
+    },
+    {
+      "id": "01M8EJX99QB3NR6J066XVVV2H0",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "open",
+      "comment": "open, evaluating, awarded or cancelled."
+    },
+    {
+      "id": "01M8EJX99Q1HY8EZPMQHRE3GQE",
+      "name": "description",
+      "type": "text",
+      "comment": "Requirements."
+    },
+    {
+      "id": "01M8EJX99Q4QDT1YVPQVMPEQ26",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QHWB572HSH8HVWCPK",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q687CF8FS9KFH9DJC",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QDK2CG075XG6G4WZG",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99Q4ESEMSXGTZQGF9R0",
+      "name": "buyer_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QM9RH38K5PHZK6ETS",
+      "name": "product_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_request_for_quotes",
+    "columns": [
+      "01M8EJX99QW4MBVVP6369VPAQ4"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ABNNJSNSM1Y4RA7B1T",
+      "name": "uq_request_for_quotes_rfq_number",
+      "columns": [
+        "01M8EJX99QQTRN37Y1K1ZES3G3"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AB3HB44M2RCGMPVWH1",
+      "name": "fk_request_for_quotes_buyer_id",
+      "columns": [
+        "01M8EJX99Q4ESEMSXGTZQGF9R0"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB6H0TFGVW5SBC4QAR",
+      "name": "fk_request_for_quotes_product_id",
+      "columns": [
+        "01M8EJX99QM9RH38K5PHZK6ETS"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A request asking several suppliers to quote for a product."
+}

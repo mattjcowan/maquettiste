@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH6EBJZ4VJ6N2Z91E7",
+  "name": "product translation is written in language in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2Q7YDGGYWAQK8HXD8P74ZFE",
+  "foreignKey": "01M8EJX9A76WG4J2YJFHG0WQEC"
+}

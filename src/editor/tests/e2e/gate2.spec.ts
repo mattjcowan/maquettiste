@@ -1,7 +1,8 @@
 // The gate 2 walk (SPEC Section 21, phase2-design.md section 7.2 step 2), project live only, against the image started over
 // the seeded 200-entity reference application (samples/reference-app/tools/gate2.sh walk, the gate2 job of .github/workflows/ci.yml).
-// Open the editor, find Warehouse in the Domain model tree and open its editor, add an attribute through the grid, rename a
-// relation in its relationship editor, then plan all packs from the Generate explorer, open a diff and apply; the apply
+// Open the editor, find Warehouse in the Domain model tree and open its editor, add an attribute through the grid and a column for
+// it in the bound table from the Storage tab, rename a relation in its relationship editor, then plan all packs from the Generate
+// explorer, open a diff and apply; the apply
 // job's applyResult.outcome must be "succeeded" (its state is "succeeded" for any apply that ran to completion, stale or
 // conflicting ones included, so it is not what counts).
 // Skipped unless MAQUETTISTE_GATE2 is set: the mock and plain live runs serve the billing fixture, not this model.
@@ -87,6 +88,15 @@ test("gate 2: edit the reference application in the editor, plan and apply", asy
   await editor.press("Enter");
   await expect(names).toHaveCount(before + 1);
   await expect(names.nth(before)).toHaveText("receivingHours");
+  await expect(page.getByTestId("save-status")).toHaveText("Saved", slow);
+  // Warehouse is bound to its designed table: the new attribute gets a column there from the Storage tab, mapped by the binding.
+  await warehouse.getByRole("tab", { name: "Storage" }).click();
+  const card = warehouse.getByTestId("storage-tab").getByTestId("binding-card");
+  const hours = card.getByTestId("field-row-receivingHours");
+  await expect(hours).toHaveAttribute("data-status", "unmapped", slow);
+  await card.getByTestId("binding-add-columns").click();
+  await expect(hours).toHaveAttribute("data-status", "mapped", slow);
+  await expect(card.getByTestId("column-row-receiving_hours")).toHaveAttribute("data-status", "field");
   await expect(page.getByTestId("save-status")).toHaveText("Saved", slow);
 
   // Rename a relation in the relationship editor: the name field saves on blur, and the tab follows the new name.

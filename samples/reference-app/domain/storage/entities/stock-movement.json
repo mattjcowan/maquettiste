@@ -1,0 +1,75 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9C2NB4WXVHR5BA95X90",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M2Q6W70PCXE311J3965E8PFY",
+      "fields": [
+        {
+          "attribute": "01M1F2FPRNHGBGCQCA4T0YX3GY",
+          "column": "01M8EJX99P9W4CVQB73FY895T8"
+        },
+        {
+          "attribute": "01M24T6J3C651ES4HDK6T36XZ3",
+          "column": "01M8EJX99PHQZM43FNGG27H6SB"
+        },
+        {
+          "attribute": "01M2PDHH5A8W2GK5P9YQFEN6PD",
+          "column": "01M8EJX99PJ2XYGVXYFMZ2RS7Q"
+        },
+        {
+          "attribute": "01M1H4KAYGYDHZSRW19MVTGX8K",
+          "column": "01M8EJX99PB030K4RAEBYSBN4C"
+        },
+        {
+          "attribute": "01M1NA3QXSFCFPK2TVJMTJCDGQ",
+          "column": "01M8EJX99PK6005T8FADB5XA07"
+        },
+        {
+          "attribute": "01M28RF630TE3AN9VESG31BGYA.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PTTE1JB8VRJ3WVM7F"
+        },
+        {
+          "attribute": "01M28RF630TE3AN9VESG31BGYA.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PECNQPPR9WSS68748"
+        },
+        {
+          "attribute": "01M20MJRGSGB9T50WRM244MFB2",
+          "column": "01M8EJX99PVG492SSK5D4F8PQ2"
+        },
+        {
+          "attribute": "01M1QE40AN2WJJZ8Y7XJ3SP10T",
+          "column": "01M8EJX99PV7QWD32N4AK37N1Z"
+        },
+        {
+          "attribute": "01M28K1XBVSF9NZM21K6B0EF8J",
+          "column": "01M8EJX99PDT4AXZWSD9DZFECG"
+        },
+        {
+          "attribute": "01M2FMGAGKYXDP700JPH6PPPE2",
+          "column": "01M8EJX99PQ7YVAHPKY0VSZG7N"
+        },
+        {
+          "attribute": "01M2AG3KDX9JFQ3P8ERE8TFX24",
+          "column": "01M8EJX99PFR0A32AVN7692AFF"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P9W4CVQB73FY895T8": "a5614527:fc034f10",
+          "01M8EJX99PB030K4RAEBYSBN4C": "c8d712be:e0d08678",
+          "01M8EJX99PDT4AXZWSD9DZFECG": "9c3be133:d8a57cf9",
+          "01M8EJX99PECNQPPR9WSS68748": "c29a402e:75525505",
+          "01M8EJX99PFR0A32AVN7692AFF": "0f9e8f3c:d8a57cf9",
+          "01M8EJX99PHQZM43FNGG27H6SB": "242807ad:c1db413a",
+          "01M8EJX99PJ2XYGVXYFMZ2RS7Q": "1a7b308d:0495da45",
+          "01M8EJX99PK6005T8FADB5XA07": "4490102c:014c4aec",
+          "01M8EJX99PQ7YVAHPKY0VSZG7N": "39f24a63:d8a57cf9",
+          "01M8EJX99PTTE1JB8VRJ3WVM7F": "19692048:d249895e",
+          "01M8EJX99PV7QWD32N4AK37N1Z": "64814827:8da1c7b8",
+          "01M8EJX99PVG492SSK5D4F8PQ2": "cdd9faec:d8a57cf9"
+        }
+      }
+    }
+  ]
+}

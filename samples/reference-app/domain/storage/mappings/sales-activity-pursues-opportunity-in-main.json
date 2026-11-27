@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH0NZWNXESFZHTG3T6",
+  "name": "sales activity pursues opportunity in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2HW38N8W7QG2WBQY1E45Z2Q",
+  "foreignKey": "01M8EJX9A8GF18WMKH9NFYTT61"
+}

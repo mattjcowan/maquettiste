@@ -254,6 +254,36 @@ public sealed class DependencyKeyTests
     }
 
     [Fact]
+    public void Entity_lists_record_what_can_promote_a_relation_rather_than_every_relation_mapping()
+    {
+        // A model with a mapping per relation put every relation mapping file's key on every entity's relation list. The lists record
+        // pm:relation-mappings instead: it moves when a relation mapping's shape (or its relation, database, ignore flag or promoted name)
+        // changes, not when the mapping names another foreign key or is renamed.
+        var f = Create();
+        var mappingId = f.B.NewId();
+        f.B.Add(new Mapping { Id = mappingId, Name = "places", Database = f.Db.Id, Relation = f.Places.Id });
+        var before = f.B.Build();
+        var model = ResolutionKit.Resolve(before);
+        Assert.Contains(PromotionNaming.Key, model.Entities.MembershipKeys);
+        Assert.Contains(PromotionNaming.Key, model.Entity("Customer").Relations.MembershipKeys);
+        Assert.DoesNotContain($"e:{mappingId}", model.Entities.MembershipKeys);
+        Assert.DoesNotContain($"e:{mappingId}", model.Entity("Customer").Relations.MembershipKeys);
+        var hasher = new DependencyHasher(before, model, new PackSet([], []), new Dictionary<string, SchemaDiffResult>());
+        Assert.Equal(PromotionNaming.Hash(before), hasher.CurrentHash(PromotionNaming.Key));
+
+        var renamed = Tests.Model.StereotypeDefaultsTests.Rebuild(f.B, e => e is Mapping m && m.Id == mappingId ? m with { Name = "places in main" } : e);
+        Assert.Equal(PromotionNaming.Hash(before), PromotionNaming.Hash(renamed));
+        var promoted = Tests.Model.StereotypeDefaultsTests.Rebuild(f.B, e => e is Mapping m && m.Id == mappingId ? m with { Shape = RelationShape.Promoted } : e);
+        Assert.NotEqual(PromotionNaming.Hash(before), PromotionNaming.Hash(promoted));
+
+        // Once a mapping promotes, the lists also record every mapping and database file, as before.
+        Assert.Contains($"e:{mappingId}", ResolutionKit.Resolve(promoted).Entities.MembershipKeys);
+
+        // A model without relation mappings records the key too: a mapping file can become a promoted relation mapping under its id.
+        Assert.Contains(PromotionNaming.Key, ResolutionKit.Resolve(Create().B).Entities.MembershipKeys);
+    }
+
+    [Fact]
     public void Promoted_entities_and_their_tables_list_the_relation_referrer_key()
     {
         var f = Create();

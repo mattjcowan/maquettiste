@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
 
@@ -7,6 +8,7 @@ namespace Maquettiste.Packs.Tests;
 /// reject a CREATE TABLE whose foreign key names a table that does not exist yet, so the schema script and the first migration
 /// leave the cycle-closing key out and add it with ALTER TABLE after the tables exist. SQLite keeps it inline.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed partial class CycleTests
 {
     [Theory]

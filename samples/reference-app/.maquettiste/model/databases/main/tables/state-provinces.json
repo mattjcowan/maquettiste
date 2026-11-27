@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QRQPKABA5R9M6C92T",
+  "name": "state_provinces",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QHE998424AKPJB5RN",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the state province."
+    },
+    {
+      "id": "01M8EJX99Q4624N7HD499YJEK4",
+      "name": "code",
+      "type": "string",
+      "length": 6,
+      "nullable": false,
+      "comment": "ISO 3166-2 subdivision code without the country prefix, such as CA."
+    },
+    {
+      "id": "01M8EJX99Q11PHCK6G9PB1VVC3",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Name of the subdivision."
+    },
+    {
+      "id": "01M8EJX99QTHY5T60VSFW9CN3K",
+      "name": "subdivision_type",
+      "type": "string",
+      "length": 40,
+      "comment": "Kind of subdivision, such as state, province or county."
+    },
+    {
+      "id": "01M8EJX99QTCWP33AZN08XMSF1",
+      "name": "country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_state_provinces",
+    "columns": [
+      "01M8EJX99QHE998424AKPJB5RN"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ABTZ41Y3PF48D7NW4B",
+      "name": "uq_state_provinces_code",
+      "columns": [
+        "01M8EJX99Q4624N7HD499YJEK4"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABKVZ5J5X1SQ616356",
+      "name": "fk_state_provinces_country_code",
+      "columns": [
+        "01M8EJX99QTCWP33AZN08XMSF1"
+      ],
+      "referencesTable": "01M8EJX99QM2593EWW3DNC676T",
+      "referencesColumns": [
+        "01M8EJX99QZYYZX93FNJF0W9JT"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A first-level subdivision of a country (ISO 3166-2), used for sales tax and shipping zones."
+}

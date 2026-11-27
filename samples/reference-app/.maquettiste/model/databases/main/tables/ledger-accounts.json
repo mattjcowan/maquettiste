@@ -1,0 +1,147 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P0PRFJXZXM6AR56B8",
+  "name": "ledger_accounts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PXZ7RFKDAGWVDWMTX",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the ledger account."
+    },
+    {
+      "id": "01M8EJX99PN39YC2MGHGS939J7",
+      "name": "account_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Account number."
+    },
+    {
+      "id": "01M8EJX99PADRGMXCNEH1M2XAP",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Account name."
+    },
+    {
+      "id": "01M8EJX99PPJY8NGRA93SGZ15W",
+      "name": "account_type",
+      "type": "string",
+      "length": 1,
+      "nullable": false,
+      "comment": "Statement classification."
+    },
+    {
+      "id": "01M8EJX99PQ1WGSYPEP1KQT2JW",
+      "name": "normal_balance",
+      "type": "string",
+      "length": 6,
+      "nullable": false,
+      "comment": "debit or credit."
+    },
+    {
+      "id": "01M8EJX99P6365M0BB37Q69FCW",
+      "name": "is_postable",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether journal lines may post to it; summary accounts are not postable."
+    },
+    {
+      "id": "01M8EJX99P6QNH74ZP72R76R1H",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it can be used."
+    },
+    {
+      "id": "01M8EJX99PT7294ZM9X45CK3MR",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P7NDTRJGS8M0TWF76",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PRBP3GP4QNM4JS219",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P2W41GVGWJHX4ETQ4",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99P47PHXYPM8TE54MW8",
+      "name": "currency_code",
+      "type": "string",
+      "length": 3
+    },
+    {
+      "id": "01M8EJX99P4M8FBD2TQGY742SS",
+      "name": "parent_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_ledger_accounts",
+    "columns": [
+      "01M8EJX99PXZ7RFKDAGWVDWMTX"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A8ZVVPNBJ231N36E0B",
+      "name": "uq_ledger_accounts_account_number",
+      "columns": [
+        "01M8EJX99PN39YC2MGHGS939J7"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8FTEVW0M7HBW2WQY6",
+      "name": "fk_ledger_accounts_currency_code",
+      "columns": [
+        "01M8EJX99P47PHXYPM8TE54MW8"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A85FA94SC4S6D2CZFK",
+      "name": "fk_ledger_accounts_parent_id",
+      "columns": [
+        "01M8EJX99P4M8FBD2TQGY742SS"
+      ],
+      "referencesTable": "01M8EJX99P0PRFJXZXM6AR56B8",
+      "referencesColumns": [
+        "01M8EJX99PXZ7RFKDAGWVDWMTX"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An account of the chart of accounts, such as 1200 Accounts receivable, nested into summary accounts."
+}

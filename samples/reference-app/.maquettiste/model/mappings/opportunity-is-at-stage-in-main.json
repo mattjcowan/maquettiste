@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH5AVB8XCXRM0D07J9",
+  "name": "opportunity is at stage in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1F7KCNVEJWPCDRPHQ7ZZ1XY",
+  "foreignKey": "01M8EJX9A8DB06X9V8K7PR3B2N"
+}

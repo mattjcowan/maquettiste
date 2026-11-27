@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CGGDK4N8K1SSHV14ZA",
+  "name": "invoice is payable on payment term in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1EJ87SBHGRGW2MTZP0S8R30",
+  "foreignKey": "01M8EJX9A53FTQ29KPYR3C8VF8"
+}

@@ -1,0 +1,92 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PY106KVKK0YJTEDNM",
+  "name": "warehouse_shifts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P2BES6GJV1PC8X28E",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the warehouse shift."
+    },
+    {
+      "id": "01M8EJX99PK12MN9PS65WP8HT3",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "Shift name."
+    },
+    {
+      "id": "01M8EJX99PZCCGAG6TJ9FYSFWR",
+      "name": "starts_at",
+      "type": "time",
+      "precision": 6,
+      "nullable": false,
+      "comment": "Start time, local to the warehouse."
+    },
+    {
+      "id": "01M8EJX99P1G5XQM4BRPJ6A1S6",
+      "name": "ends_at",
+      "type": "time",
+      "precision": 6,
+      "nullable": false,
+      "comment": "End time."
+    },
+    {
+      "id": "01M8EJX99PT8XJMXMZ0GR9MB1M",
+      "name": "weekdays",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Days worked, such as Mon-Fri."
+    },
+    {
+      "id": "01M8EJX99PYB5SQ19ZVX5VVDRD",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PASQ7TTPSBSTZ3KKS",
+      "name": "supervisor_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_warehouse_shifts",
+    "columns": [
+      "01M8EJX99P2BES6GJV1PC8X28E"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAAYWWKW4ZTP8KYQNS",
+      "name": "fk_warehouse_shifts_warehouse_id",
+      "columns": [
+        "01M8EJX99PYB5SQ19ZVX5VVDRD"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AAHJ6XST0P66QQ79KM",
+      "name": "fk_warehouse_shifts_supervisor_id",
+      "columns": [
+        "01M8EJX99PASQ7TTPSBSTZ3KKS"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A working shift of a warehouse, such as the night picking shift."
+}

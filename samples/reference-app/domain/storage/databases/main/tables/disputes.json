@@ -1,0 +1,159 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99MKY64TWZS5TKMEJE6",
+  "name": "disputes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99M9WKA0CCGPGQARHTE",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the dispute."
+    },
+    {
+      "id": "01M8EJX99MQBPBTCZW7APW2D6W",
+      "name": "dispute_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Dispute number from the processor."
+    },
+    {
+      "id": "01M8EJX99MYX9WYYYAGZVFKBCQ",
+      "name": "opened_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date opened."
+    },
+    {
+      "id": "01M8EJX99MG9NB64QNJYP7D93A",
+      "name": "reason_code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Network reason code."
+    },
+    {
+      "id": "01M8EJX99MWHNM5MMRHTQ68HMH",
+      "name": "amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99MXG5YPYHRDTKZTG31",
+      "name": "amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99MECZRYX0VFQX7H7Y1",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "open",
+      "comment": "open, evidence-submitted, won or lost."
+    },
+    {
+      "id": "01M8EJX99M84ZM4DKR0CXAP0JV",
+      "name": "resolved_on",
+      "type": "date",
+      "comment": "Date resolved."
+    },
+    {
+      "id": "01M8EJX99MHXD9V38QV9W5K770",
+      "name": "resolution",
+      "type": "text",
+      "comment": "Outcome notes."
+    },
+    {
+      "id": "01M8EJX99MT8NR1C5D532K49PK",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99MK0WNYPKQ49Z7539A",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99M9TW48FHGP9RTCY2Y",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99MS9DQS8MCHFPDH8R5",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99MYGTT966CZ715P2QZ",
+      "name": "invoice_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99M7E8YWB8T7QHHDTBP",
+      "name": "card_payment_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_disputes",
+    "columns": [
+      "01M8EJX99M9WKA0CCGPGQARHTE"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A32RWZ5N6TCW6GSMND",
+      "name": "uq_disputes_dispute_number",
+      "columns": [
+        "01M8EJX99MQBPBTCZW7APW2D6W"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A3Q5RQ90N8J3ZZWYGK",
+      "name": "fk_disputes_invoice_id",
+      "columns": [
+        "01M8EJX99MYGTT966CZ715P2QZ"
+      ],
+      "referencesTable": "01M2GD6QYSRRK545Z2FCJ57JXN",
+      "referencesColumns": [
+        "01M8EJX99MY2YCY00H3262RRRP"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A3216CGJRZY8A9JQWF",
+      "name": "fk_disputes_card_payment_id",
+      "columns": [
+        "01M8EJX99M7E8YWB8T7QHHDTBP"
+      ],
+      "referencesTable": "01M8EJX99MH617GC54BZJP6869",
+      "referencesColumns": [
+        "01M8EJX99M9YCFPN0G6B9WWS6T"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A chargeback or dispute raised by a cardholder's bank against a card payment."
+}

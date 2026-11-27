@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QRBGEFE3GNVN365J7",
+  "name": "currencies",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QJKX5M1HTH079V63S",
+      "name": "code",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "ISO 4217 alphabetic code; the natural key."
+    },
+    {
+      "id": "01M8EJX99Q6MGWPTN2G403C1HQ",
+      "name": "numeric_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "ISO 4217 numeric code."
+    },
+    {
+      "id": "01M8EJX99QKKVTS7JPZVBQ11V2",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "English name, such as Euro."
+    },
+    {
+      "id": "01M8EJX99Q35NDBJMFC0JH2M81",
+      "name": "symbol",
+      "type": "string",
+      "length": 5,
+      "comment": "Display symbol, such as the euro sign."
+    },
+    {
+      "id": "01M8EJX99QYH0HWRPVATN9XTWJ",
+      "name": "minor_units",
+      "type": "int16",
+      "nullable": false,
+      "default": 2,
+      "comment": "Number of decimals in the minor unit."
+    },
+    {
+      "id": "01M8EJX99QXP0TSJHW2X38W2Y9",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether new documents may use the currency."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_currencies",
+    "columns": [
+      "01M8EJX99QJKX5M1HTH079V63S"
+    ]
+  },
+  "comment": "A currency from ISO 4217 that prices, invoices and payments may be expressed in."
+}

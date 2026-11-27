@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJVPW2VHHMH3RNA7RQ",
+  "name": "stock reservation fulfils sales order line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2TS8KWP4NWM6M5P2ZWBBQ2N",
+  "foreignKey": "01M8EJX9AA57PYSCQW5GNDYA9E"
+}

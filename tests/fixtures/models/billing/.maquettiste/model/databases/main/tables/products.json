@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJPZN967ERTF2BPP3YM4QY",
+  "name": "products",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "schema": "01J92P0V1RC04SKQ5353EAKHG2",
+  "columns": [
+    {
+      "id": "01M8EJPZN9FW9ZV7DANC4C50XN",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN98ZT4YXA1H23Y4ARA",
+      "name": "sku",
+      "type": "string",
+      "length": 40,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN9DEQ60PS9QJ8WBYT3",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJPZN9ZA0CTZKR93TKCGFN",
+      "name": "list_price_amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2
+    },
+    {
+      "id": "01M8EJPZN9AK1W7MKD786SZC3Z",
+      "name": "list_price_currency",
+      "type": "string",
+      "length": 3
+    },
+    {
+      "id": "01M8EJPZN9HM5EW57V5HN8DKMD",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_products",
+    "columns": [
+      "01M8EJPZN9FW9ZV7DANC4C50XN"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJPZNN3BDV25KFDZERHNFP",
+      "name": "uq_products_sku",
+      "columns": [
+        "01M8EJPZN98ZT4YXA1H23Y4ARA"
+      ]
+    }
+  ]
+}

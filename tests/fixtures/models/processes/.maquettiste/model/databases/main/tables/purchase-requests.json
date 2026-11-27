@@ -1,0 +1,35 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKC5AMH251913D88EGCKGA",
+  "name": "purchase_requests",
+  "database": "01JQDBS0000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKC5AMT46GYRDET99FXH3J",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMS7TMBN8AFH3S84WZ",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 18,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M8EKC5AMZY8XW9BGKH3MSFH6",
+      "name": "cost_centre",
+      "type": "string",
+      "length": 255
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_purchase_requests",
+    "columns": [
+      "01M8EKC5AMT46GYRDET99FXH3J"
+    ]
+  }
+}

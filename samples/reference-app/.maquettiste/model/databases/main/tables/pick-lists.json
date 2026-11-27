@@ -1,0 +1,147 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P06XGY3GT3MF1Q4ZH",
+  "name": "pick_lists",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PMEQSY744M6MBR0X1",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the pick list."
+    },
+    {
+      "id": "01M8EJX99PGWWMY9ECXTYHSVH4",
+      "name": "pick_list_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Pick list number."
+    },
+    {
+      "id": "01M8EJX99P468C3FK3EJC63SKZ",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "open",
+      "comment": "open, picking, done or short."
+    },
+    {
+      "id": "01M8EJX99P8PJAN8CJ3EVSM676",
+      "name": "released_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was released to the floor."
+    },
+    {
+      "id": "01M8EJX99P2A1P6XPWJ2JXYWP6",
+      "name": "completed_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the last pick was confirmed."
+    },
+    {
+      "id": "01M8EJX99PFW9NPR54B3F9YZCF",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P5KT2V6KTKMJT0EVT",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PWAK6B4Q2A9RFEGW1",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P6Z5WVVS89FQF7FKB",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PAYZ8DRZW5HXZ95RQ",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PRAPXQT5CSR68SZ9H",
+      "name": "picker_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PMWM1AH408375CVK7",
+      "name": "wave_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_pick_lists",
+    "columns": [
+      "01M8EJX99PMEQSY744M6MBR0X1"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9FNY8SHSX9EZM2M0Q",
+      "name": "uq_pick_lists_pick_list_number",
+      "columns": [
+        "01M8EJX99PGWWMY9ECXTYHSVH4"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9J5D7MPQ18NPZF3CN",
+      "name": "fk_pick_lists_warehouse_id",
+      "columns": [
+        "01M8EJX99PAYZ8DRZW5HXZ95RQ"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A977ZS3FQX935YKW1J",
+      "name": "fk_pick_lists_picker_id",
+      "columns": [
+        "01M8EJX99PRAPXQT5CSR68SZ9H"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9AJDM91X8YZ4M6C4Z",
+      "name": "fk_pick_lists_wave_id",
+      "columns": [
+        "01M8EJX99PMWM1AH408375CVK7"
+      ],
+      "referencesTable": "01M8EJX99P7JAMY9SR8BXA4Y94",
+      "referencesColumns": [
+        "01M8EJX99PB7TB0Z2XR72AHXAK"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A list of picks assigned to one picker, generated when a wave is released."
+}

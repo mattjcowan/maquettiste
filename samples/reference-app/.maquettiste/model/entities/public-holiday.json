@@ -50,5 +50,43 @@
       "default": true,
       "description": "Whether it applies to the whole country rather than some regions."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BGH0Q778DFX20CSBN5",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QM0NC57HRQ9DV7HFX",
+      "fields": [
+        {
+          "attribute": "01M320EJZPEQ96TMHBN78D3YJJ",
+          "column": "01M8EJX99QVP3HHJMX8WMEE47R"
+        },
+        {
+          "attribute": "01M2HH2GT6Y246B3TT46PMAYZV",
+          "column": "01M8EJX99QPRN6EKY96NE8Q974"
+        },
+        {
+          "attribute": "01M2Z9C85GXR0CR6WV1EK59NV5",
+          "column": "01M8EJX99QT2YY55KJWF77SKNS"
+        },
+        {
+          "attribute": "01M1G8T62CDWD419Z6RCH7QTH9",
+          "column": "01M8EJX99QXJ3A77FJ8XXHKMBM"
+        },
+        {
+          "attribute": "01M2V76BHQMD8MDJ7CS973VACQ",
+          "column": "01M8EJX99QWGE64S8YZ67SE2PS"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99QPRN6EKY96NE8Q974": "2855970b:81884634",
+          "01M8EJX99QT2YY55KJWF77SKNS": "82a3537f:6137f4ed",
+          "01M8EJX99QVP3HHJMX8WMEE47R": "a5614527:53fb88ea",
+          "01M8EJX99QWGE64S8YZ67SE2PS": "38ac8394:ee79e9fe",
+          "01M8EJX99QXJ3A77FJ8XXHKMBM": "9abf3318:19980141"
+        }
+      }
+    }
   ]
 }

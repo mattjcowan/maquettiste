@@ -1,0 +1,152 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P6WF3X09YDN3D76KS",
+  "name": "quality_inspections",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PRG6N9SZ2238ZQBR6",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the quality inspection."
+    },
+    {
+      "id": "01M8EJX99PHS132V6GEAFVWA6B",
+      "name": "inspected_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When it was inspected."
+    },
+    {
+      "id": "01M8EJX99PRBBWVRAWN9MTDEYH",
+      "name": "result",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "passed, failed or conditional."
+    },
+    {
+      "id": "01M8EJX99P44A02KR9733M2KC4",
+      "name": "sample_size",
+      "type": "int32",
+      "comment": "Units inspected."
+    },
+    {
+      "id": "01M8EJX99P5NDJ9JEHVWD10ZJY",
+      "name": "notes",
+      "type": "text",
+      "comment": "Findings."
+    },
+    {
+      "id": "01M8EJX99PK6XMFYJY5FZ3FX1P",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P3CVWC7SYW34FC67M",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PE5EYKJT6W44ZYF2K",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P6GAAM8VXJYY6GJ92",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99P5YPB56H7AAZ19QTC",
+      "name": "lot_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PA5M07XMNPY0VTH79",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P7PXE1NM50EPSGGVV",
+      "name": "inspector_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PX6S6ND0DK2V2GFZ7",
+      "name": "goods_receipt_line_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_quality_inspections",
+    "columns": [
+      "01M8EJX99PRG6N9SZ2238ZQBR6"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAKR4TJDRT1SEPS9SR",
+      "name": "fk_quality_inspections_lot_id",
+      "columns": [
+        "01M8EJX99P5YPB56H7AAZ19QTC"
+      ],
+      "referencesTable": "01M8EJX99P4YZT0BJ4SBS8XS67",
+      "referencesColumns": [
+        "01M8EJX99PJWQ6NSF0MMBRYXEK"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAE3D2NYW3ER38KAZC",
+      "name": "fk_quality_inspections_product_id",
+      "columns": [
+        "01M8EJX99PA5M07XMNPY0VTH79"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AASZH7ARWT0CN7H7XJ",
+      "name": "fk_quality_inspections_inspector_id",
+      "columns": [
+        "01M8EJX99P7PXE1NM50EPSGGVV"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AAZB0ABCBG57GSVTNN",
+      "name": "fk_quality_inspections_goods_receipt_line_id",
+      "columns": [
+        "01M8EJX99PX6S6ND0DK2V2GFZ7"
+      ],
+      "referencesTable": "01M8EJX99QD13KT715JME7FAK0",
+      "referencesColumns": [
+        "01M8EJX99Q9AXVM54XZE73BJ87"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An inspection of received or stored goods, which may put them on hold."
+}

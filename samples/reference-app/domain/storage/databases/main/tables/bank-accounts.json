@@ -1,0 +1,138 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99MA4F1BE3N0CDF4BJK",
+  "name": "bank_accounts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99M7KZ4M0X5B5S7QXAC",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the bank account."
+    },
+    {
+      "id": "01M8EJX99MQVNQ08872CVFWHP3",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Account name, such as Operating account USD."
+    },
+    {
+      "id": "01M8EJX99MNPY9FDA58H802JVY",
+      "name": "bank_name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Bank."
+    },
+    {
+      "id": "01M8EJX99MX6GK4CQBRM1CHDW7",
+      "name": "account_number_masked",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Masked account number."
+    },
+    {
+      "id": "01M8EJX99ME7FGYC7V04D041CQ",
+      "name": "iban",
+      "type": "string",
+      "length": 34,
+      "comment": "IBAN, for euro accounts."
+    },
+    {
+      "id": "01M8EJX99MJQEGEHRRK074T7WJ",
+      "name": "routing_number",
+      "type": "string",
+      "length": 9,
+      "comment": "ABA routing number, for US accounts."
+    },
+    {
+      "id": "01M8EJX99M7SRGWAFMSCQN0TET",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99M2QT0PYMAY7AWRXX8",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99M7AAV7CR2HJ1EXK0T",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99MPDH2HPXFFTQ695J1",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99MR7M43HASVV1SXCV1",
+      "name": "currency_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99MVCWHHAKDWZ1YC4K9",
+      "name": "ledger_account_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_bank_accounts",
+    "columns": [
+      "01M8EJX99M7KZ4M0X5B5S7QXAC"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX99XKXC3KH59YJYE4DJR",
+      "name": "uq_bank_accounts_name",
+      "columns": [
+        "01M8EJX99MQVNQ08872CVFWHP3"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX99YK0BR53PC69EKWM99",
+      "name": "fk_bank_accounts_currency_code",
+      "columns": [
+        "01M8EJX99MR7M43HASVV1SXCV1"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX99YW6XT0Z8DZS0ZBX6R",
+      "name": "fk_bank_accounts_ledger_account_id",
+      "columns": [
+        "01M8EJX99MVCWHHAKDWZ1YC4K9"
+      ],
+      "referencesTable": "01M8EJX99P0PRFJXZXM6AR56B8",
+      "referencesColumns": [
+        "01M8EJX99PXZ7RFKDAGWVDWMTX"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A Northwind bank account that receives customer payments."
+}

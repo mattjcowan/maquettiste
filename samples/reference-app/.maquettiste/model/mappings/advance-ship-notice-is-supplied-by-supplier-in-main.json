@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJQ37EP65P1ENHTRGX",
+  "name": "advance ship notice is supplied by supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1XWR4W2NX0K9EXHW5SC944T",
+  "foreignKey": "01M8EJX9AA2WQ1XXDCEGAVSR7N"
+}

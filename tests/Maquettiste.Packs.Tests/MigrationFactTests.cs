@@ -17,6 +17,7 @@ namespace Maquettiste.Packs.Tests;
 /// of the billing fixture beside the model edits they describe; the PostgreSQL cases skip unless
 /// <c>MAQUETTISTE_TEST_POSTGRES_CONTAINER</c> names a running container.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed partial class MigrationFactTests
 {
     private const string Skip = "Name a PostgreSQL container in the environment to run the migrations on it (see DbServer).";

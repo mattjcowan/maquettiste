@@ -1,0 +1,77 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BND0000000000000000020",
+  "name": "CustomerNote",
+  "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+  "description": "A note on a customer. Stored in the shared notes table with entity_type 'customer'.",
+  "key": {
+    "attributes": [
+      "01K6BND0000000000000000021"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "attributes": [
+    {
+      "id": "01K6BND0000000000000000021",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K6BND0000000000000000022",
+      "name": "customerId",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01K6BND0000000000000000023",
+      "name": "body",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "01K6BND0000000000000000024",
+      "name": "createdAt",
+      "type": "datetimeoffset",
+      "readOnly": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BND0000000000000000025",
+      "database": "01J92P0V1QRN2181XM2ZWE02W4",
+      "source": "01K6BND0000000000000000001",
+      "constants": [
+        {
+          "column": "01K6BND0000000000000000003",
+          "value": "customer"
+        }
+      ],
+      "fields": [
+        {
+          "attribute": "01K6BND0000000000000000021",
+          "column": "01K6BND0000000000000000002"
+        },
+        {
+          "attribute": "01K6BND0000000000000000022",
+          "column": "01K6BND0000000000000000004"
+        },
+        {
+          "attribute": "01K6BND0000000000000000023",
+          "column": "01K6BND0000000000000000005"
+        },
+        {
+          "attribute": "01K6BND0000000000000000024",
+          "column": "01K6BND0000000000000000006"
+        }
+      ],
+      "columns": [
+        {
+          "column": "01K6BND0000000000000000006",
+          "status": "database"
+        }
+      ]
+    }
+  ]
+}

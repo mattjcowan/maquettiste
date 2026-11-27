@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJT0J0X4SDYTTHJD1M",
+  "name": "price list entry is for variant in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M22ZX6FJS7HNKZW5ZJX04MHF",
+  "foreignKey": "01M8EJX9AA9DZECSSEA1K1S43F"
+}

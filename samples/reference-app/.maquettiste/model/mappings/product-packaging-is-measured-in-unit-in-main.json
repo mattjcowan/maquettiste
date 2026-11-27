@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH656J38SRY4Y1GN09",
+  "name": "product packaging is measured in unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2WQ49ZAQX4R9YPCGRS5CE7C",
+  "foreignKey": "01M8EJX9A78A1F3J42Y2RJT2N4"
+}

@@ -1,0 +1,241 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M34B2XCK0G0EW7GX48YPV9R6",
+  "name": "sales_order_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "description": "Quantity must be positive.",
+  "columns": [
+    {
+      "id": "01M8EJX99QB5W684KZRFP37DGQ",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false,
+      "comment": "Surrogate key of the sales order line."
+    },
+    {
+      "id": "01M8EJX99Q525XD3V4RJSH1MXR",
+      "name": "line_number",
+      "type": "int32",
+      "nullable": false,
+      "comment": "Line number printed on documents."
+    },
+    {
+      "id": "01M8EJX99QZVA0N220TWX4YB4R",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "comment": "Line text, defaulting to the product name."
+    },
+    {
+      "id": "01M8EJX99QCKZX4FBHRWHATC02",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity ordered, in the line's unit."
+    },
+    {
+      "id": "01M8EJX99QBC3VG1W1WSXMGN7K",
+      "name": "unit_price_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99Q8FN1XSVVT25569AX",
+      "name": "unit_price_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QNB36K6ZD5B7HZ3ZJ",
+      "name": "discount",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Line discount."
+    },
+    {
+      "id": "01M8EJX99QEYZCZRDZN831B6T3",
+      "name": "tax_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Sales tax rate applied."
+    },
+    {
+      "id": "01M8EJX99QHB7G8ZRSJ0A1JHYR",
+      "name": "line_total_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QNTV63YEAVHCMDEVR",
+      "name": "line_total_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99Q506RN7YW12K0C81B",
+      "name": "status",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Fulfillment state."
+    },
+    {
+      "id": "01M8EJX99Q49C0Q2M1FRHP029X",
+      "name": "requested_on",
+      "type": "date",
+      "comment": "Requested delivery date, when it differs from the order's."
+    },
+    {
+      "id": "01M8EJX99Q47VE7B7TCY0AJ2FV",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QM7PQ2PSKDAGX4C18",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QQK75NMVZGASCE42M",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QVPYNK062J330XYS0",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QPYP9KDAFG5M3EJKX",
+      "name": "sales_order_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q6E87EP4BSE53TGXP",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QVR9AAJNVD61HJAVA",
+      "name": "variant_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QAXT79NAS1YDCMFCA",
+      "name": "unit_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QXNZWNJM8KN5TDMS6",
+      "name": "warehouse_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sales_order_lines",
+    "columns": [
+      "01M8EJX99QB5W684KZRFP37DGQ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACKRJ264QKV5RRTDR2",
+      "name": "fk_sales_order_lines_sales_order_id",
+      "columns": [
+        "01M8EJX99QPYP9KDAFG5M3EJKX"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACBEYTA4JM33RE0A1V",
+      "name": "fk_sales_order_lines_product_id",
+      "columns": [
+        "01M8EJX99Q6E87EP4BSE53TGXP"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ACBPEMNG1TY1ZZ6P7X",
+      "name": "fk_sales_order_lines_variant_id",
+      "columns": [
+        "01M8EJX99QVR9AAJNVD61HJAVA"
+      ],
+      "referencesTable": "01M8EJX99NFSVDDQ044880ZFVH",
+      "referencesColumns": [
+        "01M8EJX99NWX3PCQ9BSWT8NVJX"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AC70N1507GRFQ03F4C",
+      "name": "fk_sales_order_lines_unit_code",
+      "columns": [
+        "01M8EJX99QAXT79NAS1YDCMFCA"
+      ],
+      "referencesTable": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "referencesColumns": [
+        "01M8EJX99Q26RFK5STCSH1JBPE"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ACD2VC6P1S7X8PGGD8",
+      "name": "fk_sales_order_lines_warehouse_id",
+      "columns": [
+        "01M8EJX99QXNZWNJM8KN5TDMS6"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "checks": [
+    {
+      "id": "01M2Y0Y9NWR6QWCD8BC0TFDVCK",
+      "name": "ck_sales_order_lines_quantity_positive",
+      "expression": {
+        "*": "quantity > 0"
+      }
+    }
+  ],
+  "comment": "Quantity must be positive."
+}

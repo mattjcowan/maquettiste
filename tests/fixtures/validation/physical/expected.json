@@ -1,25 +1,5 @@
 [
   {
-    "rule": "MQ4004",
-    "severity": "error",
-    "message": "Synthesized table '01JENT00000000000000000001@01JDBS00000000000000000001' already has the overlay .maquettiste/model/databases/main/tables/customer-2.json; one overlay file per synthesized table.",
-    "elementId": "01JTAB00000000000000000005",
-    "filePath": ".maquettiste/model/databases/main/tables/customer.json",
-    "jsonPointer": "",
-    "line": 1,
-    "column": 1
-  },
-  {
-    "rule": "MQ4007",
-    "severity": "error",
-    "message": "Column key '01JATT00000000000000000777' does not name a column of the synthesized table.",
-    "elementId": "01JCMN00000000000000000010",
-    "filePath": ".maquettiste/model/databases/main/tables/customer.json",
-    "jsonPointer": "/columns/1/attribute",
-    "line": 16,
-    "column": 20
-  },
-  {
     "rule": "MQ4008",
     "severity": "error",
     "message": "Unique constraint names column 'nope', which is not a column of this table.",

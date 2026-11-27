@@ -35,5 +35,38 @@
       },
       "description": "Quantity per bundle, in the product's base unit."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9ATF4TR57WTMZ6AZ43F",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NAPV3VZ5YYTR0M8N9",
+      "fields": [
+        {
+          "attribute": "01M26CNQNQT4CVADDW0QGE6GPN",
+          "column": "01M8EJX99NK1XQGYCWW1C3GD6C"
+        },
+        {
+          "attribute": "01M1F258TFJY3PWARKHHFHEHMN",
+          "column": "01M8EJX99N1TK0MCYNA7C6QV1Y"
+        },
+        {
+          "attribute": "01M2V40YEAKQCGRF3KMGGJRE4W",
+          "column": "01M8EJX99N9066HG0KZASDN84D"
+        },
+        {
+          "attribute": "01M265RP6ZFR0WSVHFDGHMP2WA",
+          "column": "01M8EJX99ND1ETX1138WFWNPN4"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N1TK0MCYNA7C6QV1Y": "1a7b308d:b52e18e1",
+          "01M8EJX99N9066HG0KZASDN84D": "64814827:8da1c7b8",
+          "01M8EJX99ND1ETX1138WFWNPN4": "9ec7a59e:8da1c7b8",
+          "01M8EJX99NK1XQGYCWW1C3GD6C": "a5614527:8da1c7b8"
+        }
+      }
+    }
   ]
 }

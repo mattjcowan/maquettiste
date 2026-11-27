@@ -1,0 +1,88 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PWJCTCMVAGVZSF87C",
+  "name": "package_contents",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P50E880VGJ0GNP2XT",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the package content."
+    },
+    {
+      "id": "01M8EJX99PX15P74397R951Q9X",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity packed."
+    },
+    {
+      "id": "01M8EJX99P4S8A4Q7SKGREQC0E",
+      "name": "shipment_line_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P49DGPP7V1EGHJ5EE",
+      "name": "serial_number_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PPMF5VFKYEFG8AQ3W",
+      "name": "shipment_package_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_package_contents",
+    "columns": [
+      "01M8EJX99P50E880VGJ0GNP2XT"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9R8H9JRGQA4JFD19W",
+      "name": "fk_package_contents_shipment_line_id",
+      "columns": [
+        "01M8EJX99P4S8A4Q7SKGREQC0E"
+      ],
+      "referencesTable": "01M8EJX99PTWVK83PWPXCJ2V5K",
+      "referencesColumns": [
+        "01M8EJX99PWARWMWWHCBYP4HHP"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A9HXE2Z1XM7BG5WHF1",
+      "name": "fk_package_contents_serial_number_id",
+      "columns": [
+        "01M8EJX99P49DGPP7V1EGHJ5EE"
+      ],
+      "referencesTable": "01M8EJX99PWE8JFBJRHYEBTQPV",
+      "referencesColumns": [
+        "01M8EJX99P3ARH4W6ATBW4C20V"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9DM45YB98YSA8AKBJ",
+      "name": "fk_package_contents_shipment_package_id",
+      "columns": [
+        "01M8EJX99PPMF5VFKYEFG8AQ3W"
+      ],
+      "referencesTable": "01M8EJX99PJF6CBD9HBT9WP452",
+      "referencesColumns": [
+        "01M8EJX99PP25C1NHZZJV9SK12"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A quantity of a shipment line packed in a package."
+}

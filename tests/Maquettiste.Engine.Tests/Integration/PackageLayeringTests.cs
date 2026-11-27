@@ -11,6 +11,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// parent by default, so once Catalog declares <c>dependsOn</c> without Billing, that reference is a layering error.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class PackageLayeringTests
 {
     private const string CatalogPackageId = "01J92P0V025DRFTXKMS240G2NG";

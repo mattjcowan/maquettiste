@@ -1,0 +1,86 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99NX9SRE3C67Y7HJ4K9",
+  "name": "product_recommendations",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NX5X4KPZN9JNAWYYX",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product recommendation."
+    },
+    {
+      "id": "01M8EJX99NXN8FW5VF9GZCQK2Y",
+      "name": "recommendation_type",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Kind of suggestion - cross-sell, up-sell or accessory."
+    },
+    {
+      "id": "01M8EJX99NF33RG36QGXKCF1NJ",
+      "name": "score",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 4,
+      "comment": "Relevance score from the recommender."
+    },
+    {
+      "id": "01M8EJX99NQVC2RW31QXF94628",
+      "name": "is_manual",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether merchandising added it by hand."
+    },
+    {
+      "id": "01M8EJX99NNB9CJMHS8EXKF86B",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99ND7365GREGGKKXME8",
+      "name": "recommended_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_recommendations",
+    "columns": [
+      "01M8EJX99NX5X4KPZN9JNAWYYX"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A78WHCWSQ5ANZ8BPZ4",
+      "name": "fk_product_recommendations_product_id",
+      "columns": [
+        "01M8EJX99NNB9CJMHS8EXKF86B"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A7HPSG5AW9CJH5HXPR",
+      "name": "fk_product_recommendations_recommended_id",
+      "columns": [
+        "01M8EJX99ND7365GREGGKKXME8"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A cross-sell, up-sell or accessory suggestion from one product to another."
+}

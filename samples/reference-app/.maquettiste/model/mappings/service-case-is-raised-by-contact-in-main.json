@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJVK47CRM4QXN4SX17",
+  "name": "service case is raised by contact in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M29B1EJYKWMAF1X14SG38D1S",
+  "foreignKey": "01M8EJX9ABTN4BVGTJZNZWM9PZ"
+}

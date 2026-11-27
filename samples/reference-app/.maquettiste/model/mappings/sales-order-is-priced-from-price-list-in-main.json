@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJZ5TTJ2SDBSZCAR77",
+  "name": "sales order is priced from price list in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M37MS578X967AB7H5PH9YRX3",
+  "foreignKey": "01M8EJX9AC5874SHTGHD5ATF98"
+}

@@ -1,0 +1,96 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PFTQ9BQ4QKSQM6H5Z",
+  "name": "stock_transfer_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PS8ZR3HTWV0H0WRDP",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the stock transfer line."
+    },
+    {
+      "id": "01M8EJX99PY7KQDK03TMN1BGPC",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity shipped."
+    },
+    {
+      "id": "01M8EJX99PGV1F086D016BZK4B",
+      "name": "received_quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "comment": "Quantity received."
+    },
+    {
+      "id": "01M8EJX99P6FKBSPW2YN0GK0G2",
+      "name": "stock_transfer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P15RHDXCZGNZZSEHF",
+      "name": "lot_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PPEK3C42JWH1X68NB",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_stock_transfer_lines",
+    "columns": [
+      "01M8EJX99PS8ZR3HTWV0H0WRDP"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAKCQEXAA0QT1S4S06",
+      "name": "fk_stock_transfer_lines_stock_transfer_id",
+      "columns": [
+        "01M8EJX99P6FKBSPW2YN0GK0G2"
+      ],
+      "referencesTable": "01M8EJX99PEV7G6FVCXZ9MZJHA",
+      "referencesColumns": [
+        "01M8EJX99PBGE461H84KGRCSSC"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AAGTQ2NFAH8Z21DZFB",
+      "name": "fk_stock_transfer_lines_lot_id",
+      "columns": [
+        "01M8EJX99P15RHDXCZGNZZSEHF"
+      ],
+      "referencesTable": "01M8EJX99P4YZT0BJ4SBS8XS67",
+      "referencesColumns": [
+        "01M8EJX99PJWQ6NSF0MMBRYXEK"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AA7PRAHEMN3AK54CDH",
+      "name": "fk_stock_transfer_lines_product_id",
+      "columns": [
+        "01M8EJX99PPEK3C42JWH1X68NB"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "A product and quantity on a stock transfer."
+}

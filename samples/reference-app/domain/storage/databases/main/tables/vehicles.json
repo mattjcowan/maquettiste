@@ -1,0 +1,135 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PMXBNKDF2JJPB2XR0",
+  "name": "vehicles",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P7W4FY2ZYVCZF6DMD",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the vehicle."
+    },
+    {
+      "id": "01M8EJX99P7PCM4XPJ4S1HYWFR",
+      "name": "registration_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "License plate."
+    },
+    {
+      "id": "01M8EJX99PE5EAVMF438TFSWB5",
+      "name": "vehicle_type",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "box-truck, van or tractor."
+    },
+    {
+      "id": "01M8EJX99P3W9H23F0811HFXA7",
+      "name": "capacity_weight_value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "The weight."
+    },
+    {
+      "id": "01M8EJX99PVSV2KT0EWYDWVNFA",
+      "name": "capacity_weight_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the weight."
+    },
+    {
+      "id": "01M8EJX99P5WE216KJZV5F55BY",
+      "name": "capacity_volume_m3",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 2,
+      "comment": "Cargo volume."
+    },
+    {
+      "id": "01M8EJX99PX3RV5SR786MZEX5P",
+      "name": "is_refrigerated",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether it can carry chilled goods."
+    },
+    {
+      "id": "01M8EJX99PNK821WWQW12C5HP5",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it is in service."
+    },
+    {
+      "id": "01M8EJX99PXKBV284GDSDXT2WC",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PQ5M8KFQC6S767TT4",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PFFQ5YD3YGKCBZ0KG",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PM5KFCSR4K7B51MDN",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99P4GK6NTAKC9DR0HY8",
+      "name": "home_warehouse_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_vehicles",
+    "columns": [
+      "01M8EJX99P7W4FY2ZYVCZF6DMD"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A94ANSRS6N44043NDF",
+      "name": "uq_vehicles_registration_number",
+      "columns": [
+        "01M8EJX99P7PCM4XPJ4S1HYWFR"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9FY3KYZZFS5Z40YC0",
+      "name": "fk_vehicles_home_warehouse_id",
+      "columns": [
+        "01M8EJX99P4GK6NTAKC9DR0HY8"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A truck or van of the own delivery fleet."
+}

@@ -1,0 +1,200 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99Q2NHVT98RXQ84QHB9",
+  "name": "purchase_order_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QN3T8C8VT8N9Z2TVW",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the purchase order line."
+    },
+    {
+      "id": "01M8EJX99Q6AZ8FA61DX1HCYD9",
+      "name": "line_number",
+      "type": "int32",
+      "nullable": false,
+      "comment": "Line number."
+    },
+    {
+      "id": "01M8EJX99QEJDR309ZNHFAP5F4",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity ordered."
+    },
+    {
+      "id": "01M8EJX99Q1ZP1J33JAG53EWKQ",
+      "name": "unit_cost_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QAC7QCN92EPKZB4MR",
+      "name": "unit_cost_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QKE6B5V6S5WEEQ9HP",
+      "name": "line_total_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QCQJPW0WPMZ6EKN8D",
+      "name": "line_total_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QB7WFE5J0CTBA1SNJ",
+      "name": "expected_on",
+      "type": "date",
+      "comment": "Line delivery date, when split."
+    },
+    {
+      "id": "01M8EJX99QGYMZGZ6DNYEZBXAT",
+      "name": "received_quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "default": 0,
+      "comment": "Quantity received so far."
+    },
+    {
+      "id": "01M8EJX99QBM51EPC9NFXDHKE0",
+      "name": "is_closed",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether no more receipts are expected."
+    },
+    {
+      "id": "01M8EJX99QRJP9Z3SH4VM5NWPH",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QM57VZEAWD1Y5BPRT",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q524CGD4KMJD7BPB9",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QY4R5JVYSMD26HAHC",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QGEADYBKH1VPQZWS1",
+      "name": "purchase_order_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q3P0QGBVNS6Q8JA74",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QF7DXY7JA8X5G12PM",
+      "name": "unit_code",
+      "type": "string",
+      "length": 3,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q9DYBSK9EDRC0B4R5",
+      "name": "supplier_product_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_purchase_order_lines",
+    "columns": [
+      "01M8EJX99QN3T8C8VT8N9Z2TVW"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABP8GFS9KAMZRYDE6T",
+      "name": "fk_purchase_order_lines_purchase_order_id",
+      "columns": [
+        "01M8EJX99QGEADYBKH1VPQZWS1"
+      ],
+      "referencesTable": "01M20RTE9GYMJF4W6ZSG87Y5T2",
+      "referencesColumns": [
+        "01M8EJX99Q0CGM80EJ972RZV09"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ABW7GFAF9N051JP1NM",
+      "name": "fk_purchase_order_lines_product_id",
+      "columns": [
+        "01M8EJX99Q3P0QGBVNS6Q8JA74"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ABM20DA3PD7M7Y3T1C",
+      "name": "fk_purchase_order_lines_unit_code",
+      "columns": [
+        "01M8EJX99QF7DXY7JA8X5G12PM"
+      ],
+      "referencesTable": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+      "referencesColumns": [
+        "01M8EJX99Q26RFK5STCSH1JBPE"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ABADJQBVAJCMDWZTPZ",
+      "name": "fk_purchase_order_lines_supplier_product_id",
+      "columns": [
+        "01M8EJX99Q9DYBSK9EDRC0B4R5"
+      ],
+      "referencesTable": "01M8EJX99QJ1NQH5E9FGS20TK9",
+      "referencesColumns": [
+        "01M8EJX99Q1R7YCW7M1GNMYC34"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A product and quantity ordered from a supplier."
+}

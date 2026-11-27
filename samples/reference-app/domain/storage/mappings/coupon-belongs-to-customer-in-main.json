@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJMTYZZ70NPPJREMBY",
+  "name": "coupon belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M20A2N0KGG97XVB6FGT9DGJK",
+  "foreignKey": "01M8EJX9AAY0QVY2PV8SHPKJW2"
+}

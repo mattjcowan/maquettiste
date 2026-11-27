@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ6MEX9ECZC8P4E3DH",
+  "name": "return line tracks serial number in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1MANP5T6WR3NVQ2MXXAB47K",
+  "foreignKey": "01M8EJX9AB6AZ9ZJ5J6X012V96"
+}

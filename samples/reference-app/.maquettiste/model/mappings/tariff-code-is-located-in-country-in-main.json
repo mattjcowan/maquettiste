@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH2HQBFJVCGD4VDSWQ",
+  "name": "tariff code is located in country in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1VGEN17Q089PAS6HPRE77QR",
+  "foreignKey": "01M8EJX9A7MKGA5CD7KMSXPCXB"
+}

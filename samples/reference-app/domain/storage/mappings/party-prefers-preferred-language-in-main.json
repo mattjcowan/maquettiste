@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHCX7CHEHZF0SVK67S",
+  "name": "party prefers preferred language in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M20TJ3GFZG6MB2E34FZDTRVH",
+  "foreignKey": "01M8EJX9A82799KVSENFCJRA6D"
+}

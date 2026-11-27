@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHTP3J5M1M8VAW2KSG",
+  "name": "budget is charged to cost center in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M32T18J6SHMBC9RFNSQHXDB3",
+  "foreignKey": "01M8EJX9A83GV792BH8T5GMXRF"
+}

@@ -1,0 +1,136 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P4YZT0BJ4SBS8XS67",
+  "name": "stock_lots",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PJWQ6NSF0MMBRYXEK",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the stock lot."
+    },
+    {
+      "id": "01M8EJX99PVQWNGSGRWJPAPM84",
+      "name": "lot_number",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Lot number."
+    },
+    {
+      "id": "01M8EJX99PNDWAP6JKWVX5PP3X",
+      "name": "supplier_lot_number",
+      "type": "string",
+      "length": 40,
+      "comment": "Lot number on the supplier's label."
+    },
+    {
+      "id": "01M8EJX99P741GZJEDKVZ79MRH",
+      "name": "manufactured_on",
+      "type": "date",
+      "comment": "Production date."
+    },
+    {
+      "id": "01M8EJX99PNYMZ9Z4EJQ12E9NA",
+      "name": "expires_on",
+      "type": "date",
+      "comment": "Expiry date, for first-expired-first-out picking."
+    },
+    {
+      "id": "01M8EJX99PHXR3PBCES7FXQ12G",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PMQCV89PAD8FYA7T8",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PPCD684B5NT1E2XVQ",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PJ2WMRWVPHCPDZ9WG",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PZX6GQ71G6GBG8XEM",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PXG0KMD288WBTG82E",
+      "name": "supplier_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_stock_lots",
+    "columns": [
+      "01M8EJX99PJWQ6NSF0MMBRYXEK"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAN64AFW12ZXVZZMRM",
+      "name": "fk_stock_lots_product_id",
+      "columns": [
+        "01M8EJX99PZX6GQ71G6GBG8XEM"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AADD11FTR8J9C8TZCS",
+      "name": "fk_stock_lots_supplier_id",
+      "columns": [
+        "01M8EJX99PXG0KMD288WBTG82E"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9AA8XQ68GRM9WY2KRHV",
+      "name": "ix_stock_lots_lot_number",
+      "columns": [
+        {
+          "column": "01M8EJX99PVQWNGSGRWJPAPM84"
+        }
+      ]
+    },
+    {
+      "id": "01M8EJX9AA9TR8T0S3CSEKZXX1",
+      "name": "ix_stock_lots_expires_on",
+      "columns": [
+        {
+          "column": "01M8EJX99PNYMZ9Z4EJQ12E9NA"
+        }
+      ]
+    }
+  ],
+  "comment": "A production lot or batch of a lot-controlled product, with its expiry date."
+}

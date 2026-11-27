@@ -3,10 +3,12 @@ using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Tests.Integration;
 using static Maquettiste.Engine.Tests.Validation.SuppressionHarness;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Validation;
 
 /// <summary>The rules on an element's suppressions (next-phase-2-design.md section 5.6): MQ5018 and MQ5019, judged per element.</summary>
+[UsesProjectedFixtures]
 public sealed class SuppressionRuleTests
 {
     private const string TenantedPath = "model/vocabularies/stereotypes/tenanted.json";

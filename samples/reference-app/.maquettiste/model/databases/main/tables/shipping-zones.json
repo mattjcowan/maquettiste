@@ -1,0 +1,93 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P62WSPXSP72QQVNQQ",
+  "name": "shipping_zones",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P4B20ZTJGAXQADHE7",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the shipping zone."
+    },
+    {
+      "id": "01M8EJX99P3GJEXH1KEZZ4HN6T",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Zone code."
+    },
+    {
+      "id": "01M8EJX99PBE4GJ7RRT0868G1Z",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Zone name."
+    },
+    {
+      "id": "01M8EJX99PPVZZBFCRY1YYMMDG",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "comment": "Postal code ranges in the zone."
+    },
+    {
+      "id": "01M8EJX99PVBQMZEQ1GCT484RB",
+      "name": "country_code",
+      "type": "string",
+      "length": 2
+    },
+    {
+      "id": "01M8EJX99PH79KD9XPC9XZA4MJ",
+      "name": "origin_warehouse_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_shipping_zones",
+    "columns": [
+      "01M8EJX99P4B20ZTJGAXQADHE7"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9Y2X7YEF5X2PNWJ0C",
+      "name": "uq_shipping_zones_code",
+      "columns": [
+        "01M8EJX99P3GJEXH1KEZZ4HN6T"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A98CQMKAQ90SG1NR72",
+      "name": "fk_shipping_zones_country_code",
+      "columns": [
+        "01M8EJX99PVBQMZEQ1GCT484RB"
+      ],
+      "referencesTable": "01M8EJX99QM2593EWW3DNC676T",
+      "referencesColumns": [
+        "01M8EJX99QZYYZX93FNJF0W9JT"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A9PNMT04H4C700ZS30",
+      "name": "fk_shipping_zones_origin_warehouse_id",
+      "columns": [
+        "01M8EJX99PH79KD9XPC9XZA4MJ"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A destination zone used to rate freight, such as zone 5 from Denver."
+}

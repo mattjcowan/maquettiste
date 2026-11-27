@@ -1,0 +1,70 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9AWV8BVK1YJNSZTK77Q",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PA7MTD0KWX8FXWCM0",
+      "fields": [
+        {
+          "attribute": "01M2C58G7K0XJAW5QPYCG17Z7Z",
+          "column": "01M8EJX99P6N7K7H260YR5XY22"
+        },
+        {
+          "attribute": "01M1HBXN2R32G7EEZZP4QXB9V1",
+          "column": "01M8EJX99PXXSA5HJFATQWQ4GV"
+        },
+        {
+          "attribute": "01M2PWFDR8K05SCQ23VFPX05PK",
+          "column": "01M8EJX99P5QN7HEA7ZJG1PG1A"
+        },
+        {
+          "attribute": "01M1VFAMQCZHW38QNFAXJPC7VA",
+          "column": "01M8EJX99PQ76QK4TEZXRRR1D7"
+        },
+        {
+          "attribute": "01M2JXR8YPG4PX1KWDX3XBW8E5",
+          "column": "01M8EJX99PZWT5CB26MSF648ND"
+        },
+        {
+          "attribute": "01M2VFV5NPYD1CENXXMQKTY9KB",
+          "column": "01M8EJX99PBRM9VR3VWHBDGMRY"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PK26W918JMEVPFFWM"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PESN62T7XW756GWDX"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99P4A82HR9R3W46B7JK"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99P9KJDWABB6QC8HG0A"
+        },
+        {
+          "attribute": "01M2EEPH89QB3YM00519S585GZ",
+          "column": "01M8EJX99PPFFR38KXJBPMQQ1J"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P4A82HR9R3W46B7JK": "d31d4567:fd717804",
+          "01M8EJX99P5QN7HEA7ZJG1PG1A": "82a3537f:6137f4ed",
+          "01M8EJX99P6N7K7H260YR5XY22": "a5614527:8da1c7b8",
+          "01M8EJX99P9KJDWABB6QC8HG0A": "0b075263:9599b5fd",
+          "01M8EJX99PBRM9VR3VWHBDGMRY": "0a2438db:19980141",
+          "01M8EJX99PESN62T7XW756GWDX": "c0d79bde:9599b5fd",
+          "01M8EJX99PK26W918JMEVPFFWM": "42049432:e0d08678",
+          "01M8EJX99PPFFR38KXJBPMQQ1J": "7678d8c8:8da1c7b8",
+          "01M8EJX99PQ76QK4TEZXRRR1D7": "fe41f6c4:ef1ae9ec",
+          "01M8EJX99PXXSA5HJFATQWQ4GV": "5694d08a:ef1ae9ec",
+          "01M8EJX99PZWT5CB26MSF648ND": "2e31e42a:d9a25069"
+        }
+      }
+    }
+  ]
+}

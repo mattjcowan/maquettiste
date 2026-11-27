@@ -9,6 +9,7 @@ using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
 using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Engine.Tests.Integration;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Generation;
 
@@ -17,6 +18,7 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// plan renders once the batch is applied, and it resolves, plans and renders nothing on the way.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class ImpactBeforeApplyTests
 {
     private const string Number = "01J92P0V0R3VSP7D5238DTNZX1";

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ8DVB2FQS3AGJXGNZ",
+  "name": "putaway task is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2HK807V1R57XJ97A1EKV9M3",
+  "foreignKey": "01M8EJX9AAEYS184CJHHT19A8A"
+}

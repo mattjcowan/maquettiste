@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJVH050MKABXS4S6T2",
+  "name": "warehouse zone contains bins in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2FVG6WHP2RP8MXSKKQ54PTW",
+  "foreignKey": "01M8EJX9A9GQC224DQ9GEFE4A9"
+}

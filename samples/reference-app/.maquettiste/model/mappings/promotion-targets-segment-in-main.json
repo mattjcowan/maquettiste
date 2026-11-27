@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJR3VQ67RJ3BEBAYVM",
+  "name": "promotion targets segment in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2TBDMEP352W5PVQV59S0S1E",
+  "junctionTable": "01M8EJX99Q2X39FG0PM1C3KHDB",
+  "ends": [
+    {
+      "end": "01M23ETA41XF840JHB2JXSSCPG",
+      "foreignKey": "01M8EJX9AC4BZHETDKQNFPYT2J"
+    },
+    {
+      "end": "01M25C20Y4NEHHNP748F1EG270",
+      "foreignKey": "01M8EJX9AC6Q95T3WXSMG1R5H6"
+    }
+  ]
+}

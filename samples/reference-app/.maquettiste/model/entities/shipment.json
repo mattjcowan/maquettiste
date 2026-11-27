@@ -117,5 +117,163 @@
       },
       "description": "Gross weight of all packages."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BZSM06TZVCSHNQHGF6",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PKM2XB6JYQ5KG4H99",
+      "fields": [
+        {
+          "attribute": "01M2EQCKFMA6ZTMQJY6TC6YXPC",
+          "column": "01M8EJX99PJZQHKXG1H6695ECQ"
+        },
+        {
+          "attribute": "01M1DADFNXH43T65Q940ZW092K",
+          "column": "01M8EJX99PCCK4CW1CKHVAN7MC"
+        },
+        {
+          "attribute": "01M355S3N74XY7BPND6XYQWH0X",
+          "column": "01M8EJX99PN1VKDMKMMH3GS8TP"
+        },
+        {
+          "attribute": "01M202QR8JQKQ7G2DW8FM4M2Y5.01M36P0JCD8FVZ00WRN0DQ1RWJ",
+          "column": "01M8EJX99PVPHW6069J69NM3S8"
+        },
+        {
+          "attribute": "01M202QR8JQKQ7G2DW8FM4M2Y5.01M1K49FEDQ20K31AVX157K81Y",
+          "column": "01M8EJX99PB33XTDCB2E0A3PW0"
+        },
+        {
+          "attribute": "01M202QR8JQKQ7G2DW8FM4M2Y5.01M2ZCJGT4NRE52Q41FKFC67CV",
+          "column": "01M8EJX99PE1ZRQDYQ8SNR359Z"
+        },
+        {
+          "attribute": "01M202QR8JQKQ7G2DW8FM4M2Y5.01M2C3BFYSTQTK6JV9KAN7EGV6",
+          "column": "01M8EJX99PMA61R5AWEKB86V2D"
+        },
+        {
+          "attribute": "01M202QR8JQKQ7G2DW8FM4M2Y5.01M1DS9RK9STKGBPD8W2JGRNY4",
+          "column": "01M8EJX99PRXTX0HRD0ETFAVMH"
+        },
+        {
+          "attribute": "01M202QR8JQKQ7G2DW8FM4M2Y5.01M28FWJX8S0P0MM3RBBDZYBF4",
+          "column": "01M8EJX99PGHWRTWA0J512XHCX"
+        },
+        {
+          "attribute": "01M1ZTYY0RXN0CPHVK15S3PTHZ",
+          "column": "01M8EJX99P9ND31Y1QBYW0G10B"
+        },
+        {
+          "attribute": "01M2BKNRCT7563GVBM5CRRJKDP",
+          "column": "01M8EJX99PBP780ZJBS916DMKC"
+        },
+        {
+          "attribute": "01M2VKHT3T6KF1WGWQD0TDEVYJ",
+          "column": "01M8EJX99PF2CF3RHMPAHMG1PP"
+        },
+        {
+          "attribute": "01M2HF2QB1MQW84XNR3RYDW4X0",
+          "column": "01M8EJX99PTWTSZ8CF6E62PKC2"
+        },
+        {
+          "attribute": "01M2GBZB9TRQ1FMV8GT6YXV1F3",
+          "column": "01M8EJX99PV3RWQH75FTBP4JS3"
+        },
+        {
+          "attribute": "01M1VZ6FHX724PGB9E30RMPM4X.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PMCPNVXN4ZFXNN1H3"
+        },
+        {
+          "attribute": "01M1VZ6FHX724PGB9E30RMPM4X.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PRE5EW1WJZQWPX8VW"
+        },
+        {
+          "attribute": "01M1TXPREFF61D2V0GAYDJ3RJ5.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PCQD97J1RY7ME3G3E"
+        },
+        {
+          "attribute": "01M1TXPREFF61D2V0GAYDJ3RJ5.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PH6XAFBAKXFPHZ58A"
+        },
+        {
+          "attribute": "01M2SZQXVRQ7SRMRERXGYTWYRK.01M2HWNXGYJRZDD7KPMXMDE14X",
+          "column": "01M8EJX99PBBVMCYDXRY9T38JD"
+        },
+        {
+          "attribute": "01M2SZQXVRQ7SRMRERXGYTWYRK.01M2RYDCVQQ6H7P7ZQF61MX9EM",
+          "column": "01M8EJX99PQKAYHDZFFJWCBV9P"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PWN346FGPAZ4PTEXT"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PJV7M2S22BT2E93XX"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PYQRK7N3GE3PXJVR0"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99P1TW7CSSP3X057WTZ"
+        },
+        {
+          "attribute": "01M347T3V7J6MDQHPXFGQVRE8P",
+          "column": "01M8EJX99PYP4RDEHJJ2Z7TG5G"
+        },
+        {
+          "attribute": "01M26X6M4DVA88NW21J9JSA93W",
+          "column": "01M8EJX99PT3SS83A2BPSJF89W"
+        },
+        {
+          "attribute": "01M309B2SNB936J5HKWGG8H8MG",
+          "column": "01M8EJX99PM99R8NH3V86ZAETF"
+        },
+        {
+          "attribute": "01M1ZSCQJYJ23MH2HBXW8Q1Z2X",
+          "column": "01M8EJX99P2VA0EA75JNZMZPK8"
+        },
+        {
+          "attribute": "01M2BTDZ15TJR9HXZWMYE4T6N8",
+          "column": "01M8EJX99P8V1NK1BZ9EQS73B7"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P1TW7CSSP3X057WTZ": "0b075263:9599b5fd",
+          "01M8EJX99P2VA0EA75JNZMZPK8": "a9a71425:d8a57cf9",
+          "01M8EJX99P8V1NK1BZ9EQS73B7": "1cdf47e3:d8a57cf9",
+          "01M8EJX99P9ND31Y1QBYW0G10B": "15feee7e:75525505",
+          "01M8EJX99PB33XTDCB2E0A3PW0": "200d6512:4c04c26c",
+          "01M8EJX99PBBVMCYDXRY9T38JD": "8b23e923:17d070b1",
+          "01M8EJX99PBP780ZJBS916DMKC": "5cac00fa:307d3116",
+          "01M8EJX99PCCK4CW1CKHVAN7MC": "13fae007:ef1ae9ec",
+          "01M8EJX99PCQD97J1RY7ME3G3E": "31505480:d249895e",
+          "01M8EJX99PE1ZRQDYQ8SNR359Z": "a7ed6b72:449863fc",
+          "01M8EJX99PF2CF3RHMPAHMG1PP": "cb32bc87:9b51e601",
+          "01M8EJX99PGHWRTWA0J512XHCX": "c430d7c0:ee79e9fe",
+          "01M8EJX99PH6XAFBAKXFPHZ58A": "a6d9da5a:75525505",
+          "01M8EJX99PJV7M2S22BT2E93XX": "c0d79bde:9599b5fd",
+          "01M8EJX99PJZQHKXG1H6695ECQ": "a5614527:8da1c7b8",
+          "01M8EJX99PM99R8NH3V86ZAETF": "7678d8c8:d8a57cf9",
+          "01M8EJX99PMA61R5AWEKB86V2D": "e6ba2a41:69185ebd",
+          "01M8EJX99PMCPNVXN4ZFXNN1H3": "df255fb8:d249895e",
+          "01M8EJX99PN1VKDMKMMH3GS8TP": "073c1634:5a6250ba",
+          "01M8EJX99PQKAYHDZFFJWCBV9P": "bc68f948:75525505",
+          "01M8EJX99PRE5EW1WJZQWPX8VW": "6f5f097c:75525505",
+          "01M8EJX99PRXTX0HRD0ETFAVMH": "1055dd20:ae2dc2c0",
+          "01M8EJX99PT3SS83A2BPSJF89W": "f9d6c349:8da1c7b8",
+          "01M8EJX99PTWTSZ8CF6E62PKC2": "3e01071a:fd717804",
+          "01M8EJX99PV3RWQH75FTBP4JS3": "d4bc54b2:fd717804",
+          "01M8EJX99PVPHW6069J69NM3S8": "e7fd52e7:6e0602bf",
+          "01M8EJX99PWN346FGPAZ4PTEXT": "42049432:e0d08678",
+          "01M8EJX99PYP4RDEHJJ2Z7TG5G": "8071acdb:d8a57cf9",
+          "01M8EJX99PYQRK7N3GE3PXJVR0": "d31d4567:fd717804"
+        }
+      }
+    }
   ]
 }

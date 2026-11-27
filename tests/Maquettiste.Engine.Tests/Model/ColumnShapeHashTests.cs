@@ -94,4 +94,25 @@ public sealed class ColumnShapeHashTests
         // invoice_number: the name part hashes "invoicenumber"; the type part hashes "string\n\n\n32\n\n\n\nfalse".
         Assert.Equal("5d1d1b79:461bd2c5", ColumnShapeHash.Of(Number()));
     }
+
+    [Fact]
+    public void A_snapshot_cache_gives_the_hash_and_keeps_entries_of_the_previous_snapshot_only()
+    {
+        var kept = Number();
+        var replaced = Number(c => c with { Id = "01K6SHA0000000000000000002", Name = "customer_id" });
+        var first = new ColumnShapeCache(null);
+        Assert.Equal(ColumnShapeHash.Of(kept), first.Of(kept));
+        Assert.Equal(ColumnShapeHash.Of(replaced), first.Of(replaced));
+
+        // The next snapshot keeps one entry and replaces the other with a changed copy: equal by value would be wrong, so values go by instance.
+        var renamed = replaced with { Name = "client_id" };
+        var second = new ColumnShapeCache(first);
+        Assert.Equal(ColumnShapeHash.Of(kept), second.Of(kept));
+        Assert.Equal(ColumnShapeHash.Of(renamed), second.Of(renamed));
+        Assert.NotEqual(second.Of(replaced), second.Of(renamed));
+
+        // A third snapshot reads the second's values, not the first's: values of replaced entries live one snapshot at most.
+        var third = new ColumnShapeCache(second);
+        Assert.Equal(ColumnShapeHash.Of(kept), third.Of(kept));
+    }
 }

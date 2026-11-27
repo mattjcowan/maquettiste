@@ -1,0 +1,143 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PT3R2TDMAR87F0ZS7",
+  "name": "route_stops",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PR1NPJTV0E9K31VT3",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the route stop."
+    },
+    {
+      "id": "01M8EJX99PHGWYFCTVWD2482TB",
+      "name": "stop_number",
+      "type": "int16",
+      "nullable": false,
+      "comment": "Position on the route."
+    },
+    {
+      "id": "01M8EJX99PD7GDDJ1Y5KSBAKBV",
+      "name": "address_line1",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Street and number, or PO box."
+    },
+    {
+      "id": "01M8EJX99PR48Y118R350BWAAM",
+      "name": "address_line2",
+      "type": "string",
+      "length": 120,
+      "comment": "Suite, floor or building."
+    },
+    {
+      "id": "01M8EJX99P2EMA9RZCX4KA3TJ0",
+      "name": "address_city",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "City or locality."
+    },
+    {
+      "id": "01M8EJX99P48B6VT65W6GEVDMM",
+      "name": "address_region",
+      "type": "string",
+      "length": 80,
+      "comment": "State, province or county."
+    },
+    {
+      "id": "01M8EJX99P2GQK5AVX0VBJ72ZY",
+      "name": "address_postal_code",
+      "type": "string",
+      "length": 20,
+      "comment": "Postal or ZIP code."
+    },
+    {
+      "id": "01M8EJX99PTBM4W6478ADAKCM2",
+      "name": "address_country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "comment": "ISO country code."
+    },
+    {
+      "id": "01M8EJX99P6XTJC73RDKA34VXH",
+      "name": "location_latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "comment": "Degrees north of the equator."
+    },
+    {
+      "id": "01M8EJX99PCHNJWH3K5C5KNJHG",
+      "name": "location_longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "comment": "Degrees east of Greenwich."
+    },
+    {
+      "id": "01M8EJX99P92R5TSZQCKNG12A0",
+      "name": "planned_arrival_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "Planned arrival."
+    },
+    {
+      "id": "01M8EJX99P3TXDJXH3ZAZV2CMM",
+      "name": "actual_arrival_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "Actual arrival."
+    },
+    {
+      "id": "01M8EJX99PR0282M7GSNG9WN3R",
+      "name": "delivery_route_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P3WX5WQKNP74T01XF",
+      "name": "shipment_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_route_stops",
+    "columns": [
+      "01M8EJX99PR1NPJTV0E9K31VT3"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9XMJ0J1EY9S8WTVAM",
+      "name": "fk_route_stops_delivery_route_id",
+      "columns": [
+        "01M8EJX99PR0282M7GSNG9WN3R"
+      ],
+      "referencesTable": "01M8EJX99PWK12H21W6VRCWHPF",
+      "referencesColumns": [
+        "01M8EJX99PTQ0JDEEQVFZTCQJY"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A9GETEMPDE30PJK2N5",
+      "name": "fk_route_stops_shipment_id",
+      "columns": [
+        "01M8EJX99P3WX5WQKNP74T01XF"
+      ],
+      "referencesTable": "01M8EJX99PKM2XB6JYQ5KG4H99",
+      "referencesColumns": [
+        "01M8EJX99PJZQHKXG1H6695ECQ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A stop on a delivery route."
+}

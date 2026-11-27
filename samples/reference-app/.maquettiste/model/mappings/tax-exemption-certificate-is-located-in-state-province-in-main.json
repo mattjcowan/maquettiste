@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH8Z4T8M3VW603DK1M",
+  "name": "tax exemption certificate is located in state province in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M38E4NXN6XY0R3TXY5PEQP10",
+  "foreignKey": "01M8EJX9A85HR7T1Q8XRX21T1K"
+}

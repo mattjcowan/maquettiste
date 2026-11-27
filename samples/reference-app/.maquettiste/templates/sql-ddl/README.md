@@ -307,7 +307,13 @@ render). On PostgreSQL each one writes a step, followed by its ledger row:
   that checks the catalog first), a stand-alone `backfill` (its `where` is the guard).
 - A `raw` fact runs its statements in its phase, before or after the schema statements, unless its `skipWhen` query
   returns a row. A `rekey` writes no DDL, only its row and, for each `sql-object` key it lists, an `UPDATE` that moves
-  the object row of a run-once SQL object to its new id, so the object does not run again. A `value-map` writes the
+  the object row of a run-once SQL object to its new id, so the object does not run again. A `rekey` of "Create tables…"
+  that adopted objects (a lookup table or a list's table this pack made in seed.sql, a code column's foreign key or check)
+  creates them where they are missing, in every dialect, in blocks headed `-- Adopted by migration fact`: the tables
+  before the new tables (`IF NOT EXISTS`, an `OBJECT_ID` test on SQL Server, a PL/SQL block that ignores ORA-00955 on
+  Oracle), each lookup table followed by its rows (inserted when missing), the constraints after the foreign keys (a `DO` block on PostgreSQL, an `OBJECT_ID` test on SQL Server, an
+  `information_schema` test on MySQL, a PL/SQL block on Oracle, `CREATE TRIGGER IF NOT EXISTS` on SQLite, as seed.sql made
+  them there). A database built from the migrations alone gets them; one that holds them is left as it is. A `value-map` writes the
   data step of Reference data below. `adopt`, `baseline` and `state-map` write a TODO line and no row: the pack writes
   no step for them yet.
 - A held fact that is not released writes a note where its change would go and no row: a held drop keeps the object, and
@@ -630,7 +636,7 @@ two table scripts, `schema.sql`, `seed.sql` and the first migration). `tests/hel
 | `_sql.scriban` | Shared functions: quoting, qualified names, column definitions, foreign keys, indexes, comments. |
 | `_table.scriban` | The `CREATE TABLE` block of one table, used by `table`, `schema` and `migration`. |
 | `_objects.scriban` | Sequences, views, routines, database types, SQL objects, schemas, include directives and the dependency specs for `ddl_order` (foreign keys, and `dependsOn` for the DDL order). |
-| `_migration.scriban` | Statement builders over the schema diff, and the steps of migration facts (`fact_steps`, `change_type_statements`, `backfill_statements`, `raw_step`). |
+| `_migration.scriban` | Statement builders over the schema diff, and the steps of migration facts (`fact_steps`, `change_type_statements`, `backfill_statements`, `raw_step`; what a rekey fact adopted: `adopted_table_statements`, `adopted_constraint_statements`). |
 | `_reference.scriban` | Reference data: the realizations, their reconciliation and the seed-row inserts, used by `schema`, `migration` and `seed`. |
 | `_ledger.scriban` | The migration ledger: its DDL through `ledger_ddl` (`ledger_prelude`), one fact row (`ledger_fact_row`), the facts a script that builds the database reaches (`ledger_build_facts`), a run-once SQL object's guard (`ledger_once_sql`), the object rows a rekey moves (`ledger_rekey_rows`) and the header line (`ledger_header`); used by `schema`, `migration`, `object-environments` and `sql-object`. |
 | `_data.scriban` | Table seeds and bound entities' seeds (`database.seed_tables`): inserts of rows that are missing (`once`), upserts on the row key (`converge`: `ON CONFLICT ... DO UPDATE` on PostgreSQL and SQLite, `ON DUPLICATE KEY UPDATE` on MySQL and MariaDB, `MERGE` on SQL Server and Oracle) and, with `delete`, a delete of the rows a seed does not hold; used by `seed` and `seed-environments`. A reference type bound to a table writes its rows here too (source `list`). A foreign-key column whose referenced value the database fills (a row's `refs`, `unknown`) is a lookup subquery on PostgreSQL, one `INSERT` per level of rows that look up their own table, else `NULL` with a TODO comment. |

@@ -149,7 +149,9 @@ internal sealed class PackRepo : IDisposable
     private PackRepo(bool dialects)
     {
         Repo = new TempRepo();
-        CopyTree(Fixtures.Path("models", "billing", ".maquettiste"), Repo.ModelRoot);
+        // The dialects variant lays its SQL Server and SQLite databases out by convention and names the projected tables' keys, so it
+        // starts from the projected copy of billing (temporary: pull request 3 of retiring projection rewrites it with designed tables).
+        CopyTree(Fixtures.Path("models", dialects ? "billing-projected" : "billing", ".maquettiste"), Repo.ModelRoot);
         foreach (var pack in Packs)
             CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", pack), Path.Combine(Repo.ModelRoot, "templates", pack));
         if (dialects)

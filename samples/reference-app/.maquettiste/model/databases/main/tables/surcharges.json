@@ -1,0 +1,140 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QRMCK0S2D0FHAFRN0",
+  "name": "surcharges",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QZTR5PEMAHWFR91M0",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the surcharge."
+    },
+    {
+      "id": "01M8EJX99QN5TZMPEC71BWQQTV",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Surcharge code."
+    },
+    {
+      "id": "01M8EJX99QY5ZK3M3R6NNJXQ61",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Name printed on invoices."
+    },
+    {
+      "id": "01M8EJX99QD9Y49KT8NV3XJQGM",
+      "name": "calculation",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "percent or flat."
+    },
+    {
+      "id": "01M8EJX99QR21FHBGNNDAMS75G",
+      "name": "rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Percentage, for percent surcharges."
+    },
+    {
+      "id": "01M8EJX99Q2GXHXSD3B4KMX4GP",
+      "name": "amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QQF92E76NG8F2582Y",
+      "name": "amount_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QZAD6V7SXW059XS1E",
+      "name": "validity_starts_on",
+      "type": "date",
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99Q4J86R41ECPG6DVSK",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99QDNRTJSEAFSRF9A2E",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QK2XB1VPEDV5D41AQ",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q5RYTHNSWRX2Y4FHM",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99Q8RRWC4NDEPQ4RR56",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99Q7XFF47FQ8R7P2EE5",
+      "name": "product_category_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_surcharges",
+    "columns": [
+      "01M8EJX99QZTR5PEMAHWFR91M0"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AADTXRP5Y4W3Y12QND",
+      "name": "uq_surcharges_code",
+      "columns": [
+        "01M8EJX99QN5TZMPEC71BWQQTV"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAWCASC7W73E2SPPY7",
+      "name": "fk_surcharges_product_category_id",
+      "columns": [
+        "01M8EJX99Q7XFF47FQ8R7P2EE5"
+      ],
+      "referencesTable": "01M8EJX99NQ4YTPRWGEB5NP3V1",
+      "referencesColumns": [
+        "01M8EJX99NSKK4SVQ4V8E5P14K"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An extra charge added to orders, such as a fuel surcharge or a small-order fee."
+}

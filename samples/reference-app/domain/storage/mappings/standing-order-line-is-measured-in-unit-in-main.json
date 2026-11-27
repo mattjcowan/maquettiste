@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CKCJR06NMRM4X3S8HY",
+  "name": "standing order line is measured in unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2K5ER96GCWF304NAAXWHPT5",
+  "foreignKey": "01M8EJX9ACD90P0S4ABZ42JYAZ"
+}

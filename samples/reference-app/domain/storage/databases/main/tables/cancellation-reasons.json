@@ -1,0 +1,73 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99Q2JMM6VCSM32EBYYC",
+  "name": "cancellation_reasons",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QXKNM4FYW6RKS0WN0",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the cancellation reason."
+    },
+    {
+      "id": "01M8EJX99QCS06FMGASE7343JR",
+      "name": "counts_as_lost_sale",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the cancellation counts as a lost sale in reports."
+    },
+    {
+      "id": "01M8EJX99QDEZ9ECC7W2HAE4D2",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99QSW841XP1M6C7MZ8A",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99QQ87NWCQH4N0P7R0P",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99Q05ZD2F420RJZT4HJ",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_cancellation_reasons",
+    "columns": [
+      "01M8EJX99QXKNM4FYW6RKS0WN0"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9ACDTJFM4CAMMT1V0TD",
+      "name": "uq_cancellation_reasons_code",
+      "columns": [
+        "01M8EJX99QDEZ9ECC7W2HAE4D2"
+      ]
+    }
+  ],
+  "comment": "A reason for cancelling an order, such as Customer changed mind or Duplicate order."
+}

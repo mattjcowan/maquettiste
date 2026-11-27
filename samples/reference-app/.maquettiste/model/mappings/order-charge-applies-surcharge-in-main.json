@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJNTMQFG96VRX8N4BC",
+  "name": "order charge applies surcharge in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1QD5V27YFK2MQV5PNWQ4EPE",
+  "foreignKey": "01M8EJX9ACXBM6KERMKQZJP44C"
+}

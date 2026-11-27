@@ -1,0 +1,7 @@
+{
+  "$schema": "../../../../.schema/v1/sequence.json",
+  "kind": "sequence",
+  "id": "01JSEQ00000000000000000001",
+  "name": "orders",
+  "database": "01JDBS00000000000000000001"
+}

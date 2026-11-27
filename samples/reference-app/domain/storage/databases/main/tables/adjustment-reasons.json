@@ -1,0 +1,73 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PNMJGC9K0B0DFDMJT",
+  "name": "adjustment_reasons",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P1MZJPR63SVXN49PQ",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the adjustment reason."
+    },
+    {
+      "id": "01M8EJX99PKVD3W50B51455RWK",
+      "name": "affects_cost",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it posts a write-off to the ledger."
+    },
+    {
+      "id": "01M8EJX99PF17R554W7NNWHV97",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99PD76TX45VSJPRHRME",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99PP400D34NJ0421VGX",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99PP42TA5JQCGKFAW9P",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_adjustment_reasons",
+    "columns": [
+      "01M8EJX99P1MZJPR63SVXN49PQ"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9YCX6B42CMAW1M6QY",
+      "name": "uq_adjustment_reasons_code",
+      "columns": [
+        "01M8EJX99PF17R554W7NNWHV97"
+      ]
+    }
+  ],
+  "comment": "A reason for a stock adjustment, such as Damaged in warehouse or Count correction."
+}

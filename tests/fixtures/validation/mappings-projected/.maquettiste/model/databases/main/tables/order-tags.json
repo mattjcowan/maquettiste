@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01JTAB00000000000000000003",
+  "name": "order_tags",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01JCMN00000000000000000004",
+      "name": "order_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01JCMN00000000000000000005",
+      "name": "tag_id",
+      "type": "uuid"
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01JKEY00000000000000000002",
+      "columns": [
+        "01JCMN00000000000000000004"
+      ],
+      "referencesTable": "01JTAB00000000000000000002"
+    }
+  ]
+}

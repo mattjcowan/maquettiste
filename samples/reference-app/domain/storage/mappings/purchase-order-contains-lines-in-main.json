@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ8S8V3SQ6KSPV14RY",
+  "name": "purchase order contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M32V28PHGQT95RXPVM0MEVTB",
+  "foreignKey": "01M8EJX9ABP8GFS9KAMZRYDE6T"
+}

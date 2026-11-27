@@ -1,0 +1,18 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJX237W5SDDAR3D947",
+  "name": "price list serves customer group in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M282MQ6M3VBH01R9A8V2AA83",
+  "junctionTable": "01M8EJX99Q9Z4A3AVFM8YCDP86",
+  "ends": [
+    {
+      "end": "01M200MSPK9NWTST9Y6WRXW2QZ",
+      "foreignKey": "01M8EJX9AC2ZMS5DXZ3BXR7PGF"
+    },
+    {
+      "end": "01M25YW3WJ31QVGCXWY0G8GMCH",
+      "foreignKey": "01M8EJX9ACTAFBKPSZ5R3QCE5G"
+    }
+  ]
+}

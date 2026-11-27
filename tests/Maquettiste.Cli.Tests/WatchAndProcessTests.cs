@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
+[UsesProjectedFixtures]
 public sealed class WatchTests
 {
     [Fact]

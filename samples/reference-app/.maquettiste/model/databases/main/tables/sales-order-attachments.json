@@ -1,0 +1,129 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QCCBTZ2H1M5R9ZAYP",
+  "name": "sales_order_attachments",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QVQD051VFDYS73CF4",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false,
+      "comment": "Surrogate key of the sales order attachment."
+    },
+    {
+      "id": "01M8EJX99QDMDDZQWCK5TMRMWD",
+      "name": "file_name",
+      "type": "string",
+      "length": 255,
+      "nullable": false,
+      "comment": "Original file name."
+    },
+    {
+      "id": "01M8EJX99QJX0SQ305PH0HP9K2",
+      "name": "content_type",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "MIME type."
+    },
+    {
+      "id": "01M8EJX99QGVEFJGZDAMSD94PB",
+      "name": "size_bytes",
+      "type": "int64",
+      "nullable": false,
+      "comment": "File size."
+    },
+    {
+      "id": "01M8EJX99QGC5E0FFFZ2HH690J",
+      "name": "storage_key",
+      "type": "string",
+      "length": 400,
+      "nullable": false,
+      "comment": "Object storage key."
+    },
+    {
+      "id": "01M8EJX99QDFJZCH91MFGCN7N4",
+      "name": "uploaded_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When it was uploaded."
+    },
+    {
+      "id": "01M8EJX99QPBZ8TXZC2S0W9FXG",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99Q2B22RZJ0B4RKRS9J",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QE069QGRZWK863R1T",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QA357RA172W21Z6N2",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QF59DHRCKHTSFWTXE",
+      "name": "uploaded_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QZ05GSA4TQR97QS13",
+      "name": "sales_order_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sales_order_attachments",
+    "columns": [
+      "01M8EJX99QVQD051VFDYS73CF4"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AC1QG3VVSM3H5ZV4EM",
+      "name": "fk_sales_order_attachments_uploaded_by_id",
+      "columns": [
+        "01M8EJX99QF59DHRCKHTSFWTXE"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ACR8N39CA5Q8GS3W2C",
+      "name": "fk_sales_order_attachments_sales_order_id",
+      "columns": [
+        "01M8EJX99QZ05GSA4TQR97QS13"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A file attached to a sales order, such as the customer's PO PDF."
+}

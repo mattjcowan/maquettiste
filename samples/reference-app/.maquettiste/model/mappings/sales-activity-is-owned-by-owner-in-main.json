@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH6XTMTZC4ZENTW8KZ",
+  "name": "sales activity is owned by owner in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M30A1WZWCTAVNK5NJTT8Y9A6",
+  "foreignKey": "01M8EJX9A8MBQPBTJTY90GP77Y"
+}

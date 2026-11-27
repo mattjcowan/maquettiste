@@ -57,10 +57,23 @@ internal sealed class ReferenceWalker
     /// <param name="schemas">The custom property schemas of the model.</param>
     /// <param name="effectiveKeys">The element's keys with defaults (<see cref="ModelSnapshot.PropertyKeys"/>), or <see langword="null"/>.</param>
     /// <returns>The references.</returns>
-    public List<ReferenceSite> Walk(Element element, PropertySchemaSet schemas, IReadOnlyList<string>? effectiveKeys)
+    public List<ReferenceSite> Walk(Element element, PropertySchemaSet schemas, IReadOnlyList<string>? effectiveKeys) =>
+        Walk(element, schemas, effectiveKeys, []);
+
+    /// <summary>
+    /// <see cref="Walk(Element, PropertySchemaSet, IReadOnlyList{string})"/> into a list the caller owns (cleared first), so a caller that
+    /// walks every document of a large model reuses one list instead of growing a new one per document.
+    /// </summary>
+    /// <param name="element">The element.</param>
+    /// <param name="schemas">The project's property schema set.</param>
+    /// <param name="effectiveKeys">The element's effective stereotype keys, or <see langword="null"/>.</param>
+    /// <param name="sites">The list to fill.</param>
+    /// <returns><paramref name="sites"/>.</returns>
+    public List<ReferenceSite> Walk(Element element, PropertySchemaSet schemas, IReadOnlyList<string>? effectiveKeys, List<ReferenceSite> sites)
     {
         ArgumentNullException.ThrowIfNull(schemas);
-        var sites = new List<ReferenceSite>();
+        ArgumentNullException.ThrowIfNull(sites);
+        sites.Clear();
         WalkProperties(element, "", element.Id, sites);
         if (element is ReferenceType type)
         {

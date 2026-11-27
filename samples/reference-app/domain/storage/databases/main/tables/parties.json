@@ -1,0 +1,476 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P6TQY20H4KNV9E4WE",
+  "name": "parties",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P9XSGFG2VX6TR0BC7",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the party."
+    },
+    {
+      "id": "01M8EJX99PXSEW616N44XRTXJR",
+      "name": "party_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Business number shown on documents, such as C-104233."
+    },
+    {
+      "id": "01M8EJX99PYTHZDBEYY34GADP0",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Legal name."
+    },
+    {
+      "id": "01M8EJX99PYGM37EMJCSHJEV4B",
+      "name": "trading_name",
+      "type": "string",
+      "length": 200,
+      "comment": "Name the party trades under, when different."
+    },
+    {
+      "id": "01M8EJX99PVGPTMQ7TPSWNJNKJ",
+      "name": "tax_id",
+      "type": "string",
+      "length": 30,
+      "comment": "VAT or EIN registration number."
+    },
+    {
+      "id": "01M8EJX99P4Z4TQKCQVHQCDWV3",
+      "name": "website",
+      "type": "string",
+      "length": 200,
+      "comment": "Public website URL."
+    },
+    {
+      "id": "01M8EJX99PE9WTG9DJWTYXZTFA",
+      "name": "email",
+      "type": "string",
+      "length": 254,
+      "comment": "General mailbox."
+    },
+    {
+      "id": "01M8EJX99PAREW22GW9JAY964P",
+      "name": "phone_number",
+      "type": "string",
+      "length": 20,
+      "comment": "Number in E.164 form, such as +14155550100."
+    },
+    {
+      "id": "01M8EJX99PCHS234RJN52WR44F",
+      "name": "phone_extension",
+      "type": "string",
+      "length": 10,
+      "comment": "Internal extension."
+    },
+    {
+      "id": "01M8EJX99PW9VCNP5GXQZ52WJH",
+      "name": "hq_line1",
+      "type": "string",
+      "length": 120,
+      "comment": "Street and number, or PO box."
+    },
+    {
+      "id": "01M8EJX99PMQG84D6ZF53AB5TG",
+      "name": "hq_line2",
+      "type": "string",
+      "length": 120,
+      "comment": "Suite, floor or building."
+    },
+    {
+      "id": "01M8EJX99P41YZM80J00NATV0F",
+      "name": "hq_city",
+      "type": "string",
+      "length": 80,
+      "comment": "City or locality."
+    },
+    {
+      "id": "01M8EJX99PB5DT1CH2BEGC5PB4",
+      "name": "hq_region",
+      "type": "string",
+      "length": 80,
+      "comment": "State, province or county."
+    },
+    {
+      "id": "01M8EJX99PM6E0X7VF4ZKKTY5J",
+      "name": "hq_postal_code",
+      "type": "string",
+      "length": 20,
+      "comment": "Postal or ZIP code."
+    },
+    {
+      "id": "01M8EJX99P8JKX16E6S9ZA06P3",
+      "name": "hq_country_code",
+      "type": "string",
+      "length": 2,
+      "comment": "ISO country code."
+    },
+    {
+      "id": "01M8EJX99P3F7RXFP7TCH48ZX0",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether new transactions may reference the party."
+    },
+    {
+      "id": "01M8EJX99PRY5FG55XA8HMM448",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P67S7QNSGJG2264Q2",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PZWZJJ12R2FSBMRFV",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PMN10VM9RYBVYS99J",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PEJWZJAZ1WE1VADDG",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99PC5TMP2QNMTPV2KZY",
+      "name": "scac_code",
+      "type": "string",
+      "length": 4,
+      "comment": "Standard Carrier Alpha Code."
+    },
+    {
+      "id": "01M8EJX99P32MQKAXC5K5271CM",
+      "name": "carrier_account_number",
+      "type": "string",
+      "length": 30,
+      "comment": "Northwind's shipper account number with the carrier."
+    },
+    {
+      "id": "01M8EJX99P7VBSKEQR86GGZ2Z8",
+      "name": "tracking_url_template",
+      "type": "string",
+      "length": 300,
+      "comment": "URL with a {tracking} placeholder."
+    },
+    {
+      "id": "01M8EJX99PDF0QCQ0N942S1NRN",
+      "name": "offers_ltl",
+      "type": "bool",
+      "default": false,
+      "comment": "Whether the carrier moves less-than-truckload freight."
+    },
+    {
+      "id": "01M8EJX99PB548K6V2BPGQ6SKN",
+      "name": "insurance_expires_on",
+      "type": "date",
+      "comment": "Expiry of the carrier's cargo insurance certificate."
+    },
+    {
+      "id": "01M8EJX99PQDFTZDPQBD0HXVVA",
+      "name": "account_number",
+      "type": "string",
+      "length": 20,
+      "comment": "Customer account number used on orders and remittances."
+    },
+    {
+      "id": "01M8EJX99PFM93Q5DC7P2XE1HV",
+      "name": "customer_since",
+      "type": "date",
+      "comment": "Date the account was opened."
+    },
+    {
+      "id": "01M8EJX99PE0BNSPPHADC03G8K",
+      "name": "on_credit_hold",
+      "type": "bool",
+      "default": false,
+      "comment": "Whether new orders are held for credit review."
+    },
+    {
+      "id": "01M8EJX99P27W4XF19HX51PKMQ",
+      "name": "is_tax_exempt",
+      "type": "bool",
+      "default": false,
+      "comment": "Whether sales tax is waived; requires a valid exemption certificate."
+    },
+    {
+      "id": "01M8EJX99P59HES5ACAQR1ETQ0",
+      "name": "annual_revenue_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PBPNWWXHNX7ZS7VPK",
+      "name": "annual_revenue_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99P70X9Z6GA7JHN04W0",
+      "name": "lead_time_days",
+      "type": "int16",
+      "default": 14,
+      "comment": "Typical days from purchase order to receipt."
+    },
+    {
+      "id": "01M8EJX99P5GT1CFS05HMRDKJ6",
+      "name": "minimum_order_value_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PZ6YY559A3SCV6Z8K",
+      "name": "minimum_order_value_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99PCJHJS0YS03BSMTPS",
+      "name": "is_preferred",
+      "type": "bool",
+      "default": false,
+      "comment": "Whether buyers should source from this supplier first."
+    },
+    {
+      "id": "01M8EJX99PHZJA5H4E5CZRJ97J",
+      "name": "onboarded_on",
+      "type": "date",
+      "comment": "Date the supplier passed vendor onboarding."
+    },
+    {
+      "id": "01M8EJX99P3YRV0ZD7STMBWR88",
+      "name": "discriminator",
+      "type": "string",
+      "length": 64,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PGZKBCV35YH64YVEP",
+      "name": "parent_customer_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PHPFHGQCYVMSM34BX",
+      "name": "territory_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P6SQGEWGA88TNQTJV",
+      "name": "customer_group_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PTWA9WDPEKVDCER6P",
+      "name": "account_manager_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PX6GGAEYEWS145QKV",
+      "name": "segment_id",
+      "type": "int32"
+    },
+    {
+      "id": "01M8EJX99PN7JSGECMCHT2D4QW",
+      "name": "industry_id",
+      "type": "int32"
+    },
+    {
+      "id": "01M8EJX99P4CKV091TSB33ZKTP",
+      "name": "payment_term_id",
+      "type": "int32"
+    },
+    {
+      "id": "01M8EJX99PJK3P723DA7BW82K4",
+      "name": "preferred_currency_code",
+      "type": "string",
+      "length": 3
+    },
+    {
+      "id": "01M8EJX99PMC3R5NBZ3PERSGK5",
+      "name": "preferred_language_code",
+      "type": "string",
+      "length": 5
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_parties",
+    "columns": [
+      "01M8EJX99P9XSGFG2VX6TR0BC7"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A8QQ8F701TRN5FT73P",
+      "name": "uq_parties_party_number",
+      "columns": [
+        "01M8EJX99PXSEW616N44XRTXJR"
+      ]
+    },
+    {
+      "id": "01M8EJX9A8TA1CZ5H57ZNFDQXA",
+      "name": "uq_parties_scac_code",
+      "columns": [
+        "01M8EJX99PC5TMP2QNMTPV2KZY"
+      ]
+    },
+    {
+      "id": "01M8EJX9A8YS8E0TFM2612D8N1",
+      "name": "uq_parties_account_number",
+      "columns": [
+        "01M8EJX99PQDFTZDPQBD0HXVVA"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A804SG7R1HHT2YBX99",
+      "name": "fk_parties_parent_customer_id",
+      "columns": [
+        "01M8EJX99PGZKBCV35YH64YVEP"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8BAAKTJXJK3EJMEDH",
+      "name": "fk_parties_territory_id",
+      "columns": [
+        "01M8EJX99PHPFHGQCYVMSM34BX"
+      ],
+      "referencesTable": "01M8EJX99P8ZZCXDWNCJJKADEZ",
+      "referencesColumns": [
+        "01M8EJX99PXEQ6VW19B64F51H5"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8AHD1KYTWX7JH2ACR",
+      "name": "fk_parties_customer_group_id",
+      "columns": [
+        "01M8EJX99P6SQGEWGA88TNQTJV"
+      ],
+      "referencesTable": "01M8EJX99NMC4QYC80P8BY26XA",
+      "referencesColumns": [
+        "01M8EJX99NJ66NG53750KF0MBD"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8ZZWNWMJ9D3E02SAS",
+      "name": "fk_parties_account_manager_id",
+      "columns": [
+        "01M8EJX99PTWA9WDPEKVDCER6P"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A81C9MJV3RAFREA7WN",
+      "name": "fk_parties_segment_id",
+      "columns": [
+        "01M8EJX99PX6GGAEYEWS145QKV"
+      ],
+      "referencesTable": "01M8EJX99P6W7GAWNGRRP2JFNF",
+      "referencesColumns": [
+        "01M8EJX99PBKVQ2PCHTWRY0Q81"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8JSV0K31DE1H24PD0",
+      "name": "fk_parties_industry_id",
+      "columns": [
+        "01M8EJX99PN7JSGECMCHT2D4QW"
+      ],
+      "referencesTable": "01M8EJX99PKDR3T8F03SN0PFYW",
+      "referencesColumns": [
+        "01M8EJX99P32VY2C89WYH022P1"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8XQYS2PWA5TA2PDTX",
+      "name": "fk_parties_payment_term_id",
+      "columns": [
+        "01M8EJX99P4CKV091TSB33ZKTP"
+      ],
+      "referencesTable": "01M8EJX99NPS00JBS5309MN9Z5",
+      "referencesColumns": [
+        "01M8EJX99NKNTBNAQ78BETQE9V"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8X213HHE8W8KWS7S5",
+      "name": "fk_parties_preferred_currency_code",
+      "columns": [
+        "01M8EJX99PJK3P723DA7BW82K4"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A82799KVSENFCJRA6D",
+      "name": "fk_parties_preferred_language_code",
+      "columns": [
+        "01M8EJX99PMC3R5NBZ3PERSGK5"
+      ],
+      "referencesTable": "01M8EJX99QX72730HBK6DTHVZ6",
+      "referencesColumns": [
+        "01M8EJX99QGA8NZXPN6C3FH2FN"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A8DRB3MDCT0M9Y5ZPP",
+      "name": "ix_parties_name",
+      "columns": [
+        {
+          "column": "01M8EJX99PYTHZDBEYY34GADP0"
+        }
+      ]
+    }
+  ],
+  "comment": "Any organization Northwind does business with. Customers, suppliers and carriers are kinds of party and share one table (TPH)."
+}

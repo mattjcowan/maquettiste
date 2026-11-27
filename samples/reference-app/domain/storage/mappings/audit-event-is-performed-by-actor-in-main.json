@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHMKNS91YTMXTJ73F2",
+  "name": "audit event is performed by actor in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2DECA25GDZDY5NVRYV3X3TF",
+  "foreignKey": "01M8EJX9A92VCXZVHYGTF0RD3W"
+}

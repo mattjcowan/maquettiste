@@ -61,5 +61,43 @@
       "length": 40,
       "description": "Kind of subdivision, such as state, province or county."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C1R0T8M9C8XDMNBYY0",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QRQPKABA5R9M6C92T",
+      "fields": [
+        {
+          "attribute": "01M1XW775DCDYYKN8XBS7PN92N",
+          "column": "01M8EJX99QHE998424AKPJB5RN"
+        },
+        {
+          "attribute": "01M1GX2DYW24P8P7PHR6HMDYFW",
+          "column": "01M8EJX99Q4624N7HD499YJEK4"
+        },
+        {
+          "attribute": "01M35Z026KDD0VQ03E2F8XXSKY",
+          "column": "01M8EJX99Q11PHCK6G9PB1VVC3"
+        },
+        {
+          "attribute": "01M33420RR41EY401QSM2NRTFP",
+          "column": "01M8EJX99QTHY5T60VSFW9CN3K"
+        },
+        {
+          "attribute": "01M1JFDX8YEA25TYE7EX48MP6E",
+          "column": "01M8EJX99QTCWP33AZN08XMSF1"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q11PHCK6G9PB1VVC3": "82a3537f:6137f4ed",
+          "01M8EJX99Q4624N7HD499YJEK4": "5694d08a:8a9bac3c",
+          "01M8EJX99QHE998424AKPJB5RN": "a5614527:53fb88ea",
+          "01M8EJX99QTCWP33AZN08XMSF1": "38ac8394:ee79e9fe",
+          "01M8EJX99QTHY5T60VSFW9CN3K": "98475dab:014c4aec"
+        }
+      }
+    }
   ]
 }

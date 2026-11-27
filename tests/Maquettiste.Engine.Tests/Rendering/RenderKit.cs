@@ -25,15 +25,18 @@ internal sealed class TestHasher : IDependencyHasher
 /// <summary>Loads and resolves the billing fixture (tests/fixtures/models/billing) once per test process.</summary>
 internal static class BillingModel
 {
-    private static readonly Lazy<Task<ResolvedModel>> Resolved = new(LoadAsync);
+    private static readonly Lazy<Task<ResolvedModel>> Resolved = new(() => LoadAsync(Fixtures.Path("models", "billing")));
 
-    public static Task<ResolvedModel> GetAsync() => Resolved.Value;
+    // The projected copy, for a class with UsesProjectedFixtures (temporary, see that attribute).
+    private static readonly Lazy<Task<ResolvedModel>> Projected = new(() => LoadAsync(Fixtures.Path("models", "billing-projected")));
 
-    private static async Task<ResolvedModel> LoadAsync()
+    public static Task<ResolvedModel> GetAsync() => Fixtures.UsesProjectedFixtures() ? Projected.Value : Resolved.Value;
+
+    private static async Task<ResolvedModel> LoadAsync(string repoRoot)
     {
         var cache = Path.Combine(Path.GetTempPath(), "maquettiste-tests", "render-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(cache);
-        var options = new EngineOptions { RepoRoot = Fixtures.Path("models", "billing"), CacheDirectory = cache, MaxDegreeOfParallelism = 2 };
+        var options = new EngineOptions { RepoRoot = repoRoot, CacheDirectory = cache, MaxDegreeOfParallelism = 2 };
         var loader = new ModelLoader(options, TestServices.Schemas, TestServices.Json, new OutputPathPolicy(options, null));
         var loaded = await loader.LoadAsync(new LoadRequest(null, null, false), null, CancellationToken.None);
         if (loaded.Snapshot.LoadDiagnostics.Count > 0)

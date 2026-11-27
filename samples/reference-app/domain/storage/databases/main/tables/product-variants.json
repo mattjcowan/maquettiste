@@ -1,0 +1,149 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NFSVDDQ044880ZFVH",
+  "name": "product_variants",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NWX3PCQ9BSWT8NVJX",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the product variant."
+    },
+    {
+      "id": "01M8EJX99NHVPVT94ZQ3W3QW4V",
+      "name": "sku",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "SKU of the variant."
+    },
+    {
+      "id": "01M8EJX99NVNKH424EC7PZP831",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "nullable": false,
+      "comment": "Variant name, such as Nitrile gloves, large."
+    },
+    {
+      "id": "01M8EJX99NSBP8RXDG1NKH1H8T",
+      "name": "option_summary",
+      "type": "string",
+      "length": 200,
+      "comment": "Option values, such as Blue / Large."
+    },
+    {
+      "id": "01M8EJX99NXBT0C9EME45VQHDB",
+      "name": "list_price_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99NHVF3WDS5G6A0WTRD",
+      "name": "list_price_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99NEN5D57KJYNDNWAWH",
+      "name": "weight_value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "The weight."
+    },
+    {
+      "id": "01M8EJX99NVHJ3R83SCESRPX6E",
+      "name": "weight_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the weight."
+    },
+    {
+      "id": "01M8EJX99N2KHR07CBEDFC85VJ",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the variant can be ordered."
+    },
+    {
+      "id": "01M8EJX99NR1EC90KQMJT566BF",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99N5GMHM96VERD3XV54",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NZTE9VCQG1AGBW86V",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NM77AW9DWMQ2V9T2H",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99NKP4G7X2PD1BYM06S",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    },
+    {
+      "id": "01M8EJX99NPTKE7PS6026SMS7V",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_product_variants",
+    "columns": [
+      "01M8EJX99NWX3PCQ9BSWT8NVJX"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A73NB3BHZYVY8ND4K3",
+      "name": "uq_product_variants_sku",
+      "columns": [
+        "01M8EJX99NHVPVT94ZQ3W3QW4V"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A7NW6DRZM2GXQ1D9HD",
+      "name": "fk_product_variants_product_id",
+      "columns": [
+        "01M8EJX99NPTKE7PS6026SMS7V"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A sellable option of a product, such as a size or a color, with its own SKU."
+}

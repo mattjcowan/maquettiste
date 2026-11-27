@@ -1,0 +1,84 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NMC4QYC80P8BY26XA",
+  "name": "customer_groups",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NJ66NG53750KF0MBD",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the customer group."
+    },
+    {
+      "id": "01M8EJX99N9QACC1DW5WZF6CQT",
+      "name": "name",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "Group name."
+    },
+    {
+      "id": "01M8EJX99NYX0DNCRT1273M3KD",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "comment": "Who belongs to the group."
+    },
+    {
+      "id": "01M8EJX99PHKRVJRVTM02J4T3S",
+      "name": "default_discount",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Discount applied when no better price exists."
+    },
+    {
+      "id": "01M8EJX99PTBDQ5BD2H5GVYNFN",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PH2K7SMAY674SRSAM",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P1BA16KPC8ZRF838Z",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PB5FQK2MAH7EAKV9R",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_customer_groups",
+    "columns": [
+      "01M8EJX99NJ66NG53750KF0MBD"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A89D15611G6KXHSET4",
+      "name": "uq_customer_groups_name",
+      "columns": [
+        "01M8EJX99N9QACC1DW5WZF6CQT"
+      ]
+    }
+  ],
+  "comment": "A group of customers that share price lists and discounts, such as Buying group A."
+}

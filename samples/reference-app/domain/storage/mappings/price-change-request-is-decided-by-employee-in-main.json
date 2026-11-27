@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJCGZ3QEQX0TESGFKH",
+  "name": "price change request is decided by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M34SJA7B3GPP81N6CHWKX968",
+  "foreignKey": "01M8EJX9AARB6KK73QC02PC3H4"
+}

@@ -35,5 +35,43 @@
       },
       "description": "Quantity packed."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B9N3SFAKPXD9ABAY2B",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PWJCTCMVAGVZSF87C",
+      "fields": [
+        {
+          "attribute": "01M1HGP0WW83Q83PX9XEQD934F",
+          "column": "01M8EJX99P50E880VGJ0GNP2XT"
+        },
+        {
+          "attribute": "01M1P5X01QHXWEQSZYF9SQNDB7",
+          "column": "01M8EJX99PX15P74397R951Q9X"
+        },
+        {
+          "attribute": "01M21TSH9RW8HJFH19AG1KJGXJ",
+          "column": "01M8EJX99P4S8A4Q7SKGREQC0E"
+        },
+        {
+          "attribute": "01M28GGGBPEJ239T2X4MFJT6VQ",
+          "column": "01M8EJX99P49DGPP7V1EGHJ5EE"
+        },
+        {
+          "attribute": "01M2J900C99G9YP86A652DH80X",
+          "column": "01M8EJX99PPMF5VFKYEFG8AQ3W"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P49DGPP7V1EGHJ5EE": "cb7dd599:d8a57cf9",
+          "01M8EJX99P4S8A4Q7SKGREQC0E": "49dc80ff:8da1c7b8",
+          "01M8EJX99P50E880VGJ0GNP2XT": "a5614527:8da1c7b8",
+          "01M8EJX99PPMF5VFKYEFG8AQ3W": "500b96c9:8da1c7b8",
+          "01M8EJX99PX15P74397R951Q9X": "1a7b308d:b52e18e1"
+        }
+      }
+    }
   ]
 }

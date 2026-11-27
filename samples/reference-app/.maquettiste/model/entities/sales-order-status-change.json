@@ -57,5 +57,53 @@
       "length": 300,
       "description": "Why it changed."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BWDF5QECKY70FH8E12",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QJNNXJXH5QPZHJH7Y",
+      "fields": [
+        {
+          "attribute": "01M2MA69C4KNZA0YYGT2TNGVP2",
+          "column": "01M8EJX99Q792MQXX39KFQHM12"
+        },
+        {
+          "attribute": "01M2X6E45CDYX1P4MY2MCSF55F",
+          "column": "01M8EJX99QN2ANXFPNZQE3RAK0"
+        },
+        {
+          "attribute": "01M1QWVNE498JQ80AAKECCSQ9J",
+          "column": "01M8EJX99QW4AA5V8D5RA166S0"
+        },
+        {
+          "attribute": "01M232VF4XCCYE6MZPY0H19272",
+          "column": "01M8EJX99Q7J78140M3KAF0DYR"
+        },
+        {
+          "attribute": "01M1W270479T161V8DFN64VCRX",
+          "column": "01M8EJX99QS5WDEE4QBAYQ912H"
+        },
+        {
+          "attribute": "01M29V2YTZVK3ZJ7GA94PA119B",
+          "column": "01M8EJX99Q91T0PWC41W91YYHP"
+        },
+        {
+          "attribute": "01M1DWERXPF938ZT5G1P1E5HS7",
+          "column": "01M8EJX99Q4CGA2R5G9PPN3D10"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q4CGA2R5G9PPN3D10": "b670bd2f:d8a57cf9",
+          "01M8EJX99Q792MQXX39KFQHM12": "a5614527:fc034f10",
+          "01M8EJX99Q7J78140M3KAF0DYR": "0b784c0e:e0d08678",
+          "01M8EJX99Q91T0PWC41W91YYHP": "8071acdb:8da1c7b8",
+          "01M8EJX99QN2ANXFPNZQE3RAK0": "49a35e68:90e86b1b",
+          "01M8EJX99QS5WDEE4QBAYQ912H": "8fcfccf6:f916bddd",
+          "01M8EJX99QW4AA5V8D5RA166S0": "b0fecaf1:e2362803"
+        }
+      }
+    }
   ]
 }

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJC6BDHNHPN557X43A",
+  "name": "warranty claim is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1E77VZ6VBD0K0M2GAX55QRB",
+  "foreignKey": "01M8EJX9AB45T5G23YV5AG3DE3"
+}

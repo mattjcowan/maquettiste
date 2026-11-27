@@ -28,8 +28,8 @@ public sealed class SnapshotTests
 
         Assert.Equal("plain-20261005-120000", plain.Id);
         Assert.Equal(("Plain", "First cut", "ada", "2026-10-05T12:00:00Z", "user", false), (plain.Name, plain.Description, plain.Author, plain.CreatedUtc, plain.Origin, plain.IncludesPacks));
-        Assert.Equal(36, plain.Files);
-        Assert.Equal(33, plain.Elements);
+        Assert.Equal(43, plain.Files);
+        Assert.Equal(40, plain.Elements);
         Assert.Equal(8, plain.Kinds["entity"]);
         var names = EntryNames(f.Library, plain.Id);
         Assert.Equal(["snapshot-index.json", "snapshot.json"], names[^2..]);
@@ -198,7 +198,8 @@ public sealed class SnapshotTests
         Assert.Equal("before-restore-20261005-120500", result.Safety!.Id);
         Assert.Equal(("before-restore", "ada"), (result.Safety.Origin, result.Safety.Author));
         Assert.Contains(result.Safety.Id, result.Undo, StringComparison.Ordinal);
-        Assert.Equal((1, 3), (result.Written, result.Deleted)); // customer.json back; client.json, the rename's migration fact and stray.md gone
+        // customer.json back; client.json and stray.md gone (a bound entity's rename renames no table, so it records no migration fact)
+        Assert.Equal((1, 2), (result.Written, result.Deleted));
         Assert.False(File.Exists(Path.Combine(f.Repo.ModelRoot, "model", "entities", "client.json")));
         var same = await f.Library.CompareAsync(before.Id, SnapshotLibrary.Working, 0, 10, Ct);
         Assert.Equal((0, 0, 0, 0), (same!.Added, same.Removed, same.Changed, same.Files.Count));

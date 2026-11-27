@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJV900XKEKD6CMF0EQ",
+  "name": "sales order line is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2BA30ZFZ3XQRQ19GGR616G8",
+  "foreignKey": "01M8EJX9ACBEYTA4JM33RE0A1V"
+}

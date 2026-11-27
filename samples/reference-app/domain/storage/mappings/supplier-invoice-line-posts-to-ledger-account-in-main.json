@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJWTS6DWN42CNMQXTZ",
+  "name": "supplier invoice line posts to ledger account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1K3RW7HD47CFRHZAFYKGAQW",
+  "foreignKey": "01M8EJX9ABHKAMKJ0F4R80YDKY"
+}

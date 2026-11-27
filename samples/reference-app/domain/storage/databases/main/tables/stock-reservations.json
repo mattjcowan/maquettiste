@@ -1,0 +1,94 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P9RJYYBSA9NHPGMJR",
+  "name": "stock_reservations",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PGFHF4S5VPKMGFF9D",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the stock reservation."
+    },
+    {
+      "id": "01M8EJX99PT0N08E0G9CQ5Z2YX",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 14,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity reserved."
+    },
+    {
+      "id": "01M8EJX99PDZ6MHDTFX0B31RKX",
+      "name": "reserved_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When it was reserved."
+    },
+    {
+      "id": "01M8EJX99PR1HSZ52FKJ7Q6EXT",
+      "name": "expires_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When a soft reservation lapses."
+    },
+    {
+      "id": "01M8EJX99PYQPJJ0MPXHFZXBS6",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "active",
+      "comment": "active, picked, released or expired."
+    },
+    {
+      "id": "01M8EJX99P6XKV345H3V5K5B8C",
+      "name": "inventory_item_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P25JP3YS6T69DCK0S",
+      "name": "sales_order_line_id",
+      "type": "ulid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_stock_reservations",
+    "columns": [
+      "01M8EJX99PGFHF4S5VPKMGFF9D"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA6KWXCYGHSKWQX7XW",
+      "name": "fk_stock_reservations_inventory_item_id",
+      "columns": [
+        "01M8EJX99P6XKV345H3V5K5B8C"
+      ],
+      "referencesTable": "01M1D9THCS31DA7KKYVDECJDRT",
+      "referencesColumns": [
+        "01M8EJX99PRBW1ND6BEXECKRK6"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AA57PYSCQW5GNDYA9E",
+      "name": "fk_stock_reservations_sales_order_line_id",
+      "columns": [
+        "01M8EJX99P25JP3YS6T69DCK0S"
+      ],
+      "referencesTable": "01M34B2XCK0G0EW7GX48YPV9R6",
+      "referencesColumns": [
+        "01M8EJX99QB5W684KZRFP37DGQ"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A quantity of stock reserved for a sales order line."
+}

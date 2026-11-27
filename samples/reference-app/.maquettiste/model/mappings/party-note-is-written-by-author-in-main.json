@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHMJ4BK16BDZJV3YC0",
+  "name": "party note is written by author in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1VZCDDPNE9056VDTXVNWEWS",
+  "foreignKey": "01M8EJX9A8TA5358ENY0SY497X"
+}

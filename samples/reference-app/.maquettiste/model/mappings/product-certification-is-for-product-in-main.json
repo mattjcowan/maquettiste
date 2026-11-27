@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHZT2SXCMT7HAADZ65",
+  "name": "product certification is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1SZB2WJW7V4BTD7RY401CXE",
+  "foreignKey": "01M8EJX9A76T2H0EPS6ZHP9XVF"
+}

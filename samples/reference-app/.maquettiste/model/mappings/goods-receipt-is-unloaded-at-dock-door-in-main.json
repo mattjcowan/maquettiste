@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ9TA5TP980EVTJG4E",
+  "name": "goods receipt is unloaded at dock door in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2EAH2K700M66H84JV62DG97",
+  "foreignKey": "01M8EJX9AAT895E33MSJHM4PAX"
+}

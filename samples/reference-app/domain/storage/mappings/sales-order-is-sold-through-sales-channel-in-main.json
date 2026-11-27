@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJYSZ6V32J1G1R0QGM",
+  "name": "sales order is sold through sales channel in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1JHE87SY62Q95KB45DDPPJQ",
+  "foreignKey": "01M8EJX9ACA6218H1A49CZA0NT"
+}

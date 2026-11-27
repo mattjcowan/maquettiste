@@ -2,6 +2,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.SchemaDiff;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Rendering;
 
@@ -9,6 +10,7 @@ namespace Maquettiste.Engine.Tests.Rendering;
 /// The tracking context records exactly what a template read (engine-design.md section 9): an object's dependencies on any member
 /// read, a list's membership keys on enumeration, indexing or size, <c>e:&lt;id&gt;</c> for a missing lookup, and template keys.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ReadTrackingTests
 {
     private const string MainKey = "t:adhoc/main.scriban";

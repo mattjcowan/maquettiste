@@ -11,18 +11,18 @@
       "defaultSchema": "billing",
       "tables": [
         {
-          "key": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+          "key": "01M8EJPZN867GR1CJR5ZERBJ0V",
           "name": "customers",
           "schema": "billing",
-          "origin": "synthesized",
-          "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
+          "origin": "designed",
+          "entityId": null,
           "relationId": null,
           "isJunction": false,
           "isLookup": false,
           "comment": "Someone we bill.",
           "columns": [
             {
-              "key": "01J92P0V0KGPC29TQQG8R57EBM",
+              "key": "01M8EJPZN8472RRANF8A5EA8GT",
               "name": "id",
               "type": "uuid",
               "nativeType": "uuid",
@@ -33,8 +33,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0KGPC29TQQG8R57EBM",
-              "attributePath": "01J92P0V0KGPC29TQQG8R57EBM",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": true,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -58,7 +58,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0MS09YFZHX07JQ3KMN",
+              "key": "01M8EJPZN85K0E011MBM10HXAG",
               "name": "name",
               "type": "string",
               "nativeType": "varchar(120)",
@@ -69,8 +69,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0MS09YFZHX07JQ3KMN",
-              "attributePath": "01J92P0V0MS09YFZHX07JQ3KMN",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -94,7 +94,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0NRX99014KNVAZGPEW",
+              "key": "01M8EJPZN8YCG8JHPKYR3AS4S8",
               "name": "email",
               "type": "string",
               "nativeType": "varchar(254)",
@@ -105,8 +105,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0NRX99014KNVAZGPEW",
-              "attributePath": "01J92P0V0NRX99014KNVAZGPEW",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -125,12 +125,20 @@
               "category": null,
               "properties": {},
               "generation": {},
-              "boundType": null,
+              "boundType": {
+                "kind": "scalar",
+                "name": "EmailAddress",
+                "builtin": "string",
+                "enum": null,
+                "valueObject": null,
+                "scalar": "01J92P0V04TDYE2C73WMNXVDBV",
+                "referenceType": null
+              },
               "sensitive": "pii",
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0P4MBJRM6QN6H0RSVP",
+              "key": "01M8EJPZN8BGJ7KV30184YH61V",
               "name": "customer_since",
               "type": "date",
               "nativeType": "date",
@@ -141,8 +149,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0P4MBJRM6QN6H0RSVP",
-              "attributePath": "01J92P0V0P4MBJRM6QN6H0RSVP",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -166,7 +174,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "key": "01M8EJPZN85083M7EFTST05M2C",
               "name": "created_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -177,8 +185,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
-              "attributePath": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -202,7 +210,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "key": "01M8EJPZN8M1P3MNNTXBN48F9D",
               "name": "updated_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -213,8 +221,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V27P8NW8KPEDG0RBZ4W",
-              "attributePath": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -241,7 +249,7 @@
           "primaryKey": {
             "name": "pk_customers",
             "columns": [
-              "01J92P0V0KGPC29TQQG8R57EBM"
+              "01M8EJPZN8472RRANF8A5EA8GT"
             ],
             "memberOrigin": null
           },
@@ -249,7 +257,7 @@
             {
               "name": "uq_customers_email",
               "columns": [
-                "01J92P0V0NRX99014KNVAZGPEW"
+                "01M8EJPZN8YCG8JHPKYR3AS4S8"
               ],
               "memberOrigin": null
             }
@@ -264,22 +272,31 @@
           "category": null,
           "properties": {},
           "generation": {},
-          "boundBy": [],
+          "boundBy": [
+            {
+              "entityId": "01J92P0V0ETQKXXP951CMMNHH3",
+              "entityName": "Customer",
+              "bindingId": "01M8EJPZNRW3DF4MD51RVRWD77",
+              "reads": true,
+              "writes": true,
+              "constants": []
+            }
+          ],
           "referenceBindings": []
         },
         {
-          "key": "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4",
+          "key": "01M8EJPZN9VC241ZQY1P20V7D5",
           "name": "invoice_lines",
           "schema": "billing",
-          "origin": "synthesized",
-          "entityId": "01J92P0V0GWFR78HZH0P8Z3GY7",
+          "origin": "designed",
+          "entityId": null,
           "relationId": null,
           "isJunction": false,
           "isLookup": false,
           "comment": null,
           "columns": [
             {
-              "key": "01J92P0V0X1EDKMF6X5RA8NZWG",
+              "key": "01M8EJPZN9WNE7FWBTSSC5R13F",
               "name": "id",
               "type": "ulid",
               "nativeType": "char(26)",
@@ -290,8 +307,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0X1EDKMF6X5RA8NZWG",
-              "attributePath": "01J92P0V0X1EDKMF6X5RA8NZWG",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": true,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -315,7 +332,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0Y049452AH0K8CDC9N",
+              "key": "01M8EJPZN98Y4J9T1HXJ9MSQNX",
               "name": "quantity",
               "type": "int32",
               "nativeType": "integer",
@@ -326,8 +343,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0Y049452AH0K8CDC9N",
-              "attributePath": "01J92P0V0Y049452AH0K8CDC9N",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -351,7 +368,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V08P9BVJAPQ793XYNTQ",
+              "key": "01M8EJPZN9GND1ENGST82CTV09",
               "name": "unit_price_amount",
               "type": "decimal",
               "nativeType": "numeric(18,2)",
@@ -362,8 +379,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V08P9BVJAPQ793XYNTQ",
-              "attributePath": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -387,7 +404,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V093A7BE6Q8AS477H7D",
+              "key": "01M8EJPZN960Z8FR4174NC5FJX",
               "name": "unit_price_currency",
               "type": "string",
               "nativeType": "varchar(3)",
@@ -398,8 +415,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V093A7BE6Q8AS477H7D",
-              "attributePath": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -423,7 +440,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1015JY6PVQZG6MY8AS",
+              "key": "01M8EJPZN9GVP943VEYBQDG455",
               "name": "description",
               "type": "string",
               "nativeType": "varchar(500)",
@@ -434,8 +451,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V1015JY6PVQZG6MY8AS",
-              "attributePath": "01J92P0V1015JY6PVQZG6MY8AS",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -459,7 +476,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1GMF7GJPA7981CH7YG.01J92P0V0Q9EK961M5HAQ3C5MY",
+              "key": "01M8EJPZN9CXQ3J4NP64BA313M",
               "name": "invoice_id",
               "type": "uuid",
               "nativeType": "uuid",
@@ -495,7 +512,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1K5BZCDV8JB9BQ2N6T.01J92P0V15PMP0E4P5DSNZVETR",
+              "key": "01M8EJPZN92CXA336SM8GCBHRX",
               "name": "product_id",
               "type": "uuid",
               "nativeType": "uuid",
@@ -534,7 +551,7 @@
           "primaryKey": {
             "name": "pk_invoice_lines",
             "columns": [
-              "01J92P0V0X1EDKMF6X5RA8NZWG"
+              "01M8EJPZN9WNE7FWBTSSC5R13F"
             ],
             "memberOrigin": null
           },
@@ -543,11 +560,11 @@
             {
               "name": "fk_invoice_lines_invoice_id",
               "columns": [
-                "01J92P0V1GMF7GJPA7981CH7YG.01J92P0V0Q9EK961M5HAQ3C5MY"
+                "01M8EJPZN9CXQ3J4NP64BA313M"
               ],
-              "referencedTable": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+              "referencedTable": "01J92P0V1T0J6RH4MY9H81NYB4",
               "referencedColumns": [
-                "01J92P0V0Q9EK961M5HAQ3C5MY"
+                "01M8EJPZN8P9AWRMABQ8VM73RS"
               ],
               "onDelete": "cascade",
               "onUpdate": "no-action",
@@ -558,11 +575,11 @@
             {
               "name": "fk_invoice_lines_product_id",
               "columns": [
-                "01J92P0V1K5BZCDV8JB9BQ2N6T.01J92P0V15PMP0E4P5DSNZVETR"
+                "01M8EJPZN92CXA336SM8GCBHRX"
               ],
-              "referencedTable": "01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4",
+              "referencedTable": "01M8EJPZN967ERTF2BPP3YM4QY",
               "referencedColumns": [
-                "01J92P0V15PMP0E4P5DSNZVETR"
+                "01M8EJPZN9FW9ZV7DANC4C50XN"
               ],
               "onDelete": "restrict",
               "onUpdate": "no-action",
@@ -580,22 +597,31 @@
           "category": null,
           "properties": {},
           "generation": {},
-          "boundBy": [],
+          "boundBy": [
+            {
+              "entityId": "01J92P0V0GWFR78HZH0P8Z3GY7",
+              "entityName": "InvoiceLine",
+              "bindingId": "01M8EJPZP0CHZEPQPAP44853WA",
+              "reads": true,
+              "writes": true,
+              "constants": []
+            }
+          ],
           "referenceBindings": []
         },
         {
-          "key": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+          "key": "01J92P0V1T0J6RH4MY9H81NYB4",
           "name": "invoices",
           "schema": "billing",
-          "origin": "synthesized",
-          "entityId": "01J92P0V0FJ23CGSNKM7P1W5V7",
+          "origin": "designed",
+          "entityId": null,
           "relationId": null,
           "isJunction": false,
           "isLookup": false,
           "comment": "One row per issued invoice; finance reconciles it monthly.",
           "columns": [
             {
-              "key": "01J92P0V0Q9EK961M5HAQ3C5MY",
+              "key": "01M8EJPZN8P9AWRMABQ8VM73RS",
               "name": "id",
               "type": "uuid",
               "nativeType": "uuid",
@@ -606,8 +632,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0Q9EK961M5HAQ3C5MY",
-              "attributePath": "01J92P0V0Q9EK961M5HAQ3C5MY",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": true,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -631,7 +657,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0R3VSP7D5238DTNZX1",
+              "key": "01J92P0V1VQAA9FW71PKYWWHKN",
               "name": "number",
               "type": "string",
               "nativeType": "varchar(32)",
@@ -642,8 +668,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0R3VSP7D5238DTNZX1",
-              "attributePath": "01J92P0V0R3VSP7D5238DTNZX1",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -672,7 +698,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0SNXS6PZ42VDK42HP9",
+              "key": "01M8EJPZN8RF69424595Z93TBZ",
               "name": "issued_on",
               "type": "date",
               "nativeType": "date",
@@ -683,8 +709,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0SNXS6PZ42VDK42HP9",
-              "attributePath": "01J92P0V0SNXS6PZ42VDK42HP9",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -708,7 +734,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ",
+              "key": "01M8EJPZN81N1AY89T2YY52EQC",
               "name": "total_amount",
               "type": "decimal",
               "nativeType": "numeric(18,2)",
@@ -719,8 +745,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V08P9BVJAPQ793XYNTQ",
-              "attributePath": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -744,7 +770,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V093A7BE6Q8AS477H7D",
+              "key": "01M8EJPZN8E3K4QAZEP5F52DXA",
               "name": "total_currency",
               "type": "string",
               "nativeType": "varchar(3)",
@@ -755,8 +781,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V093A7BE6Q8AS477H7D",
-              "attributePath": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -780,7 +806,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0VB1Z49SWERMAGR4TV",
+              "key": "01M8EJPZN8DEZ6EM0M25ZCHNPZ",
               "name": "status",
               "type": "string",
               "nativeType": "varchar(1)",
@@ -791,8 +817,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0VB1Z49SWERMAGR4TV",
-              "attributePath": "01J92P0V0VB1Z49SWERMAGR4TV",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -811,12 +837,20 @@
               "category": null,
               "properties": {},
               "generation": {},
-              "boundType": null,
+              "boundType": {
+                "kind": "enum",
+                "name": "InvoiceStatus",
+                "builtin": null,
+                "enum": "01J92P0V05WQDH2GZG539D9VG1",
+                "valueObject": null,
+                "scalar": null,
+                "referenceType": null
+              },
               "sensitive": null,
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V0WKRGKH7YBKA2V30NC",
+              "key": "01M8EJPZN8DNZMM57CDYT1P8DX",
               "name": "notes",
               "type": "text",
               "nativeType": "text",
@@ -827,8 +861,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V0WKRGKH7YBKA2V30NC",
-              "attributePath": "01J92P0V0WKRGKH7YBKA2V30NC",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -852,7 +886,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "key": "01M8EJPZN8NQHHH3BFZMS10JT0",
               "name": "created_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -863,8 +897,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
-              "attributePath": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -888,7 +922,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "key": "01M8EJPZN8P1AVSF3JB5N1A9VG",
               "name": "updated_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -899,8 +933,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V27P8NW8KPEDG0RBZ4W",
-              "attributePath": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -924,7 +958,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V29S2CSA68TATT9P1QS",
+              "key": "01M8EJPZN8N06DCGNFY5P3V81K",
               "name": "deleted_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -935,8 +969,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V29S2CSA68TATT9P1QS",
-              "attributePath": "01J92P0V29S2CSA68TATT9P1QS",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -960,7 +994,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM",
+              "key": "01M8EJPZN80NTY1M4QZCPKETNX",
               "name": "customer_id",
               "type": "uuid",
               "nativeType": "uuid",
@@ -999,7 +1033,7 @@
           "primaryKey": {
             "name": "pk_invoices",
             "columns": [
-              "01J92P0V0Q9EK961M5HAQ3C5MY"
+              "01M8EJPZN8P9AWRMABQ8VM73RS"
             ],
             "memberOrigin": null
           },
@@ -1007,7 +1041,7 @@
             {
               "name": "uq_invoices_number",
               "columns": [
-                "01J92P0V0R3VSP7D5238DTNZX1"
+                "01J92P0V1VQAA9FW71PKYWWHKN"
               ],
               "memberOrigin": null
             }
@@ -1016,11 +1050,11 @@
             {
               "name": "fk_invoices_customer_id",
               "columns": [
-                "01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM"
+                "01M8EJPZN80NTY1M4QZCPKETNX"
               ],
-              "referencedTable": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+              "referencedTable": "01M8EJPZN867GR1CJR5ZERBJ0V",
               "referencedColumns": [
-                "01J92P0V0KGPC29TQQG8R57EBM"
+                "01M8EJPZN8472RRANF8A5EA8GT"
               ],
               "onDelete": "restrict",
               "onUpdate": "no-action",
@@ -1034,7 +1068,7 @@
               "name": "ix_invoices_issued_on",
               "columns": [
                 {
-                  "column": "01J92P0V0SNXS6PZ42VDK42HP9",
+                  "column": "01M8EJPZN8RF69424595Z93TBZ",
                   "descending": true
                 }
               ],
@@ -1058,7 +1092,16 @@
             "tablespace": "billing_data"
           },
           "generation": {},
-          "boundBy": [],
+          "boundBy": [
+            {
+              "entityId": "01J92P0V0FJ23CGSNKM7P1W5V7",
+              "entityName": "Invoice",
+              "bindingId": "01M8EJPZNY4K1BHRA5SQ8252NV",
+              "reads": true,
+              "writes": true,
+              "constants": []
+            }
+          ],
           "referenceBindings": []
         },
         {
@@ -1319,10 +1362,10 @@
           "referenceBindings": []
         },
         {
-          "key": "01J92P0V1DKHD5Q02DV6S5M53D@01J92P0V1QRN2181XM2ZWE02W4",
+          "key": "01M8EJPZN9Y3HNXTC7V3Q7CP50",
           "name": "payment_invoice",
           "schema": "billing",
-          "origin": "synthesized",
+          "origin": "designed",
           "entityId": null,
           "relationId": "01J92P0V1DKHD5Q02DV6S5M53D",
           "isJunction": true,
@@ -1330,7 +1373,7 @@
           "comment": null,
           "columns": [
             {
-              "key": "01J92P0V1M776PCP4JKV5J31SY.01J92P0V11B0FJNJV9V21CSEM1",
+              "key": "01M8EJPZN9C44R8YSJ9N56RH2D",
               "name": "payments_id",
               "type": "int64",
               "nativeType": "bigint",
@@ -1366,7 +1409,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1N727B9EM9FXPMKH7P.01J92P0V0Q9EK961M5HAQ3C5MY",
+              "key": "01M8EJPZN9SF27609ZNJM29ZQJ",
               "name": "invoices_id",
               "type": "uuid",
               "nativeType": "uuid",
@@ -1402,7 +1445,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1PA2P9XH6BP1AFNR96.01J92P0V08P9BVJAPQ793XYNTQ",
+              "key": "01M8EJPZN95JZFCPQY4XQ54JGQ",
               "name": "allocated_amount",
               "type": "decimal",
               "nativeType": "numeric(18,2)",
@@ -1413,8 +1456,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V08P9BVJAPQ793XYNTQ",
-              "attributePath": "01J92P0V1PA2P9XH6BP1AFNR96.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1438,7 +1481,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1PA2P9XH6BP1AFNR96.01J92P0V093A7BE6Q8AS477H7D",
+              "key": "01M8EJPZN9YD4K5T4N209N48MW",
               "name": "allocated_currency",
               "type": "string",
               "nativeType": "varchar(3)",
@@ -1449,8 +1492,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V093A7BE6Q8AS477H7D",
-              "attributePath": "01J92P0V1PA2P9XH6BP1AFNR96.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1477,8 +1520,8 @@
           "primaryKey": {
             "name": "pk_payment_invoice",
             "columns": [
-              "01J92P0V1M776PCP4JKV5J31SY.01J92P0V11B0FJNJV9V21CSEM1",
-              "01J92P0V1N727B9EM9FXPMKH7P.01J92P0V0Q9EK961M5HAQ3C5MY"
+              "01M8EJPZN9C44R8YSJ9N56RH2D",
+              "01M8EJPZN9SF27609ZNJM29ZQJ"
             ],
             "memberOrigin": null
           },
@@ -1487,11 +1530,11 @@
             {
               "name": "fk_payment_invoice_payments_id",
               "columns": [
-                "01J92P0V1M776PCP4JKV5J31SY.01J92P0V11B0FJNJV9V21CSEM1"
+                "01M8EJPZN9C44R8YSJ9N56RH2D"
               ],
-              "referencedTable": "01J92P0V0HEGSC6MW92CST5KA6@01J92P0V1QRN2181XM2ZWE02W4",
+              "referencedTable": "01M8EJPZN9C4NZBD1KXE8NG70G",
               "referencedColumns": [
-                "01J92P0V11B0FJNJV9V21CSEM1"
+                "01M8EJPZN9770GYSTSGBXXDWBK"
               ],
               "onDelete": "cascade",
               "onUpdate": "no-action",
@@ -1502,11 +1545,11 @@
             {
               "name": "fk_payment_invoice_invoices_id",
               "columns": [
-                "01J92P0V1N727B9EM9FXPMKH7P.01J92P0V0Q9EK961M5HAQ3C5MY"
+                "01M8EJPZN9SF27609ZNJM29ZQJ"
               ],
-              "referencedTable": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+              "referencedTable": "01J92P0V1T0J6RH4MY9H81NYB4",
               "referencedColumns": [
-                "01J92P0V0Q9EK961M5HAQ3C5MY"
+                "01M8EJPZN8P9AWRMABQ8VM73RS"
               ],
               "onDelete": "cascade",
               "onUpdate": "no-action",
@@ -1528,18 +1571,18 @@
           "referenceBindings": []
         },
         {
-          "key": "01J92P0V0HEGSC6MW92CST5KA6@01J92P0V1QRN2181XM2ZWE02W4",
+          "key": "01M8EJPZN9C4NZBD1KXE8NG70G",
           "name": "payments",
           "schema": "billing",
-          "origin": "synthesized",
-          "entityId": "01J92P0V0HEGSC6MW92CST5KA6",
+          "origin": "designed",
+          "entityId": null,
           "relationId": null,
           "isJunction": false,
           "isLookup": false,
           "comment": null,
           "columns": [
             {
-              "key": "01J92P0V11B0FJNJV9V21CSEM1",
+              "key": "01M8EJPZN9770GYSTSGBXXDWBK",
               "name": "id",
               "type": "int64",
               "nativeType": "bigint",
@@ -1550,8 +1593,8 @@
               "defaultSql": null,
               "identity": true,
               "computed": null,
-              "attributeId": "01J92P0V11B0FJNJV9V21CSEM1",
-              "attributePath": "01J92P0V11B0FJNJV9V21CSEM1",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": true,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1575,7 +1618,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V129V290HSYZV50YA63.01J92P0V08P9BVJAPQ793XYNTQ",
+              "key": "01M8EJPZN9G2P1GNXW3G5XJANR",
               "name": "amount_amount",
               "type": "decimal",
               "nativeType": "numeric(18,2)",
@@ -1586,8 +1629,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V08P9BVJAPQ793XYNTQ",
-              "attributePath": "01J92P0V129V290HSYZV50YA63.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1611,7 +1654,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V129V290HSYZV50YA63.01J92P0V093A7BE6Q8AS477H7D",
+              "key": "01M8EJPZN95G9KXYM7H3MEER3X",
               "name": "amount_currency",
               "type": "string",
               "nativeType": "varchar(3)",
@@ -1622,8 +1665,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V093A7BE6Q8AS477H7D",
-              "attributePath": "01J92P0V129V290HSYZV50YA63.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1647,7 +1690,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V138GR963610SFWWY86",
+              "key": "01M8EJPZN9M4Q4C4FTM8YR116Z",
               "name": "received_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -1658,8 +1701,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V138GR963610SFWWY86",
-              "attributePath": "01J92P0V138GR963610SFWWY86",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1683,7 +1726,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V14NH6GF73G93R3E22D",
+              "key": "01M8EJPZN960X82Y22ZAEA6013",
               "name": "reference",
               "type": "string",
               "nativeType": "varchar(64)",
@@ -1694,8 +1737,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V14NH6GF73G93R3E22D",
-              "attributePath": "01J92P0V14NH6GF73G93R3E22D",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1719,7 +1762,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "key": "01M8EJPZN9WWYJX5WB75FWNHNJ",
               "name": "created_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -1730,8 +1773,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
-              "attributePath": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1755,7 +1798,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "key": "01M8EJPZN9VR9X43VFC361E98W",
               "name": "updated_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -1766,8 +1809,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V27P8NW8KPEDG0RBZ4W",
-              "attributePath": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1794,7 +1837,7 @@
           "primaryKey": {
             "name": "pk_payments",
             "columns": [
-              "01J92P0V11B0FJNJV9V21CSEM1"
+              "01M8EJPZN9770GYSTSGBXXDWBK"
             ],
             "memberOrigin": null
           },
@@ -1809,22 +1852,31 @@
           "category": null,
           "properties": {},
           "generation": {},
-          "boundBy": [],
+          "boundBy": [
+            {
+              "entityId": "01J92P0V0HEGSC6MW92CST5KA6",
+              "entityName": "Payment",
+              "bindingId": "01M8EJPZP0AG5P3N48P389X4G7",
+              "reads": true,
+              "writes": true,
+              "constants": []
+            }
+          ],
           "referenceBindings": []
         },
         {
-          "key": "01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4",
+          "key": "01M8EJPZN967ERTF2BPP3YM4QY",
           "name": "products",
           "schema": "billing",
-          "origin": "synthesized",
-          "entityId": "01J92P0V0JR8BE8253SKT29ZG7",
+          "origin": "designed",
+          "entityId": null,
           "relationId": null,
           "isJunction": false,
           "isLookup": false,
           "comment": null,
           "columns": [
             {
-              "key": "01J92P0V15PMP0E4P5DSNZVETR",
+              "key": "01M8EJPZN9FW9ZV7DANC4C50XN",
               "name": "id",
               "type": "uuid",
               "nativeType": "uuid",
@@ -1835,8 +1887,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V15PMP0E4P5DSNZVETR",
-              "attributePath": "01J92P0V15PMP0E4P5DSNZVETR",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": true,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1860,7 +1912,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V17VC286G57N0QWE44Y",
+              "key": "01M8EJPZN98ZT4YXA1H23Y4ARA",
               "name": "sku",
               "type": "string",
               "nativeType": "varchar(40)",
@@ -1871,8 +1923,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V17VC286G57N0QWE44Y",
-              "attributePath": "01J92P0V17VC286G57N0QWE44Y",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1896,7 +1948,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V18CYJRYN96H242Z8QA",
+              "key": "01M8EJPZN9DEQ60PS9QJ8WBYT3",
               "name": "name",
               "type": "string",
               "nativeType": "varchar(200)",
@@ -1907,8 +1959,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V18CYJRYN96H242Z8QA",
-              "attributePath": "01J92P0V18CYJRYN96H242Z8QA",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1932,7 +1984,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ",
+              "key": "01M8EJPZN9ZA0CTZKR93TKCGFN",
               "name": "list_price_amount",
               "type": "decimal",
               "nativeType": "numeric(18,2)",
@@ -1943,8 +1995,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V08P9BVJAPQ793XYNTQ",
-              "attributePath": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -1968,7 +2020,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V093A7BE6Q8AS477H7D",
+              "key": "01M8EJPZN9AK1W7MKD786SZC3Z",
               "name": "list_price_currency",
               "type": "string",
               "nativeType": "varchar(3)",
@@ -1979,8 +2031,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V093A7BE6Q8AS477H7D",
-              "attributePath": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -2004,7 +2056,7 @@
               "memberOrigin": null
             },
             {
-              "key": "01J92P0V29S2CSA68TATT9P1QS",
+              "key": "01M8EJPZN9HM5EW57V5HN8DKMD",
               "name": "deleted_at",
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -2015,8 +2067,8 @@
               "defaultSql": null,
               "identity": false,
               "computed": null,
-              "attributeId": "01J92P0V29S2CSA68TATT9P1QS",
-              "attributePath": "01J92P0V29S2CSA68TATT9P1QS",
+              "attributeId": null,
+              "attributePath": null,
               "isPrimaryKey": false,
               "isForeignKey": false,
               "isDiscriminator": false,
@@ -2043,7 +2095,7 @@
           "primaryKey": {
             "name": "pk_products",
             "columns": [
-              "01J92P0V15PMP0E4P5DSNZVETR"
+              "01M8EJPZN9FW9ZV7DANC4C50XN"
             ],
             "memberOrigin": null
           },
@@ -2051,7 +2103,7 @@
             {
               "name": "uq_products_sku",
               "columns": [
-                "01J92P0V17VC286G57N0QWE44Y"
+                "01M8EJPZN98ZT4YXA1H23Y4ARA"
               ],
               "memberOrigin": null
             }
@@ -2066,7 +2118,16 @@
           "category": null,
           "properties": {},
           "generation": {},
-          "boundBy": [],
+          "boundBy": [
+            {
+              "entityId": "01J92P0V0JR8BE8253SKT29ZG7",
+              "entityName": "Product",
+              "bindingId": "01M8EJPZP171WSF42THNVKQ061",
+              "reads": true,
+              "writes": true,
+              "constants": []
+            }
+          ],
           "referenceBindings": []
         }
       ],
@@ -2154,10 +2215,10 @@
             }
           ],
           "from": {
-            "source": "01J92P0V0ETQKXXP951CMMNHH3",
+            "source": "01M8EJPZN867GR1CJR5ZERBJ0V",
             "alias": "c",
             "kind": "from",
-            "tableKey": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+            "tableKey": "01M8EJPZN867GR1CJR5ZERBJ0V",
             "viewId": null,
             "name": "customers",
             "schema": "billing",
@@ -2168,7 +2229,7 @@
             {
               "name": "id",
               "expression": {
-                "column": "c.01J92P0V0KGPC29TQQG8R57EBM"
+                "column": "c.01M8EJPZN8472RRANF8A5EA8GT"
               },
               "type": "uuid",
               "nativeType": "uuid",
@@ -2178,7 +2239,7 @@
             {
               "name": "name",
               "expression": {
-                "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+                "column": "c.01M8EJPZN85K0E011MBM10HXAG"
               },
               "type": "string",
               "nativeType": "varchar(120)",
@@ -2188,7 +2249,7 @@
             {
               "name": "email",
               "expression": {
-                "column": "c.01J92P0V0NRX99014KNVAZGPEW"
+                "column": "c.01M8EJPZN8YCG8JHPKYR3AS4S8"
               },
               "type": "string",
               "nativeType": "varchar(254)",
@@ -2198,7 +2259,7 @@
             {
               "name": "createdAt",
               "expression": {
-                "column": "c.01J92P0V26XYZRDQ8FJ6KZXT6S"
+                "column": "c.01M8EJPZN85083M7EFTST05M2C"
               },
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -2211,7 +2272,7 @@
               {
                 "op": "ilike",
                 "left": {
-                  "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+                  "column": "c.01M8EJPZN85K0E011MBM10HXAG"
                 },
                 "right": {
                   "param": "namePattern"
@@ -2230,16 +2291,16 @@
                       {
                         "op": "eq",
                         "left": {
-                          "column": "i.01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM"
+                          "column": "i.01M8EJPZN80NTY1M4QZCPKETNX"
                         },
                         "right": {
-                          "column": "c.01J92P0V0KGPC29TQQG8R57EBM"
+                          "column": "c.01M8EJPZN8472RRANF8A5EA8GT"
                         }
                       },
                       {
                         "op": "eq",
                         "left": {
-                          "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+                          "column": "i.01M8EJPZN8DEZ6EM0M25ZCHNPZ"
                         },
                         "right": {
                           "value": "I"
@@ -2262,7 +2323,7 @@
                 "call": "lower",
                 "args": [
                   {
-                    "column": "c.01J92P0V0MS09YFZHX07JQ3KMN"
+                    "column": "c.01M8EJPZN85K0E011MBM10HXAG"
                   }
                 ]
               },
@@ -2276,8 +2337,8 @@
             "namePattern"
           ],
           "uses": [
-            "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
-            "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4"
+            "01M8EJPZN867GR1CJR5ZERBJ0V",
+            "01J92P0V1T0J6RH4MY9H81NYB4"
           ],
           "displayName": null,
           "pluralName": null,
@@ -2350,7 +2411,7 @@
             "source": "01J92P0V1T0J6RH4MY9H81NYB4",
             "alias": "i",
             "kind": "from",
-            "tableKey": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+            "tableKey": "01J92P0V1T0J6RH4MY9H81NYB4",
             "viewId": null,
             "name": "invoices",
             "schema": "billing",
@@ -2361,7 +2422,7 @@
             {
               "name": "id",
               "expression": {
-                "column": "i.01J92P0V0Q9EK961M5HAQ3C5MY"
+                "column": "i.01M8EJPZN8P9AWRMABQ8VM73RS"
               },
               "type": "uuid",
               "nativeType": "uuid",
@@ -2371,7 +2432,7 @@
             {
               "name": "number",
               "expression": {
-                "column": "i.01J92P0V0R3VSP7D5238DTNZX1"
+                "column": "i.01J92P0V1VQAA9FW71PKYWWHKN"
               },
               "type": "string",
               "nativeType": "varchar(32)",
@@ -2381,7 +2442,7 @@
             {
               "name": "issuedOn",
               "expression": {
-                "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+                "column": "i.01M8EJPZN8RF69424595Z93TBZ"
               },
               "type": "date",
               "nativeType": "date",
@@ -2391,7 +2452,7 @@
             {
               "name": "status",
               "expression": {
-                "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+                "column": "i.01M8EJPZN8DEZ6EM0M25ZCHNPZ"
               },
               "type": "string",
               "nativeType": "varchar(1)",
@@ -2401,7 +2462,7 @@
             {
               "name": "notes",
               "expression": {
-                "column": "i.01J92P0V0WKRGKH7YBKA2V30NC"
+                "column": "i.01M8EJPZN8DNZMM57CDYT1P8DX"
               },
               "type": "text",
               "nativeType": "text",
@@ -2411,7 +2472,7 @@
             {
               "name": "createdAt",
               "expression": {
-                "column": "i.01J92P0V26XYZRDQ8FJ6KZXT6S"
+                "column": "i.01M8EJPZN8NQHHH3BFZMS10JT0"
               },
               "type": "datetimeoffset",
               "nativeType": "timestamptz(6)",
@@ -2424,7 +2485,7 @@
               {
                 "op": "eq",
                 "left": {
-                  "column": "i.01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM"
+                  "column": "i.01M8EJPZN80NTY1M4QZCPKETNX"
                 },
                 "right": {
                   "param": "customerId"
@@ -2433,7 +2494,7 @@
               {
                 "op": "in",
                 "left": {
-                  "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+                  "column": "i.01M8EJPZN8DEZ6EM0M25ZCHNPZ"
                 },
                 "right": {
                   "param": "statuses"
@@ -2442,7 +2503,7 @@
               {
                 "op": "isNull",
                 "left": {
-                  "column": "i.deleted_at"
+                  "column": "i.01M8EJPZN8N06DCGNFY5P3V81K"
                 }
               }
             ]
@@ -2452,13 +2513,13 @@
           "orderBy": [
             {
               "expression": {
-                "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+                "column": "i.01M8EJPZN8RF69424595Z93TBZ"
               },
               "direction": "desc"
             },
             {
               "expression": {
-                "column": "i.01J92P0V0R3VSP7D5238DTNZX1"
+                "column": "i.01J92P0V1VQAA9FW71PKYWWHKN"
               },
               "direction": "asc"
             }
@@ -2476,12 +2537,11 @@
             "limit"
           ],
           "uses": [
-            "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
-            "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4"
+            "01J92P0V1T0J6RH4MY9H81NYB4"
           ],
           "displayName": null,
           "pluralName": null,
-          "description": "A customer's invoices in some statuses, newest first, a page at a time, each with its lines.",
+          "description": "A customer's invoices in some statuses, newest first, a page at a time.",
           "stereotypes": [],
           "tags": [],
           "category": null,
@@ -2524,7 +2584,7 @@
             "source": "01J92P0V1T0J6RH4MY9H81NYB4",
             "alias": "i",
             "kind": "from",
-            "tableKey": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
+            "tableKey": "01J92P0V1T0J6RH4MY9H81NYB4",
             "viewId": null,
             "name": "invoices",
             "schema": "billing",
@@ -2565,7 +2625,7 @@
                     "call": "sum",
                     "args": [
                       {
-                        "column": "i.01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ"
+                        "column": "i.01M8EJPZN81N1AY89T2YY52EQC"
                       }
                     ]
                   },
@@ -2585,7 +2645,7 @@
               {
                 "op": "ge",
                 "left": {
-                  "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+                  "column": "i.01M8EJPZN8RF69424595Z93TBZ"
                 },
                 "right": {
                   "param": "from"
@@ -2594,7 +2654,7 @@
               {
                 "op": "lt",
                 "left": {
-                  "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+                  "column": "i.01M8EJPZN8RF69424595Z93TBZ"
                 },
                 "right": {
                   "param": "to"
@@ -2603,7 +2663,7 @@
               {
                 "op": "ne",
                 "left": {
-                  "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+                  "column": "i.01M8EJPZN8DEZ6EM0M25ZCHNPZ"
                 },
                 "right": {
                   "value": "V"
@@ -2641,7 +2701,7 @@
             "to"
           ],
           "uses": [
-            "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4"
+            "01J92P0V1T0J6RH4MY9H81NYB4"
           ],
           "displayName": null,
           "pluralName": null,
@@ -2681,7 +2741,7 @@
       ],
       "quoting": "reserved",
       "maxIdentifierLength": 63,
-      "byConvention": "all",
+      "byConvention": "none",
       "packages": [],
       "displayName": null,
       "pluralName": null,
@@ -2994,41 +3054,7 @@
       "relations": [
         "01J92P0V1ACKN3G6TK3NJDTM82"
       ],
-      "mappings": [
-        {
-          "database": "01J92P0V1QRN2181XM2ZWE02W4",
-          "table": "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
-          "inheritance": null,
-          "discriminatorColumn": null,
-          "discriminatorValue": null,
-          "columns": [
-            {
-              "attributePath": "01J92P0V0KGPC29TQQG8R57EBM",
-              "column": "01J92P0V0KGPC29TQQG8R57EBM"
-            },
-            {
-              "attributePath": "01J92P0V0MS09YFZHX07JQ3KMN",
-              "column": "01J92P0V0MS09YFZHX07JQ3KMN"
-            },
-            {
-              "attributePath": "01J92P0V0NRX99014KNVAZGPEW",
-              "column": "01J92P0V0NRX99014KNVAZGPEW"
-            },
-            {
-              "attributePath": "01J92P0V0P4MBJRM6QN6H0RSVP",
-              "column": "01J92P0V0P4MBJRM6QN6H0RSVP"
-            },
-            {
-              "attributePath": "01J92P0V26XYZRDQ8FJ6KZXT6S",
-              "column": "01J92P0V26XYZRDQ8FJ6KZXT6S"
-            },
-            {
-              "attributePath": "01J92P0V27P8NW8KPEDG0RBZ4W",
-              "column": "01J92P0V27P8NW8KPEDG0RBZ4W"
-            }
-          ]
-        }
-      ],
+      "mappings": [],
       "isPromoted": false,
       "promotedFrom": null,
       "seeds": [],
@@ -3049,7 +3075,157 @@
         "retentionDays": 2555
       },
       "generation": {},
-      "bindings": []
+      "bindings": [
+        {
+          "id": "01M8EJPZNRW3DF4MD51RVRWD77",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "sourceKind": "table",
+          "source": "01M8EJPZN867GR1CJR5ZERBJ0V",
+          "sourceName": "customers",
+          "writeTable": "01M8EJPZN867GR1CJR5ZERBJ0V",
+          "delete": "key",
+          "softDeleteColumn": null,
+          "softDeleteValue": null,
+          "constants": [],
+          "fields": [
+            {
+              "name": "id",
+              "attribute": "01J92P0V0KGPC29TQQG8R57EBM",
+              "attributeId": "01J92P0V0KGPC29TQQG8R57EBM",
+              "memberId": null,
+              "endId": null,
+              "column": "id",
+              "columnKey": "01M8EJPZN8472RRANF8A5EA8GT",
+              "writeColumn": "01M8EJPZN8472RRANF8A5EA8GT",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": true,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "name",
+              "attribute": "01J92P0V0MS09YFZHX07JQ3KMN",
+              "attributeId": "01J92P0V0MS09YFZHX07JQ3KMN",
+              "memberId": null,
+              "endId": null,
+              "column": "name",
+              "columnKey": "01M8EJPZN85K0E011MBM10HXAG",
+              "writeColumn": "01M8EJPZN85K0E011MBM10HXAG",
+              "type": "string",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "email",
+              "attribute": "01J92P0V0NRX99014KNVAZGPEW",
+              "attributeId": "01J92P0V0NRX99014KNVAZGPEW",
+              "memberId": null,
+              "endId": null,
+              "column": "email",
+              "columnKey": "01M8EJPZN8YCG8JHPKYR3AS4S8",
+              "writeColumn": "01M8EJPZN8YCG8JHPKYR3AS4S8",
+              "type": "string",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "customerSince",
+              "attribute": "01J92P0V0P4MBJRM6QN6H0RSVP",
+              "attributeId": "01J92P0V0P4MBJRM6QN6H0RSVP",
+              "memberId": null,
+              "endId": null,
+              "column": "customer_since",
+              "columnKey": "01M8EJPZN8BGJ7KV30184YH61V",
+              "writeColumn": "01M8EJPZN8BGJ7KV30184YH61V",
+              "type": "date",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "createdAt",
+              "attribute": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "memberId": null,
+              "endId": null,
+              "column": "created_at",
+              "columnKey": "01M8EJPZN85083M7EFTST05M2C",
+              "writeColumn": "01M8EJPZN85083M7EFTST05M2C",
+              "type": "datetimeoffset",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "updatedAt",
+              "attribute": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "attributeId": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "memberId": null,
+              "endId": null,
+              "column": "updated_at",
+              "columnKey": "01M8EJPZN8M1P3MNNTXBN48F9D",
+              "writeColumn": "01M8EJPZN8M1P3MNNTXBN48F9D",
+              "type": "datetimeoffset",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            }
+          ],
+          "columns": [
+            {
+              "name": "id",
+              "key": "01M8EJPZN8472RRANF8A5EA8GT",
+              "status": "field",
+              "field": "id"
+            },
+            {
+              "name": "name",
+              "key": "01M8EJPZN85K0E011MBM10HXAG",
+              "status": "field",
+              "field": "name"
+            },
+            {
+              "name": "email",
+              "key": "01M8EJPZN8YCG8JHPKYR3AS4S8",
+              "status": "field",
+              "field": "email"
+            },
+            {
+              "name": "customer_since",
+              "key": "01M8EJPZN8BGJ7KV30184YH61V",
+              "status": "field",
+              "field": "customerSince"
+            },
+            {
+              "name": "created_at",
+              "key": "01M8EJPZN85083M7EFTST05M2C",
+              "status": "field",
+              "field": "createdAt"
+            },
+            {
+              "name": "updated_at",
+              "key": "01M8EJPZN8M1P3MNNTXBN48F9D",
+              "status": "field",
+              "field": "updatedAt"
+            }
+          ],
+          "writeColumns": []
+        }
+      ]
     },
     {
       "id": "01K6BND0000000000000000020",
@@ -3468,13 +3644,13 @@
           "reference": null,
           "displayName": "number",
           "pluralName": "numbers",
-          "description": null,
+          "description": "Assigned on issue.",
           "tags": [],
           "category": null,
           "stereotypes": [],
           "properties": {},
           "generation": {},
-          "descriptionColumn": null
+          "descriptionColumn": "01J92P0V1VQAA9FW71PKYWWHKN"
         },
         {
           "id": "01J92P0V0SNXS6PZ42VDK42HP9",
@@ -3827,57 +4003,7 @@
         "01J92P0V1ACKN3G6TK3NJDTM82",
         "01J92P0V1DKHD5Q02DV6S5M53D"
       ],
-      "mappings": [
-        {
-          "database": "01J92P0V1QRN2181XM2ZWE02W4",
-          "table": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
-          "inheritance": null,
-          "discriminatorColumn": null,
-          "discriminatorValue": null,
-          "columns": [
-            {
-              "attributePath": "01J92P0V0Q9EK961M5HAQ3C5MY",
-              "column": "01J92P0V0Q9EK961M5HAQ3C5MY"
-            },
-            {
-              "attributePath": "01J92P0V0R3VSP7D5238DTNZX1",
-              "column": "01J92P0V0R3VSP7D5238DTNZX1"
-            },
-            {
-              "attributePath": "01J92P0V0SNXS6PZ42VDK42HP9",
-              "column": "01J92P0V0SNXS6PZ42VDK42HP9"
-            },
-            {
-              "attributePath": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ",
-              "column": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ"
-            },
-            {
-              "attributePath": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V093A7BE6Q8AS477H7D",
-              "column": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V093A7BE6Q8AS477H7D"
-            },
-            {
-              "attributePath": "01J92P0V0VB1Z49SWERMAGR4TV",
-              "column": "01J92P0V0VB1Z49SWERMAGR4TV"
-            },
-            {
-              "attributePath": "01J92P0V0WKRGKH7YBKA2V30NC",
-              "column": "01J92P0V0WKRGKH7YBKA2V30NC"
-            },
-            {
-              "attributePath": "01J92P0V26XYZRDQ8FJ6KZXT6S",
-              "column": "01J92P0V26XYZRDQ8FJ6KZXT6S"
-            },
-            {
-              "attributePath": "01J92P0V27P8NW8KPEDG0RBZ4W",
-              "column": "01J92P0V27P8NW8KPEDG0RBZ4W"
-            },
-            {
-              "attributePath": "01J92P0V29S2CSA68TATT9P1QS",
-              "column": "01J92P0V29S2CSA68TATT9P1QS"
-            }
-          ]
-        }
-      ],
+      "mappings": [],
       "isPromoted": false,
       "promotedFrom": null,
       "seeds": [],
@@ -3898,7 +4024,296 @@
         "retentionDays": 3650
       },
       "generation": {},
-      "bindings": []
+      "bindings": [
+        {
+          "id": "01M8EJPZNY4K1BHRA5SQ8252NV",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "sourceKind": "table",
+          "source": "01J92P0V1T0J6RH4MY9H81NYB4",
+          "sourceName": "invoices",
+          "writeTable": "01J92P0V1T0J6RH4MY9H81NYB4",
+          "delete": "key",
+          "softDeleteColumn": null,
+          "softDeleteValue": null,
+          "constants": [],
+          "fields": [
+            {
+              "name": "id",
+              "attribute": "01J92P0V0Q9EK961M5HAQ3C5MY",
+              "attributeId": "01J92P0V0Q9EK961M5HAQ3C5MY",
+              "memberId": null,
+              "endId": null,
+              "column": "id",
+              "columnKey": "01M8EJPZN8P9AWRMABQ8VM73RS",
+              "writeColumn": "01M8EJPZN8P9AWRMABQ8VM73RS",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": true,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "number",
+              "attribute": "01J92P0V0R3VSP7D5238DTNZX1",
+              "attributeId": "01J92P0V0R3VSP7D5238DTNZX1",
+              "memberId": null,
+              "endId": null,
+              "column": "number",
+              "columnKey": "01J92P0V1VQAA9FW71PKYWWHKN",
+              "writeColumn": "01J92P0V1VQAA9FW71PKYWWHKN",
+              "type": "string",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "issuedOn",
+              "attribute": "01J92P0V0SNXS6PZ42VDK42HP9",
+              "attributeId": "01J92P0V0SNXS6PZ42VDK42HP9",
+              "memberId": null,
+              "endId": null,
+              "column": "issued_on",
+              "columnKey": "01M8EJPZN8RF69424595Z93TBZ",
+              "writeColumn": "01M8EJPZN8RF69424595Z93TBZ",
+              "type": "date",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "totalAmount",
+              "attribute": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": "01J92P0V0T6EA0XM025XQX8GBW",
+              "memberId": "01J92P0V08P9BVJAPQ793XYNTQ",
+              "endId": null,
+              "column": "total_amount",
+              "columnKey": "01M8EJPZN81N1AY89T2YY52EQC",
+              "writeColumn": "01M8EJPZN81N1AY89T2YY52EQC",
+              "type": "decimal",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "totalCurrency",
+              "attribute": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": "01J92P0V0T6EA0XM025XQX8GBW",
+              "memberId": "01J92P0V093A7BE6Q8AS477H7D",
+              "endId": null,
+              "column": "total_currency",
+              "columnKey": "01M8EJPZN8E3K4QAZEP5F52DXA",
+              "writeColumn": "01M8EJPZN8E3K4QAZEP5F52DXA",
+              "type": "string",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "status",
+              "attribute": "01J92P0V0VB1Z49SWERMAGR4TV",
+              "attributeId": "01J92P0V0VB1Z49SWERMAGR4TV",
+              "memberId": null,
+              "endId": null,
+              "column": "status",
+              "columnKey": "01M8EJPZN8DEZ6EM0M25ZCHNPZ",
+              "writeColumn": "01M8EJPZN8DEZ6EM0M25ZCHNPZ",
+              "type": "string",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "notes",
+              "attribute": "01J92P0V0WKRGKH7YBKA2V30NC",
+              "attributeId": "01J92P0V0WKRGKH7YBKA2V30NC",
+              "memberId": null,
+              "endId": null,
+              "column": "notes",
+              "columnKey": "01M8EJPZN8DNZMM57CDYT1P8DX",
+              "writeColumn": "01M8EJPZN8DNZMM57CDYT1P8DX",
+              "type": "text",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "createdAt",
+              "attribute": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "memberId": null,
+              "endId": null,
+              "column": "created_at",
+              "columnKey": "01M8EJPZN8NQHHH3BFZMS10JT0",
+              "writeColumn": "01M8EJPZN8NQHHH3BFZMS10JT0",
+              "type": "datetimeoffset",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "updatedAt",
+              "attribute": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "attributeId": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "memberId": null,
+              "endId": null,
+              "column": "updated_at",
+              "columnKey": "01M8EJPZN8P1AVSF3JB5N1A9VG",
+              "writeColumn": "01M8EJPZN8P1AVSF3JB5N1A9VG",
+              "type": "datetimeoffset",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "deletedAt",
+              "attribute": "01J92P0V29S2CSA68TATT9P1QS",
+              "attributeId": "01J92P0V29S2CSA68TATT9P1QS",
+              "memberId": null,
+              "endId": null,
+              "column": "deleted_at",
+              "columnKey": "01M8EJPZN8N06DCGNFY5P3V81K",
+              "writeColumn": "01M8EJPZN8N06DCGNFY5P3V81K",
+              "type": "datetimeoffset",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "customerId",
+              "attribute": "01J92P0V1EHF7PB28CZJG9C5SN",
+              "attributeId": null,
+              "memberId": null,
+              "endId": "01J92P0V1EHF7PB28CZJG9C5SN",
+              "column": "customer_id",
+              "columnKey": "01M8EJPZN80NTY1M4QZCPKETNX",
+              "writeColumn": "01M8EJPZN80NTY1M4QZCPKETNX",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            }
+          ],
+          "columns": [
+            {
+              "name": "id",
+              "key": "01M8EJPZN8P9AWRMABQ8VM73RS",
+              "status": "field",
+              "field": "id"
+            },
+            {
+              "name": "number",
+              "key": "01J92P0V1VQAA9FW71PKYWWHKN",
+              "status": "field",
+              "field": "number"
+            },
+            {
+              "name": "issued_on",
+              "key": "01M8EJPZN8RF69424595Z93TBZ",
+              "status": "field",
+              "field": "issuedOn"
+            },
+            {
+              "name": "total_amount",
+              "key": "01M8EJPZN81N1AY89T2YY52EQC",
+              "status": "field",
+              "field": "totalAmount"
+            },
+            {
+              "name": "total_currency",
+              "key": "01M8EJPZN8E3K4QAZEP5F52DXA",
+              "status": "field",
+              "field": "totalCurrency"
+            },
+            {
+              "name": "status",
+              "key": "01M8EJPZN8DEZ6EM0M25ZCHNPZ",
+              "status": "field",
+              "field": "status"
+            },
+            {
+              "name": "notes",
+              "key": "01M8EJPZN8DNZMM57CDYT1P8DX",
+              "status": "field",
+              "field": "notes"
+            },
+            {
+              "name": "created_at",
+              "key": "01M8EJPZN8NQHHH3BFZMS10JT0",
+              "status": "field",
+              "field": "createdAt"
+            },
+            {
+              "name": "updated_at",
+              "key": "01M8EJPZN8P1AVSF3JB5N1A9VG",
+              "status": "field",
+              "field": "updatedAt"
+            },
+            {
+              "name": "deleted_at",
+              "key": "01M8EJPZN8N06DCGNFY5P3V81K",
+              "status": "field",
+              "field": "deletedAt"
+            },
+            {
+              "name": "customer_id",
+              "key": "01M8EJPZN80NTY1M4QZCPKETNX",
+              "status": "field",
+              "field": "customerId"
+            }
+          ],
+          "writeColumns": []
+        }
+      ],
+      "parts": [
+        {
+          "id": "01J92P0V1H4D2M1HCK82ASJEWT",
+          "relation": "01J92P0V1BWHG0REWKSTR292RS",
+          "ownerEnd": "01J92P0V1GMF7GJPA7981CH7YG",
+          "end": "01J92P0V1H4D2M1HCK82ASJEWT",
+          "entity": "01J92P0V0GWFR78HZH0P8Z3GY7",
+          "owner": "01J92P0V0FJ23CGSNKM7P1W5V7",
+          "parent": null,
+          "depth": 1,
+          "isRecursive": false,
+          "inCycle": false,
+          "foreignKeys": [
+            {
+              "database": "01J92P0V1QRN2181XM2ZWE02W4",
+              "name": "fk_invoice_lines_invoice_id",
+              "table": "01M8EJPZN9VC241ZQY1P20V7D5",
+              "end": "01J92P0V1H4D2M1HCK82ASJEWT",
+              "columns": [
+                "01M8EJPZN9CXQ3J4NP64BA313M"
+              ],
+              "referencedTable": "01J92P0V1T0J6RH4MY9H81NYB4",
+              "referencedColumns": [
+                "01M8EJPZN8P9AWRMABQ8VM73RS"
+              ]
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "01J92P0V0GWFR78HZH0P8Z3GY7",
@@ -4124,37 +4539,7 @@
         "01J92P0V1BWHG0REWKSTR292RS",
         "01J92P0V1CC98R0RRCAV73SGF4"
       ],
-      "mappings": [
-        {
-          "database": "01J92P0V1QRN2181XM2ZWE02W4",
-          "table": "01J92P0V0GWFR78HZH0P8Z3GY7@01J92P0V1QRN2181XM2ZWE02W4",
-          "inheritance": null,
-          "discriminatorColumn": null,
-          "discriminatorValue": null,
-          "columns": [
-            {
-              "attributePath": "01J92P0V0X1EDKMF6X5RA8NZWG",
-              "column": "01J92P0V0X1EDKMF6X5RA8NZWG"
-            },
-            {
-              "attributePath": "01J92P0V0Y049452AH0K8CDC9N",
-              "column": "01J92P0V0Y049452AH0K8CDC9N"
-            },
-            {
-              "attributePath": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V08P9BVJAPQ793XYNTQ",
-              "column": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V08P9BVJAPQ793XYNTQ"
-            },
-            {
-              "attributePath": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V093A7BE6Q8AS477H7D",
-              "column": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V093A7BE6Q8AS477H7D"
-            },
-            {
-              "attributePath": "01J92P0V1015JY6PVQZG6MY8AS",
-              "column": "01J92P0V1015JY6PVQZG6MY8AS"
-            }
-          ]
-        }
-      ],
+      "mappings": [],
       "isPromoted": false,
       "promotedFrom": null,
       "seeds": [],
@@ -4167,7 +4552,179 @@
       "stereotypes": [],
       "properties": {},
       "generation": {},
-      "bindings": []
+      "bindings": [
+        {
+          "id": "01M8EJPZP0CHZEPQPAP44853WA",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "sourceKind": "table",
+          "source": "01M8EJPZN9VC241ZQY1P20V7D5",
+          "sourceName": "invoice_lines",
+          "writeTable": "01M8EJPZN9VC241ZQY1P20V7D5",
+          "delete": "key",
+          "softDeleteColumn": null,
+          "softDeleteValue": null,
+          "constants": [],
+          "fields": [
+            {
+              "name": "id",
+              "attribute": "01J92P0V0X1EDKMF6X5RA8NZWG",
+              "attributeId": "01J92P0V0X1EDKMF6X5RA8NZWG",
+              "memberId": null,
+              "endId": null,
+              "column": "id",
+              "columnKey": "01M8EJPZN9WNE7FWBTSSC5R13F",
+              "writeColumn": "01M8EJPZN9WNE7FWBTSSC5R13F",
+              "type": "ulid",
+              "nullable": false,
+              "isKey": true,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "quantity",
+              "attribute": "01J92P0V0Y049452AH0K8CDC9N",
+              "attributeId": "01J92P0V0Y049452AH0K8CDC9N",
+              "memberId": null,
+              "endId": null,
+              "column": "quantity",
+              "columnKey": "01M8EJPZN98Y4J9T1HXJ9MSQNX",
+              "writeColumn": "01M8EJPZN98Y4J9T1HXJ9MSQNX",
+              "type": "int32",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "unitPriceAmount",
+              "attribute": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": "01J92P0V0ZQNG1QWKD83FEA0GA",
+              "memberId": "01J92P0V08P9BVJAPQ793XYNTQ",
+              "endId": null,
+              "column": "unit_price_amount",
+              "columnKey": "01M8EJPZN9GND1ENGST82CTV09",
+              "writeColumn": "01M8EJPZN9GND1ENGST82CTV09",
+              "type": "decimal",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "unitPriceCurrency",
+              "attribute": "01J92P0V0ZQNG1QWKD83FEA0GA.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": "01J92P0V0ZQNG1QWKD83FEA0GA",
+              "memberId": "01J92P0V093A7BE6Q8AS477H7D",
+              "endId": null,
+              "column": "unit_price_currency",
+              "columnKey": "01M8EJPZN960Z8FR4174NC5FJX",
+              "writeColumn": "01M8EJPZN960Z8FR4174NC5FJX",
+              "type": "string",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "description",
+              "attribute": "01J92P0V1015JY6PVQZG6MY8AS",
+              "attributeId": "01J92P0V1015JY6PVQZG6MY8AS",
+              "memberId": null,
+              "endId": null,
+              "column": "description",
+              "columnKey": "01M8EJPZN9GVP943VEYBQDG455",
+              "writeColumn": "01M8EJPZN9GVP943VEYBQDG455",
+              "type": "string",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "invoiceId",
+              "attribute": "01J92P0V1GMF7GJPA7981CH7YG",
+              "attributeId": null,
+              "memberId": null,
+              "endId": "01J92P0V1GMF7GJPA7981CH7YG",
+              "column": "invoice_id",
+              "columnKey": "01M8EJPZN9CXQ3J4NP64BA313M",
+              "writeColumn": "01M8EJPZN9CXQ3J4NP64BA313M",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "productId",
+              "attribute": "01J92P0V1K5BZCDV8JB9BQ2N6T",
+              "attributeId": null,
+              "memberId": null,
+              "endId": "01J92P0V1K5BZCDV8JB9BQ2N6T",
+              "column": "product_id",
+              "columnKey": "01M8EJPZN92CXA336SM8GCBHRX",
+              "writeColumn": "01M8EJPZN92CXA336SM8GCBHRX",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            }
+          ],
+          "columns": [
+            {
+              "name": "id",
+              "key": "01M8EJPZN9WNE7FWBTSSC5R13F",
+              "status": "field",
+              "field": "id"
+            },
+            {
+              "name": "quantity",
+              "key": "01M8EJPZN98Y4J9T1HXJ9MSQNX",
+              "status": "field",
+              "field": "quantity"
+            },
+            {
+              "name": "unit_price_amount",
+              "key": "01M8EJPZN9GND1ENGST82CTV09",
+              "status": "field",
+              "field": "unitPriceAmount"
+            },
+            {
+              "name": "unit_price_currency",
+              "key": "01M8EJPZN960Z8FR4174NC5FJX",
+              "status": "field",
+              "field": "unitPriceCurrency"
+            },
+            {
+              "name": "description",
+              "key": "01M8EJPZN9GVP943VEYBQDG455",
+              "status": "field",
+              "field": "description"
+            },
+            {
+              "name": "invoice_id",
+              "key": "01M8EJPZN9CXQ3J4NP64BA313M",
+              "status": "field",
+              "field": "invoiceId"
+            },
+            {
+              "name": "product_id",
+              "key": "01M8EJPZN92CXA336SM8GCBHRX",
+              "status": "field",
+              "field": "productId"
+            }
+          ],
+          "writeColumns": []
+        }
+      ]
     },
     {
       "id": "01K6BND0000000000000000010",
@@ -4793,45 +5350,7 @@
       "relations": [
         "01J92P0V1DKHD5Q02DV6S5M53D"
       ],
-      "mappings": [
-        {
-          "database": "01J92P0V1QRN2181XM2ZWE02W4",
-          "table": "01J92P0V0HEGSC6MW92CST5KA6@01J92P0V1QRN2181XM2ZWE02W4",
-          "inheritance": null,
-          "discriminatorColumn": null,
-          "discriminatorValue": null,
-          "columns": [
-            {
-              "attributePath": "01J92P0V11B0FJNJV9V21CSEM1",
-              "column": "01J92P0V11B0FJNJV9V21CSEM1"
-            },
-            {
-              "attributePath": "01J92P0V129V290HSYZV50YA63.01J92P0V08P9BVJAPQ793XYNTQ",
-              "column": "01J92P0V129V290HSYZV50YA63.01J92P0V08P9BVJAPQ793XYNTQ"
-            },
-            {
-              "attributePath": "01J92P0V129V290HSYZV50YA63.01J92P0V093A7BE6Q8AS477H7D",
-              "column": "01J92P0V129V290HSYZV50YA63.01J92P0V093A7BE6Q8AS477H7D"
-            },
-            {
-              "attributePath": "01J92P0V138GR963610SFWWY86",
-              "column": "01J92P0V138GR963610SFWWY86"
-            },
-            {
-              "attributePath": "01J92P0V14NH6GF73G93R3E22D",
-              "column": "01J92P0V14NH6GF73G93R3E22D"
-            },
-            {
-              "attributePath": "01J92P0V26XYZRDQ8FJ6KZXT6S",
-              "column": "01J92P0V26XYZRDQ8FJ6KZXT6S"
-            },
-            {
-              "attributePath": "01J92P0V27P8NW8KPEDG0RBZ4W",
-              "column": "01J92P0V27P8NW8KPEDG0RBZ4W"
-            }
-          ]
-        }
-      ],
+      "mappings": [],
       "isPromoted": false,
       "promotedFrom": null,
       "seeds": [],
@@ -4848,7 +5367,179 @@
         "retentionDays": 2555
       },
       "generation": {},
-      "bindings": []
+      "bindings": [
+        {
+          "id": "01M8EJPZP0AG5P3N48P389X4G7",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "sourceKind": "table",
+          "source": "01M8EJPZN9C4NZBD1KXE8NG70G",
+          "sourceName": "payments",
+          "writeTable": "01M8EJPZN9C4NZBD1KXE8NG70G",
+          "delete": "key",
+          "softDeleteColumn": null,
+          "softDeleteValue": null,
+          "constants": [],
+          "fields": [
+            {
+              "name": "id",
+              "attribute": "01J92P0V11B0FJNJV9V21CSEM1",
+              "attributeId": "01J92P0V11B0FJNJV9V21CSEM1",
+              "memberId": null,
+              "endId": null,
+              "column": "id",
+              "columnKey": "01M8EJPZN9770GYSTSGBXXDWBK",
+              "writeColumn": "01M8EJPZN9770GYSTSGBXXDWBK",
+              "type": "int64",
+              "nullable": false,
+              "isKey": true,
+              "isGenerated": true,
+              "inInsert": false,
+              "inUpdate": false
+            },
+            {
+              "name": "amountAmount",
+              "attribute": "01J92P0V129V290HSYZV50YA63.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": "01J92P0V129V290HSYZV50YA63",
+              "memberId": "01J92P0V08P9BVJAPQ793XYNTQ",
+              "endId": null,
+              "column": "amount_amount",
+              "columnKey": "01M8EJPZN9G2P1GNXW3G5XJANR",
+              "writeColumn": "01M8EJPZN9G2P1GNXW3G5XJANR",
+              "type": "decimal",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "amountCurrency",
+              "attribute": "01J92P0V129V290HSYZV50YA63.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": "01J92P0V129V290HSYZV50YA63",
+              "memberId": "01J92P0V093A7BE6Q8AS477H7D",
+              "endId": null,
+              "column": "amount_currency",
+              "columnKey": "01M8EJPZN95G9KXYM7H3MEER3X",
+              "writeColumn": "01M8EJPZN95G9KXYM7H3MEER3X",
+              "type": "string",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "receivedAt",
+              "attribute": "01J92P0V138GR963610SFWWY86",
+              "attributeId": "01J92P0V138GR963610SFWWY86",
+              "memberId": null,
+              "endId": null,
+              "column": "received_at",
+              "columnKey": "01M8EJPZN9M4Q4C4FTM8YR116Z",
+              "writeColumn": "01M8EJPZN9M4Q4C4FTM8YR116Z",
+              "type": "datetimeoffset",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "reference",
+              "attribute": "01J92P0V14NH6GF73G93R3E22D",
+              "attributeId": "01J92P0V14NH6GF73G93R3E22D",
+              "memberId": null,
+              "endId": null,
+              "column": "reference",
+              "columnKey": "01M8EJPZN960X82Y22ZAEA6013",
+              "writeColumn": "01M8EJPZN960X82Y22ZAEA6013",
+              "type": "string",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "createdAt",
+              "attribute": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "attributeId": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+              "memberId": null,
+              "endId": null,
+              "column": "created_at",
+              "columnKey": "01M8EJPZN9WWYJX5WB75FWNHNJ",
+              "writeColumn": "01M8EJPZN9WWYJX5WB75FWNHNJ",
+              "type": "datetimeoffset",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "updatedAt",
+              "attribute": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "attributeId": "01J92P0V27P8NW8KPEDG0RBZ4W",
+              "memberId": null,
+              "endId": null,
+              "column": "updated_at",
+              "columnKey": "01M8EJPZN9VR9X43VFC361E98W",
+              "writeColumn": "01M8EJPZN9VR9X43VFC361E98W",
+              "type": "datetimeoffset",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            }
+          ],
+          "columns": [
+            {
+              "name": "id",
+              "key": "01M8EJPZN9770GYSTSGBXXDWBK",
+              "status": "field",
+              "field": "id"
+            },
+            {
+              "name": "amount_amount",
+              "key": "01M8EJPZN9G2P1GNXW3G5XJANR",
+              "status": "field",
+              "field": "amountAmount"
+            },
+            {
+              "name": "amount_currency",
+              "key": "01M8EJPZN95G9KXYM7H3MEER3X",
+              "status": "field",
+              "field": "amountCurrency"
+            },
+            {
+              "name": "received_at",
+              "key": "01M8EJPZN9M4Q4C4FTM8YR116Z",
+              "status": "field",
+              "field": "receivedAt"
+            },
+            {
+              "name": "reference",
+              "key": "01M8EJPZN960X82Y22ZAEA6013",
+              "status": "field",
+              "field": "reference"
+            },
+            {
+              "name": "created_at",
+              "key": "01M8EJPZN9WWYJX5WB75FWNHNJ",
+              "status": "field",
+              "field": "createdAt"
+            },
+            {
+              "name": "updated_at",
+              "key": "01M8EJPZN9VR9X43VFC361E98W",
+              "status": "field",
+              "field": "updatedAt"
+            }
+          ],
+          "writeColumns": []
+        }
+      ]
     },
     {
       "id": "01J92P0V0JR8BE8253SKT29ZG7",
@@ -5100,41 +5791,7 @@
       "relations": [
         "01J92P0V1CC98R0RRCAV73SGF4"
       ],
-      "mappings": [
-        {
-          "database": "01J92P0V1QRN2181XM2ZWE02W4",
-          "table": "01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4",
-          "inheritance": null,
-          "discriminatorColumn": null,
-          "discriminatorValue": null,
-          "columns": [
-            {
-              "attributePath": "01J92P0V15PMP0E4P5DSNZVETR",
-              "column": "01J92P0V15PMP0E4P5DSNZVETR"
-            },
-            {
-              "attributePath": "01J92P0V17VC286G57N0QWE44Y",
-              "column": "01J92P0V17VC286G57N0QWE44Y"
-            },
-            {
-              "attributePath": "01J92P0V18CYJRYN96H242Z8QA",
-              "column": "01J92P0V18CYJRYN96H242Z8QA"
-            },
-            {
-              "attributePath": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ",
-              "column": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ"
-            },
-            {
-              "attributePath": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V093A7BE6Q8AS477H7D",
-              "column": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V093A7BE6Q8AS477H7D"
-            },
-            {
-              "attributePath": "01J92P0V29S2CSA68TATT9P1QS",
-              "column": "01J92P0V29S2CSA68TATT9P1QS"
-            }
-          ]
-        }
-      ],
+      "mappings": [],
       "isPromoted": false,
       "promotedFrom": null,
       "seeds": [],
@@ -5149,7 +5806,157 @@
       ],
       "properties": {},
       "generation": {},
-      "bindings": []
+      "bindings": [
+        {
+          "id": "01M8EJPZP171WSF42THNVKQ061",
+          "database": "01J92P0V1QRN2181XM2ZWE02W4",
+          "sourceKind": "table",
+          "source": "01M8EJPZN967ERTF2BPP3YM4QY",
+          "sourceName": "products",
+          "writeTable": "01M8EJPZN967ERTF2BPP3YM4QY",
+          "delete": "key",
+          "softDeleteColumn": null,
+          "softDeleteValue": null,
+          "constants": [],
+          "fields": [
+            {
+              "name": "id",
+              "attribute": "01J92P0V15PMP0E4P5DSNZVETR",
+              "attributeId": "01J92P0V15PMP0E4P5DSNZVETR",
+              "memberId": null,
+              "endId": null,
+              "column": "id",
+              "columnKey": "01M8EJPZN9FW9ZV7DANC4C50XN",
+              "writeColumn": "01M8EJPZN9FW9ZV7DANC4C50XN",
+              "type": "uuid",
+              "nullable": false,
+              "isKey": true,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": false
+            },
+            {
+              "name": "sku",
+              "attribute": "01J92P0V17VC286G57N0QWE44Y",
+              "attributeId": "01J92P0V17VC286G57N0QWE44Y",
+              "memberId": null,
+              "endId": null,
+              "column": "sku",
+              "columnKey": "01M8EJPZN98ZT4YXA1H23Y4ARA",
+              "writeColumn": "01M8EJPZN98ZT4YXA1H23Y4ARA",
+              "type": "string",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "name",
+              "attribute": "01J92P0V18CYJRYN96H242Z8QA",
+              "attributeId": "01J92P0V18CYJRYN96H242Z8QA",
+              "memberId": null,
+              "endId": null,
+              "column": "name",
+              "columnKey": "01M8EJPZN9DEQ60PS9QJ8WBYT3",
+              "writeColumn": "01M8EJPZN9DEQ60PS9QJ8WBYT3",
+              "type": "string",
+              "nullable": false,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "listPriceAmount",
+              "attribute": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ",
+              "attributeId": "01J92P0V1935QZTM8ZQ240DJ6Q",
+              "memberId": "01J92P0V08P9BVJAPQ793XYNTQ",
+              "endId": null,
+              "column": "list_price_amount",
+              "columnKey": "01M8EJPZN9ZA0CTZKR93TKCGFN",
+              "writeColumn": "01M8EJPZN9ZA0CTZKR93TKCGFN",
+              "type": "decimal",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "listPriceCurrency",
+              "attribute": "01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V093A7BE6Q8AS477H7D",
+              "attributeId": "01J92P0V1935QZTM8ZQ240DJ6Q",
+              "memberId": "01J92P0V093A7BE6Q8AS477H7D",
+              "endId": null,
+              "column": "list_price_currency",
+              "columnKey": "01M8EJPZN9AK1W7MKD786SZC3Z",
+              "writeColumn": "01M8EJPZN9AK1W7MKD786SZC3Z",
+              "type": "string",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            },
+            {
+              "name": "deletedAt",
+              "attribute": "01J92P0V29S2CSA68TATT9P1QS",
+              "attributeId": "01J92P0V29S2CSA68TATT9P1QS",
+              "memberId": null,
+              "endId": null,
+              "column": "deleted_at",
+              "columnKey": "01M8EJPZN9HM5EW57V5HN8DKMD",
+              "writeColumn": "01M8EJPZN9HM5EW57V5HN8DKMD",
+              "type": "datetimeoffset",
+              "nullable": true,
+              "isKey": false,
+              "isGenerated": false,
+              "inInsert": true,
+              "inUpdate": true
+            }
+          ],
+          "columns": [
+            {
+              "name": "id",
+              "key": "01M8EJPZN9FW9ZV7DANC4C50XN",
+              "status": "field",
+              "field": "id"
+            },
+            {
+              "name": "sku",
+              "key": "01M8EJPZN98ZT4YXA1H23Y4ARA",
+              "status": "field",
+              "field": "sku"
+            },
+            {
+              "name": "name",
+              "key": "01M8EJPZN9DEQ60PS9QJ8WBYT3",
+              "status": "field",
+              "field": "name"
+            },
+            {
+              "name": "list_price_amount",
+              "key": "01M8EJPZN9ZA0CTZKR93TKCGFN",
+              "status": "field",
+              "field": "listPriceAmount"
+            },
+            {
+              "name": "list_price_currency",
+              "key": "01M8EJPZN9AK1W7MKD786SZC3Z",
+              "status": "field",
+              "field": "listPriceCurrency"
+            },
+            {
+              "name": "deleted_at",
+              "key": "01M8EJPZN9HM5EW57V5HN8DKMD",
+              "status": "field",
+              "field": "deletedAt"
+            }
+          ],
+          "writeColumns": []
+        }
+      ]
     },
     {
       "id": "01K6BND0000000000000000030",
@@ -5767,7 +6574,7 @@
           "database": "01J92P0V1QRN2181XM2ZWE02W4",
           "shape": "junction",
           "foreignKey": null,
-          "junctionTable": "01J92P0V1DKHD5Q02DV6S5M53D@01J92P0V1QRN2181XM2ZWE02W4",
+          "junctionTable": "01M8EJPZN9Y3HNXTC7V3Q7CP50",
           "promotedEntity": null
         }
       ],

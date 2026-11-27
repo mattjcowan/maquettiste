@@ -1,0 +1,47 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JQSCN0000000000000000005",
+  "name": "PaymentOverdue",
+  "displayName": "Payment overdue by time",
+  "process": "01JQPRC0000000000000000001",
+  "start": {
+    "context": {
+      "01JQATT0000000000000000101": 100,
+      "01JQATT0000000000000000102": 1000
+    }
+  },
+  "steps": [
+    {
+      "id": "01JQSTP0000000000000000015",
+      "event": "01JQPRX0000000000000000001",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000007",
+          "01JQSTA0000000000000000011"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000016",
+      "input": "time",
+      "after": "P30D",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000008",
+          "01JQSTA0000000000000000011"
+        ]
+      }
+    },
+    {
+      "id": "01JQSTP0000000000000000017",
+      "event": "01JQPRX0000000000000000004",
+      "expect": {
+        "states": [
+          "01JQSTA0000000000000000009",
+          "01JQSTA0000000000000000011"
+        ]
+      }
+    }
+  ]
+}

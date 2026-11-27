@@ -46,5 +46,48 @@
       },
       "description": "Quantity received."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9C3RQ95KR3DSN3WVRM9",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PFTQ9BQ4QKSQM6H5Z",
+      "fields": [
+        {
+          "attribute": "01M211ED9VXX9ZJWGKJE9R41A1",
+          "column": "01M8EJX99PS8ZR3HTWV0H0WRDP"
+        },
+        {
+          "attribute": "01M24AQ5KP8X1NWDGJHZPG60K8",
+          "column": "01M8EJX99PY7KQDK03TMN1BGPC"
+        },
+        {
+          "attribute": "01M1PES482PQFJRW538KMNMGQB",
+          "column": "01M8EJX99PGV1F086D016BZK4B"
+        },
+        {
+          "attribute": "01M26NEFGBVFD42MZ5R6N8BG4X",
+          "column": "01M8EJX99P6FKBSPW2YN0GK0G2"
+        },
+        {
+          "attribute": "01M2KSXVZSZ665W3GHWGK7RRVT",
+          "column": "01M8EJX99P15RHDXCZGNZZSEHF"
+        },
+        {
+          "attribute": "01M29X1H9FVJH2HBRGYBHN7HEN",
+          "column": "01M8EJX99PPEK3C42JWH1X68NB"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P15RHDXCZGNZZSEHF": "cdd9faec:d8a57cf9",
+          "01M8EJX99P6FKBSPW2YN0GK0G2": "d83c5f18:8da1c7b8",
+          "01M8EJX99PGV1F086D016BZK4B": "a7e3ba24:3d0da96a",
+          "01M8EJX99PPEK3C42JWH1X68NB": "64814827:8da1c7b8",
+          "01M8EJX99PS8ZR3HTWV0H0WRDP": "a5614527:8da1c7b8",
+          "01M8EJX99PY7KQDK03TMN1BGPC": "1a7b308d:0495da45"
+        }
+      }
+    }
   ]
 }

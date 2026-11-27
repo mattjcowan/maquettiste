@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHMWSTA14M1JADSPG5",
+  "name": "shipping zone originates at origin warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1ES4802N0XEHQWM1J3DN5X3",
+  "foreignKey": "01M8EJX9A9PNMT04H4C700ZS30"
+}

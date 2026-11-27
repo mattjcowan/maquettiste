@@ -55,5 +55,58 @@
       "default": false,
       "description": "Whether sales tax applies."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B83FEY4X0HXS5P0TPH",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QF157FB6Z8QHX7XTH",
+      "fields": [
+        {
+          "attribute": "01M1NJ4YHZ6BHWPVJRM91C1PNQ",
+          "column": "01M8EJX99QKH13FJQF10AHJ08S"
+        },
+        {
+          "attribute": "01M255968DAHW9YGA7Q3K0PEJN",
+          "column": "01M8EJX99QCG2D4RPQQKXBJFX2"
+        },
+        {
+          "attribute": "01M22AK9N8KDMC9GJW6BNPRN8X",
+          "column": "01M8EJX99QMHKCSBS4WH9ZTF7F"
+        },
+        {
+          "attribute": "01M34M4JMPBGSFHKTNXF7GBPER.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QJDX3PWHCRW4Q5DYK"
+        },
+        {
+          "attribute": "01M34M4JMPBGSFHKTNXF7GBPER.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99Q9WM43DKYHSYCT573"
+        },
+        {
+          "attribute": "01M1SM7ZK142GBJQ4K9JNRJTRN",
+          "column": "01M8EJX99QFYW5PJWSS7RXAVZ1"
+        },
+        {
+          "attribute": "01M1NVH0P2HH0R0N8GFPW0X5KK",
+          "column": "01M8EJX99QGMW3S27T65X7YBP6"
+        },
+        {
+          "attribute": "01M37SQ7QGDVDR8WQNY4ATCETF",
+          "column": "01M8EJX99QKMX1280102RERZ93"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q9WM43DKYHSYCT573": "09517263:48b85cd3",
+          "01M8EJX99QCG2D4RPQQKXBJFX2": "05891ce0:04146d06",
+          "01M8EJX99QFYW5PJWSS7RXAVZ1": "5c22a398:19980141",
+          "01M8EJX99QGMW3S27T65X7YBP6": "635b56a4:d8a57cf9",
+          "01M8EJX99QJDX3PWHCRW4Q5DYK": "1054ddec:d46c92d7",
+          "01M8EJX99QKH13FJQF10AHJ08S": "a5614527:8da1c7b8",
+          "01M8EJX99QKMX1280102RERZ93": "8071acdb:8da1c7b8",
+          "01M8EJX99QMHKCSBS4WH9ZTF7F": "c9046f7a:6b504d2a"
+        }
+      }
+    }
   ]
 }

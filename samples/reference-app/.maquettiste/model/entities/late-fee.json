@@ -65,5 +65,58 @@
       "length": 200,
       "description": "Why it was waived."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B73YJJVHKMY2S8SC21",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99N36HTCW3P6GQ38Q0E",
+      "fields": [
+        {
+          "attribute": "01M2ZN1V5ZMTRG5SKHEMRSY7GH",
+          "column": "01M8EJX99NK9D3Q3616HS3Q07X"
+        },
+        {
+          "attribute": "01M2EDFZ3M31HD6J8MY1SYYSTQ",
+          "column": "01M8EJX99NJ74GVQ7GK9ER7C27"
+        },
+        {
+          "attribute": "01M24V116QTF1411A8MXB3SQTF.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99NJKZYJJNYF5WSJ48S"
+        },
+        {
+          "attribute": "01M24V116QTF1411A8MXB3SQTF.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99N4RH2STQCESPMEBEH"
+        },
+        {
+          "attribute": "01M2HKZ0ZZPT8WKZNMN24NDRKX",
+          "column": "01M8EJX99NAZT516GDWCKYKZD5"
+        },
+        {
+          "attribute": "01M25D482YH7MDPSE480QFTQPE",
+          "column": "01M8EJX99NCRZ4BE214Y32ADRK"
+        },
+        {
+          "attribute": "01M2KYBHA41CF7YNH1FNV9JWYB",
+          "column": "01M8EJX99NYB6M7E7FP4M7Y7KC"
+        },
+        {
+          "attribute": "01M1KA5S13R41FM7CAQ8TJERM9",
+          "column": "01M8EJX99NJ5B4XMAXJQJ3RKNX"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N4RH2STQCESPMEBEH": "09517263:48b85cd3",
+          "01M8EJX99NAZT516GDWCKYKZD5": "c549779d:08b882e7",
+          "01M8EJX99NCRZ4BE214Y32ADRK": "b4cb197d:19980141",
+          "01M8EJX99NJ5B4XMAXJQJ3RKNX": "04235704:8da1c7b8",
+          "01M8EJX99NJ74GVQ7GK9ER7C27": "dc7f0c03:81884634",
+          "01M8EJX99NJKZYJJNYF5WSJ48S": "1054ddec:d46c92d7",
+          "01M8EJX99NK9D3Q3616HS3Q07X": "a5614527:8da1c7b8",
+          "01M8EJX99NYB6M7E7FP4M7Y7KC": "a429d456:6b504d2a"
+        }
+      }
+    }
   ]
 }

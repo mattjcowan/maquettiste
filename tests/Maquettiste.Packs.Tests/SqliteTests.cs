@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
 
@@ -7,6 +8,7 @@ namespace Maquettiste.Packs.Tests;
 /// scripts go through the <c>sqlite3</c> command-line shell when it is on the PATH; without it the test checks the scripts' shape.
 /// <see cref="CompileTests"/> also executes the schema and seed scripts through Microsoft.Data.Sqlite when NuGet is reachable.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed partial class SqliteTests
 {
     [Fact]

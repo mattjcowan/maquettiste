@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJQ9HW7GHAE3K8VR0J",
+  "name": "quality inspection is inspected by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2PZK9FDV6Z7M4C36RS9PW6W",
+  "foreignKey": "01M8EJX9AASZH7ARWT0CN7H7XJ"
+}

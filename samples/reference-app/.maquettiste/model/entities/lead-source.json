@@ -36,5 +36,48 @@
       "length": 40,
       "description": "Marketing channel the source rolls up to."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B7YP2ACRM7X6Q07EEY",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PMJ68BYB4ZJ1KG6E5",
+      "fields": [
+        {
+          "attribute": "01M2Z7CHCCDR5Y33GB17YGMR24",
+          "column": "01M8EJX99P68KX5024RBQKKQR8"
+        },
+        {
+          "attribute": "01M2KQRFZMVKK402QSA4NW6K8V",
+          "column": "01M8EJX99PGWFEY70EP6Y0TZFN"
+        },
+        {
+          "attribute": "01M1Q2XEZTSQ4A7SG2QB2MDQ7G",
+          "column": "01M8EJX99PR0KKXXJTXX6JH1FM"
+        },
+        {
+          "attribute": "01M32VYTXQMHC0TM6FHBHKHE4T",
+          "column": "01M8EJX99PCF0KCM1Y0316T60E"
+        },
+        {
+          "attribute": "01M2WVYB596ZFE7XF9DEVKTVCD",
+          "column": "01M8EJX99PQWN1SQJ869MYTHTY"
+        },
+        {
+          "attribute": "01M352J3V77SWZZE4X5PY7GPHN",
+          "column": "01M8EJX99PFQ94Y5PAGYH6MKHW"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P68KX5024RBQKKQR8": "a5614527:53fb88ea",
+          "01M8EJX99PCF0KCM1Y0316T60E": "82a3537f:6137f4ed",
+          "01M8EJX99PFQ94Y5PAGYH6MKHW": "0a2438db:19980141",
+          "01M8EJX99PGWFEY70EP6Y0TZFN": "69e36568:014c4aec",
+          "01M8EJX99PQWN1SQJ869MYTHTY": "d0efd4f6:53fb88ea",
+          "01M8EJX99PR0KKXXJTXX6JH1FM": "5694d08a:461bd2c5"
+        }
+      }
+    }
   ]
 }

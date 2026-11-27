@@ -16,5 +16,18 @@
       "type": "uuid",
       "required": true
     }
+  ],
+  "bindings": [
+    {
+      "id": "01JBND00000000000000000004",
+      "database": "01JDBS00000000000000000001",
+      "source": "01JTAB00000000000000000004",
+      "fields": [
+        {
+          "attribute": "01JATT00000000000000000401",
+          "column": "01JCMN00000000000000000006"
+        }
+      ]
+    }
   ]
 }

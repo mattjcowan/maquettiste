@@ -846,13 +846,17 @@ internal static class PhysicalRules
     }
 
     /// <summary>A table's columns by id; the first wins when an id repeats (a malformed in-memory table must not throw).</summary>
-    private static Dictionary<string, Column> ColumnsById(Table table)
+    private static Dictionary<string, Column> ColumnsById(Table table) => ColumnIds.GetValue(table, static t =>
     {
-        var ids = new Dictionary<string, Column>(StringComparer.Ordinal);
-        foreach (var column in table.Columns)
+        // Kept per table entry (immutable, and kept from one snapshot to the next while its file is unchanged): every foreign key of a
+        // table, and every key that references it, asked for the same dictionary. Callers only read it.
+        var ids = new Dictionary<string, Column>(t.Columns.Count, StringComparer.Ordinal);
+        foreach (var column in t.Columns)
             ids.TryAdd(column.Id, column);
         return ids;
-    }
+    });
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Table, Dictionary<string, Column>> ColumnIds = new();
 
     /// <summary>Whether a column key is <c>&lt;tableKey&gt;.&lt;memberId&gt;</c> where the member is a column of a stereotype.</summary>
     private static bool IsStereotypeColumnKey(ModelSnapshot model, string tableKey, string key) =>

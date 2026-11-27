@@ -554,6 +554,9 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   // primary key).
   const designedSchema = (doc: Json) => (typeof doc.schema === "string" ? (declared.get(doc.schema) ?? defaultSchema) : defaultSchema);
   const designed = overlays.filter((d) => d.origin !== "synthesized").sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const junctionRelation = new Map(
+    mappings.filter((m) => typeof m.relation === "string" && typeof m.junctionTable === "string").map((m) => [String(m.junctionTable), String(m.relation)]),
+  );
   for (const doc of designed) {
     const name = String(doc.name ?? "");
     const pkColumns = ((doc.primaryKey as Json | undefined)?.columns as string[] | undefined) ?? [];
@@ -607,8 +610,9 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
       schema: designedSchema(doc),
       origin: doc.origin === "imported" ? "imported" : "designed",
       entityId: null,
-      relationId: null,
-      isJunction: false,
+      // A relation mapping's junction table is that relation's junction (the engine marks it so).
+      relationId: junctionRelation.get(String(doc.id)) ?? null,
+      isJunction: junctionRelation.has(String(doc.id)),
       isLookup: false,
       comment: commentOf(doc),
       columns,
@@ -684,6 +688,8 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
     if (!known(a.entity) || !known(b.entity)) continue;
     const relationMapping = mappings.find((m) => m.relation === relation.id);
     if (relationMapping?.ignore === true) continue;
+    // A mapping that names a junction table of its own leaves nothing to synthesize.
+    if (typeof relationMapping?.junctionTable === "string") continue;
     const manyA = (a.max ?? "*") === "*";
     const manyB = (b.max ?? "*") === "*";
     const onDelete = (end: Json) => ({ cascade: "cascade", restrict: "restrict", "set-null": "set null" })[String(end.onDelete)] ?? "no action";

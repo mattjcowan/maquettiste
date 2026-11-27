@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH4XVRVD2MAY2699GZ",
+  "name": "product is sold in sales unit in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2F94H1PZXNWQN2E88R6M384",
+  "foreignKey": "01M8EJX9A7AAW2QKMKHTHKP2A2"
+}

@@ -17,10 +17,14 @@ func ms_checked(call, db)
   ret "BEGIN DECLARE " + $v + " int; EXEC " + $v + " = " + call + "; IF " + $v + " <> 0 THROW 50000, " + lit($proc + " failed: the migration stops here.", db) + ", 1; END"
 end
 
+# Set while a migration writes what a rekey fact adopted (adopted_table_statements in _migration.scriban): those statements are
+# idempotent whatever the parameter says.
+mq_force_idempotent = false
+
 # Whether the pack writes idempotent DDL (the "idempotent" parameter): CREATE ... IF NOT EXISTS, DROP ... IF EXISTS and the
 # dialect's guards where it has no such clause (SQL Server OBJECT_ID tests, PostgreSQL DO blocks for constraints).
 func idem()
-  ret pack.params.idempotent == true
+  ret pack.params.idempotent == true || mq_force_idempotent
 end
 
 # A PostgreSQL DO block that runs a statement only when a constraint of a table is missing (ADD CONSTRAINT has no IF NOT EXISTS).

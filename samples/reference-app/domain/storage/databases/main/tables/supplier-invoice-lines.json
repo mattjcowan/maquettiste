@@ -1,0 +1,128 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99Q8C715P0CBR4DZ4M5",
+  "name": "supplier_invoice_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QEF0WNKA3YEZH7G7J",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the supplier invoice line."
+    },
+    {
+      "id": "01M8EJX99QHK62C72733F7J24G",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "nullable": false,
+      "comment": "Line text."
+    },
+    {
+      "id": "01M8EJX99Q7X4ZK6DBJVRNKHM2",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity invoiced."
+    },
+    {
+      "id": "01M8EJX99QE46J4SDDKFHBRX9B",
+      "name": "unit_cost_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QKJ9E8E5BHN5J893Z",
+      "name": "unit_cost_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QMK8JSR2CEGM683AH",
+      "name": "line_total_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QHGNDGZ2K288ET9E6",
+      "name": "line_total_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99Q3Z6PPEG82PEEBRE6",
+      "name": "supplier_invoice_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q7RADNSPFC5YTZR43",
+      "name": "ledger_account_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QGW912XHPV0T87ACW",
+      "name": "purchase_order_line_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_supplier_invoice_lines",
+    "columns": [
+      "01M8EJX99QEF0WNKA3YEZH7G7J"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABHT2X9TP3ZSCJ5DWP",
+      "name": "fk_supplier_invoice_lines_supplier_invoice_id",
+      "columns": [
+        "01M8EJX99Q3Z6PPEG82PEEBRE6"
+      ],
+      "referencesTable": "01M8EJX99QS639SA8R8GR78SYN",
+      "referencesColumns": [
+        "01M8EJX99Q2JZ5RQYM5RW564H9"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ABHKAMKJ0F4R80YDKY",
+      "name": "fk_supplier_invoice_lines_ledger_account_id",
+      "columns": [
+        "01M8EJX99Q7RADNSPFC5YTZR43"
+      ],
+      "referencesTable": "01M8EJX99P0PRFJXZXM6AR56B8",
+      "referencesColumns": [
+        "01M8EJX99PXZ7RFKDAGWVDWMTX"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB421K6X2MWYPRKDMK",
+      "name": "fk_supplier_invoice_lines_purchase_order_line_id",
+      "columns": [
+        "01M8EJX99QGW912XHPV0T87ACW"
+      ],
+      "referencesTable": "01M8EJX99Q2NHVT98RXQ84QHB9",
+      "referencesColumns": [
+        "01M8EJX99QN3T8C8VT8N9Z2TVW"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An invoiced item of a supplier invoice."
+}

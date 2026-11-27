@@ -1,0 +1,92 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P0NG0PS6ZKFXD9SX7",
+  "name": "sign_in_attempts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PF28MWSSAEAY0AXCN",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the sign in attempt."
+    },
+    {
+      "id": "01M8EJX99PRRAAWBG7FABP3RFV",
+      "name": "attempted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the attempt happened."
+    },
+    {
+      "id": "01M8EJX99PK118GNP3RE73E9WT",
+      "name": "user_name",
+      "type": "string",
+      "length": 64,
+      "nullable": false,
+      "comment": "User name entered."
+    },
+    {
+      "id": "01M8EJX99PD5264EJSX9V4N18X",
+      "name": "succeeded",
+      "type": "bool",
+      "nullable": false,
+      "comment": "Whether the attempt succeeded."
+    },
+    {
+      "id": "01M8EJX99PCJK4BJK4M4QHBB2W",
+      "name": "failure_reason",
+      "type": "string",
+      "length": 60,
+      "comment": "Why it failed, such as bad-password or locked."
+    },
+    {
+      "id": "01M8EJX99PTV0011QEQ3NR4P38",
+      "name": "ip_address",
+      "type": "string",
+      "length": 45,
+      "nullable": false,
+      "comment": "Client IP address."
+    },
+    {
+      "id": "01M8EJX99PKW7M4BR8VAZYK31T",
+      "name": "user_account_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sign_in_attempts",
+    "columns": [
+      "01M8EJX99PF28MWSSAEAY0AXCN"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9BTB9CH5BY9P4JS7T",
+      "name": "fk_sign_in_attempts_user_account_id",
+      "columns": [
+        "01M8EJX99PKW7M4BR8VAZYK31T"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A9Q6QNJHYPWFFB8FJV",
+      "name": "ix_sign_in_attempts_attempted_at",
+      "columns": [
+        {
+          "column": "01M8EJX99PRRAAWBG7FABP3RFV"
+        }
+      ]
+    }
+  ],
+  "comment": "One sign-in attempt, successful or not, used for lockout and security reviews."
+}

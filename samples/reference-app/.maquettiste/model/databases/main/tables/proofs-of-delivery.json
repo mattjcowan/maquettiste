@@ -1,0 +1,105 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PF3MBEMMK75JHX2NT",
+  "name": "proofs_of_delivery",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P34S9P781CN7MR1JW",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the proof of delivery."
+    },
+    {
+      "id": "01M8EJX99PS207A2DDMD9A1CA8",
+      "name": "delivered_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "Delivery time."
+    },
+    {
+      "id": "01M8EJX99P9PCZ2EBAZVJBNRW0",
+      "name": "received_by_name",
+      "type": "string",
+      "length": 120,
+      "comment": "Name of the person who signed."
+    },
+    {
+      "id": "01M8EJX99PCJBP5WGRGH2E9PJZ",
+      "name": "signature_image_url",
+      "type": "string",
+      "length": 400,
+      "comment": "Signature capture."
+    },
+    {
+      "id": "01M8EJX99PMSAKJQVD6WJN145B",
+      "name": "photo_url",
+      "type": "string",
+      "length": 400,
+      "comment": "Photo of the delivered goods."
+    },
+    {
+      "id": "01M8EJX99PP62BB52XAQ6YX8QZ",
+      "name": "location_latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "comment": "Degrees north of the equator."
+    },
+    {
+      "id": "01M8EJX99P30B9JMK1NVRAVXFD",
+      "name": "location_longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "comment": "Degrees east of Greenwich."
+    },
+    {
+      "id": "01M8EJX99PC59WBQQ419DXCAWS",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "comment": "Driver's remarks."
+    },
+    {
+      "id": "01M8EJX99PQBEKQMWT7DYAYYNF",
+      "name": "shipment_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_proofs_of_delivery",
+    "columns": [
+      "01M8EJX99P34S9P781CN7MR1JW"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9P6K840JWREPD3GPR",
+      "name": "uq_proofs_of_delivery_shipment_id",
+      "columns": [
+        "01M8EJX99PQBEKQMWT7DYAYYNF"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9GF8XBVG9D9CHX5XG",
+      "name": "fk_proofs_of_delivery_shipment_id",
+      "columns": [
+        "01M8EJX99PQBEKQMWT7DYAYYNF"
+      ],
+      "referencesTable": "01M8EJX99PKM2XB6JYQ5KG4H99",
+      "referencesColumns": [
+        "01M8EJX99PJZQHKXG1H6695ECQ"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Evidence that a shipment was delivered - who signed, where and when."
+}

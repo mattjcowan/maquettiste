@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHKJ0SQFGPP31RR468",
+  "name": "credit profile belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M36ZGXH3ET4FFKJJZ6FZYE2K",
+  "foreignKey": "01M8EJX9A87GVM8DXGG5PQSQT5"
+}

@@ -1,0 +1,149 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PWK12H21W6VRCWHPF",
+  "name": "delivery_routes",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PTQ0JDEEQVFZTCQJY",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the delivery route."
+    },
+    {
+      "id": "01M8EJX99PZ6WE1KJ49XGSYT8V",
+      "name": "route_code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Route code, such as DEN-NORTH-2."
+    },
+    {
+      "id": "01M8EJX99P5ES0EYD86WTM7AYC",
+      "name": "route_date",
+      "type": "date",
+      "nullable": false,
+      "comment": "Delivery date."
+    },
+    {
+      "id": "01M8EJX99P43B0YPXXJWPYS4FG",
+      "name": "status",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "planned",
+      "comment": "planned, loading, on-road or complete."
+    },
+    {
+      "id": "01M8EJX99P5T62J369MZAHGTHH",
+      "name": "planned_distance_km",
+      "type": "decimal",
+      "precision": 8,
+      "scale": 1,
+      "comment": "Planned distance."
+    },
+    {
+      "id": "01M8EJX99PCWKHBC7283QT0EN6",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P6HWG8HP9HH62MSVQ",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PXVPP7CWRCSKCW28Q",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PZ5XX3E2BKNQV4G8D",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PQF10DB7D5WH5X9Y1",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P49MPZX8XAC04J4G2",
+      "name": "driver_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P0WRNMMQRNFVCCV4W",
+      "name": "vehicle_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_delivery_routes",
+    "columns": [
+      "01M8EJX99PTQ0JDEEQVFZTCQJY"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9S5FR9BNQ3B29WH4Q",
+      "name": "fk_delivery_routes_warehouse_id",
+      "columns": [
+        "01M8EJX99PQF10DB7D5WH5X9Y1"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A96P7C3YTYKY66H8F2",
+      "name": "fk_delivery_routes_driver_id",
+      "columns": [
+        "01M8EJX99P49MPZX8XAC04J4G2"
+      ],
+      "referencesTable": "01M8EJX99P49MAF6FNKX4XF4TA",
+      "referencesColumns": [
+        "01M8EJX99PN9E9BQK4AN4ZMV8P"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A90ACZXX21JQNPSSCH",
+      "name": "fk_delivery_routes_vehicle_id",
+      "columns": [
+        "01M8EJX99P0WRNMMQRNFVCCV4W"
+      ],
+      "referencesTable": "01M8EJX99PMXBNKDF2JJPB2XR0",
+      "referencesColumns": [
+        "01M8EJX99P7W4FY2ZYVCZF6DMD"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A9CCCZQAA7T8W7X003",
+      "name": "ix_delivery_routes_route_date",
+      "columns": [
+        {
+          "column": "01M8EJX99P5ES0EYD86WTM7AYC"
+        }
+      ]
+    }
+  ],
+  "comment": "A day's delivery run of an own-fleet truck, visiting stops in order."
+}

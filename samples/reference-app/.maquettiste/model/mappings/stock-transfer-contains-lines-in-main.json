@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ4SWCR8NFBHH65BGQ",
+  "name": "stock transfer contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M37K4FBJCYECM9WZG48PWMGT",
+  "foreignKey": "01M8EJX9AAKCQEXAA0QT1S4S06"
+}

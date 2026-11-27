@@ -25,6 +25,7 @@ import {
 import { MockBackend } from "@/mocks/backend";
 import { schemaValidator } from "@/mocks/contract";
 import { createEditorStore } from "@/state/store";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 
 type Json = Record<string, unknown>;
 const DB = "01J92P0V1QRN2181XM2ZWE02W4";
@@ -273,7 +274,7 @@ describe("which tables can be stored as table files", () => {
 
 describe("the mock stores laid-out tables as table files (materialize-tables)", () => {
   it("lists what can be stored, previews it and stores it in one batch; each file holds every column", () => {
-    const backend = new MockBackend();
+    const backend = new MockBackend({ seed: billingProjectedSeed() });
     const status = backend.model.materializeStatus(DB)!;
     expect(schemaValidator("MaterializeStatus")(status)).toBe(true);
     expect(status.entities.find((e) => e.id === CUSTOMER)).toMatchObject({ projected: true, table: "customers" });

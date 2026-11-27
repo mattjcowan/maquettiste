@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH7XBJCSWEY5C4VVXK",
+  "name": "product is made by manufacturer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1MTPRNVH6AC4CPJCVXS3K5P",
+  "foreignKey": "01M8EJX9A7WN6EKSAZKHMDDE06"
+}

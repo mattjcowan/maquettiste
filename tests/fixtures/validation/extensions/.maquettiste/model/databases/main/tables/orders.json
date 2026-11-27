@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKDBZ8RQR2DH00MNV8VGPY",
+  "name": "orders",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKDBZ8MKCS68N87DRT9MC3",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_orders",
+    "columns": [
+      "01M8EKDBZ8MKCS68N87DRT9MC3"
+    ]
+  }
+}

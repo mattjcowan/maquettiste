@@ -19,6 +19,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// <c>MAQUETTISTE_TEST_POSTGRES_CONTAINER</c>, once every other step has passed.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class ExpressionAcceptanceTests
 {
     private const string Main = E2ERepo.MainDatabaseId;

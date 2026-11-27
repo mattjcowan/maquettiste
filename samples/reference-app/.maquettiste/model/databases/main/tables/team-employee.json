@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QD6R1DJ7A05VJSKCG",
+  "name": "team_employee",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QGG3RZVYBBY59ZDVE",
+      "name": "teams_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QQR3Z03MFXGMCXYBC",
+      "name": "members_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_team_employee",
+    "columns": [
+      "01M8EJX99QGG3RZVYBBY59ZDVE",
+      "01M8EJX99QQR3Z03MFXGMCXYBC"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACNN1THSFQ06FVYCT1",
+      "name": "fk_team_employee_teams_id",
+      "columns": [
+        "01M8EJX99QGG3RZVYBBY59ZDVE"
+      ],
+      "referencesTable": "01M8EJX99PKEA6B6DKH4SNXYC6",
+      "referencesColumns": [
+        "01M8EJX99PV00AMJAEFES925BB"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ACA4K4HR3NXF337SP9",
+      "name": "fk_team_employee_members_id",
+      "columns": [
+        "01M8EJX99QQR3Z03MFXGMCXYBC"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Employees who belong to a team; an employee may belong to several teams."
+}

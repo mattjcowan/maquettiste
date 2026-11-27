@@ -16,6 +16,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// type, the binding maps to the <c>status</c> column, and the query <c>events-by-status</c>. The shared fixture does not change.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class ColumnTypeTests
 {
     private const string Main = E2ERepo.MainDatabaseId;

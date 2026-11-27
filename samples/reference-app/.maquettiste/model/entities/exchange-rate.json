@@ -63,5 +63,53 @@
       "length": 40,
       "description": "Feed the rate came from."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B38KV8YGZSD7APMB6C",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PA3ZD9QH0FRSFQT4T",
+      "fields": [
+        {
+          "attribute": "01M1H2R2SY4K2BF7ZNDV4DGDT9",
+          "column": "01M8EJX99PK33ZHDMBRX2V4M67"
+        },
+        {
+          "attribute": "01M2EQ7TH5W80CA13VEM35NJM5",
+          "column": "01M8EJX99PTD37GR2Z73R0TMF8"
+        },
+        {
+          "attribute": "01M38GM41RDR8CKT20WJNH9FZM",
+          "column": "01M8EJX99PPA92JNQR35S39NM8"
+        },
+        {
+          "attribute": "01M2QNQ80RJWHDCNTM5C43QEYG",
+          "column": "01M8EJX99PS81AE15HBYB900CY"
+        },
+        {
+          "attribute": "01M2SDMRX7RE3VKV1Y27DAH35R",
+          "column": "01M8EJX99PVXEZMZC59WBKB20J"
+        },
+        {
+          "attribute": "01M29T64Z0AT2975AM2YHT8Q2N",
+          "column": "01M8EJX99PC7WEHZXJNC9V67ZY"
+        },
+        {
+          "attribute": "01M21AXEFP4VFRR8H1NPQB2QHG",
+          "column": "01M8EJX99P52MMKDT4D2RYGRE0"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P52MMKDT4D2RYGRE0": "c094b275:48b85cd3",
+          "01M8EJX99PC7WEHZXJNC9V67ZY": "7a3312f8:48b85cd3",
+          "01M8EJX99PK33ZHDMBRX2V4M67": "a5614527:fc034f10",
+          "01M8EJX99PPA92JNQR35S39NM8": "78ca9784:81884634",
+          "01M8EJX99PS81AE15HBYB900CY": "486f5714:483b7d3a",
+          "01M8EJX99PTD37GR2Z73R0TMF8": "c549779d:c59388eb",
+          "01M8EJX99PVXEZMZC59WBKB20J": "41cf6794:014c4aec"
+        }
+      }
+    }
   ]
 }

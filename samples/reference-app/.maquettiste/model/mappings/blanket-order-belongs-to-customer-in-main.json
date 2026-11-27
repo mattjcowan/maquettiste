@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ5X76JTM9ZWYT20M1",
+  "name": "blanket order belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2VRJAVNH10FR2CHC0RNF3P4",
+  "foreignKey": "01M8EJX9AC1R903CJT0424RSNQ"
+}

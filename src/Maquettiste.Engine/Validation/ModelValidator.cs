@@ -215,6 +215,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         try
         {
             var context = shared.WithRuleNames(ruleNames);
+            if (wholeModel)
+                context.BuildCommonIndexes(parallelism, ct);
             var calls = new RuleLibraryCalls(libraryPools);
             var ruleRun = runScripts ? new RuleRun(pool!, rules, RuleKinds(pool!), CachedRuleFiles(model, pool!), _ruleResults, ticket, calls) : null;
             var perDocument = new IReadOnlyList<Diagnostic>[targets.Count];

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJHA3MGAEJPJRJJY5Y",
+  "name": "purchase order is payable on payment term in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1ZNB8071DD2A1ENEVHEGERC",
+  "foreignKey": "01M8EJX9ABGWRPR1PXYP0AM4XJ"
+}

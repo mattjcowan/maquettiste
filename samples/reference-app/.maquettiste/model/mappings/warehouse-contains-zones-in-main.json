@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJE7NCE5JNQ3K9ZWGG",
+  "name": "warehouse contains zones in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1Z5V9HX79V557JW3EHW4F0A",
+  "foreignKey": "01M8EJX9AA42EQF7FYYBDJYQ0W"
+}

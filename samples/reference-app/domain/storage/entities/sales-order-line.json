@@ -1,0 +1,120 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9BVZF19E0VQHR50SFCW",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M34B2XCK0G0EW7GX48YPV9R6",
+      "fields": [
+        {
+          "attribute": "01M2P7JZ3EC056KSQ3XN0K8C61",
+          "column": "01M8EJX99QB5W684KZRFP37DGQ"
+        },
+        {
+          "attribute": "01M2RHECM7J1M1VF8CRJ5EGFWW",
+          "column": "01M8EJX99Q525XD3V4RJSH1MXR"
+        },
+        {
+          "attribute": "01M328GFFRFJENF733S4SAT0JD",
+          "column": "01M8EJX99QZVA0N220TWX4YB4R"
+        },
+        {
+          "attribute": "01M22KBCXDVN3E8C0ZJDZXT4Q3",
+          "column": "01M8EJX99QCKZX4FBHRWHATC02"
+        },
+        {
+          "attribute": "01M1X9JA3KZ3KMC51JCVSAX5QT.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QBC3VG1W1WSXMGN7K"
+        },
+        {
+          "attribute": "01M1X9JA3KZ3KMC51JCVSAX5QT.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99Q8FN1XSVVT25569AX"
+        },
+        {
+          "attribute": "01M2F6Q3368TVCVSMJ6NN56480",
+          "column": "01M8EJX99QNB36K6ZD5B7HZ3ZJ"
+        },
+        {
+          "attribute": "01M2E2TNKHHXZBQM9T0390JQ50",
+          "column": "01M8EJX99QEYZCZRDZN831B6T3"
+        },
+        {
+          "attribute": "01M1G64VX679N4ZP1WTKHKWSNY.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QHB7G8ZRSJ0A1JHYR"
+        },
+        {
+          "attribute": "01M1G64VX679N4ZP1WTKHKWSNY.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QNTV63YEAVHCMDEVR"
+        },
+        {
+          "attribute": "01M2TNPAR5AG0F4DVMDQQR8D60",
+          "column": "01M8EJX99Q506RN7YW12K0C81B"
+        },
+        {
+          "attribute": "01M2EBAQYBEMNY5857FXH1CT6H",
+          "column": "01M8EJX99Q49C0Q2M1FRHP029X"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99Q47VE7B7TCY0AJ2FV"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99QM7PQ2PSKDAGX4C18"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99QQK75NMVZGASCE42M"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99QVPYNK062J330XYS0"
+        },
+        {
+          "attribute": "01M2S1T0PEMA0NJ6QA3203X3BK",
+          "column": "01M8EJX99QPYP9KDAFG5M3EJKX"
+        },
+        {
+          "attribute": "01M1GVE70R1FTN052V654BV77Y",
+          "column": "01M8EJX99Q6E87EP4BSE53TGXP"
+        },
+        {
+          "attribute": "01M20KBDBMRKQ6A160AN46VFX7",
+          "column": "01M8EJX99QVR9AAJNVD61HJAVA"
+        },
+        {
+          "attribute": "01M2S3V2NGA5YNYN8MTE90QPNZ",
+          "column": "01M8EJX99QAXT79NAS1YDCMFCA"
+        },
+        {
+          "attribute": "01M356JWNZJB4DCRC6B1V30TD8",
+          "column": "01M8EJX99QXNZWNJM8KN5TDMS6"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q47VE7B7TCY0AJ2FV": "42049432:e0d08678",
+          "01M8EJX99Q49C0Q2M1FRHP029X": "f34e7a74:9b51e601",
+          "01M8EJX99Q506RN7YW12K0C81B": "073c1634:53fb88ea",
+          "01M8EJX99Q525XD3V4RJSH1MXR": "a0ae1676:53fb88ea",
+          "01M8EJX99Q6E87EP4BSE53TGXP": "64814827:8da1c7b8",
+          "01M8EJX99Q8FN1XSVVT25569AX": "8c0ec395:48b85cd3",
+          "01M8EJX99QAXT79NAS1YDCMFCA": "13867cc0:48b85cd3",
+          "01M8EJX99QB5W684KZRFP37DGQ": "a5614527:4338bc0a",
+          "01M8EJX99QBC3VG1W1WSXMGN7K": "63d21e41:d46c92d7",
+          "01M8EJX99QCKZX4FBHRWHATC02": "1a7b308d:b52e18e1",
+          "01M8EJX99QEYZCZRDZN831B6T3": "072cc216:08b882e7",
+          "01M8EJX99QHB7G8ZRSJ0A1JHYR": "7e56bed9:d46c92d7",
+          "01M8EJX99QM7PQ2PSKDAGX4C18": "c0d79bde:9599b5fd",
+          "01M8EJX99QNB36K6ZD5B7HZ3ZJ": "22161731:08b882e7",
+          "01M8EJX99QNTV63YEAVHCMDEVR": "a68013a5:48b85cd3",
+          "01M8EJX99QPYP9KDAFG5M3EJKX": "8071acdb:8da1c7b8",
+          "01M8EJX99QQK75NMVZGASCE42M": "d31d4567:fd717804",
+          "01M8EJX99QVPYNK062J330XYS0": "0b075263:9599b5fd",
+          "01M8EJX99QVR9AAJNVD61HJAVA": "aefe5f23:d8a57cf9",
+          "01M8EJX99QXNZWNJM8KN5TDMS6": "f9d6c349:d8a57cf9",
+          "01M8EJX99QZVA0N220TWX4YB4R": "c9046f7a:f916bddd"
+        }
+      }
+    }
+  ]
+}

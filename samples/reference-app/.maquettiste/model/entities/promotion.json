@@ -86,5 +86,88 @@
       },
       "description": "Cap on redemptions across all customers."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BGSZNKQ1DMX91RVFBG",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QF6C7NWKA4NH5E7W4",
+      "fields": [
+        {
+          "attribute": "01M1W77Q9Q0T9J5618NR5J0T0F",
+          "column": "01M8EJX99Q0B4TTWBMHCCEYPKG"
+        },
+        {
+          "attribute": "01M33AXRQDYBAV35HABWV6J5V7",
+          "column": "01M8EJX99QZ1THAPZDXWW2NKST"
+        },
+        {
+          "attribute": "01M1NBMHAJY692ZXQ53FZ8WT2N",
+          "column": "01M8EJX99QNQFCN34BWA85KGEN"
+        },
+        {
+          "attribute": "01M1S5B25BJE3YSJY5C40E0226",
+          "column": "01M8EJX99QXDYX57KK1FC6YN0R"
+        },
+        {
+          "attribute": "01M1N2KT17Z54S1C6TVQ2QDDH8",
+          "column": "01M8EJX99QZRS2S5QP1RWMDGYE"
+        },
+        {
+          "attribute": "01M205J5QBN1Y4ZH0N9P0DPEDC.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99QQ9ACC9ETX51F7YB9"
+        },
+        {
+          "attribute": "01M205J5QBN1Y4ZH0N9P0DPEDC.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99Q23VH0B0CJEPS1MMV"
+        },
+        {
+          "attribute": "01M1QTPNVWNNPEP5PJ2SGPNZ4B.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99Q517X0P54RXHF8SC0"
+        },
+        {
+          "attribute": "01M1QTPNVWNNPEP5PJ2SGPNZ4B.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99Q8SVF2B34DFWNR9AG"
+        },
+        {
+          "attribute": "01M373PRMSCVHEHWPF0GVDE8CQ",
+          "column": "01M8EJX99QMF6TAF5FMGNRDY3M"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99QMM83171V0JRGJPGW"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99QQGD0Y8EQPC2W5DAK"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99QPJAKCRPTRCAHAK7M"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99QB4XJ0B46KFCJDNCN"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q0B4TTWBMHCCEYPKG": "a5614527:8da1c7b8",
+          "01M8EJX99Q23VH0B0CJEPS1MMV": "2a578471:9b51e601",
+          "01M8EJX99Q517X0P54RXHF8SC0": "5ed42970:d249895e",
+          "01M8EJX99Q8SVF2B34DFWNR9AG": "67f5a246:75525505",
+          "01M8EJX99QB4XJ0B46KFCJDNCN": "0b075263:9599b5fd",
+          "01M8EJX99QMF6TAF5FMGNRDY3M": "12ec54e6:d0210786",
+          "01M8EJX99QMM83171V0JRGJPGW": "42049432:e0d08678",
+          "01M8EJX99QNQFCN34BWA85KGEN": "82a3537f:5d28878a",
+          "01M8EJX99QPJAKCRPTRCAHAK7M": "d31d4567:fd717804",
+          "01M8EJX99QQ9ACC9ETX51F7YB9": "2db5d4af:81884634",
+          "01M8EJX99QQGD0Y8EQPC2W5DAK": "c0d79bde:9599b5fd",
+          "01M8EJX99QXDYX57KK1FC6YN0R": "c9046f7a:43ec92f3",
+          "01M8EJX99QZ1THAPZDXWW2NKST": "5694d08a:04146d06",
+          "01M8EJX99QZRS2S5QP1RWMDGYE": "073c1634:8a9bac3c"
+        }
+      }
+    }
   ]
 }

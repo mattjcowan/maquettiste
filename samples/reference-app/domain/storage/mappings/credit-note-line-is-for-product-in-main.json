@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CF8YJ8W8N649GDNJGA",
+  "name": "credit note line is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M33HQ0J870DDS9X5JCHYTHR0",
+  "foreignKey": "01M8EJX9A33ZZ7MKK2D4XDWRBG"
+}

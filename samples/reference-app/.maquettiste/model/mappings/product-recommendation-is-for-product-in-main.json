@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHNACCXGK9Q1S805S7",
+  "name": "product recommendation is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2XD11EXN6JHH8NJK1HEAD2F",
+  "foreignKey": "01M8EJX9A78WHCWSQ5ANZ8BPZ4"
+}

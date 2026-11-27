@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJM2EPPRHW8Q2N1HGR",
+  "name": "putaway task moves to to bin in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1EF5DD8GJP03KE0FA08677X",
+  "foreignKey": "01M8EJX9AAERSCGKYMR664CVFM"
+}

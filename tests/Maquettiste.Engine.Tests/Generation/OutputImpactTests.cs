@@ -7,6 +7,7 @@ using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Engine.Tests.Integration;
 using Maquettiste.Engine.Tests.Rendering;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Generation;
 
@@ -17,6 +18,7 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// changed element enters once a where filter or a skip hint lets it in.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class OutputImpactTests
 {
     private const string CustomerId = EditorRepo.CustomerId;

@@ -45,5 +45,43 @@
       "type": "decimal",
       "required": true
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EKC5BPBBD6PA3Y3QPQV0EY",
+      "database": "01JQDBS0000000000000000001",
+      "source": "01M8EKC5AMNQNQA56FAV8CA3Y1",
+      "fields": [
+        {
+          "attribute": "01JQATT0000000000000000001",
+          "column": "01M8EKC5AM8R47MBKBVSW6169Q"
+        },
+        {
+          "attribute": "01JQATT0000000000000000002",
+          "column": "01M8EKC5AMRG4QP4RPEQ8RSNHE"
+        },
+        {
+          "attribute": "01JQATT0000000000000000003",
+          "column": "01M8EKC5AMTCK99M9G0TWT0QN5"
+        },
+        {
+          "attribute": "01JQATT0000000000000000004",
+          "column": "01M8EKC5AMFT5R216HDVWNEB8M"
+        },
+        {
+          "attribute": "01JQATT0000000000000000005",
+          "column": "01M8EKC5AM8BA61XB4B4A0YJ4N"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EKC5AM8BA61XB4B4A0YJ4N": "5f6a16fd:c2f0c334",
+          "01M8EKC5AM8R47MBKBVSW6169Q": "a5614527:8da1c7b8",
+          "01M8EKC5AMFT5R216HDVWNEB8M": "11239872:c2f0c334",
+          "01M8EKC5AMRG4QP4RPEQ8RSNHE": "073c1634:53fb88ea",
+          "01M8EKC5AMTCK99M9G0TWT0QN5": "b7d64a92:19c5078c"
+        }
+      }
+    }
   ]
 }

@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
 
@@ -8,6 +9,7 @@ namespace Maquettiste.Packs.Tests;
 /// missing, and a seed of one environment goes to that environment's script (seed.dev.sql) when the pack names the environment.
 /// On SQLite the scripts run, twice, when sqlite3 is on the PATH.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class TableSeedSqlTests
 {
     private const string MainId = "01J92P0V1QRN2181XM2ZWE02W4";

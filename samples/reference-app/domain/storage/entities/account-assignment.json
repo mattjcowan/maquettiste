@@ -1,0 +1,70 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9AH7QX8BTND6EW0G4TZ",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99NVTMR11RNB8116RVH",
+      "fields": [
+        {
+          "attribute": "01M32EJ4H459ABTT87RJ6SMS0Q",
+          "column": "01M8EJX99NK1ZJHZ221T3JSD3A"
+        },
+        {
+          "attribute": "01M2FSEBAV45MFV5S3JQTFY04X",
+          "column": "01M8EJX99NQ9S44WSFA19WMQ8X"
+        },
+        {
+          "attribute": "01M2V192ZQYDEB2WJFJ36QF0MX.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99NPTAJSC3CEA7SEGRN"
+        },
+        {
+          "attribute": "01M2V192ZQYDEB2WJFJ36QF0MX.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99N6T5X2VMPM7SK2FJS"
+        },
+        {
+          "attribute": "01M1FW9Q4PPSPS7SGH503FH5S1",
+          "column": "01M8EJX99NDRVS1NA4WBVV4H56"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99NZPM4PHFTBZGC7DD3"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99NFPNC5A4DYVBY90VQ"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99NHHYSXP7XCJKHCR1Z"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99NX1DEBBA402ZD4RAV"
+        },
+        {
+          "attribute": "01M3852H9QYT8NCQCG4BZ7J6SM",
+          "column": "01M8EJX99NBA2MBB4QJH05F6FK"
+        },
+        {
+          "attribute": "01M2RHW119EQBGGJ2MRSZ9Y6DH",
+          "column": "01M8EJX99N5FQA967N02HCEH42"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99N5FQA967N02HCEH42": "599d33b9:8da1c7b8",
+          "01M8EJX99N6T5X2VMPM7SK2FJS": "2a578471:9b51e601",
+          "01M8EJX99NBA2MBB4QJH05F6FK": "c001011d:8da1c7b8",
+          "01M8EJX99NDRVS1NA4WBVV4H56": "3e4b3a44:19980141",
+          "01M8EJX99NFPNC5A4DYVBY90VQ": "c0d79bde:9599b5fd",
+          "01M8EJX99NHHYSXP7XCJKHCR1Z": "d31d4567:fd717804",
+          "01M8EJX99NK1ZJHZ221T3JSD3A": "a5614527:8da1c7b8",
+          "01M8EJX99NPTAJSC3CEA7SEGRN": "2db5d4af:81884634",
+          "01M8EJX99NQ9S44WSFA19WMQ8X": "3dbd4462:6ebc34b1",
+          "01M8EJX99NX1DEBBA402ZD4RAV": "0b075263:9599b5fd",
+          "01M8EJX99NZPM4PHFTBZGC7DD3": "42049432:e0d08678"
+        }
+      }
+    }
+  ]
+}

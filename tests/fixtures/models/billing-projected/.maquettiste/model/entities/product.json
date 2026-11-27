@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01J92P0V0JR8BE8253SKT29ZG7",
+  "name": "Product",
+  "package": "01J92P0V025DRFTXKMS240G2NG",
+  "stereotypes": [
+    "soft-delete"
+  ],
+  "category": "01J92P0V07KWPZMZ6FKXDYJ3JA",
+  "key": {
+    "attributes": [
+      "01J92P0V15PMP0E4P5DSNZVETR"
+    ],
+    "strategy": "uuid-v7"
+  },
+  "alternateKeys": [
+    {
+      "id": "01J92P0V160MQ5VBCRQV4WDHYW",
+      "name": "sku",
+      "attributes": [
+        "01J92P0V17VC286G57N0QWE44Y"
+      ]
+    }
+  ],
+  "attributes": [
+    {
+      "id": "01J92P0V15PMP0E4P5DSNZVETR",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01J92P0V17VC286G57N0QWE44Y",
+      "name": "sku",
+      "type": "string",
+      "length": 40,
+      "required": true
+    },
+    {
+      "id": "01J92P0V18CYJRYN96H242Z8QA",
+      "name": "name",
+      "type": "string",
+      "length": 200,
+      "required": true
+    },
+    {
+      "id": "01J92P0V1935QZTM8ZQ240DJ6Q",
+      "name": "listPrice",
+      "type": {
+        "ref": "01J92P0V0304M76KA84NE4D1TE"
+      }
+    }
+  ]
+}

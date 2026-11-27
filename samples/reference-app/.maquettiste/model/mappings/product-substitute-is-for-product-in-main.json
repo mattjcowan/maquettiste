@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH1XGD1TMKJGJDJKPP",
+  "name": "product substitute is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2EPQ7K2G7SZ7KE8WBBKT741",
+  "foreignKey": "01M8EJX9A7AMSM30B30WJETM78"
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJYD0DZYDQA23JWPQK",
+  "name": "country is denominated in currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2KHHD4312PSSNWEAKNG9APW",
+  "foreignKey": "01M8EJX9ABCCW27BEVTK39WFNG"
+}

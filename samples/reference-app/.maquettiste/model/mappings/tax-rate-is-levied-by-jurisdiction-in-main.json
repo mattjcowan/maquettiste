@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH7RKVSDQSEWCYDTH9",
+  "name": "tax rate is levied by jurisdiction in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M22JVV2NBX9FEB1VPKWPG15X",
+  "foreignKey": "01M8EJX9A8KXEZMBV04D43PXJV"
+}

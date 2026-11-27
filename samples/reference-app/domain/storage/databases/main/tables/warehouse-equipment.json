@@ -1,0 +1,125 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P5MMWPP0W5H7DTY22",
+  "name": "warehouse_equipment",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PWD0JAQBV2EZEN3Z1",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the warehouse equipment."
+    },
+    {
+      "id": "01M8EJX99PSGBZN2RB2JZ6HPXQ",
+      "name": "asset_tag",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Asset tag."
+    },
+    {
+      "id": "01M8EJX99P8Q83PY3TJDBS75DT",
+      "name": "equipment_type",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Kind, such as forklift or pallet jack."
+    },
+    {
+      "id": "01M8EJX99PRAYCBG61FBBCM7JD",
+      "name": "manufacturer_name",
+      "type": "string",
+      "length": 80,
+      "comment": "Maker."
+    },
+    {
+      "id": "01M8EJX99PFH4JKJCAQZ07JCZ3",
+      "name": "model_name",
+      "type": "string",
+      "length": 80,
+      "comment": "Model."
+    },
+    {
+      "id": "01M8EJX99P3QGXRP6B2H0393CS",
+      "name": "last_inspected_on",
+      "type": "date",
+      "comment": "Last safety inspection."
+    },
+    {
+      "id": "01M8EJX99P7TTWF9SXGFPCYA69",
+      "name": "is_operational",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it can be used."
+    },
+    {
+      "id": "01M8EJX99P8WBGXN6FGQ6QHTCJ",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PFMAX1FBZ8HPZYMBK",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PGZZ1QE0NGVWR00SR",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P5QX13BJ7ZVEA77WX",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99P850PR3WKYVBTTB05",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_warehouse_equipment",
+    "columns": [
+      "01M8EJX99PWD0JAQBV2EZEN3Z1"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AA1Q0KGY9JCS6YAJDE",
+      "name": "uq_warehouse_equipment_asset_tag",
+      "columns": [
+        "01M8EJX99PSGBZN2RB2JZ6HPXQ"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAMW84RP632BV8F8C4",
+      "name": "fk_warehouse_equipment_warehouse_id",
+      "columns": [
+        "01M8EJX99P850PR3WKYVBTTB05"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "Material handling equipment of a warehouse, such as a forklift or a reach truck."
+}

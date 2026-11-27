@@ -1,0 +1,80 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9B3FPX1YH9QBTX92DPA",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PK5EP76GYFYVV5QZN",
+      "fields": [
+        {
+          "attribute": "01M33BMNW84H338HXTEZAPFTKN",
+          "column": "01M8EJX99PQJVCM3V32C28257C"
+        },
+        {
+          "attribute": "01M2DF3S1RZ3P0PCA7G2H0GVBA",
+          "column": "01M8EJX99PN2Q2VSA2CXFH6GQW"
+        },
+        {
+          "attribute": "01M2TVWJGY44PQAC8GJRG9QJ3R",
+          "column": "01M8EJX99PYBBNB17PP46QH34M"
+        },
+        {
+          "attribute": "01M2MCVD3G3Y161YK78H3F5C1P.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99PZK1WV04CQ4Z8X6SD"
+        },
+        {
+          "attribute": "01M2MCVD3G3Y161YK78H3F5C1P.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99PGPMFV4MEKGN0T8XG"
+        },
+        {
+          "attribute": "01M20895QKWJKNQ0XKQDBX53N6.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99P4HEFEX06ZJ1XD3PE"
+        },
+        {
+          "attribute": "01M20895QKWJKNQ0XKQDBX53N6.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99PSDQS11KYVZ422JVP"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PFDWDXR44R4BRQ8FZ"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PV2KJ7N7SX1XX5D5V"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99P7XHEBZK5ZA2ZX9AW"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99P09MZ5CXSJYFKNHRN"
+        },
+        {
+          "attribute": "01M1GTPR4MSV76ENGQZYVB0BG4",
+          "column": "01M8EJX99PT8GV5F7M8MCWZ1BK"
+        },
+        {
+          "attribute": "01M2C34XQBQXRPW5H6XQB39ESV",
+          "column": "01M8EJX99PJCWJQA0XNPDHBE44"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P09MZ5CXSJYFKNHRN": "0b075263:9599b5fd",
+          "01M8EJX99P4HEFEX06ZJ1XD3PE": "2db5d4af:81884634",
+          "01M8EJX99P7XHEBZK5ZA2ZX9AW": "d31d4567:fd717804",
+          "01M8EJX99PFDWDXR44R4BRQ8FZ": "42049432:e0d08678",
+          "01M8EJX99PGPMFV4MEKGN0T8XG": "4d01da30:48b85cd3",
+          "01M8EJX99PJCWJQA0XNPDHBE44": "8672718d:8da1c7b8",
+          "01M8EJX99PN2Q2VSA2CXFH6GQW": "bc8d6067:e2cddc2d",
+          "01M8EJX99PQJVCM3V32C28257C": "a5614527:8da1c7b8",
+          "01M8EJX99PSDQS11KYVZ422JVP": "2a578471:9b51e601",
+          "01M8EJX99PT8GV5F7M8MCWZ1BK": "a9a71425:8da1c7b8",
+          "01M8EJX99PV2KJ7N7SX1XX5D5V": "c0d79bde:9599b5fd",
+          "01M8EJX99PYBBNB17PP46QH34M": "26a37b70:2205852e",
+          "01M8EJX99PZK1WV04CQ4Z8X6SD": "a074c2d1:d46c92d7"
+        }
+      }
+    }
+  ]
+}

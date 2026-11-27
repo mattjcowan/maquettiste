@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ9A1GDCC0915M8KMF",
+  "name": "repair order is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M25TS6NJXFN783EC241NHXF9",
+  "foreignKey": "01M8EJX9AB5KSENDPVP87TJA32"
+}

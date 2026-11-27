@@ -1,0 +1,48 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKD8XQ8TKCT2QV0YPZK0HK",
+  "name": "invoice_lines",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKD8XQG6YM7HXVVS0ZDCP9",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKD8XQS55117PPKYN20B8A",
+      "name": "quantity",
+      "type": "int32",
+      "nullable": false,
+      "default": 1
+    },
+    {
+      "id": "01M8EKD8XQ7J7TMCEBCD85K0B8",
+      "name": "invoice_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_invoice_lines",
+    "columns": [
+      "01M8EKD8XQG6YM7HXVVS0ZDCP9"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EKD8Y6CFZCMZWFFZGAWYVD",
+      "name": "fk_invoice_lines_invoice_id",
+      "columns": [
+        "01M8EKD8XQ7J7TMCEBCD85K0B8"
+      ],
+      "referencesTable": "01JTAB00000000000000000002",
+      "referencesColumns": [
+        "01M8EKD8XPKFG34MTQMG5YJGH1"
+      ],
+      "onDelete": "cascade"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHS7X70T6Z2VNRPZS6",
+  "name": "user account belongs to contact in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2S5KTKTNX9AWMP3V06C05MV",
+  "foreignKey": "01M8EJX9A9PWE5QM1BVGYHB8N1"
+}

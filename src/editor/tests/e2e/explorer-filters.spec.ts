@@ -46,14 +46,13 @@ test("related rows stay highlighted across a rail switch, and the preference tur
   await expect(side.getByTestId("explorer-row-Invoice")).toHaveAttribute("aria-selected", "true");
   await expect(side.locator('[data-related="true"]').first()).toBeVisible();
 
-  // Databases: the collapsed database holding Invoice's table shows "n related" without expanding.
+  // Databases: a table names no entity (storage is a warehouse), so no database row is related to Invoice.
   await workspace(page, "Databases");
   const main = side.getByTestId("explorer-folder-main");
   await expect(main).toHaveAttribute("aria-expanded", "false");
-  await expect(main.locator('[data-part="related"]')).toHaveText(/\d+ related/);
+  await expect(main.locator('[data-part="related"]')).toHaveCount(0);
   await main.click();
   await expect(main).toHaveAttribute("aria-expanded", "true");
-  await expect(main.locator('[data-part="related"]')).toHaveCount(0);
 
   // The preference, from the explorer's menu, turns the highlighting off everywhere.
   await side.getByTestId("explorer-header-menu").click();

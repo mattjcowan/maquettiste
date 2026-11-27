@@ -42,12 +42,6 @@ entities:
     children:
       lines: PurchaseOrderLine ordered name=purchase_order_contains_lines | Ordered products.
       approvals: PurchaseApproval name=purchase_order_contains_approvals | Approval steps.
-    overlay:
-      description: PO number default from purchase_order_number_seq.
-      columns:
-        poNumber:
-          defaultSql: "'PO-' || lpad(nextval('northwind.purchase_order_number_seq')::text, 6, '0')"
-          comment: Assigned from purchase_order_number_seq when the application does not supply one.
 
   PurchaseOrderLine:
     description: A product and quantity ordered from a supplier.

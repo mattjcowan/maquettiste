@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ04T46P6BR0HM8431",
+  "name": "reorder suggestion fulfils purchase order in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1HCMEZJBEK4VVQKD3YJMNE4",
+  "foreignKey": "01M8EJX9AAB2ME905E74HFQVCR"
+}

@@ -57,5 +57,53 @@
       "required": true,
       "description": "Committed price."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9ASVKZAXKQJM9C1XHDJ",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99Q4XFZ50V77CSXF5E6",
+      "fields": [
+        {
+          "attribute": "01M2PMKTBP065HJGM89F5RG04B",
+          "column": "01M8EJX99QCTTYNP1YAYMDH9SB"
+        },
+        {
+          "attribute": "01M1Y9D2TVYV97AHJMZSFANXDX",
+          "column": "01M8EJX99QW076XNSM50ERYB3M"
+        },
+        {
+          "attribute": "01M32RQHZZZZXHPTA0VHFYX137",
+          "column": "01M8EJX99QX73Q98JS631WB2D8"
+        },
+        {
+          "attribute": "01M1ECSNPDJ8THEH8EV34RSDTK.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99Q5B2CCSRCZZV3WV5J"
+        },
+        {
+          "attribute": "01M1ECSNPDJ8THEH8EV34RSDTK.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QCYP7W0ZDCN842JQ4"
+        },
+        {
+          "attribute": "01M1HKQGNQNCDCG08ASFFQGVMM",
+          "column": "01M8EJX99QQ92CJW32BR3C4FDZ"
+        },
+        {
+          "attribute": "01M1F0S3RFSY783BQD1NJ70A55",
+          "column": "01M8EJX99Q3RD647NKHKHVMWJF"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q3RD647NKHKHVMWJF": "64814827:8da1c7b8",
+          "01M8EJX99Q5B2CCSRCZZV3WV5J": "63d21e41:d46c92d7",
+          "01M8EJX99QCTTYNP1YAYMDH9SB": "a5614527:8da1c7b8",
+          "01M8EJX99QCYP7W0ZDCN842JQ4": "8c0ec395:48b85cd3",
+          "01M8EJX99QQ92CJW32BR3C4FDZ": "2044eca5:8da1c7b8",
+          "01M8EJX99QW076XNSM50ERYB3M": "2ac85274:b52e18e1",
+          "01M8EJX99QX73Q98JS631WB2D8": "392e86ea:b52e18e1"
+        }
+      }
+    }
   ]
 }

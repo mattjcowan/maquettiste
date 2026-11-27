@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJF6SG4C5DYKA165CC",
+  "name": "supplier contract is supplied by supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2DYRA952VB5P4BEGP8WCK9G",
+  "foreignKey": "01M8EJX9ABTPM5TF2F7XDXW189"
+}

@@ -41,5 +41,43 @@
       "type": "datetimeoffset",
       "required": true
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EKC5BP98NMZE94F3E4QZHJ",
+      "database": "01JQDBS0000000000000000001",
+      "source": "01M8EKC5AMDSX7WW93V4PXJ1KT",
+      "fields": [
+        {
+          "attribute": "01JQATT0000000000000000006",
+          "column": "01M8EKC5AM5GVZT849ZEJAKNX5"
+        },
+        {
+          "attribute": "01JQATT0000000000000000007",
+          "column": "01M8EKC5AMBK0PVN183RYNTPSR"
+        },
+        {
+          "attribute": "01JQATT0000000000000000008",
+          "column": "01M8EKC5AMD5FEA1RWWKC3WPBZ"
+        },
+        {
+          "attribute": "01JQATT0000000000000000009",
+          "column": "01M8EKC5AMC8S75VESF5VH5SD4"
+        },
+        {
+          "attribute": "01JQATT0000000000000000010",
+          "column": "01M8EKC5AM3R464BGEJ9KB7R42"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EKC5AM3R464BGEJ9KB7R42": "b1d6b91b:e0d08678",
+          "01M8EKC5AM5GVZT849ZEJAKNX5": "a5614527:8da1c7b8",
+          "01M8EKC5AMBK0PVN183RYNTPSR": "8071acdb:8da1c7b8",
+          "01M8EKC5AMC8S75VESF5VH5SD4": "dd8aad46:56f2d579",
+          "01M8EKC5AMD5FEA1RWWKC3WPBZ": "63f2f00f:4a370432"
+        }
+      }
+    }
   ]
 }

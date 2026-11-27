@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
 
@@ -9,6 +10,7 @@ namespace Maquettiste.Packs.Tests;
 /// mapping (SalesOrder in the processes fixture, string codes) or its binding (Customer in the bindings fixture, integer codes).
 /// The scripts run twice on SQLite when sqlite3 is on the PATH, and on each database server whose container is set.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ProcessLifecycleSqlTests
 {
     private const string Check = "ck_sales_orders_status_states";

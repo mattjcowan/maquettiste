@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHJY6GZ143SW34M1NH",
+  "name": "budget line posts to ledger account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M280T9D10R8ASVRZB49R180F",
+  "foreignKey": "01M8EJX9A811JC5NNCTXNAKZCX"
+}

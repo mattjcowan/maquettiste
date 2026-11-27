@@ -11,6 +11,7 @@ namespace Maquettiste.Engine.Tests.Editor;
 /// Deletes that resolve references (engine-design.md section 15.1) over the billing fixture with the real validator: the delete plan
 /// read, <c>remove-references</c> refusals that read first, and <c>delete-dependents</c> cascades in one change that a batch undoes.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class DeleteCascadeTests
 {
     private const string ProductId = "01J92P0V0JR8BE8253SKT29ZG7";

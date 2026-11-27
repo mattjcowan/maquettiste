@@ -1,0 +1,185 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99MKJ5K4KVKVC5Z0Z1M",
+  "name": "billing_accounts",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99MHQXQZEBJQYQB35W3",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the billing account."
+    },
+    {
+      "id": "01M8EJX99M2RYPFSNPH4KX9QFC",
+      "name": "account_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Billing account number."
+    },
+    {
+      "id": "01M8EJX99M5MTE1E2N9EMC3K46",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Account name, such as Facilities division."
+    },
+    {
+      "id": "01M8EJX99MHY8GCGVVN9G5RCA6",
+      "name": "billing_address_line1",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Street and number, or PO box."
+    },
+    {
+      "id": "01M8EJX99MEPSAHTZWXMD7KZ8B",
+      "name": "billing_address_line2",
+      "type": "string",
+      "length": 120,
+      "comment": "Suite, floor or building."
+    },
+    {
+      "id": "01M8EJX99MPKV1W581TGQBP47A",
+      "name": "billing_address_city",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "City or locality."
+    },
+    {
+      "id": "01M8EJX99M8M9X4RJ66Q1HG5TJ",
+      "name": "billing_address_region",
+      "type": "string",
+      "length": 80,
+      "comment": "State, province or county."
+    },
+    {
+      "id": "01M8EJX99MWKDKKDXFXGT90Y3J",
+      "name": "billing_address_postal_code",
+      "type": "string",
+      "length": 20,
+      "comment": "Postal or ZIP code."
+    },
+    {
+      "id": "01M8EJX99M8856GFGAFPHXT06N",
+      "name": "billing_address_country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "comment": "ISO country code."
+    },
+    {
+      "id": "01M8EJX99M8JS92V2FD5W6114B",
+      "name": "invoice_delivery_method",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "email",
+      "comment": "email, portal, edi or mail."
+    },
+    {
+      "id": "01M8EJX99MNT4AHH6GAPDGYF13",
+      "name": "invoice_email",
+      "type": "string",
+      "length": 254,
+      "comment": "Mailbox for invoices."
+    },
+    {
+      "id": "01M8EJX99MCJH6274E168QYNWP",
+      "name": "consolidate_invoices",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether to send one monthly invoice."
+    },
+    {
+      "id": "01M8EJX99M3K3P6B813Q6YY5M2",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99MB2G5GSPCN7FKAWEQ",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99MV78F46N5B9XWZGJP",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99M5JGC7Z6FHKV8VZY7",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99MD5JS80XZG82ED5PX",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99MMWH5J8Z70Z3G01BV",
+      "name": "currency_code",
+      "type": "string",
+      "length": 3
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_billing_accounts",
+    "columns": [
+      "01M8EJX99MHQXQZEBJQYQB35W3"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A2373MZ0JYSYCW0XX0",
+      "name": "uq_billing_accounts_account_number",
+      "columns": [
+        "01M8EJX99M2RYPFSNPH4KX9QFC"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A2PF0Z2WRHMN30W4SW",
+      "name": "fk_billing_accounts_customer_id",
+      "columns": [
+        "01M8EJX99MD5JS80XZG82ED5PX"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A22W3DRAEDVWV2QCSP",
+      "name": "fk_billing_accounts_currency_code",
+      "columns": [
+        "01M8EJX99MMWH5J8Z70Z3G01BV"
+      ],
+      "referencesTable": "01M8EJX99QRBGEFE3GNVN365J7",
+      "referencesColumns": [
+        "01M8EJX99QJKX5M1HTH079V63S"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "How and where a customer wants to be invoiced; large customers have one per division."
+}

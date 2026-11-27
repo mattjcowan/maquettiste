@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CGFSNX9STN1T3XRKYR",
+  "name": "invoice is billed to billing account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1N0K0GSKQM2FX9716A6AW60",
+  "foreignKey": "01M8EJX9A4BKSE6NJBFM576RN8"
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHXF3FR0BKF6QPHFY3",
+  "name": "cycle count counts stock at warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1EMRXAVXS3NJSBSN6MABGSB",
+  "foreignKey": "01M8EJX9A9B4F3JG21G5H60WCC"
+}

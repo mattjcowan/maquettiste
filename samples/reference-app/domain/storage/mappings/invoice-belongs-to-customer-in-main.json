@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CGA9KJJ7NF8J4QGB3N",
+  "name": "invoice belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1HD3EGVC6ENKP4R32ZH1RJJ",
+  "foreignKey": "01M8EJX9A4ZBSBDY9C8S1Y5FRX"
+}

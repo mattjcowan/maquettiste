@@ -1,0 +1,100 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QBE5HHESZR64DNBGY",
+  "name": "advance_ship_notices",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q4Y04PYWYNZT8WKGE",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the advance ship notice."
+    },
+    {
+      "id": "01M8EJX99QCXE25PN60S8PE02F",
+      "name": "asn_number",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "Supplier's ASN number."
+    },
+    {
+      "id": "01M8EJX99QQ0KS81FHWETTEAAR",
+      "name": "shipped_on",
+      "type": "date",
+      "comment": "Ship date."
+    },
+    {
+      "id": "01M8EJX99QF0ZNHENZFHWDKNNJ",
+      "name": "expected_arrival_on",
+      "type": "date",
+      "comment": "Expected arrival."
+    },
+    {
+      "id": "01M8EJX99Q5CJ615PBGF1RKXGV",
+      "name": "carrier_name",
+      "type": "string",
+      "length": 100,
+      "comment": "Carrier."
+    },
+    {
+      "id": "01M8EJX99QV0KPXSNR6RXPEQSJ",
+      "name": "tracking_number",
+      "type": "string",
+      "length": 60,
+      "comment": "Tracking number."
+    },
+    {
+      "id": "01M8EJX99Q6ENYJNHAWCE5HMQA",
+      "name": "raw_document",
+      "type": "json",
+      "comment": "Original EDI document, as JSON."
+    },
+    {
+      "id": "01M8EJX99QS2Q0TVVK2BVCV0E0",
+      "name": "purchase_order_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QMVBVZAQ9K2FBXC1C",
+      "name": "supplier_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_advance_ship_notices",
+    "columns": [
+      "01M8EJX99Q4Y04PYWYNZT8WKGE"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AATNCSGNAC0VPSBZQH",
+      "name": "fk_advance_ship_notices_purchase_order_id",
+      "columns": [
+        "01M8EJX99QS2Q0TVVK2BVCV0E0"
+      ],
+      "referencesTable": "01M20RTE9GYMJF4W6ZSG87Y5T2",
+      "referencesColumns": [
+        "01M8EJX99Q0CGM80EJ972RZV09"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AA2WQ1XXDCEGAVSR7N",
+      "name": "fk_advance_ship_notices_supplier_id",
+      "columns": [
+        "01M8EJX99QMVBVZAQ9K2FBXC1C"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "An EDI 856 advance ship notice announcing an inbound delivery."
+}

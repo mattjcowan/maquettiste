@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHQDKCXC8NBE4PXGSV",
+  "name": "cycle count contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M28RYW1CCMNZBZKM97SQFF4B",
+  "foreignKey": "01M8EJX9A9Y45EA31JNGXB1P6S"
+}

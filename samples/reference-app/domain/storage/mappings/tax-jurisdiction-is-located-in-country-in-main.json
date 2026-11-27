@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH5DFPSCQS6MP1Y6Q2",
+  "name": "tax jurisdiction is located in country in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M24KH81H5NJ0PR46Y5P4DA3D",
+  "foreignKey": "01M8EJX9A82C0Z4YZSGEQCWYMN"
+}

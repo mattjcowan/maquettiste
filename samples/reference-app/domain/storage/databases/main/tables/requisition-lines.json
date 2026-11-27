@@ -1,0 +1,109 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QNBDN1H186M3SWSMG",
+  "name": "requisition_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q8CEJ2TF70ADG101P",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the requisition line."
+    },
+    {
+      "id": "01M8EJX99Q8S83G37403NKQBCV",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "nullable": false,
+      "comment": "What is needed."
+    },
+    {
+      "id": "01M8EJX99QHFAA65E2WA0B6R52",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity."
+    },
+    {
+      "id": "01M8EJX99QDMFX3GZ79Y4FBMA9",
+      "name": "estimated_cost_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99QDZFK0K1H2N9186QF",
+      "name": "estimated_cost_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QE7KRSP2DYCCHV9XH",
+      "name": "purchase_requisition_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QXSX0T0K87EDKEN5P",
+      "name": "product_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QCN8TBB8SDSA4PB5E",
+      "name": "suggested_supplier_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_requisition_lines",
+    "columns": [
+      "01M8EJX99Q8CEJ2TF70ADG101P"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABC4A07DMNBFG4WR9D",
+      "name": "fk_requisition_lines_purchase_requisition_id",
+      "columns": [
+        "01M8EJX99QE7KRSP2DYCCHV9XH"
+      ],
+      "referencesTable": "01M8EJX99QQWAB3K7FXKJMPMCJ",
+      "referencesColumns": [
+        "01M8EJX99QG5Z62CHBTM2Q3FQ1"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ABVENQ62TWDYSJHPE6",
+      "name": "fk_requisition_lines_product_id",
+      "columns": [
+        "01M8EJX99QXSX0T0K87EDKEN5P"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AB41DM4VT7S0E3KANE",
+      "name": "fk_requisition_lines_suggested_supplier_id",
+      "columns": [
+        "01M8EJX99QCN8TBB8SDSA4PB5E"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An item requested on a requisition."
+}

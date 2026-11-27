@@ -55,5 +55,48 @@
       },
       "description": "Free units, for free goods."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BGXXBX3AGVW160Q1V9",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99Q888GPM328AM7DGGC",
+      "fields": [
+        {
+          "attribute": "01M1RRXZAP2F705WZC42ER7A5E",
+          "column": "01M8EJX99Q8QH76GG3M563XM59"
+        },
+        {
+          "attribute": "01M1MFHJZ9Y4W1QANSNXJB6AZT",
+          "column": "01M8EJX99QESNA00T8ZSSXQS03"
+        },
+        {
+          "attribute": "01M1WVTW5BKA16JMZTAJGTT1SW",
+          "column": "01M8EJX99QNA1CNS7Z64TW7R6Y"
+        },
+        {
+          "attribute": "01M1WFCA07SJXBZSJ5S18AZW1P",
+          "column": "01M8EJX99QGRW5RYQYMFAV550B"
+        },
+        {
+          "attribute": "01M1TAZQF6X9K62XA2DSWG6B8S",
+          "column": "01M8EJX99QYN0SQ4BX6JWGK7NS"
+        },
+        {
+          "attribute": "01M2Y1KHW15TSJMKH1EC5G2D3J",
+          "column": "01M8EJX99QB1GZXK88PQDN7NG6"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q8QH76GG3M563XM59": "a5614527:8da1c7b8",
+          "01M8EJX99QB1GZXK88PQDN7NG6": "c4cd2e1d:d8a57cf9",
+          "01M8EJX99QESNA00T8ZSSXQS03": "ee9d3081:f80b7728",
+          "01M8EJX99QGRW5RYQYMFAV550B": "1522edfc:17d070b1",
+          "01M8EJX99QNA1CNS7Z64TW7R6Y": "cd42404d:767279fc",
+          "01M8EJX99QYN0SQ4BX6JWGK7NS": "37a6fdd1:8da1c7b8"
+        }
+      }
+    }
   ]
 }

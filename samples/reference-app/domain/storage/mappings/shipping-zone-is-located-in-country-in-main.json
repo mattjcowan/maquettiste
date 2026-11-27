@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH9QD6EFJJT6S485VQ",
+  "name": "shipping zone is located in country in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1KWK3Y0M93MGV8MZTHFXS5V",
+  "foreignKey": "01M8EJX9A98CQMKAQ90SG1NR72"
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJQCWAKZ4BKW9XPXQN",
+  "name": "sales order contains comments in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M260R0RX1GQ0RXGF839KAGE5",
+  "foreignKey": "01M8EJX9AC95JJJWRFRM0D1V9X"
+}

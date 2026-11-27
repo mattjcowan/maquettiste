@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH7KK36QK2R5MCTDJ3",
+  "name": "party address concerns party in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1SD72T3EJAW2CF4FG7841PR",
+  "foreignKey": "01M8EJX9A8B7QPXB50A6Q5F8C7"
+}

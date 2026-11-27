@@ -578,12 +578,30 @@ internal sealed partial class Materializer
 
         if (segments.Length == 2)
         {
-            var end = resolved.Relations.SelectMany(r => r.Ends).FirstOrDefault(e => e.Id == segments[0]);
+            var end = EndsById.GetValue(resolved, IndexEnds).GetValueOrDefault(segments[0]);
             if (end is { IsMany: false, Opposite.Entity: { } opposite, Entity.Key: { Attributes.Count: 1 } key } && IsOrDerives(entity, opposite) && key.Attributes[0].Id == segments[1])
                 return end.Id;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The ends of a resolved model's relations by id, the first in relation order winning (what a scan of every end found): a binding field per
+    /// foreign key column looked its end up by scanning every end of every relation, which made Create tables quadratic in the model.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ResolvedModel, Dictionary<string, REnd>> EndsById = new();
+
+    private static Dictionary<string, REnd> IndexEnds(ResolvedModel resolved)
+    {
+        var ends = new Dictionary<string, REnd>(StringComparer.Ordinal);
+        foreach (var relation in resolved.Relations)
+        {
+            foreach (var end in relation.Ends)
+                ends.TryAdd(end.Id, end);
+        }
+
+        return ends;
     }
 
     /// <summary>Whether an entity is another or derives from it.</summary>
@@ -698,6 +716,39 @@ internal sealed partial class Materializer
             ["id"] = ids.NewId(), ["database"] = db.Id, ["table"] = tableId,
             ["fields"] = new JsonArray([.. lookup.LookupFields.Select(f => (JsonNode)new JsonObject { ["attribute"] = f.Field, ["column"] = columns[f.Column] })]),
         });
+        KeepLookupRowsConverging(db, type);
+    }
+
+    /// <summary>
+    /// The sql-ddl pack kept a lookup table's rows as the type's seeds have them on every run (upserted by code, retired codes deleted),
+    /// whatever the seeds' <c>apply</c> said; bound to its table, the type's rows follow its seeds' <c>apply</c> and <c>delete</c>, like any
+    /// seed rows. So the type's seeds converge, and a single seed also deletes what it no longer holds: storing the table changes no row
+    /// on a later run. A seed the type has in another database's bound table keeps its own behavior there, so it is left as it is (noted).
+    /// </summary>
+    private void KeepLookupRowsConverging(Database db, RReferenceType type)
+    {
+        var seeds = snapshot.All<Seed>().Where(s => string.Equals(s.Target, type.Id, StringComparison.Ordinal)).OrderBy(s => s.Id, StringComparer.Ordinal).ToList();
+        if (seeds.Count == 0)
+            return;
+        if (type.Bindings.Keys.Any(name => !string.Equals(name, db.Name, StringComparison.Ordinal)))
+        {
+            _notes.Add($"Reference type '{type.Name}' is bound to a table of another database, where its seeds' apply decides how its rows are written: its seeds are left as they are, so in database '{db.Name}' its rows follow them too (the lookup table's rows were upserted by code before).");
+            return;
+        }
+
+        foreach (var seed in seeds)
+        {
+            var delete = seeds.Count == 1;
+            if (seed.Apply == SeedApply.Converge && seed.Delete == delete)
+                continue;
+            var node = Node(seed.Id, BatchOp.Update, $"keeps the rows of reference type {type.Name} as its seeds have them, as its lookup table's rows were");
+            node["apply"] = "converge";
+            if (delete)
+                node["delete"] = true;
+        }
+
+        if (seeds.Count > 1)
+            _notes.Add($"Reference type '{type.Name}' has {seeds.Count} seeds: each converges, but none deletes the codes it does not hold (the others' rows), so a retired code stays in its lookup table until you delete it.");
     }
 
     private JsonObject MappingNode(Database db, RRelation relation, Mapping? existing, string because)

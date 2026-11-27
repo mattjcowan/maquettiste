@@ -1,0 +1,45 @@
+{
+  "$schema": ".schema/v1/maquettiste.json",
+  "formatVersion": 1,
+  "name": "processes",
+  "outputs": {
+    "allow": [
+      {
+        "path": "db"
+      },
+      {
+        "path": "src/Processes.Data/Custom"
+      },
+      {
+        "path": "src/Processes.Data/Generated"
+      },
+      {
+        "path": "src/Processes.Tests/Generated"
+      },
+      {
+        "path": "docs"
+      }
+    ]
+  },
+  "packs": {
+    "csharp-dapper": {
+      "output": "src",
+      "parameters": {
+        "endpointsFolder": "Processes.Data/Custom",
+        "generatedFolder": "Processes.Data/Generated",
+        "namespace": "Processes.Data",
+        "partialFolder": "Processes.Data/Custom",
+        "testsFolder": "Processes.Tests/Generated"
+      }
+    },
+    "process-docs": {
+      "output": "docs"
+    },
+    "sql-ddl": {
+      "output": "db"
+    }
+  },
+  "limits": {
+    "scriptTimeoutMs": 0
+  }
+}

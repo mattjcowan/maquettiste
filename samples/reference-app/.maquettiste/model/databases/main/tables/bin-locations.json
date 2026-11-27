@@ -1,0 +1,125 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P6T2XHSRWPFJSSPJA",
+  "name": "bin_locations",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PNZ31YCAG0CEXWAPQ",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the bin location."
+    },
+    {
+      "id": "01M8EJX99PQ013VFREBRA6NDZT",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Location code, such as A-01-02-03."
+    },
+    {
+      "id": "01M8EJX99PHJFBYZVF3YD8C1ES",
+      "name": "aisle",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "comment": "Aisle."
+    },
+    {
+      "id": "01M8EJX99PN3GZTNA1NVTTWD5W",
+      "name": "rack",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "comment": "Rack or bay."
+    },
+    {
+      "id": "01M8EJX99P1PY21Y8QAT98F700",
+      "name": "level",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "comment": "Shelf level."
+    },
+    {
+      "id": "01M8EJX99PJJFKSVGRKWGNKT33",
+      "name": "position",
+      "type": "string",
+      "length": 4,
+      "comment": "Position on the shelf."
+    },
+    {
+      "id": "01M8EJX99PWPPBETKZNQH07191",
+      "name": "max_weight_value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "The weight."
+    },
+    {
+      "id": "01M8EJX99PHNNJJFV37Z9R00RZ",
+      "name": "max_weight_unit",
+      "type": "string",
+      "length": 3,
+      "comment": "Unit of the weight."
+    },
+    {
+      "id": "01M8EJX99PPKTQ8TWPJ8Q64FPH",
+      "name": "is_pick_face",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether pickers pick from it."
+    },
+    {
+      "id": "01M8EJX99PA3D8GR1456X5K1SK",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether stock can be put away there."
+    },
+    {
+      "id": "01M8EJX99P6DTE28077FZ8WSWV",
+      "name": "warehouse_zone_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_bin_locations",
+    "columns": [
+      "01M8EJX99PNZ31YCAG0CEXWAPQ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9GQC224DQ9GEFE4A9",
+      "name": "fk_bin_locations_warehouse_zone_id",
+      "columns": [
+        "01M8EJX99P6DTE28077FZ8WSWV"
+      ],
+      "referencesTable": "01M8EJX99PTSVSK05NPK4GV16J",
+      "referencesColumns": [
+        "01M8EJX99PJRJM8VV1YN1B389B"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A9NNE08R8FV2HH6BJT",
+      "name": "ix_bin_locations_code",
+      "columns": [
+        {
+          "column": "01M8EJX99PQ013VFREBRA6NDZT"
+        }
+      ]
+    }
+  ],
+  "comment": "A storage location addressed by aisle, rack, level and position."
+}

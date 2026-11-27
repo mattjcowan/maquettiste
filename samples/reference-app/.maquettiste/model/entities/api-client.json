@@ -83,5 +83,78 @@
       "default": true,
       "description": "Whether the client can obtain tokens."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9APEN9T9YDNZXZTEN0J",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PP4N2TRAWZE99QEBQ",
+      "fields": [
+        {
+          "attribute": "01M2ZMHEMC5KN5X0F9K0AYC0RH",
+          "column": "01M8EJX99PC1D60E7P4ASZS5S4"
+        },
+        {
+          "attribute": "01M2B14FZT1RRMFAF0EKK6ATWB",
+          "column": "01M8EJX99PDEJ0643R609YZA2G"
+        },
+        {
+          "attribute": "01M1F9SD13XN02C7KPB52V3STA",
+          "column": "01M8EJX99P58KMXB967DGCSYP8"
+        },
+        {
+          "attribute": "01M2TRRH0ZVRZTX3MMWQKXNGGG",
+          "column": "01M8EJX99PDAJ1NZJWT08G7W8K"
+        },
+        {
+          "attribute": "01M37KVWET07GEYFYWCG54Y9Q9",
+          "column": "01M8EJX99P1NEA8DDPYFFJ06S0"
+        },
+        {
+          "attribute": "01M1N22QABTM7G6J7HMTFHC6BQ",
+          "column": "01M8EJX99P7C85DCPYMQSF1QEZ"
+        },
+        {
+          "attribute": "01M276NSEMBHV19ECCFQQ67257",
+          "column": "01M8EJX99PNRC420F9FE07EXPC"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PZD45ECEJ8G0FJ106"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99P0TEGXZX074F3F755"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PSPBP4GJ8BBPZX3PY"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99P98CSRKQ6CX4ATR56"
+        },
+        {
+          "attribute": "01M33A5T6SBSH45N4QS0Q3R59H",
+          "column": "01M8EJX99PVZZ43BECJN9XS954"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P0TEGXZX074F3F755": "c0d79bde:9599b5fd",
+          "01M8EJX99P1NEA8DDPYFFJ06S0": "51ea8a61:a2ad2b59",
+          "01M8EJX99P58KMXB967DGCSYP8": "c9046f7a:39d324bf",
+          "01M8EJX99P7C85DCPYMQSF1QEZ": "be243b36:53fb88ea",
+          "01M8EJX99P98CSRKQ6CX4ATR56": "0b075263:9599b5fd",
+          "01M8EJX99PC1D60E7P4ASZS5S4": "a5614527:8da1c7b8",
+          "01M8EJX99PDAJ1NZJWT08G7W8K": "879b2ba2:36d8b8c8",
+          "01M8EJX99PDEJ0643R609YZA2G": "82a3537f:6137f4ed",
+          "01M8EJX99PNRC420F9FE07EXPC": "7bcc948b:19980141",
+          "01M8EJX99PSPBP4GJ8BBPZX3PY": "d31d4567:fd717804",
+          "01M8EJX99PVZZ43BECJN9XS954": "7e7e7ac8:fd717804",
+          "01M8EJX99PZD45ECEJ8G0FJ106": "42049432:e0d08678"
+        }
+      }
+    }
   ]
 }

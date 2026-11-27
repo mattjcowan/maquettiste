@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH547RQVAD1F37REGD",
+  "name": "bundle component is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1XDVN78MBBGQ33067TRZTGY",
+  "foreignKey": "01M8EJX9A61CGHZR0P0EYE9EMF"
+}

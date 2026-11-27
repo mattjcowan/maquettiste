@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJNHBJ7968TQZBCSHQ",
+  "name": "stock reservation adjusts inventory item in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M21XAJE9DY03XK01EANNBFKQ",
+  "foreignKey": "01M8EJX9AA6KWXCYGHSKWQX7XW"
+}

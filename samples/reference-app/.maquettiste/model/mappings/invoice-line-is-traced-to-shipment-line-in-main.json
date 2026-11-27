@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CGM0FQX6SQXD0N2FB7",
+  "name": "invoice line is traced to shipment line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1QGQEEKBA8DT8T7FNX89SN4",
+  "foreignKey": "01M8EJX9A50KA1NFFQ3A0KWPGJ"
+}

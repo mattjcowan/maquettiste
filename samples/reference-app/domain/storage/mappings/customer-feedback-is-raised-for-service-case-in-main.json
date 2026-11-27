@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJVMP5MEZB7MFEFT2A",
+  "name": "customer feedback is raised for service case in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2MXDGDCGEKNE7G5MZWTJCAR",
+  "foreignKey": "01M8EJX9AB31Z63EMEM35YX0W8"
+}

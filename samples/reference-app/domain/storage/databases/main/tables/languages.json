@@ -1,0 +1,47 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QX72730HBK6DTHVZ6",
+  "name": "languages",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QGA8NZXPN6C3FH2FN",
+      "name": "code",
+      "type": "string",
+      "length": 5,
+      "nullable": false,
+      "comment": "BCP 47 language tag, such as en or fr-CA; the natural key."
+    },
+    {
+      "id": "01M8EJX99QZ61DF2MFDYKNA19Y",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "English name."
+    },
+    {
+      "id": "01M8EJX99Q47W35T8RZNNQRY8N",
+      "name": "native_name",
+      "type": "string",
+      "length": 60,
+      "comment": "Name in the language itself."
+    },
+    {
+      "id": "01M8EJX99QCF3EQAEA4FAHXG15",
+      "name": "is_right_to_left",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether text is written right to left."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_languages",
+    "columns": [
+      "01M8EJX99QGA8NZXPN6C3FH2FN"
+    ]
+  },
+  "comment": "A language (ISO 639-1) used for product translations, documents and customer communication."
+}

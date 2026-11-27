@@ -45,5 +45,53 @@
       "default": true,
       "description": "Whether goods must be inspected before credit."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BQ9T5T5Q94RQCE58TG",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QTHPT84P7JGXXZD5G",
+      "fields": [
+        {
+          "attribute": "01M1KFSNPQRMAWYWG12W7KCBZB",
+          "column": "01M8EJX99QVNJ6EXQC23AZH934"
+        },
+        {
+          "attribute": "01M31D9DWEFQNZZ56TEMMFFQP8",
+          "column": "01M8EJX99QK72PX9JFHC49KTN5"
+        },
+        {
+          "attribute": "01M2XCMC1MWD9C3N7B7FSS1GWG",
+          "column": "01M8EJX99QPH9WQ2J9EPVXY222"
+        },
+        {
+          "attribute": "01M1Q2XEZTSQ4A7SG2QB2MDQ7G",
+          "column": "01M8EJX99QG3PFXGA7D4CNCSB4"
+        },
+        {
+          "attribute": "01M32VYTXQMHC0TM6FHBHKHE4T",
+          "column": "01M8EJX99QMDNH8NFW47NCPSS1"
+        },
+        {
+          "attribute": "01M2WVYB596ZFE7XF9DEVKTVCD",
+          "column": "01M8EJX99QKRCQA5C1JYBZEA5F"
+        },
+        {
+          "attribute": "01M352J3V77SWZZE4X5PY7GPHN",
+          "column": "01M8EJX99QAQDHGPS2JFVHWQXQ"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99QAQDHGPS2JFVHWQXQ": "0a2438db:19980141",
+          "01M8EJX99QG3PFXGA7D4CNCSB4": "5694d08a:461bd2c5",
+          "01M8EJX99QK72PX9JFHC49KTN5": "977c2589:19980141",
+          "01M8EJX99QKRCQA5C1JYBZEA5F": "d0efd4f6:53fb88ea",
+          "01M8EJX99QMDNH8NFW47NCPSS1": "82a3537f:6137f4ed",
+          "01M8EJX99QPH9WQ2J9EPVXY222": "25b5d83c:19980141",
+          "01M8EJX99QVNJ6EXQC23AZH934": "a5614527:53fb88ea"
+        }
+      }
+    }
   ]
 }

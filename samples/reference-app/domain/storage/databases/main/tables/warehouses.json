@@ -1,0 +1,198 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PHZR96PEBKTQQ9YZN",
+  "name": "warehouses",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PTVF1S98KT1AWBCM4",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the warehouse."
+    },
+    {
+      "id": "01M8EJX99P65MSJABAH5D01NS5",
+      "name": "code",
+      "type": "string",
+      "length": 10,
+      "nullable": false,
+      "comment": "Warehouse code printed on labels."
+    },
+    {
+      "id": "01M8EJX99PT717S1X3FEAH10JC",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Warehouse name."
+    },
+    {
+      "id": "01M8EJX99P9CKJQPCS62TS0TJX",
+      "name": "address_line1",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Street and number, or PO box."
+    },
+    {
+      "id": "01M8EJX99P2RR3JY77A070PF17",
+      "name": "address_line2",
+      "type": "string",
+      "length": 120,
+      "comment": "Suite, floor or building."
+    },
+    {
+      "id": "01M8EJX99PGQX3MS1T1TFA038D",
+      "name": "address_city",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "City or locality."
+    },
+    {
+      "id": "01M8EJX99PRQ4QBT8PS2Q601XJ",
+      "name": "address_region",
+      "type": "string",
+      "length": 80,
+      "comment": "State, province or county."
+    },
+    {
+      "id": "01M8EJX99PQ9DBGKF1PPY900HZ",
+      "name": "address_postal_code",
+      "type": "string",
+      "length": 20,
+      "comment": "Postal or ZIP code."
+    },
+    {
+      "id": "01M8EJX99PMDR7ZSNYJTGBE9EE",
+      "name": "address_country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "comment": "ISO country code."
+    },
+    {
+      "id": "01M8EJX99PN216WC5XQ7TFC8CT",
+      "name": "location_latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "comment": "Degrees north of the equator."
+    },
+    {
+      "id": "01M8EJX99PHJK7KW6B2GCKWPWF",
+      "name": "location_longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "comment": "Degrees east of Greenwich."
+    },
+    {
+      "id": "01M8EJX99P5381SW70A8N69XSE",
+      "name": "time_zone",
+      "type": "string",
+      "length": 40,
+      "nullable": false,
+      "comment": "IANA time zone, such as America/Denver."
+    },
+    {
+      "id": "01M8EJX99PGQXQZTVHGNRJ7MQR",
+      "name": "floor_area_sqm",
+      "type": "decimal",
+      "precision": 10,
+      "scale": 2,
+      "comment": "Floor area in square meters."
+    },
+    {
+      "id": "01M8EJX99PBDB482Z185G0YK19",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it can receive and ship."
+    },
+    {
+      "id": "01M8EJX99PSMGYD6QZS12ZVKWF",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PYMGESRN89R94FQ9D",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P4X35AB5TX1T34BN4",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PRNX795EM84F7N1J3",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PA88VCE0N3JSAA17C",
+      "name": "cost_center_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P2ZAH9WXZ8PEDQ5T4",
+      "name": "manager_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_warehouses",
+    "columns": [
+      "01M8EJX99PTVF1S98KT1AWBCM4"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9AA38NBKNM2WW934EDA",
+      "name": "uq_warehouses_code",
+      "columns": [
+        "01M8EJX99P65MSJABAH5D01NS5"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AAMMZEGHH6ZM7850B5",
+      "name": "fk_warehouses_cost_center_id",
+      "columns": [
+        "01M8EJX99PA88VCE0N3JSAA17C"
+      ],
+      "referencesTable": "01M8EJX99P5J0E19PAVE7JYSJ0",
+      "referencesColumns": [
+        "01M8EJX99PY96M7HPE86J4KR2W"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AA7TQ0ZD6JHFQQ2NEF",
+      "name": "fk_warehouses_manager_id",
+      "columns": [
+        "01M8EJX99P2ZAH9WXZ8PEDQ5T4"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A distribution center Northwind ships from, such as Denver DC or Reno DC."
+}

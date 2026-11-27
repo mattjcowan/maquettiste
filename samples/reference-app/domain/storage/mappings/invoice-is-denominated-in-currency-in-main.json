@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CGSECHMQ87N9X4VEMZ",
+  "name": "invoice is denominated in currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1W78GV3FENAYCYXQESJ8NJR",
+  "foreignKey": "01M8EJX9A52Y1E7JYPWMCVWXP7"
+}

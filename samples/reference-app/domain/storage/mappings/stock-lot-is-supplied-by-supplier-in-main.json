@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJJYKK0PD279H1G1MR",
+  "name": "stock lot is supplied by supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1MEA7HRA70XP5JB4HN56HMK",
+  "foreignKey": "01M8EJX9AADD11FTR8J9C8TZCS"
+}

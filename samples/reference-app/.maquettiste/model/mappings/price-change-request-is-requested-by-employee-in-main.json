@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJFR2PDGFDT28HB7SP",
+  "name": "price change request is requested by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2MGDMWZ582ES9FWHBDR8R36",
+  "foreignKey": "01M8EJX9AARDCTCZ189JNR4Y8S"
+}

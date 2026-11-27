@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
 
@@ -8,6 +9,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// drift, with the precedence of engine-design.md section 16 (busy and internal 4, invalid 1, conflicts 3, drift 2). Check writes nothing.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class CheckTests
 {
     [Fact]

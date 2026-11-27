@@ -7,6 +7,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>MQ6020, unit paths, explain, pack outputs, file move and pack settings (generation-ui.md sections 4.3, 5.1 to 5.3).</summary>
+[UsesProjectedFixtures]
 public sealed class PackAuthoringMoreTests
 {
     private static CancellationToken Ct => EditorRepo.Ct;

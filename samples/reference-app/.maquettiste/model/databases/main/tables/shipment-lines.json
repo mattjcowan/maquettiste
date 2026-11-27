@@ -1,0 +1,106 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PTWVK83PWPXCJ2V5K",
+  "name": "shipment_lines",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PWARWMWWHCBYP4HHP",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the shipment line."
+    },
+    {
+      "id": "01M8EJX99PXNCR3S5SBMKSHC92",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity shipped."
+    },
+    {
+      "id": "01M8EJX99P3R1YA4475VPFM6R0",
+      "name": "shipment_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PNE0ZVQAS373SN841",
+      "name": "sales_order_line_id",
+      "type": "ulid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99PVM4PEFD9RZZS27HZ",
+      "name": "lot_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99PDY8ZDFSPWTFD9YQR",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_shipment_lines",
+    "columns": [
+      "01M8EJX99PWARWMWWHCBYP4HHP"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9B16Y32J0MGKE04TF",
+      "name": "fk_shipment_lines_shipment_id",
+      "columns": [
+        "01M8EJX99P3R1YA4475VPFM6R0"
+      ],
+      "referencesTable": "01M8EJX99PKM2XB6JYQ5KG4H99",
+      "referencesColumns": [
+        "01M8EJX99PJZQHKXG1H6695ECQ"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A97781AKTQM79QRJCZ",
+      "name": "fk_shipment_lines_sales_order_line_id",
+      "columns": [
+        "01M8EJX99PNE0ZVQAS373SN841"
+      ],
+      "referencesTable": "01M34B2XCK0G0EW7GX48YPV9R6",
+      "referencesColumns": [
+        "01M8EJX99QB5W684KZRFP37DGQ"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A9Z8ZSM81FBYJ53WKK",
+      "name": "fk_shipment_lines_lot_id",
+      "columns": [
+        "01M8EJX99PVM4PEFD9RZZS27HZ"
+      ],
+      "referencesTable": "01M8EJX99P4YZT0BJ4SBS8XS67",
+      "referencesColumns": [
+        "01M8EJX99PJWQ6NSF0MMBRYXEK"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A91FVXQH153E9JGRCV",
+      "name": "fk_shipment_lines_product_id",
+      "columns": [
+        "01M8EJX99PDY8ZDFSPWTFD9YQR"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "The quantity of an order line included in a shipment."
+}

@@ -21,14 +21,30 @@ internal sealed partial class ResolveRun
         var anyCopy = Model.All<Entity>().Any(e => e.Copy is not null);
         var anyParts = PartTree.Any(Model);
         var keysByRelation = anyParts ? CompositionKeys(databases) : [];
+        // Each entity's parts are its own (in parallel: the work reads the finished relations, ends and keys and writes only the entity's
+        // list); the copy blocks, which also write the bindings' child tables, follow one by one in the same order as before.
+        var items = new List<(Entity Source, REntity Record)>(_entitySources.Count);
         foreach (var (id, source) in _entitySources)
         {
-            if (!_entities.TryGetValue(id, out var r) || r.Id.Length == 0)
-                continue;
+            if (_entities.TryGetValue(id, out var record) && record.Id.Length > 0)
+                items.Add((source, record));
+        }
+
+        var built = new (List<RPart> Parts, IReadOnlyList<string> Keys)[items.Count];
+        ForEach(items.Count, i =>
+        {
+            var (source, record) = items[i];
             var tree = anyParts ? PartTree.Of(Model, source) : null;
             var keys = PartKeys(source, tree);
-            var parts = tree is null || tree.Nodes.Count == 0 ? [] : Parts(r, tree, keysByRelation);
-            r.Parts = new KeyedList<RPart>(parts, keys);
+            var parts = tree is null || tree.Nodes.Count == 0 ? [] : Parts(record, tree, keysByRelation);
+            record.Parts = new KeyedList<RPart>(parts, keys);
+            built[i] = (parts, keys);
+        });
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            var (source, r) = items[i];
+            var (parts, keys) = built[i];
             if (anyCopy && SubjectCoverage.Chain(Model, source).Any(b => Model.Get<Entity>(b)?.Copy is not null))
             {
                 r.Copy = Copy(r, source, parts, keys);

@@ -15,6 +15,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// Migration facts in a copy of the billing model (next-phase-1-design.md section 3.2): the kind, its rules and how pending facts
 /// meet resolution and generation. Each test copies billing into a temporary folder.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class FactRecordingTests
 {
     private const string NotesTableId = "01K6BND0000000000000000001";

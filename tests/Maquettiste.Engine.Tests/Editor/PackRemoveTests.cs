@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>Removing a pack (engine-design.md 12.3a) and the element names of unit paths.</summary>
+[UsesProjectedFixtures]
 public sealed class PackRemoveTests
 {
     private static CancellationToken Ct => EditorRepo.Ct;

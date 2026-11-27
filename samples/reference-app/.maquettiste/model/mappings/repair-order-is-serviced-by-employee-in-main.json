@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJXVN5CQ4QQPEBQS2S",
+  "name": "repair order is serviced by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M34DCZQ8GH822KP2GCZDYT4Y",
+  "foreignKey": "01M8EJX9ABBESFB8AZSRS3NBFW"
+}

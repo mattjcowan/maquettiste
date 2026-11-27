@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EKDBZ7GP9Q83PTQKE5XNJV",
+  "name": "customers",
+  "database": "01JDBS00000000000000000001",
+  "columns": [
+    {
+      "id": "01M8EKDBZ8JS9DTJ2M93MAZ7B6",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EKDBZ8ZPA7DAMHYZ70SY0E",
+      "name": "name",
+      "type": "string",
+      "length": 255
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_customers",
+    "columns": [
+      "01M8EKDBZ8JS9DTJ2M93MAZ7B6"
+    ]
+  }
+}

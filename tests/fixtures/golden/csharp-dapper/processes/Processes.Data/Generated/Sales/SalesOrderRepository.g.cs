@@ -12,14 +12,14 @@ using Dapper;
 
 namespace Processes.Data.Sales;
 
-/// <summary>Reads and writes <see cref="SalesOrder"/> rows in public.sales_orders (database main, postgresql).</summary>
+/// <summary>Reads and writes <see cref="SalesOrder"/> rows through its binding to table sales_orders (database main, postgresql).</summary>
 public partial interface ISalesOrderRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<SalesOrder?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<SalesOrder>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<SalesOrder>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(SalesOrder entity, CancellationToken cancellationToken = default);
@@ -34,41 +34,44 @@ public partial interface ISalesOrderRepository
 /// <summary>The Dapper implementation of <see cref="ISalesOrderRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class SalesOrderRepository(IDbConnection connection, IDbTransaction? transaction = null) : ISalesOrderRepository
 {
-    private const string Columns = """
-        id AS Id,
-        status AS Status,
-        configuration AS Configuration,
-        total AS Total,
-        credit_limit AS CreditLimit
+    private const string SelectSql = """
+        SELECT t.id AS id, t.status AS status, t.configuration AS configuration, t.total AS total, t.credit_limit AS creditLimit
+        FROM public.sales_orders t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM public.sales_orders WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM public.sales_orders ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.status AS status, t.configuration AS configuration, t.total AS total, t.credit_limit AS creditLimit
+        FROM public.sales_orders t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO public.sales_orders (id, status, configuration, total, credit_limit)
-        VALUES (@Id, @Status, @Configuration, @Total, @CreditLimit)
+        VALUES (@id, @status, @configuration, @total, @creditLimit)
         """;
 
     private const string UpdateSql = """
-        UPDATE public.sales_orders SET status = @Status, configuration = @Configuration, total = @Total, credit_limit = @CreditLimit
-        WHERE id = @Id
+        UPDATE public.sales_orders SET status = @status, configuration = @configuration, total = @total, credit_limit = @creditLimit
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM public.sales_orders WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM public.sales_orders
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<SalesOrder?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<SalesOrder>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<SalesOrder>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -91,34 +94,34 @@ public partial class SalesOrderRepository(IDbConnection connection, IDbTransacti
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of sales_orders, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table sales_orders as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public int Status { get; set; }
-        public string? Configuration { get; set; }
-        public decimal Total { get; set; }
-        public decimal CreditLimit { get; set; }
+        public Guid id { get; set; }
+        public int status { get; set; }
+        public string? configuration { get; set; }
+        public decimal total { get; set; }
+        public decimal creditLimit { get; set; }
 
         public static SalesOrder ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Status = (SalesOrderStatus)row.Status,
-            Configuration = row.Configuration is null ? null : JsonSerializer.Deserialize<JsonElement?>(row.Configuration),
-            Total = row.Total,
-            CreditLimit = row.CreditLimit,
+            Id = row.id,
+            Status = (SalesOrderStatus)row.status,
+            Configuration = row.configuration is null ? null : JsonSerializer.Deserialize<JsonElement?>(row.configuration),
+            Total = row.total,
+            CreditLimit = row.creditLimit,
         };
 
         public static Row From(SalesOrder entity) => new()
         {
-            Id = entity.Id,
-            Status = (int)entity.Status,
-            Configuration = entity.Configuration is null ? null : JsonSerializer.Serialize(entity.Configuration),
-            Total = entity.Total,
-            CreditLimit = entity.CreditLimit,
+            id = entity.Id,
+            status = (int)entity.Status,
+            configuration = entity.Configuration is null ? null : JsonSerializer.Serialize(entity.Configuration),
+            total = entity.Total,
+            creditLimit = entity.CreditLimit,
         };
     }
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHG9D3NJX434GB8BK2",
+  "name": "payment settles invoice in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2C837KSF3XZJHGPY66P8B2H",
+  "attributes": [
+    {
+      "attribute": "01M2Q0YQ896TTNTDEBGX0J97NS",
+      "column": "01M8EJX99QNX0TCSP93TPS93GN"
+    }
+  ],
+  "junctionTable": "01M8EJX99QP65Z9N4M2FG6ZCT3",
+  "ends": [
+    {
+      "end": "01M2MHCVN9D1MCBJPAENFEAZXB",
+      "foreignKey": "01M8EJX9AC6CHJESNTP7VKZ7AZ"
+    },
+    {
+      "end": "01M23WM87AHCCEG601YDXV6KR5",
+      "foreignKey": "01M8EJX9ACZS89VWW6DVDD2B58"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJRHZG396B90PKN2G5",
+  "name": "stock adjustment is explained by reason in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2XNJZP95305TPYGWKH3EYAZ",
+  "foreignKey": "01M8EJX9AAJZM64XFQWQJ7SMNZ"
+}

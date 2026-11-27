@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ9VWP7RFE8WJ3QJV9",
+  "name": "quality inspection is traced to goods receipt line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M36XXHDGCZX3SHXT0QPG2J5F",
+  "foreignKey": "01M8EJX9AAZB0ABCBG57GSVTNN"
+}

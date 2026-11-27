@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CFVBJVVFTP4WSRHD8Q",
+  "name": "bank account posts to ledger account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2AYCDNZ6A8T249CQTA99A8D",
+  "foreignKey": "01M8EJX99YW6XT0Z8DZS0ZBX6R"
+}

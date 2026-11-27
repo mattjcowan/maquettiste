@@ -1,0 +1,125 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P49MAF6FNKX4XF4TA",
+  "name": "drivers",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PN9E9BQK4AN4ZMV8P",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the driver."
+    },
+    {
+      "id": "01M8EJX99PRNMBQSF7GM1D6ZD9",
+      "name": "license_number",
+      "type": "string",
+      "length": 30,
+      "nullable": false,
+      "comment": "Driving license number."
+    },
+    {
+      "id": "01M8EJX99PW1Z3HKNYZSAF71HN",
+      "name": "license_class",
+      "type": "string",
+      "length": 10,
+      "comment": "License class, such as CDL-B."
+    },
+    {
+      "id": "01M8EJX99P61ED2PWKJZ8GEVN7",
+      "name": "license_expires_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "License expiry."
+    },
+    {
+      "id": "01M8EJX99PNB1GY9P9CHF7ZZXZ",
+      "name": "mobile_phone_number",
+      "type": "string",
+      "length": 20,
+      "comment": "Number in E.164 form, such as +14155550100."
+    },
+    {
+      "id": "01M8EJX99PW7WS9167H707K61K",
+      "name": "mobile_phone_extension",
+      "type": "string",
+      "length": 10,
+      "comment": "Internal extension."
+    },
+    {
+      "id": "01M8EJX99P4A0HTWAFMM363DH6",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PAB8RBVY338TKYDPY",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PCE6RHQXFY6S1QPNA",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P6TMSQQPE79BH83B4",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PR5AHE9PF6K1J7GFH",
+      "name": "employee_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_drivers",
+    "columns": [
+      "01M8EJX99PN9E9BQK4AN4ZMV8P"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A9K41ARZN5TWXJ12KQ",
+      "name": "uq_drivers_license_number",
+      "columns": [
+        "01M8EJX99PRNMBQSF7GM1D6ZD9"
+      ]
+    },
+    {
+      "id": "01M8EJX9A95YX3ZF8TXDAC6FH8",
+      "name": "uq_drivers_employee_id",
+      "columns": [
+        "01M8EJX99PR5AHE9PF6K1J7GFH"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9QACEQ6TYM4NKJ4HM",
+      "name": "fk_drivers_employee_id",
+      "columns": [
+        "01M8EJX99PR5AHE9PF6K1J7GFH"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "An employee licensed to drive the own fleet."
+}

@@ -130,7 +130,17 @@ end
 
 # The SQL type of a code or a label: string (with its length), int16, int32, int64 or uuid (the dialect's UUID type: uuid on
 # PostgreSQL, uniqueidentifier on SQL Server, TEXT on SQLite, char(36) elsewhere; its codes are quoted literals like strings).
+# Oracle takes the types its type map gives the columns that hold the codes (varchar2(n char), clob without a length, number(5),
+# number(10)), so a foreign key from such a column to the lookup table joins columns of one type.
 func ref_sql_type(kind, length, d)
+  if d == "oracle" && kind != "uuid" && kind != "int64"
+    if kind == "int16"
+      ret "number(5)"
+    else if kind == "int32"
+      ret "number(10)"
+    end
+    ret length ? "varchar2(" + length + " char)" : "clob"
+  end
   case kind
     when "uuid"
       ret d == "postgresql" ? "uuid" : (d == "sqlserver" ? "uniqueidentifier" : (d == "sqlite" ? "TEXT" : "char(36)"))

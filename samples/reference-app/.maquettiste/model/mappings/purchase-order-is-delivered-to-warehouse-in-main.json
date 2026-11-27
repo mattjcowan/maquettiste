@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ1D458X1CKPKS8NGV",
+  "name": "purchase order is delivered to warehouse in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M366RR12Z9HXA8QPMS7140NE",
+  "foreignKey": "01M8EJX9ABEMHHMYJ7G0DP5YJJ"
+}

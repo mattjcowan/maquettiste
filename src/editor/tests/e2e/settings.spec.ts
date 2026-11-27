@@ -5,7 +5,7 @@ import { expect, test } from "./fixtures";
 const hex = (s: string) => `#${s}`;
 
 test("vocabularies and conventions", async ({ page }, testInfo) => {
-  await page.goto("/settings");
+  await page.goto("/settings?mock=projected");
   const settings = page.getByTestId("settings-workspace");
   await expect(settings.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
   await settings.getByRole("tab", { name: "Tags" }).click();

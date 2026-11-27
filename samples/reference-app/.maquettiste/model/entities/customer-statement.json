@@ -64,5 +64,68 @@
       "length": 400,
       "description": "Rendered PDF."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B0FFGANNKT4TYADKB6",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99MBRZ2YD3PQ8AZZVDY",
+      "fields": [
+        {
+          "attribute": "01M1MZD4GJZGECSN5S781DFV4J",
+          "column": "01M8EJX99M2Z9TE9650SGEQQH1"
+        },
+        {
+          "attribute": "01M1KGXZ1Y9W28WQCKJ2ZGHSGH",
+          "column": "01M8EJX99MDAQMWRT09XSVPNE9"
+        },
+        {
+          "attribute": "01M30MM5QH4N5K05CDNT7H16CS.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99M8JKJJG45WF2MTANR"
+        },
+        {
+          "attribute": "01M30MM5QH4N5K05CDNT7H16CS.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99MWZWRSRSPWN320632"
+        },
+        {
+          "attribute": "01M30PAPZTDVSN4G2ND85EAA1N.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99M45HQ1BGD2JP8SPF3"
+        },
+        {
+          "attribute": "01M30PAPZTDVSN4G2ND85EAA1N.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99MFAV5JV4W24SK4127"
+        },
+        {
+          "attribute": "01M340PEV0HDE1QJFBE22J2EZG",
+          "column": "01M8EJX99MCPZF6DNJ3M57Q7A4"
+        },
+        {
+          "attribute": "01M2QHKG0ZKQVNE7PC1RCDJE6M",
+          "column": "01M8EJX99MFRADTGWH0FD17X6K"
+        },
+        {
+          "attribute": "01M2FGXHYC6Q2NZMA0J453V18A",
+          "column": "01M8EJX99MJNYX7WNQNN6MABFM"
+        },
+        {
+          "attribute": "01M2RGK47DCME2D8B2XBQGSQCJ",
+          "column": "01M8EJX99M0FWFHBMVFZ5FHZYX"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99M0FWFHBMVFZ5FHZYX": "640c5d99:d8a57cf9",
+          "01M8EJX99M2Z9TE9650SGEQQH1": "a5614527:8da1c7b8",
+          "01M8EJX99M45HQ1BGD2JP8SPF3": "c9f76df5:d46c92d7",
+          "01M8EJX99M8JKJJG45WF2MTANR": "551dcfd2:d46c92d7",
+          "01M8EJX99MCPZF6DNJ3M57Q7A4": "29af6f44:fd717804",
+          "01M8EJX99MDAQMWRT09XSVPNE9": "49298b57:81884634",
+          "01M8EJX99MFAV5JV4W24SK4127": "8067c45e:48b85cd3",
+          "01M8EJX99MFRADTGWH0FD17X6K": "2748e744:5c7847da",
+          "01M8EJX99MJNYX7WNQNN6MABFM": "c001011d:8da1c7b8",
+          "01M8EJX99MWZWRSRSPWN320632": "8f0836db:48b85cd3"
+        }
+      }
+    }
   ]
 }

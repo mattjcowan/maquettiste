@@ -54,5 +54,68 @@
       "default": true,
       "description": "Whether employees can be assigned."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9B1BGFDP1DCYK6YNPB2",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99P205VEZSNBGD90S75",
+      "fields": [
+        {
+          "attribute": "01M1N17H8YGW807B8WTEC7D6TV",
+          "column": "01M8EJX99PF8R5RH27G2ZZSEM5"
+        },
+        {
+          "attribute": "01M2T2EGCPWNM6ZNWTKEKSXKEM",
+          "column": "01M8EJX99PEK2D6XWVVTTFGHGN"
+        },
+        {
+          "attribute": "01M2WJX2SCK7VR9MVJPHXCDC7C",
+          "column": "01M8EJX99P393XDJANXC0A3HHQ"
+        },
+        {
+          "attribute": "01M1JN3GTMSC74QZPN2GEC62EB",
+          "column": "01M8EJX99P8RDVR8BB9C4W77EA"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99P22GSXXRYHG4MENSX"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PA65QMSC5ZXXFAZC2"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PCTY2ECZ2SXW26SRF"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PEA2T1HJ70805NR69"
+        },
+        {
+          "attribute": "01M26V2D89B118HZN7C1NJAG3P",
+          "column": "01M8EJX99PA5JGVRWDTJ3KHA52"
+        },
+        {
+          "attribute": "01M2ZACR3T5TYH92ZXPZQW5Y0J",
+          "column": "01M8EJX99PBSRTSCAPGGG92QEN"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P22GSXXRYHG4MENSX": "42049432:e0d08678",
+          "01M8EJX99P393XDJANXC0A3HHQ": "82a3537f:6137f4ed",
+          "01M8EJX99P8RDVR8BB9C4W77EA": "0a2438db:19980141",
+          "01M8EJX99PA5JGVRWDTJ3KHA52": "c8365d62:d8a57cf9",
+          "01M8EJX99PA65QMSC5ZXXFAZC2": "c0d79bde:9599b5fd",
+          "01M8EJX99PBSRTSCAPGGG92QEN": "76798025:d8a57cf9",
+          "01M8EJX99PCTY2ECZ2SXW26SRF": "d31d4567:fd717804",
+          "01M8EJX99PEA2T1HJ70805NR69": "0b075263:9599b5fd",
+          "01M8EJX99PEK2D6XWVVTTFGHGN": "5694d08a:ef1ae9ec",
+          "01M8EJX99PF8R5RH27G2ZZSEM5": "a5614527:8da1c7b8"
+        }
+      }
+    }
   ]
 }

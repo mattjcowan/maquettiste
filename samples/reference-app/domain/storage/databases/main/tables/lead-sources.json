@@ -1,0 +1,72 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PMJ68BYB4ZJ1KG6E5",
+  "name": "lead_sources",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P68KX5024RBQKKQR8",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the lead source."
+    },
+    {
+      "id": "01M8EJX99PGWFEY70EP6Y0TZFN",
+      "name": "channel",
+      "type": "string",
+      "length": 40,
+      "comment": "Marketing channel the source rolls up to."
+    },
+    {
+      "id": "01M8EJX99PR0KKXXJTXX6JH1FM",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99PCF0KCM1Y0316T60E",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99PQWN1SQJ869MYTHTY",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99PFQ94Y5PAGYH6MKHW",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_lead_sources",
+    "columns": [
+      "01M8EJX99P68KX5024RBQKKQR8"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A82D4AJ3VEWS39GVYA",
+      "name": "uq_lead_sources_code",
+      "columns": [
+        "01M8EJX99PR0KKXXJTXX6JH1FM"
+      ]
+    }
+  ],
+  "comment": "Origin of a lead, such as Trade show or Website form."
+}

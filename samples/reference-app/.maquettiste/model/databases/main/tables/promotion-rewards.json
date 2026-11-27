@@ -1,0 +1,86 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99Q888GPM328AM7DGGC",
+  "name": "promotion_rewards",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q8QH76GG3M563XM59",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the promotion reward."
+    },
+    {
+      "id": "01M8EJX99QESNA00T8ZSSXQS03",
+      "name": "reward_type",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "comment": "Kind of benefit."
+    },
+    {
+      "id": "01M8EJX99QNA1CNS7Z64TW7R6Y",
+      "name": "value",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 4,
+      "nullable": false,
+      "comment": "Percentage, amount or price, depending on the type."
+    },
+    {
+      "id": "01M8EJX99QGRW5RYQYMFAV550B",
+      "name": "free_quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "comment": "Free units, for free goods."
+    },
+    {
+      "id": "01M8EJX99QYN0SQ4BX6JWGK7NS",
+      "name": "promotion_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QB1GZXK88PQDN7NG6",
+      "name": "free_product_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_promotion_rewards",
+    "columns": [
+      "01M8EJX99Q8QH76GG3M563XM59"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA3AAESBD717QDVRM5",
+      "name": "fk_promotion_rewards_promotion_id",
+      "columns": [
+        "01M8EJX99QYN0SQ4BX6JWGK7NS"
+      ],
+      "referencesTable": "01M8EJX99QF6C7NWKA4NH5E7W4",
+      "referencesColumns": [
+        "01M8EJX99Q0B4TTWBMHCCEYPKG"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AA9YGQAECXXE2S8QS5",
+      "name": "fk_promotion_rewards_free_product_id",
+      "columns": [
+        "01M8EJX99QB1GZXK88PQDN7NG6"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A benefit granted when a promotion's conditions are met."
+}

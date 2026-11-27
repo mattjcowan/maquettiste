@@ -59,5 +59,68 @@
       "type": "text",
       "description": "Assumptions."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9ATT5K8N2EKQ9PYD0KV",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PGW02W7JRZTW07JH5",
+      "fields": [
+        {
+          "attribute": "01M1WD7QSWSE2EDB3JAG7QJ3DP",
+          "column": "01M8EJX99PX6S68WKVGARZQ6H5"
+        },
+        {
+          "attribute": "01M1H6FA553FZ6R0JD72VRHYS3",
+          "column": "01M8EJX99PGEPXR93HSVZZ052W"
+        },
+        {
+          "attribute": "01M1EHR9G9WVE59ZDQMPJSBYYT",
+          "column": "01M8EJX99PBNGWN19T5T9GKZZK"
+        },
+        {
+          "attribute": "01M1P38Q3F1E9SGHJWZXYC3D4Y",
+          "column": "01M8EJX99PJF1TTMA3MJX88P8Y"
+        },
+        {
+          "attribute": "01M1KBG18KGBSR2E4WWC8WW84D",
+          "column": "01M8EJX99PAQ6C9WHV3Z03X3YH"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PDMVD6HFS4YJG9KP4"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99PVN2HHQ2YVCFAV0YF"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99PKX8YXQSPAZP3Y74A"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99PAKHA563GT9ND98AE"
+        },
+        {
+          "attribute": "01M1NNMHX1GRYRCMNGNN6YF4RA",
+          "column": "01M8EJX99PWNN1JWBKXT9119VW"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99PAKHA563GT9ND98AE": "0b075263:9599b5fd",
+          "01M8EJX99PAQ6C9WHV3Z03X3YH": "ab5aa970:43ec92f3",
+          "01M8EJX99PBNGWN19T5T9GKZZK": "734b4374:6bcc33d3",
+          "01M8EJX99PDMVD6HFS4YJG9KP4": "42049432:e0d08678",
+          "01M8EJX99PGEPXR93HSVZZ052W": "82a3537f:6e0602bf",
+          "01M8EJX99PJF1TTMA3MJX88P8Y": "60c92276:19980141",
+          "01M8EJX99PKX8YXQSPAZP3Y74A": "d31d4567:fd717804",
+          "01M8EJX99PVN2HHQ2YVCFAV0YF": "c0d79bde:9599b5fd",
+          "01M8EJX99PWNN1JWBKXT9119VW": "c8365d62:d8a57cf9",
+          "01M8EJX99PX6S68WKVGARZQ6H5": "a5614527:8da1c7b8"
+        }
+      }
+    }
   ]
 }

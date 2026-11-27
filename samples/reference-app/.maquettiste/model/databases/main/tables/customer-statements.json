@@ -1,0 +1,116 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99MBRZ2YD3PQ8AZZVDY",
+  "name": "customer_statements",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99M2Z9TE9650SGEQQH1",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the customer statement."
+    },
+    {
+      "id": "01M8EJX99MDAQMWRT09XSVPNE9",
+      "name": "statement_date",
+      "type": "date",
+      "nullable": false,
+      "comment": "Statement date."
+    },
+    {
+      "id": "01M8EJX99M8JKJJG45WF2MTANR",
+      "name": "opening_balance_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99MWZWRSRSPWN320632",
+      "name": "opening_balance_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99M45HQ1BGD2JP8SPF3",
+      "name": "closing_balance_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99MFAV5JV4W24SK4127",
+      "name": "closing_balance_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99MCPZF6DNJ3M57Q7A4",
+      "name": "sent_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was sent."
+    },
+    {
+      "id": "01M8EJX99MFRADTGWH0FD17X6K",
+      "name": "document_url",
+      "type": "string",
+      "length": 400,
+      "comment": "Rendered PDF."
+    },
+    {
+      "id": "01M8EJX99MJNYX7WNQNN6MABFM",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99M0FWFHBMVFZ5FHZYX",
+      "name": "billing_account_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_customer_statements",
+    "columns": [
+      "01M8EJX99M2Z9TE9650SGEQQH1"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A3RVJE2HM5MCC1SCEW",
+      "name": "fk_customer_statements_customer_id",
+      "columns": [
+        "01M8EJX99MJNYX7WNQNN6MABFM"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A3PV4QRP0PYB19TYD7",
+      "name": "fk_customer_statements_billing_account_id",
+      "columns": [
+        "01M8EJX99M0FWFHBMVFZ5FHZYX"
+      ],
+      "referencesTable": "01M8EJX99MKJ5K4KVKVC5Z0Z1M",
+      "referencesColumns": [
+        "01M8EJX99MHQXQZEBJQYQB35W3"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A periodic statement of a customer's open items and balance."
+}

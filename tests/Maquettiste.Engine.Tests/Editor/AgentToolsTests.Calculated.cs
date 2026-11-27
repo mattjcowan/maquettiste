@@ -1,10 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Generation;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary><c>get_calculated</c> (next-phase-2-design.md section 5.5): the calculated values of the objects asked for, and nothing else.</summary>
+[UsesProjectedFixtures]
 public sealed partial class AgentToolsTests
 {
     /// <summary>A calculation file on entities and one on attributes: an <c>api_name</c> of each entity, and a label of each attribute.</summary>

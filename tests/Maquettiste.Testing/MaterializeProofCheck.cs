@@ -12,7 +12,9 @@ namespace Maquettiste.Testing;
 /// <item>A table the pack created in seed.sql (a lookup table, a list's table) is a designed table: its CREATE TABLE body is the pack's,
 /// with the declared constraints above; a schema the pack created in seed.sql is declared.</item>
 /// <item>seed.sql keeps every row of every table, as a multiset per table; it loses the pack's reference objects (the statements above,
-/// the lookup tables' CREATE TABLE, the retire deletes) and writes rows in the bound form (another comment and ON CONFLICT clause).</item>
+/// the lookup tables' CREATE TABLE) and writes rows in the bound form (another comment and statement layout). Each table's rows are
+/// written the same way: inserted when missing, or updated on their key with the same columns; and the same retire deletes remain (the
+/// same table and codes, whatever the line breaks).</item>
 /// </list>
 /// Anything else (a dropped row, table, column or file, a moved line) is a problem.
 /// </summary>
@@ -238,11 +240,77 @@ public static partial class MaterializeProofCheck
                 problems.Add($"{path}: the rows of {table} differ ({a.Count} before, {b.Count} after)");
         }
 
+        var (formsBefore, deletesBefore) = Writes(before);
+        var (formsAfter, deletesAfter) = Writes(after);
+        foreach (var table in formsBefore.Keys.Union(formsAfter.Keys).Order(StringComparer.Ordinal))
+        {
+            var a = formsBefore.GetValueOrDefault(table, "none");
+            var b = formsAfter.GetValueOrDefault(table, "none");
+            if (a != b)
+                problems.Add($"{path}: the rows of {table} were written as {a}, now as {b}");
+        }
+
+        foreach (var delete in deletesBefore.Except(deletesAfter).Order(StringComparer.Ordinal))
+            problems.Add($"{path}: the delete '{delete}' is gone");
+        foreach (var delete in deletesAfter.Except(deletesBefore).Order(StringComparer.Ordinal))
+            problems.Add($"{path}: the delete '{delete}' is new");
+
         if (!restBefore.SequenceEqual(restAfter))
         {
             var at = Enumerable.Range(0, Math.Min(restBefore.Count, restAfter.Count)).FirstOrDefault(k => restBefore[k] != restAfter[k], Math.Min(restBefore.Count, restAfter.Count));
             problems.Add($"{path}: line {at + 1} of the rest differs: '{(at < restBefore.Count ? restBefore[at] : "<end>")}' became '{(at < restAfter.Count ? restAfter[at] : "<end>")}'");
         }
+    }
+
+    [GeneratedRegex(@"(DO UPDATE SET|WHEN MATCHED THEN UPDATE SET|ON DUPLICATE KEY UPDATE) (?<sets>.+?);?$")]
+    private static partial Regex UpdateSets();
+
+    /// <summary>
+    /// How each table's rows are written (<c>insert</c> when missing, or <c>update(columns)</c> on their key, the columns set when a row
+    /// is there, lower case and sorted), and the DELETE statements, each on one line.
+    /// </summary>
+    private static (Dictionary<string, string> Forms, HashSet<string> Deletes) Writes(List<string> lines)
+    {
+        var updated = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        var deletes = new HashSet<string>(StringComparer.Ordinal);
+        string? table = null;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            if (line.StartsWith("DELETE FROM", StringComparison.Ordinal))
+            {
+                var text = line;
+                while (!text.EndsWith(';') && i + 1 < lines.Count)
+                    text += " " + lines[++i].Trim();
+                deletes.Add(text);
+                table = null;
+                continue;
+            }
+
+            if (RowsStatement().Match(line) is { Success: true } statement)
+            {
+                table = statement.Groups["table"].Value;
+                updated.TryAdd(table, []);
+                continue;
+            }
+
+            if (line.Length == 0 || line.StartsWith("--", StringComparison.Ordinal))
+            {
+                table = null;
+                continue;
+            }
+
+            if (table is not null && UpdateSets().Match(line) is { Success: true } sets)
+            {
+                foreach (var set in sets.Groups["sets"].Value.Split(", "))
+                {
+                    var column = set.Split(" = ")[0].Trim();
+                    updated[table].Add((column.Contains('.', StringComparison.Ordinal) ? column[(column.IndexOf('.', StringComparison.Ordinal) + 1)..] : column).ToLowerInvariant());
+                }
+            }
+        }
+
+        return (updated.ToDictionary(p => p.Key, p => p.Value.Count == 0 ? "insert" : "update(" + string.Join(",", p.Value) + ")", StringComparer.Ordinal), deletes);
     }
 
     [GeneratedRegex(@"\)\s+AS \w+ \([^()]*\)$")]
@@ -287,8 +355,19 @@ public static partial class MaterializeProofCheck
                 || line.StartsWith("USING", StringComparison.Ordinal) || line.StartsWith("ON ", StringComparison.Ordinal) || line.StartsWith("SELECT", StringComparison.Ordinal)
                 || line.StartsWith("WHERE", StringComparison.Ordinal) || line.StartsWith(")", StringComparison.Ordinal) || line.StartsWith("  ", StringComparison.Ordinal)))
                 continue;
+            // DELETE statements are compared on their own (Writes).
+            if (line.StartsWith("DELETE FROM", StringComparison.Ordinal))
+            {
+                for (; i < lines.Count && !lines[i].EndsWith(';'); i++)
+                {
+                }
+
+                table = null;
+                continue;
+            }
+
             if (packObjects && (line.Contains("_ref", StringComparison.Ordinal) || line.StartsWith("CREATE SCHEMA", StringComparison.Ordinal)
-                || line.StartsWith("IF SCHEMA_ID(", StringComparison.Ordinal) || line.StartsWith("DELETE FROM", StringComparison.Ordinal)))
+                || line.StartsWith("IF SCHEMA_ID(", StringComparison.Ordinal)))
                 continue;
             if (packObjects && CreateTable().IsMatch(line))
             {

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH8ANBE0JKR93KM80B",
+  "name": "shipment is shipped by carrier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2NY9P6E1QRKN1ZCRTPH6V3F",
+  "foreignKey": "01M8EJX9A9F1V7ER7SAV5ST9SE"
+}

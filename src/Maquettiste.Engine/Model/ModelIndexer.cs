@@ -207,11 +207,14 @@ internal static class ModelIndexer
         var metadata = new MetadataCache();
         var referenceData = ReferenceDataIndex.Build(documents.Select(d => d.Element));
         var walks = new DocumentWalk[documents.Length];
+        // Each document's summary row is a function of the document alone: worked out on the walk threads, used by the merge in order.
+        var rows = new ElementSummary[documents.Length];
         Parallel.For(0, documents.Length, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, i =>
         {
             var walk = new DocumentWalk(stereotypes, metadata, referenceData, schemas, defaults, ownVerbs);
             walk.WalkElement(documents[i].Element);
             walks[i] = walk;
+            rows[i] = Summarize(documents[i].Element, documents[i].Hash, documents[i].Path, schemas, null);
         });
 
         var entries = new Dictionary<string, IndexEntry>(Math.Max(16, walks.Sum(w => w.Entries.Count) + documents.Length), StringComparer.Ordinal);
@@ -285,7 +288,7 @@ internal static class ModelIndexer
             references.AddRange(walk.References);
             if (element is Process)
                 processRows.Add((summaries.Count, walk));
-            summaries.Add(Summarize(element, doc.Hash, doc.Path, schemas, null));
+            summaries.Add(rows[d]);
         }
 
         foreach (var (row, walk) in processRows)
@@ -294,14 +297,19 @@ internal static class ModelIndexer
                 summaries[row] = summaries[row] with { Actors = actors };
         }
 
-        var referencesTo = Group(references, static r => r.ToId);
-        var referencesFrom = Group(references, static r => r.FromElementId);
-        var sortedByKind = byKind.ToFrozenDictionary(
-            kv => kv.Key,
-            kv => kv.Value.OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Id, StringComparer.Ordinal).ToImmutableArray());
-        var kindSetHashes = byKind.ToFrozenDictionary(
-            kv => kv.Key,
-            kv => KindSetHash(kv.Value));
+        // The groupings and kind lists are independent functions of what the merge gathered: built side by side.
+        Dictionary<string, ReferenceInfo[]> referencesTo = null!, referencesFrom = null!;
+        FrozenDictionary<ElementKind, ImmutableArray<Element>> sortedByKind = null!;
+        FrozenDictionary<ElementKind, string> kindSetHashes = null!;
+        Parallel.Invoke(new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct },
+            () => referencesTo = Group(references, static r => r.ToId),
+            () => referencesFrom = Group(references, static r => r.FromElementId),
+            () => sortedByKind = byKind.ToFrozenDictionary(
+                kv => kv.Key,
+                kv => kv.Value.OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Id, StringComparer.Ordinal).ToImmutableArray()),
+            () => kindSetHashes = byKind.ToFrozenDictionary(
+                kv => kv.Key,
+                kv => KindSetHash(kv.Value)));
 
         return new Result(
             entries,

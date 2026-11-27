@@ -1,0 +1,116 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PP4N2TRAWZE99QEBQ",
+  "name": "api_clients",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PC1D60E7P4ASZS5S4",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the api client."
+    },
+    {
+      "id": "01M8EJX99PDEJ0643R609YZA2G",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Client name."
+    },
+    {
+      "id": "01M8EJX99P58KMXB967DGCSYP8",
+      "name": "description",
+      "type": "string",
+      "length": 500,
+      "comment": "What the integration does."
+    },
+    {
+      "id": "01M8EJX99PDAJ1NZJWT08G7W8K",
+      "name": "owner_email",
+      "type": "string",
+      "length": 254,
+      "nullable": false,
+      "comment": "Contact for the integration."
+    },
+    {
+      "id": "01M8EJX99P1NEA8DDPYFFJ06S0",
+      "name": "allowed_scopes",
+      "type": "string",
+      "length": 1000,
+      "nullable": false,
+      "comment": "Space-separated OAuth scopes."
+    },
+    {
+      "id": "01M8EJX99P7C85DCPYMQSF1QEZ",
+      "name": "rate_limit_per_minute",
+      "type": "int32",
+      "nullable": false,
+      "default": 600,
+      "comment": "Request budget per minute."
+    },
+    {
+      "id": "01M8EJX99PNRC420F9FE07EXPC",
+      "name": "is_enabled",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the client can obtain tokens."
+    },
+    {
+      "id": "01M8EJX99PZD45ECEJ8G0FJ106",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P0TEGXZX074F3F755",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PSPBP4GJ8BBPZX3PY",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P98CSRKQ6CX4ATR56",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PVZZ43BECJN9XS954",
+      "name": "deleted_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was marked deleted; null while it is live."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_api_clients",
+    "columns": [
+      "01M8EJX99PC1D60E7P4ASZS5S4"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A973CBZXGSEDJY360F",
+      "name": "uq_api_clients_name",
+      "columns": [
+        "01M8EJX99PDEJ0643R609YZA2G"
+      ]
+    }
+  ],
+  "comment": "A machine client (EDI gateway, marketplace connector, carrier webhook) that calls Northwind APIs."
+}

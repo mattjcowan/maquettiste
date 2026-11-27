@@ -1,0 +1,107 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99MH617GC54BZJP6869",
+  "name": "card_payments",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99M9YCFPN0G6B9WWS6T",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the payment."
+    },
+    {
+      "id": "01M8EJX99MCHAP5SBKKCD7C5SP",
+      "name": "card_brand",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "comment": "Card network."
+    },
+    {
+      "id": "01M8EJX99MNE99300B7NN6JXQ3",
+      "name": "last4",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "comment": "Last four digits of the card."
+    },
+    {
+      "id": "01M8EJX99MY3G0MRYJZ7RNTHGV",
+      "name": "expiry_month",
+      "type": "int16",
+      "comment": "Card expiry month."
+    },
+    {
+      "id": "01M8EJX99MBHK27QEZBQR6JSF4",
+      "name": "expiry_year",
+      "type": "int16",
+      "comment": "Card expiry year."
+    },
+    {
+      "id": "01M8EJX99MKS7062PTDJTRRF94",
+      "name": "authorization_code",
+      "type": "string",
+      "length": 20,
+      "comment": "Issuer's authorization code."
+    },
+    {
+      "id": "01M8EJX99MJSJQ45XPE1FA2675",
+      "name": "processor_reference",
+      "type": "string",
+      "length": 64,
+      "comment": "Processor transaction id."
+    },
+    {
+      "id": "01M8EJX99MBX41B0MMQZCY299H",
+      "name": "stored_payment_method_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_card_payments",
+    "columns": [
+      "01M8EJX99M9YCFPN0G6B9WWS6T"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A36P7TM1J7B3C1Y84K",
+      "name": "fk_card_payments_id",
+      "columns": [
+        "01M8EJX99M9YCFPN0G6B9WWS6T"
+      ],
+      "referencesTable": "01M8EJX99N5EKCG57ND8KZGHZ4",
+      "referencesColumns": [
+        "01M8EJX99NBRGNW4MREK7W6QYQ"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9A3DTFYVJ3Q5NBCNX6Z",
+      "name": "fk_card_payments_stored_payment_method_id",
+      "columns": [
+        "01M8EJX99MBX41B0MMQZCY299H"
+      ],
+      "referencesTable": "01M8EJX99NE8Z81RJDX3J34FMX",
+      "referencesColumns": [
+        "01M8EJX99N94EWE96KZ77JSDRC"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A31HS69SYMS4KRBRE8",
+      "name": "ix_card_payments_processor_reference",
+      "columns": [
+        {
+          "column": "01M8EJX99MJSJQ45XPE1FA2675"
+        }
+      ]
+    }
+  ],
+  "comment": "A payment by credit or purchasing card through the payment processor."
+}

@@ -7,6 +7,7 @@ namespace Maquettiste.Engine.Tests.Model;
 /// The holders of default stereotypes (next-phase-2-design.md section 3.1, D2): which package chain and which database schema entry
 /// reach an element, so its effective set takes their defaults.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class StereotypeDefaultsTests
 {
     /// <summary>Builds a snapshot from a builder's elements after an edit (the builders have no default-list members).</summary>

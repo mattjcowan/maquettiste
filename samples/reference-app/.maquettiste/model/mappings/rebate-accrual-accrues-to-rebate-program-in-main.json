@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJRT7KSNMZMJ5CR73M",
+  "name": "rebate accrual accrues to rebate program in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1GXAVB31ZXZJS88GS88T5QN",
+  "foreignKey": "01M8EJX9AAFCPCRJ1W5YBVEM5E"
+}

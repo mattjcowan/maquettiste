@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHBX5REW9VZAW19Y7B",
+  "name": "employee belongs to department in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2HKQ9DQJSVTJFWRYYDA52KP",
+  "foreignKey": "01M8EJX9A9NHTH7KP40WK3V4VH"
+}

@@ -6,6 +6,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Engine.Tests.Integration;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Generation;
 
@@ -16,6 +17,7 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// schema diff fails in a scoped run (MQ6033). Unknown or ambiguous unit values are MQ6032; a filter selecting nothing is MQ6034.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
+[UsesProjectedFixtures]
 public sealed class ScopedGenerationTests
 {
     private const string CustomerId = EditorRepo.CustomerId;

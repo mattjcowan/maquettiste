@@ -1,0 +1,18 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHX95S0VVKC2YMM5ZR",
+  "name": "collection includes product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1T73FKETJR70PHT66958T32",
+  "junctionTable": "01M8EJX99QKXZ0DNXSJVPP89E7",
+  "ends": [
+    {
+      "end": "01M1HY0R1DZ3KAKCV2K474MPJB",
+      "foreignKey": "01M8EJX9ACB0DEWY3NH6KJRGVW"
+    },
+    {
+      "end": "01M1F5HFG7TWKRZ17S7TMVBTYF",
+      "foreignKey": "01M8EJX9ACAP0ZEYJXP3SACS55"
+    }
+  ]
+}

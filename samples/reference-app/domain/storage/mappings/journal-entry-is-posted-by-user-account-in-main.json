@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHPNC10WXYBZ23FFWA",
+  "name": "journal entry is posted by user account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1YGZM7SRCN44SKD59FQMCR5",
+  "foreignKey": "01M8EJX9A8QT8M0TE051ZQS2X3"
+}

@@ -58,7 +58,7 @@ test("a new database starts empty, and domains and entities offer the Storage ac
 });
 
 test("Settings shows an older project's convention read-only; Stop stores its tables as files first", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   await workspace(page, "Settings");
   await page.getByRole("tab", { name: "Conventions" }).click();
   const section = page.getByTestId("settings-tables-by-convention");

@@ -1,0 +1,29 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJT8HD866NJJNEAGCT",
+  "name": "rfq invites supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1NX3GHBS6G31FNKR5X8JFBV",
+  "attributes": [
+    {
+      "attribute": "01M2GEJQXTMVN76J5CT3CFVKEK",
+      "column": "01M8EJX99Q59GX59NR0872KSTG"
+    },
+    {
+      "attribute": "01M2H5PFFGJG77KYGD8BZP7V4M",
+      "column": "01M8EJX99QJ7KCMBAMBPNEX46F"
+    }
+  ],
+  "junctionTable": "01M8EJX99Q3DQ4W9NRV1VTEABR",
+  "ends": [
+    {
+      "end": "01M2QJ8MP93K14ZW2HF41YE8KX",
+      "foreignKey": "01M8EJX9AC31261VXXJHYXND6Z"
+    },
+    {
+      "end": "01M2KBDS04RY72X05SC39N8GYR",
+      "foreignKey": "01M8EJX9ACP4B7MHC11VK1JDRJ"
+    }
+  ]
+}

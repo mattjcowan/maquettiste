@@ -1,0 +1,164 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P65XWMK4QVB5FX7FN",
+  "name": "party_addresses",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PSMRZRQ8Z49EVYYCV",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the party address."
+    },
+    {
+      "id": "01M8EJX99PNSSBTMDB5SB4SPDW",
+      "name": "label",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "Name of the location, such as Denver branch."
+    },
+    {
+      "id": "01M8EJX99P2YZ8TD1335CTRFG8",
+      "name": "address_type",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "Purpose of the address."
+    },
+    {
+      "id": "01M8EJX99P0JTFJS2PBSE345A0",
+      "name": "address_line1",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Street and number, or PO box."
+    },
+    {
+      "id": "01M8EJX99PR9XW0DCTQVJTADYQ",
+      "name": "address_line2",
+      "type": "string",
+      "length": 120,
+      "comment": "Suite, floor or building."
+    },
+    {
+      "id": "01M8EJX99PM63N7NDMPTE6HSGP",
+      "name": "address_city",
+      "type": "string",
+      "length": 80,
+      "nullable": false,
+      "comment": "City or locality."
+    },
+    {
+      "id": "01M8EJX99PD9JJAT63BVXSVBYX",
+      "name": "address_region",
+      "type": "string",
+      "length": 80,
+      "comment": "State, province or county."
+    },
+    {
+      "id": "01M8EJX99PQEAVWNK2TRB0V5EP",
+      "name": "address_postal_code",
+      "type": "string",
+      "length": 20,
+      "comment": "Postal or ZIP code."
+    },
+    {
+      "id": "01M8EJX99PFTFVGDB78FAWFJR3",
+      "name": "address_country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false,
+      "comment": "ISO country code."
+    },
+    {
+      "id": "01M8EJX99P17WGFY1HWDZDA1YC",
+      "name": "location_latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "comment": "Degrees north of the equator."
+    },
+    {
+      "id": "01M8EJX99PQJ3QKQ15KQHZZ62A",
+      "name": "location_longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6,
+      "comment": "Degrees east of Greenwich."
+    },
+    {
+      "id": "01M8EJX99PJFAWXWJ5GTVEKSXN",
+      "name": "is_default",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Default address of its type."
+    },
+    {
+      "id": "01M8EJX99P56M14WC9K0AV5716",
+      "name": "delivery_instructions",
+      "type": "string",
+      "length": 500,
+      "comment": "Dock hours, gate codes and the like."
+    },
+    {
+      "id": "01M8EJX99PJ9K8BYHJTZ28JZRH",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PT4R70DH1QPXVYAA3",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PJM7WB2HPS82VYFSD",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P23CFP9T1798QR6W8",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PSMHRYMAB919A2JB6",
+      "name": "party_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_party_addresses",
+    "columns": [
+      "01M8EJX99PSMRZRQ8Z49EVYYCV"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8B7QPXB50A6Q5F8C7",
+      "name": "fk_party_addresses_party_id",
+      "columns": [
+        "01M8EJX99PSMHRYMAB919A2JB6"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A named address of a party, such as a ship-to location of a customer with several branches."
+}

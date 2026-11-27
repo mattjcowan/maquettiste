@@ -1,0 +1,101 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PGW02W7JRZTW07JH5",
+  "name": "budgets",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PX6S68WKVGARZQ6H5",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the budget."
+    },
+    {
+      "id": "01M8EJX99PGEPXR93HSVZZ052W",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Budget name."
+    },
+    {
+      "id": "01M8EJX99PBNGWN19T5T9GKZZK",
+      "name": "fiscal_year",
+      "type": "int16",
+      "nullable": false,
+      "comment": "Fiscal year."
+    },
+    {
+      "id": "01M8EJX99PJF1TTMA3MJX88P8Y",
+      "name": "is_approved",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether finance approved it."
+    },
+    {
+      "id": "01M8EJX99PAQ6C9WHV3Z03X3YH",
+      "name": "notes",
+      "type": "text",
+      "comment": "Assumptions."
+    },
+    {
+      "id": "01M8EJX99PDMVD6HFS4YJG9KP4",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PVN2HHQ2YVCFAV0YF",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PKX8YXQSPAZP3Y74A",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PAKHA563GT9ND98AE",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PWNN1JWBKXT9119VW",
+      "name": "cost_center_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_budgets",
+    "columns": [
+      "01M8EJX99PX6S68WKVGARZQ6H5"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A83GV792BH8T5GMXRF",
+      "name": "fk_budgets_cost_center_id",
+      "columns": [
+        "01M8EJX99PWNN1JWBKXT9119VW"
+      ],
+      "referencesTable": "01M8EJX99P5J0E19PAVE7JYSJ0",
+      "referencesColumns": [
+        "01M8EJX99PY96M7HPE86J4KR2W"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An approved spending budget for a fiscal year and cost center."
+}

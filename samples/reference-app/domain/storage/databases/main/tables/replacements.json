@@ -1,0 +1,137 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QWE86J7B7C8N3S49N",
+  "name": "replacements",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QSXK9TDWXWAY6WDMG",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the replacement."
+    },
+    {
+      "id": "01M8EJX99QRQ0Z2XDF2H5AE1QQ",
+      "name": "quantity",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 3,
+      "nullable": false,
+      "comment": "Quantity sent."
+    },
+    {
+      "id": "01M8EJX99Q6HNJPMECR2QG5HBY",
+      "name": "shipped_on",
+      "type": "date",
+      "comment": "Ship date."
+    },
+    {
+      "id": "01M8EJX99Q06EZ7KFAMX8BTBCC",
+      "name": "is_charged",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether the customer pays for it."
+    },
+    {
+      "id": "01M8EJX99QNYHNP4KM95M411W5",
+      "name": "notes",
+      "type": "string",
+      "length": 500,
+      "comment": "Remarks."
+    },
+    {
+      "id": "01M8EJX99QM74962CPA98M0ZFR",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QN0AJ54V42NKN18C0",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QA07H55HRX97CFQHY",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QC76RJKRQGACMAZ5Y",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QBVMCM86E3H901RYJ",
+      "name": "product_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QDVRGJTKC21Z9FN5K",
+      "name": "return_line_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QWP6KN99YZHJF41QH",
+      "name": "shipment_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_replacements",
+    "columns": [
+      "01M8EJX99QSXK9TDWXWAY6WDMG"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AB2M5XMSQZH6027C2S",
+      "name": "fk_replacements_product_id",
+      "columns": [
+        "01M8EJX99QBVMCM86E3H901RYJ"
+      ],
+      "referencesTable": "01M2RJ3ZMQN9Y4S9JNH4R9TXRS",
+      "referencesColumns": [
+        "01M8EJX99N5GA9DADXJNF2YAZ2"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9AB88TGNZ3RSE57HE1D",
+      "name": "fk_replacements_return_line_id",
+      "columns": [
+        "01M8EJX99QDVRGJTKC21Z9FN5K"
+      ],
+      "referencesTable": "01M8EJX99QXEX7GTDK877MDV7W",
+      "referencesColumns": [
+        "01M8EJX99QPANF5GW2AG0W0X11"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ABZZT5TWV3XZSJ9NSG",
+      "name": "fk_replacements_shipment_id",
+      "columns": [
+        "01M8EJX99QWP6KN99YZHJF41QH"
+      ],
+      "referencesTable": "01M8EJX99PKM2XB6JYQ5KG4H99",
+      "referencesColumns": [
+        "01M8EJX99PJZQHKXG1H6695ECQ"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A replacement sent for a returned or failed product before or instead of a credit."
+}

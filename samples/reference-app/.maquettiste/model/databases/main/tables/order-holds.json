@@ -1,0 +1,147 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QBF902N013DZGWGK0",
+  "name": "order_holds",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QQS4G2J2PF53BCMHN",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the order hold."
+    },
+    {
+      "id": "01M8EJX99Q0GC4NS2DVVNHQ17F",
+      "name": "placed_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the hold was placed."
+    },
+    {
+      "id": "01M8EJX99QACXK8FBGWAMWZGWY",
+      "name": "released_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was released."
+    },
+    {
+      "id": "01M8EJX99QDDJ5T0HAHCGQ3EZB",
+      "name": "comment",
+      "type": "string",
+      "length": 500,
+      "comment": "Explanation."
+    },
+    {
+      "id": "01M8EJX99QEDAS277AHBMVZ8WB",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QREEV40M5N1M85MZF",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99Q5K2GG004XTN2FVZ9",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99Q701FJDHDZ28GQ458",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QJD8DRGY7HGPPEXNR",
+      "name": "reason_id",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QWWNK5377GTS07HXD",
+      "name": "placed_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99QJQ34EWGWKG7QJABC",
+      "name": "released_by_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99Q6EDC5WZTWJN0XZHD",
+      "name": "sales_order_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_order_holds",
+    "columns": [
+      "01M8EJX99QQS4G2J2PF53BCMHN"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACKGN8Z6SHZW783SM8",
+      "name": "fk_order_holds_reason_id",
+      "columns": [
+        "01M8EJX99QJD8DRGY7HGPPEXNR"
+      ],
+      "referencesTable": "01M8EJX99QQJ8W7TXE75G7BQZY",
+      "referencesColumns": [
+        "01M8EJX99QJY23QQKRN2JF5F0D"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ACX6T4RNC40WZ1ENYJ",
+      "name": "fk_order_holds_placed_by_id",
+      "columns": [
+        "01M8EJX99QWWNK5377GTS07HXD"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9ACQEXTKBE6D1TQ7ZTG",
+      "name": "fk_order_holds_released_by_id",
+      "columns": [
+        "01M8EJX99QJQ34EWGWKG7QJABC"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9AC6PMW478ARJTRYJVB",
+      "name": "fk_order_holds_sales_order_id",
+      "columns": [
+        "01M8EJX99Q6EDC5WZTWJN0XZHD"
+      ],
+      "referencesTable": "01M22A2EP3102BTAPT9HZ0YMF6",
+      "referencesColumns": [
+        "01M8EJX99QN9WTG53JQB5BW6YG"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "A hold that blocks an order from shipping until released, such as a credit hold."
+}

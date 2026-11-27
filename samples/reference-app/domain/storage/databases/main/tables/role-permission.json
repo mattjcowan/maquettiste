@@ -1,0 +1,55 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99Q4PFN9H5NT8J5K422",
+  "name": "role_permission",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QWZZEZJYMHWKA1QXZ",
+      "name": "roles_id",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q74SM8NAF6RKXFZ0T",
+      "name": "permissions_id",
+      "type": "int32",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_role_permission",
+    "columns": [
+      "01M8EJX99QWZZEZJYMHWKA1QXZ",
+      "01M8EJX99Q74SM8NAF6RKXFZ0T"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AC3BQDZQZ20WH7YCXK",
+      "name": "fk_role_permission_roles_id",
+      "columns": [
+        "01M8EJX99QWZZEZJYMHWKA1QXZ"
+      ],
+      "referencesTable": "01M8EJX99PCW73JG9FF1X6T8NB",
+      "referencesColumns": [
+        "01M8EJX99P0HZECHHP2T4KZN27"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AC1SH0A3GHT8XGYG1B",
+      "name": "fk_role_permission_permissions_id",
+      "columns": [
+        "01M8EJX99Q74SM8NAF6RKXFZ0T"
+      ],
+      "referencesTable": "01M8EJX99P83ZGNTW3J3KC9N95",
+      "referencesColumns": [
+        "01M8EJX99PTQWF0YVB24TBWX1P"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "comment": "Permissions included in a role."
+}

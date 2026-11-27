@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { setupServer } from "msw/node";
 import { MockBackend } from "@/mocks/backend";
+import { billingProjectedSeed } from "@/mocks/model/seed";
 import { statefulHandlers } from "@/mocks/handlers";
 import { queryClassName, resolveQueries } from "@/mocks/model/queries";
 import { quoteIdentifier, renderQuery, sqlLiteral } from "@/mocks/model/querySql";
@@ -51,6 +52,9 @@ const GOLDEN = {
   ].join("\n"),
 };
 
+/** The billing model with its tables projected from the entities: the queries below name entities as sources. */
+const projected = () => new MockBackend({ seed: billingProjectedSeed() });
+
 const resolvedView = (backend: MockBackend) => backend.generation.databaseView(MAIN)!.view!;
 
 function expectGolden(view: DatabaseView) {
@@ -77,7 +81,11 @@ describe("the billing queries", () => {
     expectGolden(view);
     const byCustomer = view.queries!.find((q) => q.id === BY_CUSTOMER)!;
     // The projection follows QueryViews.cs: the trees as written, the resolved sources and fields.
-    expect([byCustomer.from!.source, byCustomer.from!.tableKey, byCustomer.from!.kind]).toEqual(["01J92P0V1T0J6RH4MY9H81NYB4", INVOICES_TABLE, "from"]);
+    expect([byCustomer.from!.source, byCustomer.from!.tableKey, byCustomer.from!.kind]).toEqual([
+      "01J92P0V1T0J6RH4MY9H81NYB4",
+      "01J92P0V1T0J6RH4MY9H81NYB4",
+      "from",
+    ]);
     expect(Object.keys(byCustomer.where as Json)).toEqual(["and"]);
     expect((byCustomer.orderBy[0] as Json).direction).toBe("desc");
     expect(byCustomer.paging).toEqual({ offset: "offset", limit: "limit" });
@@ -88,7 +96,7 @@ describe("the billing queries", () => {
       ["offset", "integer", false, 0],
       ["limit", "integer", false, 50],
     ]);
-    expect(byCustomer.uses).toEqual([INVOICES_TABLE]);
+    expect(byCustomer.uses).toEqual(["01J92P0V1T0J6RH4MY9H81NYB4"]);
     const revenue = view.queries!.find((q) => q.id === REVENUE)!;
     expect(revenue.select.map((f) => [f.name, f.type, f.nullable])).toEqual([
       ["month", "date", false],
@@ -110,7 +118,7 @@ describe("the billing queries", () => {
   });
 
   it("follow each dialect's quoting, paging, spelling and literals", () => {
-    const backend = new MockBackend();
+    const backend = projected();
     const queries = resolveQueries(resolvedView(backend), backend.model.docs());
     const sql = (id: string, dialect: string, options = {}) => queries.preview(id, dialect, options)!.preview.sql;
     expect(sql(BY_CUSTOMER, "sqlserver")).toBe(
@@ -166,7 +174,7 @@ describe("the billing queries", () => {
   });
 
   it("render joins, functions, operations, case, cast, nulls and routines", () => {
-    const backend = new MockBackend();
+    const backend = projected();
     const id = addQuery(backend, {
       id: "01K6QRY0000000000000000010",
       name: "Report",
@@ -218,7 +226,7 @@ describe("the billing queries", () => {
 
 describe("the query rules", () => {
   it("each reports its finding at the offending node, as the engine does", () => {
-    const backend = new MockBackend();
+    const backend = projected();
     const other = "01K6QDB0000000000000000001";
     expect(backend.model.create({ kind: "database", id: other, name: "other", dialect: "postgresql" }).outcome).toBe("saved");
     const id = addQuery(backend, {
@@ -289,7 +297,7 @@ describe("the query rules", () => {
   });
 
   it("reports a removed column, and the view comes back once it is fixed", () => {
-    const backend = new MockBackend();
+    const backend = projected();
     const entry = backend.model.get(BY_CUSTOMER)!;
     const json = structuredClone(entry.json) as Json;
     ((json.select as Json[])[1].expression as Json).column = "i.numbr_gone";
@@ -326,7 +334,7 @@ describe("keys removed in 0.28.0 (MQ4127), as the engine reports them", () => {
   };
 
   it("refuses a save with one MQ4127 at the first removed key, in place of the schema violations", () => {
-    const backend = new MockBackend();
+    const backend = projected();
     const entry = backend.model.get(BY_CUSTOMER)!;
     const json = structuredClone(entry.json) as Json;
     old(json);
@@ -336,7 +344,7 @@ describe("keys removed in 0.28.0 (MQ4127), as the engine reports them", () => {
   });
 
   it("reports an outside edit once per file, whatever validation.rules says, and leaves the query out", () => {
-    const backend = new MockBackend();
+    const backend = projected();
     backend.model.externalEdit(BY_CUSTOMER, old);
     const found = () => backend.model.validate().diagnostics.filter((d) => d.elementId === BY_CUSTOMER);
     expect(found().map((d) => [d.rule, d.severity, d.jsonPointer])).toEqual([["MQ4127", "error", "/entity"]]);
@@ -351,7 +359,7 @@ describe("keys removed in 0.28.0 (MQ4127), as the engine reports them", () => {
 describe("GET /api/model/queries/{id}/sql", () => {
   it("answers the statements per dialect, the problems, and the errors of a bad request", async () => {
     const base = "http://queries.test";
-    const backend = new MockBackend();
+    const backend = projected();
     const server = setupServer(...statefulHandlers(backend, base));
     server.listen({ onUnhandledRequest: "error" });
     try {
@@ -405,7 +413,7 @@ describe("the rules the review added (MQ4034 to MQ4043), as the engine reports t
 
   /** Binds one query (and any extra documents) against the mock's resolved view, with the view's dialect overridden. */
   function bind(json: Json, options: { dialect?: string; extra?: Json[] } = {}) {
-    const backend = new MockBackend();
+    const backend = projected();
     const view = { ...resolvedView(backend), ...(options.dialect ? { dialect: options.dialect } : {}) } as DatabaseView;
     const docs = new Map(backend.model.docs());
     for (const d of options.extra ?? []) docs.set(String(d.id), d);
@@ -595,7 +603,7 @@ describe("the rules the review added (MQ4034 to MQ4043), as the engine reports t
   it("names a query's class as the engine does and reports two that collide", () => {
     expect(queryClassName("2024 report")).toBe("Q2024Report");
     expect(queryClassName("HTTPServer orders")).toBe("HttpServerOrders");
-    const backend = new MockBackend();
+    const backend = projected();
     const docs = new Map(backend.model.docs());
     for (const [id, name] of [
       ["01K6QRY0000000000000000081", "open invoices"],
@@ -628,7 +636,7 @@ describe("queries written as SQL text", () => {
   });
 
   function bind(json: Json, options: { dialect?: string } = {}) {
-    const backend = new MockBackend();
+    const backend = projected();
     const view = { ...resolvedView(backend), ...(options.dialect ? { dialect: options.dialect } : {}) } as DatabaseView;
     const docs = new Map(backend.model.docs());
     docs.set(QUERY, { kind: "query", database: MAIN, ...json });
@@ -656,7 +664,9 @@ describe("queries written as SQL text", () => {
     ]);
     expect(view.sqlParameters).toEqual(["customerId", "status"]);
     expect(view.uses).toEqual([INVOICES_TABLE]);
-    const names = new MockBackend().generation.databaseView(MAIN)!.view!.queries!.map((q) => q.name);
+    const names = projected()
+      .generation.databaseView(MAIN)!
+      .view!.queries!.map((q) => q.name);
     expect(names).toContain("InvoicesByCustomer");
   });
 
@@ -762,7 +772,7 @@ describe("queries written as SQL text", () => {
   });
 
   it("MQ4044: a binding cannot read through a query that writes or declares no columns", () => {
-    const backend = new MockBackend();
+    const backend = projected();
     const view = resolvedView(backend);
     const withQuery = (json: Json) =>
       ({
@@ -779,7 +789,7 @@ describe("queries written as SQL text", () => {
   });
 
   it("keeps reads and writes as references, removes them under both delete resolutions with a warning, and refuses a plain delete", () => {
-    const backend = new MockBackend();
+    const backend = projected();
     expect(backend.model.create({ kind: "query", database: MAIN, ...base({ writes: [INVOICES_TABLE], reads: [INVOICES_TABLE, CUSTOMERS] }) }).outcome).toBe(
       "saved",
     );

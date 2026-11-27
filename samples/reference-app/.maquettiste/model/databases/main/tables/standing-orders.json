@@ -1,0 +1,144 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99QNZWP4NMWV6A84VGN",
+  "name": "standing_orders",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QJEXHM5J5HFRQWBD6",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the standing order."
+    },
+    {
+      "id": "01M8EJX99QBEDZFP6XJ7Z0VN51",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Name shown to the customer."
+    },
+    {
+      "id": "01M8EJX99QJJ77SH7XF46WFFGJ",
+      "name": "frequency",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "weekly, biweekly or monthly."
+    },
+    {
+      "id": "01M8EJX99QAE5KEWACER0E2Y5R",
+      "name": "next_run_on",
+      "type": "date",
+      "nullable": false,
+      "comment": "Date the next order will be placed."
+    },
+    {
+      "id": "01M8EJX99QF0HQFADH92M853QG",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether it is running."
+    },
+    {
+      "id": "01M8EJX99Q5KY55STN4KMW9ZPF",
+      "name": "validity_starts_on",
+      "type": "date",
+      "comment": "First day of the range."
+    },
+    {
+      "id": "01M8EJX99QCFZ6V25GRZQ0PBD2",
+      "name": "validity_ends_on",
+      "type": "date",
+      "comment": "Last day of the range; null when open-ended."
+    },
+    {
+      "id": "01M8EJX99QKDYRM8PYZ16T9X9T",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99QSJ4WWG16W14168EM",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99QMEKS0M9BKJQTQS1R",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99QRY5C58RCSA8SY1V8",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99QHWQQDRQ0JFZDABKM",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99QXDK6PRFWV20670AN",
+      "name": "ship_to_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_standing_orders",
+    "columns": [
+      "01M8EJX99QJEXHM5J5HFRQWBD6"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ACWREZ6G2BY0VNBQQM",
+      "name": "fk_standing_orders_customer_id",
+      "columns": [
+        "01M8EJX99QHWQQDRQ0JFZDABKM"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9ACSXHM0AZ9NJ1X8VZQ",
+      "name": "fk_standing_orders_ship_to_id",
+      "columns": [
+        "01M8EJX99QXDK6PRFWV20670AN"
+      ],
+      "referencesTable": "01M8EJX99P65XWMK4QVB5FX7FN",
+      "referencesColumns": [
+        "01M8EJX99PSMRZRQ8Z49EVYYCV"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9ACFAEAGWYDDMJ3Q2M1",
+      "name": "ix_standing_orders_next_run_on",
+      "columns": [
+        {
+          "column": "01M8EJX99QAE5KEWACER0E2Y5R"
+        }
+      ]
+    }
+  ],
+  "comment": "A recurring order that the scheduler places automatically, such as weekly cleaning supplies."
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHRQ8TCR10QAMH6CZZ",
+  "name": "ledger account is nested under parent in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M299G30AGH11HSGCBQ17E2D0",
+  "foreignKey": "01M8EJX9A85FA94SC4S6D2CZFK"
+}

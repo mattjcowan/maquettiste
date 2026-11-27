@@ -1,0 +1,114 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99PTSVSK05NPK4GV16J",
+  "name": "warehouse_zones",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PJRJM8VV1YN1B389B",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the warehouse zone."
+    },
+    {
+      "id": "01M8EJX99PQREG7DE91A8QEDQ4",
+      "name": "code",
+      "type": "string",
+      "length": 10,
+      "nullable": false,
+      "comment": "Zone code within the warehouse."
+    },
+    {
+      "id": "01M8EJX99PCA28397G8SQ0XJNW",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Zone name."
+    },
+    {
+      "id": "01M8EJX99PSWSR3Z30ZXP3RYTW",
+      "name": "zone_type",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "receiving, bulk, pick, staging, quarantine or shipping."
+    },
+    {
+      "id": "01M8EJX99PX2YYSFCAGZ82CQ2E",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99P3BC8E9R6824XKTVC",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99PS99Y18ER8VXPTJZY",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P90QEV0G5EE53F7TE",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PM525EZXRPT13194H",
+      "name": "warehouse_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P4QHE9RNKR49VQT3R",
+      "name": "storage_condition_id",
+      "type": "int32"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_warehouse_zones",
+    "columns": [
+      "01M8EJX99PJRJM8VV1YN1B389B"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9AA42EQF7FYYBDJYQ0W",
+      "name": "fk_warehouse_zones_warehouse_id",
+      "columns": [
+        "01M8EJX99PM525EZXRPT13194H"
+      ],
+      "referencesTable": "01M8EJX99PHZR96PEBKTQQ9YZN",
+      "referencesColumns": [
+        "01M8EJX99PTVF1S98KT1AWBCM4"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9AA5K5ESPR9VD6VX6X5",
+      "name": "fk_warehouse_zones_storage_condition_id",
+      "columns": [
+        "01M8EJX99P4QHE9RNKR49VQT3R"
+      ],
+      "referencesTable": "01M8EJX99PMPXTQCAXW5GPZB1R",
+      "referencesColumns": [
+        "01M8EJX99PG6PCMKKQWS22FTRX"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An area of a warehouse with one purpose, such as receiving, bulk storage, pick faces or a freezer."
+}

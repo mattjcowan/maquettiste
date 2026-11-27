@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJGFH9H1JRX2R0Q4K1",
+  "name": "price list is denominated in currency in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2C06G0TNR2EWRW30FM0DQ3J",
+  "foreignKey": "01M8EJX9AA94D00FQW6Y4NMW6V"
+}

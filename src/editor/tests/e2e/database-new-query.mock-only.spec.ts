@@ -33,7 +33,7 @@ const INVOICE_TO_CUSTOMER = "01J92P0V1EHF7PB28CZJG9C5SN";
 test("New query… creates a query, the editor joins, fills, filters and orders it with the SQL following, undo steps back, and the plan deletes it", async ({
   page,
 }) => {
-  await page.goto("/database");
+  await page.goto("/database?mock=projected");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await page.getByTestId("database-new-menu").click();
   await page.getByTestId("database-new-query").click();

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH1KXE2XRNJG9BBGZK",
+  "name": "shipment line is drawn from lot in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1YNBMFCZWNPF8W24H1CN12C",
+  "foreignKey": "01M8EJX9A9Z8ZSM81FBYJ53WKK"
+}

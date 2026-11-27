@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHMTXKSXGNFFECDN1C",
+  "name": "journal entry contains lines in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2029QBDNRD53YBFS7X43NE9",
+  "foreignKey": "01M8EJX9A8V6N7TP2D3EWMRCNX"
+}

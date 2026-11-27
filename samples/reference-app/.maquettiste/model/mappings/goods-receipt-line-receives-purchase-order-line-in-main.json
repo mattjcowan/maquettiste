@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJNMVX04CSG9V0J7GE",
+  "name": "goods receipt line receives purchase order line in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M27FN6T2WTG1STHA1MMNCZV6",
+  "foreignKey": "01M8EJX9ABH1N7B8NAWWPR1879"
+}

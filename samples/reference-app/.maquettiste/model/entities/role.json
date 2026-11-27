@@ -54,5 +54,58 @@
       "default": false,
       "description": "Built-in role that cannot be deleted."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BQ7C12YTE7JEEV7EPP",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PCW73JG9FF1X6T8NB",
+      "fields": [
+        {
+          "attribute": "01M1PZRA1T1VJM8ZF7SR0H1K42",
+          "column": "01M8EJX99P0HZECHHP2T4KZN27"
+        },
+        {
+          "attribute": "01M1RKJSC411CAWJC3V3EZRTH5",
+          "column": "01M8EJX99PHB8172DW9NMS7RJE"
+        },
+        {
+          "attribute": "01M1SKBBJY24PWZVKC54JXJXJX",
+          "column": "01M8EJX99PA62Z00AS4FF6G9T2"
+        },
+        {
+          "attribute": "01M2MTKZHZ924Z0FD3S8PRWX4Q",
+          "column": "01M8EJX99P9W0EF66YZCTB3QCX"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99PG1WF0KWP9DFVQWYH"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99P58XD0P2B9M2VDBD3"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99P9DXG7BYKSXXTRFQS"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99P84KSZVSTZ9S5MHBJ"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P0HZECHHP2T4KZN27": "a5614527:53fb88ea",
+          "01M8EJX99P58XD0P2B9M2VDBD3": "c0d79bde:9599b5fd",
+          "01M8EJX99P84KSZVSTZ9S5MHBJ": "0b075263:9599b5fd",
+          "01M8EJX99P9DXG7BYKSXXTRFQS": "d31d4567:fd717804",
+          "01M8EJX99P9W0EF66YZCTB3QCX": "5d077efd:19980141",
+          "01M8EJX99PA62Z00AS4FF6G9T2": "c9046f7a:39d324bf",
+          "01M8EJX99PG1WF0KWP9DFVQWYH": "42049432:e0d08678",
+          "01M8EJX99PHB8172DW9NMS7RJE": "82a3537f:449863fc"
+        }
+      }
+    }
   ]
 }

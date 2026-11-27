@@ -12,14 +12,14 @@ using Dapper;
 
 namespace Processes.Data.Purchasing;
 
-/// <summary>Reads and writes <see cref="ProcessInstance"/> rows in public.process_instances (database main, postgresql).</summary>
+/// <summary>Reads and writes <see cref="ProcessInstance"/> rows through its binding to table process_instances (database main, postgresql).</summary>
 public partial interface IProcessInstanceRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<ProcessInstance?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<ProcessInstance>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ProcessInstance>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(ProcessInstance entity, CancellationToken cancellationToken = default);
@@ -34,42 +34,44 @@ public partial interface IProcessInstanceRepository
 /// <summary>The Dapper implementation of <see cref="IProcessInstanceRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class ProcessInstanceRepository(IDbConnection connection, IDbTransaction? transaction = null) : IProcessInstanceRepository
 {
-    private const string Columns = """
-        id AS Id,
-        process AS Process,
-        subject AS Subject,
-        configuration AS Configuration,
-        context AS Context,
-        updated_at AS UpdatedAt
+    private const string SelectSql = """
+        SELECT t.id AS id, t.process AS process, t.subject AS subject, t.configuration AS configuration, t.context AS context, t.updated_at AS updatedAt
+        FROM public.process_instances t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM public.process_instances WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM public.process_instances ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.process AS process, t.subject AS subject, t.configuration AS configuration, t.context AS context, t.updated_at AS updatedAt
+        FROM public.process_instances t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO public.process_instances (id, process, subject, configuration, context, updated_at)
-        VALUES (@Id, @Process, @Subject, @Configuration, @Context, @UpdatedAt)
+        VALUES (@id, @process, @subject, @configuration, @context, @updatedAt)
         """;
 
     private const string UpdateSql = """
-        UPDATE public.process_instances SET process = @Process, subject = @Subject, configuration = @Configuration, context = @Context, updated_at = @UpdatedAt
-        WHERE id = @Id
+        UPDATE public.process_instances SET process = @process, subject = @subject, configuration = @configuration, context = @context, updated_at = @updatedAt
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM public.process_instances WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM public.process_instances
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<ProcessInstance?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<ProcessInstance>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ProcessInstance>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -92,37 +94,37 @@ public partial class ProcessInstanceRepository(IDbConnection connection, IDbTran
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of process_instances, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table process_instances as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public string Process { get; set; } = default!;
-        public Guid? Subject { get; set; }
-        public string Configuration { get; set; } = default!;
-        public string? Context { get; set; }
-        public DateTimeOffset UpdatedAt { get; set; }
+        public Guid id { get; set; }
+        public string process { get; set; } = default!;
+        public Guid? subject { get; set; }
+        public string configuration { get; set; } = default!;
+        public string? context { get; set; }
+        public DateTimeOffset updatedAt { get; set; }
 
         public static ProcessInstance ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Process = row.Process,
-            Subject = row.Subject,
-            Configuration = JsonSerializer.Deserialize<JsonElement>(row.Configuration)!,
-            Context = row.Context is null ? null : JsonSerializer.Deserialize<JsonElement?>(row.Context),
-            UpdatedAt = row.UpdatedAt,
+            Id = row.id,
+            Process = row.process,
+            Subject = row.subject,
+            Configuration = JsonSerializer.Deserialize<JsonElement>(row.configuration)!,
+            Context = row.context is null ? null : JsonSerializer.Deserialize<JsonElement?>(row.context),
+            UpdatedAt = row.updatedAt,
         };
 
         public static Row From(ProcessInstance entity) => new()
         {
-            Id = entity.Id,
-            Process = entity.Process,
-            Subject = entity.Subject,
-            Configuration = JsonSerializer.Serialize(entity.Configuration),
-            Context = entity.Context is null ? null : JsonSerializer.Serialize(entity.Context),
-            UpdatedAt = entity.UpdatedAt,
+            id = entity.Id,
+            process = entity.Process,
+            subject = entity.Subject,
+            configuration = JsonSerializer.Serialize(entity.Configuration),
+            context = entity.Context is null ? null : JsonSerializer.Serialize(entity.Context),
+            updatedAt = entity.UpdatedAt,
         };
     }
 }

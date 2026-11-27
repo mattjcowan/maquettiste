@@ -10,7 +10,7 @@ const explorer = (page: import("@playwright/test").Page) => page.getByRole("comp
 const chevron = (row: import("@playwright/test").Locator) => row.locator("span[aria-hidden]").first();
 
 test("a table expands into its columns, and a column highlights its attribute", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   const side = explorer(page);
   const tree = side.getByTestId("explorer-tree");
 

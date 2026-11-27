@@ -339,8 +339,16 @@ func bind_key_fields(e)
   if !$b
     ret $result
   end
+  # A derived entity's class inherits the keys its base's class declares: the base's relations, which a table the hierarchy shares
+  # holds once, so the derived binding names them too.
+  $inherited = []
+  if e.base
+    for f in bind_key_fields(e.base)
+      $inherited[$inherited.size] = f.name
+    end
+  end
   for f in $b.fields
-    if f.end
+    if f.end && !(array.contains $inherited f.name)
       $result[$result.size] = f
     end
   end

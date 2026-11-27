@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CHQ2YYQQ3FVWJ4BXPG",
+  "name": "lead is owned by owner in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1NM2KP9TX4XG81RFP26MB3F",
+  "foreignKey": "01M8EJX9A8P4J4JZAN5AWTFZ7T"
+}

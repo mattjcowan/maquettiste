@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH585YS0S7TEY3ECBF",
+  "name": "product requires storage condition in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M22XPXBYZ4MN9PFCV9ZTR0J7",
+  "foreignKey": "01M8EJX9A7STN8M7XBBWPR0Q40"
+}

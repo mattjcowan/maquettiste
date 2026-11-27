@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJHS55GJHNFS8HDQ4J",
+  "name": "warehouse shift is supervised by employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1DGDDA95YDVNNVDQW7QD0GT",
+  "foreignKey": "01M8EJX9AAHJ6XST0P66QQ79KM"
+}

@@ -12,6 +12,7 @@ namespace Maquettiste.Packs.Tests;
 /// <c>MAQUETTISTE_TEST_POSTGRES_CONTAINER</c>): schema then seed twice, the first migration then seed, then seed again after a
 /// code is added and after it is retired.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ReferenceDataTests
 {
     private const string UnitSeed = ".maquettiste/model/seeds/unit-of-measure/unit-of-measure.json";

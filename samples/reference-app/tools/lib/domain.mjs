@@ -123,7 +123,7 @@ function parseCard(card, where) {
 }
 
 // ---------- the compiler ----------
-export function compile(domain) {
+export function compile(domain, stored = new Map()) {
   const { project, packages } = domain;
   const out = []; // { phase, modelPath, schema, doc }
   const id = (key) => ulid(key);
@@ -230,7 +230,8 @@ export function compile(domain) {
         code: { id: id(`refcode:${name}`), length: r.code }, label: { id: id(`reflabel:${name}`), length: r.label ?? 64 },
       });
       emit("types", `model/seeds/${kebab(name)}/${kebab(name)}.json`, "seed.json", {
-        kind: "seed", id: id(`seed:${name}`), name, target: types.get(name), columns: ["code", "label", "description"], rows,
+        kind: "seed", id: id(`seed:${name}`), name, target: types.get(name), columns: ["code", "label", "description"],
+        apply: r.apply, delete: r.delete, rows,
       });
     }
   }
@@ -256,7 +257,7 @@ export function compile(domain) {
   const schemaId = id(`database:${db.name}/schema:${db.schema}`);
   emit("database", `model/databases/${kebab(db.name)}/database.json`, "database.json", {
     kind: "database", id: dbId, name: db.name, displayName: db.displayName, dialect: db.dialect, version: String(db.version), defaultSchema: db.schema,
-    description: db.description, schemas: [{ id: schemaId, name: db.schema, description: db.schemaDescription }],
+    description: db.description, schemas: [{ id: schemaId, name: db.schema, description: db.schemaDescription }], byConvention: db.byConvention,
   });
   const sequenceId = new Map();
   for (const [name, s] of Object.entries(db.sequences ?? {})) {
@@ -296,6 +297,14 @@ export function compile(domain) {
       comment: t.comment,
     });
   }
+  // The designed tables domain/storage/ holds ("Create tables…" made them from the entities), written as they are.
+  const storedTables = new Map(); // name -> document
+  for (const [path, doc] of stored) {
+    if (doc.kind !== "table") continue;
+    if (db.tables?.[doc.name] || storedTables.has(doc.name)) throw new Error(`domain/storage/${path}: table ${doc.name} is described twice`);
+    storedTables.set(doc.name, doc);
+    emit("database", `model/${path}`, "table.json", doc);
+  }
 
   // An entity's binding to a designed table or a query of the database (erratum E43): its constants, field map (attribute ->
   // column) and the columns it accounts for without a field. A bound entity is never projected. A query's columns are its select
@@ -332,12 +341,12 @@ export function compile(domain) {
   const entityRef = (name, where) => { const r = entities.get(name); if (!r) throw new Error(`${where}: unknown entity ${name}`); return r; };
   const relations = []; // { pkg, doc, endEntities:[names] }
   const mappings = [];
-  const tables = [];
 
   for (const p of packages) {
     for (const [name, e] of Object.entries(p.entities ?? {})) {
       const ent = entities.get(name);
       if (!e.description) throw new Error(`${name}: missing description`);
+      if (e.mapping || e.overlay) throw new Error(`${name}: mapping and overlay were removed in 0.29.0; its table is a designed table in domain/storage/`);
       const attrs = [];
       let key;
       const keySpec = e.base ? null : (e.key ?? "uuid-v7");
@@ -382,15 +391,6 @@ export function compile(domain) {
     const ent = entities.get(name);
     const base = ent.spec.base ? allMembers(ent.spec.base) : new Map();
     return new Map([...base, ...ent.members]);
-  };
-  const attrId = (entName, attrName) => {
-    let ent = entities.get(entName);
-    while (ent) {
-      const a = ent.attrs.find((x) => x.name === attrName);
-      if (a) return a.id;
-      ent = ent.spec.base ? entities.get(ent.spec.base) : undefined;
-    }
-    throw new Error(`${entName}: unknown attribute ${attrName}`);
   };
   const addNavigation = (entityName, nav, where) => {
     if (!nav) return;
@@ -499,47 +499,7 @@ export function compile(domain) {
     }
   }
 
-  // Entity mappings and table overlays.
-  for (const p of packages) {
-    for (const [name, e] of Object.entries(p.entities ?? {})) {
-      const ent = entities.get(name);
-      if (e.mapping) {
-        const m = e.mapping;
-        const attributes = [];
-        for (const [an, storage] of Object.entries(m.storage ?? {})) attributes.push({ attribute: attrId(name, an), storage });
-        for (const [an, prefix] of Object.entries(m.prefix ?? {})) attributes.push({ attribute: attrId(name, an), prefix });
-        mappings.push({
-          kind: "mapping", id: id(`mapping:${name}`), name: `${name} in ${db.name}`, database: dbId, entity: ent.id, description: m.description,
-          inheritance: m.inheritance, discriminatorValue: m.discriminator, attributes: attributes.length ? attributes : undefined,
-        });
-      }
-      if (e.overlay) {
-        const o = e.overlay;
-        const columns = Object.entries(o.columns ?? {}).map(([an, c]) => ({
-          id: id(`overlay:${name}.${an}`), attribute: attrId(name, an), nativeType: c.nativeType, defaultSql: c.defaultSql ? { "*": c.defaultSql } : undefined,
-          generated: c.sequence ? "sequence" : undefined, sequence: c.sequence ? sequenceId.get(c.sequence) : undefined, comment: c.comment,
-        }));
-        for (const c of Object.values(o.columns ?? {})) if (c.sequence && !sequenceId.has(c.sequence)) throw new Error(`${name}: unknown sequence ${c.sequence}`);
-        const tid = id(`overlay:${name}`);
-        tables.push({
-          modelPath: `model/databases/${kebab(db.name)}/tables/${tid.toLowerCase()}.json`,
-          doc: {
-            kind: "table", id: tid, database: dbId, origin: "synthesized", entity: ent.id, description: o.description,
-            columns: columns.length ? columns : undefined,
-            checks: Object.entries(o.checks ?? {}).map(([cn, expr]) => ({ id: id(`overlay:${name}/check:${cn}`), name: cn, expression: { "*": expr } })),
-            indexes: (o.indexes ?? []).map((ix, i) => ({
-              id: id(`overlay:${name}/index:${i}`), name: ix.name,
-              columns: ix.columns.map((c) => { const [an, dir] = c.split(" "); return { column: attrId(name, an), descending: dir === "desc" ? true : undefined }; }),
-              where: ix.where, unique: ix.unique,
-            })),
-            comment: o.comment,
-          },
-        });
-      }
-    }
-  }
-
-  // Emit entities (per package, in file order), relations, tables, mappings, diagrams. An entity that reads a query comes after
+  // Emit entities (per package, in file order), relations, mappings, diagrams. An entity that reads a query comes after
   // the queries, which the seed creates last.
   const readsQuery = (name) => Boolean(entities.get(name).spec.binding?.query);
   for (const p of packages) {
@@ -550,8 +510,8 @@ export function compile(domain) {
     }
   }
   for (const r of relations) emit("relations", `model/relations/${kebab(r.doc.name)}.json`, "relation.json", r.doc);
-  for (const t of tables) emit("physical", t.modelPath, "table.json", t.doc);
   for (const m of mappings) emit("mappings", `model/mappings/${kebab(m.name)}.json`, "mapping.json", m);
+  for (const [path, doc] of stored) if (doc.kind === "mapping") emit("mappings", `model/${path}`, "mapping.json", doc);
 
   for (const p of packages) {
     const d = p.diagram;
@@ -575,7 +535,8 @@ export function compile(domain) {
       return id(`view:${view}`);
     }
     if (db.tables?.[name]) return id(`table:${name}`);
-    return entityRef(name, where).id;
+    if (storedTables.has(name)) return storedTables.get(name).id;
+    throw new Error(`${where}: unknown table ${name}`);
   };
   for (const [name, q] of Object.entries(db.queries ?? {})) {
     const where = `query ${name}`;
@@ -595,6 +556,20 @@ export function compile(domain) {
     }
   }
 
+  // The bindings domain/storage/ holds for the entities and reference types the YAML describes.
+  const storageBindings = new Set();
+  const byPath = new Map(out.map((o) => [o.modelPath, o]));
+  for (const [path, doc] of stored) {
+    if (doc.kind === "table" || doc.kind === "mapping") continue;
+    const target = byPath.get(`model/${path}`);
+    if (doc.kind !== undefined || !Array.isArray(doc.bindings) || Object.keys(doc).length !== 1)
+      throw new Error(`domain/storage/${path}: a storage file is a table, a mapping or { "bindings": [...] }`);
+    if (!target) throw new Error(`domain/storage/${path}: no element of the YAML is written there`);
+    if (target.doc.bindings) throw new Error(`domain/storage/${path}: ${target.doc.name} has a binding in the YAML too`);
+    target.doc.bindings = doc.bindings;
+    storageBindings.add(target.modelPath);
+  }
+
   const paths = new Set();
   for (const o of out) {
     if (paths.has(o.modelPath)) throw new Error(`two elements write ${o.modelPath}`);
@@ -602,11 +577,13 @@ export function compile(domain) {
   }
   return {
     documents: out,
+    storageBindings,
     stats: {
       packages: packages.length, entities: entities.size, relations: relations.length, enums: [...types.keys()].filter((t) => out.some((o) => o.schema === "enum.json" && o.doc.name === t)).length,
       referenceTypes: out.filter((o) => o.schema === "reference-type.json").length,
-      valueObjects: Object.keys(project.valueObjects ?? {}).length, scalarTypes: Object.keys(project.scalarTypes ?? {}).length, mappings: mappings.length,
-      diagrams: packages.length, tables: tables.length + Object.keys(db.tables ?? {}).length, views: Object.keys(db.views ?? {}).length, sequences: sequenceId.size,
+      valueObjects: Object.keys(project.valueObjects ?? {}).length, scalarTypes: Object.keys(project.scalarTypes ?? {}).length,
+      mappings: out.filter((o) => o.schema === "mapping.json").length, diagrams: packages.length,
+      tables: out.filter((o) => o.schema === "table.json").length, views: Object.keys(db.views ?? {}).length, sequences: sequenceId.size,
       queries: Object.keys(db.queries ?? {}).length,
     },
   };

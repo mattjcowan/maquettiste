@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHMP78K1ECTYFNEH01",
+  "name": "product category is nested under parent in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2QS5M0AF8D4S97YRXC3F05R",
+  "foreignKey": "01M8EJX9A7FVV4Y02DKZJ3XZJT"
+}

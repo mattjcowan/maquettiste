@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJ949ASEZWDRY30CDK",
+  "name": "repair order is raised under warranty claim in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M28B972FF171D6P4CRSJNV0J",
+  "foreignKey": "01M8EJX9ABZEDQKMF8TV9SS80V"
+}

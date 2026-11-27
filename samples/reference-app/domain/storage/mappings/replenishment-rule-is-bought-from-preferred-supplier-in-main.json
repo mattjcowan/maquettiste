@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ0F85RTKPCBR883QE",
+  "name": "replenishment rule is bought from preferred supplier in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1MKX59MT5CEN6XGXT0A7TMB",
+  "foreignKey": "01M8EJX9AAPD6C0EHAR2TPEMX5"
+}

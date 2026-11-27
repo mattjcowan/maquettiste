@@ -15,14 +15,15 @@ import { MockJobQueue, type JobClock } from "./model/jobs";
 import { MockLocalization } from "./model/localization";
 import { MockExtensions } from "./model/extensions";
 import type { Seed } from "./model/store";
-import { billingSeed, emptySeed, mediumSeed } from "./model/seed";
+import { billingProjectedSeed, billingSeed, emptySeed, mediumSeed } from "./model/seed";
 import { withDrift, withLifecycleProblems } from "./model/processSeed";
 import { withLargeChart } from "./model/processDiagramSeed";
 import { truncateChangeEvent } from "./wire";
 import { MockAssist } from "./assist";
 
 /**
- * `?mock=` scenarios. `medium` is the in-browser 200-entity model; `large` is the 5,000-entity model
+ * `?mock=` scenarios. `projected` is the billing model before its tables were designed (tables and mappings projected by
+ * convention), for the specs of projection until projection is retired. `medium` is the in-browser 200-entity model; `large` is the 5,000-entity model
  * that scripts/gen-scale-model.mjs writes (browser.ts loads it and passes it as `seed`).
  */
 type PackRemoveResult = components["schemas"]["PackRemoveResult"];
@@ -44,6 +45,7 @@ export type Scenario =
   | "lifecycle"
   | "chart400"
   | "legacy"
+  | "projected"
   | "noai"
   | "role-viewer"
   | "role-editor"
@@ -109,7 +111,15 @@ export class MockBackend {
     this.validationDelay = options.validationDelayMs ?? 150;
     const seed =
       options.seed ??
-      (this.scenarios.has("empty") ? emptySeed() : this.scenarios.has("medium") ? mediumSeed() : this.scenarios.has("wide") ? mediumSeed(400) : billingSeed());
+      (this.scenarios.has("empty")
+        ? emptySeed()
+        : this.scenarios.has("medium")
+          ? mediumSeed()
+          : this.scenarios.has("wide")
+            ? mediumSeed(400)
+            : this.scenarios.has("projected")
+              ? billingProjectedSeed()
+              : billingSeed());
     const lifecycle = this.scenarios.has("lifecycle") ? withLifecycleProblems(seed) : seed;
     const drifted = this.scenarios.has("drift") ? withDrift(lifecycle) : lifecycle;
     // `chart400`: a 400-state process with its diagram, for the statechart canvas's budgets (phase-3-design.md 4.5).
@@ -336,6 +346,7 @@ export function scenariosFrom(search: string): Scenario[] {
     "lifecycle",
     "chart400",
     "legacy",
+    "projected",
     "noai",
     "role-viewer",
     "role-editor",

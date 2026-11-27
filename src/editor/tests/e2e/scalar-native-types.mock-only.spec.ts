@@ -26,7 +26,7 @@ const emailColumnNativeType = (page: Page) =>
   });
 
 test("a custom type's native types: one row per database dialect, another dialect added, each value one undo step", async ({ page }) => {
-  await openEditor(page);
+  await openEditor(page, "/?mock=projected");
   const side = explorer(page);
   await side.getByLabel("Search the model").fill("EmailAddress");
   await side.getByTestId("explorer-row-EmailAddress").dblclick();

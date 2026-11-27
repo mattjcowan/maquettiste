@@ -1,10 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
 /// <summary><c>maquettiste model export|stats</c>: the model as data, the same pages the editor API and the MCP server serve.</summary>
+[UsesProjectedFixtures]
 public sealed class ModelCommandTests
 {
     [Fact]

@@ -24,5 +24,33 @@
       "required": true,
       "default": 1
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EKD8YH1XHBQJVFBAP9CNYF",
+      "database": "01JDBS00000000000000000001",
+      "source": "01M8EKD8XQ8TKCT2QV0YPZK0HK",
+      "fields": [
+        {
+          "attribute": "01JATT00000000000000000301",
+          "column": "01M8EKD8XQG6YM7HXVVS0ZDCP9"
+        },
+        {
+          "attribute": "01JATT00000000000000000302",
+          "column": "01M8EKD8XQS55117PPKYN20B8A"
+        },
+        {
+          "attribute": "01JEND00000000000000000003",
+          "column": "01M8EKD8XQ7J7TMCEBCD85K0B8"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EKD8XQ7J7TMCEBCD85K0B8": "04235704:8da1c7b8",
+          "01M8EKD8XQG6YM7HXVVS0ZDCP9": "a5614527:8da1c7b8",
+          "01M8EKD8XQS55117PPKYN20B8A": "1a7b308d:53fb88ea"
+        }
+      }
+    }
   ]
 }

@@ -1,0 +1,94 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QNBZBMH978AMPY4BH",
+  "name": "landed_costs",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99QMM5GHS9DV5D440N4",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the landed cost."
+    },
+    {
+      "id": "01M8EJX99QJ8EE9YVKG7823GXK",
+      "name": "cost_type",
+      "type": "string",
+      "length": 30,
+      "nullable": false,
+      "comment": "freight, duty, insurance or brokerage."
+    },
+    {
+      "id": "01M8EJX99Q0VB70FANE3YAW576",
+      "name": "amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99Q36C8GMY920X8X64S",
+      "name": "amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99QX4J6ZS4YEGWCDMCD",
+      "name": "allocation_method",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "default": "value",
+      "comment": "value, weight or quantity."
+    },
+    {
+      "id": "01M8EJX99Q135M0EXGN17CVETA",
+      "name": "goods_receipt_id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99Q74EGA6YTP7P5VQ2S",
+      "name": "supplier_invoice_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_landed_costs",
+    "columns": [
+      "01M8EJX99QMM5GHS9DV5D440N4"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9ABM6PZWB8H8VFCE58T",
+      "name": "fk_landed_costs_goods_receipt_id",
+      "columns": [
+        "01M8EJX99Q135M0EXGN17CVETA"
+      ],
+      "referencesTable": "01M8EJX99Q3F3DXB29STDPMK30",
+      "referencesColumns": [
+        "01M8EJX99Q8D73Q565GMKVX3KR"
+      ],
+      "onDelete": "cascade"
+    },
+    {
+      "id": "01M8EJX9ABVX8V4QHN9F2VY8QK",
+      "name": "fk_landed_costs_supplier_invoice_id",
+      "columns": [
+        "01M8EJX99Q74EGA6YTP7P5VQ2S"
+      ],
+      "referencesTable": "01M8EJX99QS639SA8R8GR78SYN",
+      "referencesColumns": [
+        "01M8EJX99Q2JZ5RQYM5RW564H9"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An extra cost of getting goods to the warehouse, such as freight, duty or brokerage, spread over a receipt."
+}

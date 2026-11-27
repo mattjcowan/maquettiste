@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CHYA8F7CW12H2ZXZX1",
+  "name": "shipment rides on delivery route in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M32EGYEF40KMP0V0MDRNMHV5",
+  "foreignKey": "01M8EJX9A9ADTJ3ZGCV9MGNB56"
+}

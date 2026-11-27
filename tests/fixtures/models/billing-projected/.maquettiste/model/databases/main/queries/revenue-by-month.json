@@ -1,0 +1,113 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01K6QRY0000000000000000002",
+  "name": "RevenueByMonth",
+  "database": "01J92P0V1QRN2181XM2ZWE02W4",
+  "description": "Invoiced revenue per month between two dates, void invoices left out: an ad hoc row per month.",
+  "parameters": [
+    {
+      "name": "from",
+      "type": "date"
+    },
+    {
+      "name": "to",
+      "type": "date"
+    }
+  ],
+  "from": {
+    "source": "01J92P0V1T0J6RH4MY9H81NYB4",
+    "alias": "i"
+  },
+  "select": [
+    {
+      "name": "month",
+      "type": "date",
+      "nullable": false,
+      "expression": {
+        "sql": {
+          "postgresql": "CAST(date_trunc('month', i.issued_on) AS date)",
+          "sqlite": "date(i.issued_on, 'start of month')",
+          "sqlserver": "DATEFROMPARTS(YEAR(i.issued_on), MONTH(i.issued_on), 1)"
+        }
+      }
+    },
+    {
+      "name": "invoiceCount",
+      "expression": {
+        "call": "count"
+      }
+    },
+    {
+      "name": "revenue",
+      "nullable": false,
+      "expression": {
+        "call": "coalesce",
+        "args": [
+          {
+            "call": "sum",
+            "args": [
+              {
+                "column": "i.01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ"
+              }
+            ]
+          },
+          {
+            "value": 0
+          }
+        ]
+      }
+    }
+  ],
+  "where": {
+    "and": [
+      {
+        "op": "ge",
+        "left": {
+          "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+        },
+        "right": {
+          "param": "from"
+        }
+      },
+      {
+        "op": "lt",
+        "left": {
+          "column": "i.01J92P0V0SNXS6PZ42VDK42HP9"
+        },
+        "right": {
+          "param": "to"
+        }
+      },
+      {
+        "op": "ne",
+        "left": {
+          "column": "i.01J92P0V0VB1Z49SWERMAGR4TV"
+        },
+        "right": {
+          "value": "V"
+        }
+      }
+    ]
+  },
+  "groupBy": [
+    {
+      "sql": {
+        "postgresql": "CAST(date_trunc('month', i.issued_on) AS date)",
+        "sqlite": "date(i.issued_on, 'start of month')",
+        "sqlserver": "DATEFROMPARTS(YEAR(i.issued_on), MONTH(i.issued_on), 1)"
+      }
+    }
+  ],
+  "orderBy": [
+    {
+      "expression": {
+        "sql": {
+          "postgresql": "CAST(date_trunc('month', i.issued_on) AS date)",
+          "sqlite": "date(i.issued_on, 'start of month')",
+          "sqlserver": "DATEFROMPARTS(YEAR(i.issued_on), MONTH(i.issued_on), 1)"
+        }
+      }
+    }
+  ]
+}

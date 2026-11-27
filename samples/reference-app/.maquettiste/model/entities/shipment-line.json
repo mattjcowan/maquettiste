@@ -38,5 +38,48 @@
       },
       "description": "Quantity shipped."
     }
+  ],
+  "bindings": [
+    {
+      "id": "01M8EJX9BZSRGGR1BTD8BRCG14",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99PTWVK83PWPXCJ2V5K",
+      "fields": [
+        {
+          "attribute": "01M2F2KSZ4P6GE0145WK4SPY8A",
+          "column": "01M8EJX99PWARWMWWHCBYP4HHP"
+        },
+        {
+          "attribute": "01M1NK2QXS21W4P4FPYSX7Y69G",
+          "column": "01M8EJX99PXNCR3S5SBMKSHC92"
+        },
+        {
+          "attribute": "01M22QE02NQCSXZZ8YHN8CKG6W",
+          "column": "01M8EJX99P3R1YA4475VPFM6R0"
+        },
+        {
+          "attribute": "01M37Z392N6X7JN55E95BXFH8G",
+          "column": "01M8EJX99PNE0ZVQAS373SN841"
+        },
+        {
+          "attribute": "01M31X9Q5Q222750DM7CCN8KKB",
+          "column": "01M8EJX99PVM4PEFD9RZZS27HZ"
+        },
+        {
+          "attribute": "01M2P4BBK4T3DSG2K7758PDVHB",
+          "column": "01M8EJX99PDY8ZDFSPWTFD9YQR"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99P3R1YA4475VPFM6R0": "700ec538:8da1c7b8",
+          "01M8EJX99PDY8ZDFSPWTFD9YQR": "64814827:8da1c7b8",
+          "01M8EJX99PNE0ZVQAS373SN841": "20ee127d:4338bc0a",
+          "01M8EJX99PVM4PEFD9RZZS27HZ": "cdd9faec:d8a57cf9",
+          "01M8EJX99PWARWMWWHCBYP4HHP": "a5614527:8da1c7b8",
+          "01M8EJX99PXNCR3S5SBMKSHC92": "1a7b308d:b52e18e1"
+        }
+      }
+    }
   ]
 }

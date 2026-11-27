@@ -1,0 +1,129 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P8ZZCXDWNCJJKADEZ",
+  "name": "sales_territories",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PXEQ6VW19B64F51H5",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the sales territory."
+    },
+    {
+      "id": "01M8EJX99P7J8E5K52RQQ4Y6AR",
+      "name": "code",
+      "type": "string",
+      "length": 12,
+      "nullable": false,
+      "comment": "Territory code."
+    },
+    {
+      "id": "01M8EJX99PNC6EFPVMAZ0BBVVP",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Territory name."
+    },
+    {
+      "id": "01M8EJX99PJ52YKZQJ3JBRN1F9",
+      "name": "annual_quota_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99PX5NG73P9EP634HFK",
+      "name": "annual_quota_currency",
+      "type": "string",
+      "length": 3,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99P2T7AJ7XZGT6KH4ZP",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PEEEVW782WYJRJQFJ",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P3E1XXSDMNWQTKZ9G",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99PTFZ73TPCNMMGBPH7",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PVHAPHVYJT99WZE76",
+      "name": "parent_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99P6T97TYMPG6WWAG15",
+      "name": "manager_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sales_territories",
+    "columns": [
+      "01M8EJX99PXEQ6VW19B64F51H5"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A88Y72GJEKQR5SHY6D",
+      "name": "uq_sales_territories_code",
+      "columns": [
+        "01M8EJX99P7J8E5K52RQQ4Y6AR"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A8KSPTSKZAFZ2SS7T9",
+      "name": "fk_sales_territories_parent_id",
+      "columns": [
+        "01M8EJX99PVHAPHVYJT99WZE76"
+      ],
+      "referencesTable": "01M8EJX99P8ZZCXDWNCJJKADEZ",
+      "referencesColumns": [
+        "01M8EJX99PXEQ6VW19B64F51H5"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A87F8YWD586JZJERFX",
+      "name": "fk_sales_territories_manager_id",
+      "columns": [
+        "01M8EJX99P6T97TYMPG6WWAG15"
+      ],
+      "referencesTable": "01M8EJX99PT43F1T8HC8C4XWKP",
+      "referencesColumns": [
+        "01M8EJX99PAQ89357DJKNG6ZE4"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "A geographic sales territory, nested into regions (US > West > Pacific Northwest)."
+}

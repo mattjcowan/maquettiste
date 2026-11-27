@@ -1,6 +1,7 @@
 using System.Text;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Tests.Validation;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
@@ -8,6 +9,7 @@ namespace Maquettiste.Engine.Tests.Store;
 /// A save validates the entities whose MQ4012 it may have changed (engine-design 7.2a): every entity when a database changes,
 /// the entity a deleted mapping named, and the entity a retargeted mapping named before. The harness runs the real validator.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class ModelStoreMappingScopeTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

@@ -1,0 +1,98 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99PHHQ9FB35T7Z47B77",
+  "name": "user_sessions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PSB4307Y5J1QGSWYJ",
+      "name": "id",
+      "type": "ulid",
+      "nullable": false,
+      "comment": "Surrogate key of the user session."
+    },
+    {
+      "id": "01M8EJX99PKPRVP5J9MDSMNE48",
+      "name": "started_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the session was created."
+    },
+    {
+      "id": "01M8EJX99PMPEDEGW98GKR364B",
+      "name": "expires_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "Absolute expiry."
+    },
+    {
+      "id": "01M8EJX99PT86MZKPX23GZ8X72",
+      "name": "last_seen_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "Last request on the session."
+    },
+    {
+      "id": "01M8EJX99P1E8NBXG0JZRZTD5V",
+      "name": "ip_address",
+      "type": "string",
+      "length": 45,
+      "comment": "Client IP address (IPv4 or IPv6)."
+    },
+    {
+      "id": "01M8EJX99PMQEEZ4HBWAJFHPFX",
+      "name": "user_agent",
+      "type": "string",
+      "length": 400,
+      "comment": "Client user agent string."
+    },
+    {
+      "id": "01M8EJX99PMMW21FWDYC40K0Q1",
+      "name": "revoked_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the session was revoked; null while valid."
+    },
+    {
+      "id": "01M8EJX99PV24V7XYZR9VX3ECK",
+      "name": "user_account_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_user_sessions",
+    "columns": [
+      "01M8EJX99PSB4307Y5J1QGSWYJ"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A9WT3C0R21WBTK362D",
+      "name": "fk_user_sessions_user_account_id",
+      "columns": [
+        "01M8EJX99PV24V7XYZR9VX3ECK"
+      ],
+      "referencesTable": "01M8EJX99PE8P64FHTYQMK50FC",
+      "referencesColumns": [
+        "01M8EJX99PTZF4HKZC0WA6DTTZ"
+      ],
+      "onDelete": "cascade"
+    }
+  ],
+  "indexes": [
+    {
+      "id": "01M8EJX9A93T9AKN4VZT9Z9T04",
+      "name": "ix_user_sessions_expires_at",
+      "columns": [
+        {
+          "column": "01M8EJX99PMPEDEGW98GKR364B"
+        }
+      ]
+    }
+  ],
+  "comment": "A signed-in session of a user account, kept to support sign-out everywhere and anomaly detection."
+}

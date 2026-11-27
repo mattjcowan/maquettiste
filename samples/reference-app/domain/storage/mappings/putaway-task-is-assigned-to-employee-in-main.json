@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJF5VS6QY0ACWKBSR1",
+  "name": "putaway task is assigned to employee in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M35708VXJKKT2V4ESW6HB204",
+  "foreignKey": "01M8EJX9AACA8VBE7G8Q7RGB3N"
+}

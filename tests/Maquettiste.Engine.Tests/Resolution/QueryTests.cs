@@ -19,6 +19,7 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// renderer per dialect, the resolver's rules MQ4021 to MQ4043 with their pointers, the <c>each query</c> scope
 /// and the <c>query_sql</c> helper, the database view and resolved records, and what the schema diff makes of them (nothing).
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class QueryTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ0RRFA0P9Q71EA8YJ",
+  "name": "cart is opened by user account in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1KEH6QCFA1FWG0NNAHM658H",
+  "foreignKey": "01M8EJX9ACK0VT5AT6Z48A1AT7"
+}

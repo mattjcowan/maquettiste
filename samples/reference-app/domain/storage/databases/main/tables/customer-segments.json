@@ -1,0 +1,72 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99P6W7GAWNGRRP2JFNF",
+  "name": "customer_segments",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99PBKVQ2PCHTWRY0Q81",
+      "name": "id",
+      "type": "int32",
+      "nullable": false,
+      "generated": "identity",
+      "comment": "Surrogate key of the customer segment."
+    },
+    {
+      "id": "01M8EJX99PJC2FHPH7WHQ30PMD",
+      "name": "description",
+      "type": "string",
+      "length": 300,
+      "comment": "Who belongs to the segment."
+    },
+    {
+      "id": "01M8EJX99PBX8XKCC2K2H6PV0B",
+      "name": "code",
+      "type": "string",
+      "length": 32,
+      "nullable": false,
+      "comment": "Short stable code used in integrations and imports."
+    },
+    {
+      "id": "01M8EJX99PC8BYJSRSCD3P0KVX",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Display name shown in pick lists."
+    },
+    {
+      "id": "01M8EJX99P7E83Z5Y6SKBC3JF6",
+      "name": "sort_order",
+      "type": "int32",
+      "nullable": false,
+      "default": 0,
+      "comment": "Position in pick lists."
+    },
+    {
+      "id": "01M8EJX99PQKHQMY5R4NZ9MNTE",
+      "name": "is_active",
+      "type": "bool",
+      "nullable": false,
+      "default": true,
+      "comment": "Whether the value can be chosen for new records."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_customer_segments",
+    "columns": [
+      "01M8EJX99PBKVQ2PCHTWRY0Q81"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A829QKJV970Y5EM0RB",
+      "name": "uq_customer_segments_code",
+      "columns": [
+        "01M8EJX99PBX8XKCC2K2H6PV0B"
+      ]
+    }
+  ],
+  "comment": "Marketing segment of a customer, such as Independent retailer or National chain."
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01JMAP00000000000000000006",
+  "name": "tagged in main",
+  "database": "01JDBS00000000000000000001",
+  "relation": "01JRXN00000000000000000003",
+  "junctionTable": "01JTAB00000000000000000003",
+  "ends": [
+    {
+      "end": "01JEND00000000000000000005",
+      "foreignKey": "01JKEY00000000000000000002"
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99N1AX1NE743Z9T45J4",
+  "name": "sales_channels",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NB3TQX93H0TKN310Q",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the sales channel."
+    },
+    {
+      "id": "01M8EJX99NNS9YQERV0RY8KJ63",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Channel code."
+    },
+    {
+      "id": "01M8EJX99ND104T64MYWAX71Z2",
+      "name": "name",
+      "type": "string",
+      "length": 100,
+      "nullable": false,
+      "comment": "Channel name."
+    },
+    {
+      "id": "01M8EJX99NQ1ZQAJT6N6V9VTD9",
+      "name": "is_marketplace",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether a third party hosts the channel."
+    },
+    {
+      "id": "01M8EJX99N9GMBW7R07DZW2774",
+      "name": "commission_rate",
+      "type": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "comment": "Fee the channel charges on sales."
+    },
+    {
+      "id": "01M8EJX99NP9AZ5TJXPWKKWFYX",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99N3ZC0QWKS68KDF8DJ",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99NS1EHB353B11NCKHY",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99N5H7G85QXMZZRZKNH",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_sales_channels",
+    "columns": [
+      "01M8EJX99NB3TQX93H0TKN310Q"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A7YJ65ZKH35RGJYNQC",
+      "name": "uq_sales_channels_code",
+      "columns": [
+        "01M8EJX99NNS9YQERV0RY8KJ63"
+      ]
+    }
+  ],
+  "comment": "A route to market, such as the customer portal, EDI or a marketplace."
+}

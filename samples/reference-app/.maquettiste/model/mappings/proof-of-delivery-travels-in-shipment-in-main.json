@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CH99V9JCV7YN31S0J1",
+  "name": "proof of delivery travels in shipment in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M36HXQ0C1MVT9ZV69788QP7X",
+  "foreignKey": "01M8EJX9A9GF8XBVG9D9CHX5XG"
+}

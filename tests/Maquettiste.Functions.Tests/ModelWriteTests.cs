@@ -100,6 +100,7 @@ public sealed class ModelWriteTests
         Contract.AssertResponse(response, "/api/model/elements");
     }
 
+    [UsesProjectedFixtures]
     [Theory]
     [InlineData("quoted")]
     [InlineData("weak")]
@@ -270,6 +271,7 @@ public sealed class ModelWriteTests
         Assert.Equal([id], deleted.Json["changes"]!["deleted"]!.AsArray().Select(d => d!.GetValue<string>()));
     }
 
+    [UsesProjectedFixtures]
     [Fact]
     public async Task Batch_applies_all_or_nothing_with_each_outcome_status()
     {
@@ -355,6 +357,7 @@ public sealed class ModelWriteTests
         Assert.Equal(400, badId.Status);
     }
 
+    [UsesProjectedFixtures]
     [Fact]
     public async Task Validate_carries_the_resolvers_MQ4005_with_its_pointer_as_the_problems_panel_shows_it()
     {

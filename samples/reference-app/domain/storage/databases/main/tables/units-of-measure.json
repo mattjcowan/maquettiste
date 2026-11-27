@@ -1,0 +1,56 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99QJ4GMT8T7V5FWSPGQ",
+  "name": "units_of_measure",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99Q26RFK5STCSH1JBPE",
+      "name": "code",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "UN/CEFACT common code, such as EA, KGM or CS; the natural key."
+    },
+    {
+      "id": "01M8EJX99Q9SX37MDCSQGX55D3",
+      "name": "name",
+      "type": "string",
+      "length": 60,
+      "nullable": false,
+      "comment": "Display name, such as each, kilogram or case."
+    },
+    {
+      "id": "01M8EJX99QA3ZQP29C590Z0NR3",
+      "name": "dimension",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "What the unit measures - count, mass, length, volume or area."
+    },
+    {
+      "id": "01M8EJX99Q05ZBSN8VE0A1ZATK",
+      "name": "is_base_unit",
+      "type": "bool",
+      "nullable": false,
+      "default": false,
+      "comment": "Whether the unit is the base of its dimension."
+    },
+    {
+      "id": "01M8EJX99Q4MY7KEH16AMDEKGJ",
+      "name": "decimals_allowed",
+      "type": "int16",
+      "nullable": false,
+      "default": 0,
+      "comment": "Decimals allowed on quantities in the unit."
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_units_of_measure",
+    "columns": [
+      "01M8EJX99Q26RFK5STCSH1JBPE"
+    ]
+  },
+  "comment": "A unit in which goods are counted, weighed or sold, from UN/CEFACT Recommendation 20."
+}

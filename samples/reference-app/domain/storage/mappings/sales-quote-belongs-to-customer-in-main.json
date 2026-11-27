@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CKX56T1DZXHANKF524",
+  "name": "sales quote belongs to customer in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2XDAD201VC3917X5NAZGGZ1",
+  "foreignKey": "01M8EJX9AC0W8YRJVG5T2TFDKS"
+}

@@ -14,6 +14,7 @@ namespace Maquettiste.Packs.Tests;
 /// behind. Also the refusals that never guess (a storage strategy the pack decides, a relation to an abstract base with no table) and
 /// the choices that come back with a refusal.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class MaterializeAdoptionTests
 {
     private const string Main = "01J92P0V1QRN2181XM2ZWE02W4";
@@ -54,33 +55,82 @@ public sealed class MaterializeAdoptionTests
         [.. Directory.EnumerateFiles(Path.Combine(repo.Repo.RepoRoot, "db"), "*.sql", SearchOption.AllDirectories)
             .Select(p => Path.GetRelativePath(repo.Repo.RepoRoot, p)).Where(p => p.Contains("migrations", StringComparison.Ordinal))];
 
-    /// <summary>Whether a migration holds any schema statement (not only comments, the transaction and the ledger's rows).</summary>
+    /// <summary>Whether a migration holds any schema statement (not only comments, the transaction, the ledger's rows and adoptions).</summary>
     private static bool ChangesSchema(string migration) => SchemaLines(migration).Count > 0;
 
-    /// <summary>A migration's schema statements: those that are not comments, the transaction, or the ledger's own objects and rows.</summary>
-    internal static List<string> SchemaLines(string migration)
+    /// <summary>
+    /// A migration's schema statements: those that are not comments, the transaction, the ledger's own objects and rows, or the block
+    /// that creates what a rekey fact adopted (<see cref="AdoptionLines"/>), which changes nothing in a database that holds it.
+    /// </summary>
+    internal static List<string> SchemaLines(string migration) =>
+        [.. Statements(migration).Where(s => !s.Adoption).Select(s => s.Text).Where(st => st is not ("BEGIN;" or "COMMIT;" or "GO" or "BEGIN TRANSACTION;" or "COMMIT TRANSACTION;")
+            && !st.StartsWith("SET XACT_ABORT", StringComparison.Ordinal) && !st.Contains("migration_ledger", StringComparison.Ordinal))];
+
+    /// <summary>
+    /// The statements of a migration's adoption blocks: each block starts with a comment line "-- Adopted by migration fact" and ends at
+    /// the next empty line. The sql-ddl pack writes there what a rekey fact of "Create tables…" adopted (a table or a reference column's
+    /// constraint the earlier seed.sql made), so a database built from the migrations alone gets it.
+    /// </summary>
+    internal static List<string> AdoptionLines(string migration) => [.. Statements(migration).Where(s => s.Adoption).Select(s => s.Text)];
+
+    /// <summary>
+    /// Whether an adoption statement only creates what is missing: CREATE ... IF NOT EXISTS, a SQL Server OBJECT_ID or SCHEMA_ID test, a
+    /// PostgreSQL DO block that tests pg_constraint, a MySQL prepared statement behind an information_schema test, an Oracle block
+    /// that ignores "already exists", a comment set again, or rows inserted only when their key is missing.
+    /// </summary>
+    internal static bool IsIdempotent(string statement) =>
+        new[]
+        {
+            "CREATE TABLE IF NOT EXISTS ", "CREATE SCHEMA IF NOT EXISTS ", "CREATE INDEX IF NOT EXISTS ", "CREATE UNIQUE INDEX IF NOT EXISTS ", "CREATE TRIGGER IF NOT EXISTS ",
+            "IF OBJECT_ID(", "IF SCHEMA_ID(", "IF NOT EXISTS (SELECT 1 FROM sys.indexes ", "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint ", "SET @mq_sql = IF(NOT EXISTS ",
+            "PREPARE mq_stmt ", "EXECUTE mq_stmt;", "DEALLOCATE PREPARE mq_stmt;", "COMMENT ON ",
+        }.Any(p => statement.StartsWith(p, StringComparison.Ordinal))
+        || (statement.StartsWith("BEGIN\n    EXECUTE IMMEDIATE ", StringComparison.Ordinal) && statement.Contains("IF SQLCODE NOT IN (", StringComparison.Ordinal))
+        // A reference type's rows, inserted when their code is missing.
+        || (statement.StartsWith("INSERT INTO ", StringComparison.Ordinal) && statement.EndsWith(" DO NOTHING;", StringComparison.Ordinal))
+        || statement.StartsWith("INSERT IGNORE INTO ", StringComparison.Ordinal)
+        || (statement.StartsWith("MERGE INTO ", StringComparison.Ordinal) && statement.Contains("\nWHEN NOT MATCHED THEN INSERT", StringComparison.Ordinal)
+            && !statement.Contains("WHEN MATCHED THEN", StringComparison.Ordinal));
+
+    /// <summary>A migration's statements in order, each marked when it is in an adoption block.</summary>
+    private static List<(string Text, bool Adoption)> Statements(string migration)
     {
-        var statements = new List<string>();
+        var statements = new List<(string, bool)>();
         var current = new StringBuilder();
-        var block = false;
+        var block = "";
+        var adoption = false;
         foreach (var raw in migration.Split('\n'))
         {
             var l = raw.TrimEnd();
-            if (current.Length == 0 && (l.Length == 0 || l.StartsWith("--", StringComparison.Ordinal)))
-                continue;
-            current.Append(l).Append('\n');
-            if (l.StartsWith("DO $", StringComparison.Ordinal))
-                block = true;
-            if (block ? l.StartsWith("END $", StringComparison.Ordinal) : l.EndsWith(';') || l == "GO")
+            if (current.Length == 0 && l.Length == 0)
             {
-                statements.Add(current.ToString().TrimEnd());
+                adoption = false;
+                continue;
+            }
+
+            if (current.Length == 0 && l.StartsWith("--", StringComparison.Ordinal))
+            {
+                adoption |= l.StartsWith("-- Adopted by migration fact", StringComparison.Ordinal);
+                continue;
+            }
+
+            if (current.Length == 0)
+                block = l.StartsWith("DO $", StringComparison.Ordinal) && !l.EndsWith("$;", StringComparison.Ordinal) ? "do" : l == "BEGIN" ? "plsql" : "";
+            current.Append(l).Append('\n');
+            var done = block switch
+            {
+                "do" => l.StartsWith("END $", StringComparison.Ordinal),
+                "plsql" => l == "/",
+                _ => l.EndsWith(';') || l == "GO",
+            };
+            if (done)
+            {
+                statements.Add((current.ToString().TrimEnd(), adoption));
                 current.Clear();
-                block = false;
             }
         }
 
-        return [.. statements.Where(st => st is not ("BEGIN;" or "COMMIT;" or "GO" or "BEGIN TRANSACTION;" or "COMMIT TRANSACTION;")
-            && !st.StartsWith("SET XACT_ABORT", StringComparison.Ordinal) && !st.Contains("migration_ledger", StringComparison.Ordinal))];
+        return statements;
     }
 
     [Fact]

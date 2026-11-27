@@ -6,6 +6,7 @@ using ModelContextProtocol.Protocol;
 namespace Maquettiste.Cli.Tests;
 
 /// <summary>The protocol surface: tools, the conventions resource and prompt, the server's identity.</summary>
+[UsesProjectedFixtures]
 public sealed class McpSurfaceTests
 {
     private static readonly string[] Tools =
@@ -645,6 +646,7 @@ public sealed class McpEndOfInputTests
 }
 
 /// <summary>The read tools return the editor API's bodies.</summary>
+[UsesProjectedFixtures]
 public sealed class McpReadTests
 {
     [Fact]
@@ -1374,6 +1376,7 @@ public sealed class McpReadTests
 }
 
 /// <summary>Saves, conflicts, creates, deletes and batches.</summary>
+[UsesProjectedFixtures]
 public sealed class McpWriteTests
 {
     [Fact]
@@ -1795,6 +1798,7 @@ public sealed class McpWriteTests
 }
 
 /// <summary>Validation, plan then apply, and cancellation.</summary>
+[UsesProjectedFixtures]
 public sealed class McpGenerationTests
 {
     [Fact]

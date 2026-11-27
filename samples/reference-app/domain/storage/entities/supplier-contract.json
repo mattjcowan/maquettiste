@@ -1,0 +1,85 @@
+{
+  "bindings": [
+    {
+      "id": "01M8EJX9C5F2CM1GZ936K8NT9C",
+      "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+      "source": "01M8EJX99QXQACNSCPD3HP39MJ",
+      "fields": [
+        {
+          "attribute": "01M1ZEMWZJZ58GXWMGKR3GTF1T",
+          "column": "01M8EJX99Q8RMA9VG54CAHAWTX"
+        },
+        {
+          "attribute": "01M332EPG7WRTFENKND0AT5ZQR",
+          "column": "01M8EJX99QEPQRZEV4A57FETCE"
+        },
+        {
+          "attribute": "01M1W3SKS2TC2YC60MANM21V2M.01M2DD18YRN08A7JCCJ66VTYM1",
+          "column": "01M8EJX99QJR17XVFD37B22CFF"
+        },
+        {
+          "attribute": "01M1W3SKS2TC2YC60MANM21V2M.01M1Q6MGT5Z2EY2HVP9RHZ5M6S",
+          "column": "01M8EJX99Q00D09CGNP9JFY9W8"
+        },
+        {
+          "attribute": "01M1H70Q47ZH0AVN3VXNTFT2KT",
+          "column": "01M8EJX99QTFYVX040DZCKHTZ1"
+        },
+        {
+          "attribute": "01M1NEVJVQWY2TTK9H8XJEJVB9",
+          "column": "01M8EJX99QK36QT7DE3YNEAY38"
+        },
+        {
+          "attribute": "01M2S7TKNNYSTT1BF5GS955RY2.01M2F0J6BP6ANZPCKC1PDHHED0",
+          "column": "01M8EJX99QRR31MYRC7YVXBQFF"
+        },
+        {
+          "attribute": "01M2S7TKNNYSTT1BF5GS955RY2.01M2GZ9SKD5TS6ZHWVX02PM0J1",
+          "column": "01M8EJX99QD7SC98RPCYVY66PC"
+        },
+        {
+          "attribute": "01M204A7X0TDKJ3A8CB9P01VED",
+          "column": "01M8EJX99QGFHJ8MP1544PQDCF"
+        },
+        {
+          "attribute": "01M1EC9XWEV3JB0XKGGGH03WBQ",
+          "column": "01M8EJX99Q7EQEPYSQRK343Y2Y"
+        },
+        {
+          "attribute": "01M319ZGV0HAHDCRMFBEJQ6CX2",
+          "column": "01M8EJX99QPY518KQX7NK964JX"
+        },
+        {
+          "attribute": "01M2B7V6SFC870XEYWMTH1AB2X",
+          "column": "01M8EJX99QD1YC5QNR7NYEKKW7"
+        },
+        {
+          "attribute": "01M22A8Y32B0XYN22KH83HQK9Z",
+          "column": "01M8EJX99Q8VF9ETJ60R47Y1K4"
+        },
+        {
+          "attribute": "01M2ZENZCDH1PW1EZQHAP19TYD",
+          "column": "01M8EJX99QPBFF0J6DSP981YT8"
+        }
+      ],
+      "provenance": {
+        "columns": {
+          "01M8EJX99Q00D09CGNP9JFY9W8": "2a578471:9b51e601",
+          "01M8EJX99Q7EQEPYSQRK343Y2Y": "c0d79bde:9599b5fd",
+          "01M8EJX99Q8RMA9VG54CAHAWTX": "a5614527:8da1c7b8",
+          "01M8EJX99Q8VF9ETJ60R47Y1K4": "1813fb2c:d8a57cf9",
+          "01M8EJX99QD1YC5QNR7NYEKKW7": "0b075263:9599b5fd",
+          "01M8EJX99QD7SC98RPCYVY66PC": "d299170f:75525505",
+          "01M8EJX99QEPQRZEV4A57FETCE": "eebc1b3c:ef1ae9ec",
+          "01M8EJX99QGFHJ8MP1544PQDCF": "42049432:e0d08678",
+          "01M8EJX99QJR17XVFD37B22CFF": "2db5d4af:81884634",
+          "01M8EJX99QK36QT7DE3YNEAY38": "d9b2706c:19980141",
+          "01M8EJX99QPBFF0J6DSP981YT8": "fe5ebad7:8da1c7b8",
+          "01M8EJX99QPY518KQX7NK964JX": "d31d4567:fd717804",
+          "01M8EJX99QRR31MYRC7YVXBQFF": "2ce7fba9:d249895e",
+          "01M8EJX99QTFYVX040DZCKHTZ1": "51d2361f:43ec92f3"
+        }
+      }
+    }
+  ]
+}

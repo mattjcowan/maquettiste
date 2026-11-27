@@ -1,0 +1,141 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01M8EJX99P0R2MTZEVENPJNMRR",
+  "name": "tax_jurisdictions",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99P50CT3Q74SN6644PH",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the tax jurisdiction."
+    },
+    {
+      "id": "01M8EJX99P803M66TFKZZ1Z28E",
+      "name": "code",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Jurisdiction code."
+    },
+    {
+      "id": "01M8EJX99P68RJXGH88SFMYPJR",
+      "name": "name",
+      "type": "string",
+      "length": 120,
+      "nullable": false,
+      "comment": "Name."
+    },
+    {
+      "id": "01M8EJX99PDEEX0PDK7Y8SD88F",
+      "name": "level",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "country, state, county, city or district."
+    },
+    {
+      "id": "01M8EJX99P21NT5VGMAM3ZKSQC",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99PEAWTR5GJDXMZ5K52",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99P7NPS03PMFKXN252Q",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99P9C4JE09PNG690TRZ",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99PWWDHGPPH448PNCZP",
+      "name": "country_code",
+      "type": "string",
+      "length": 2,
+      "nullable": false
+    },
+    {
+      "id": "01M8EJX99P18KRRYW392QAY12X",
+      "name": "state_province_id",
+      "type": "int32"
+    },
+    {
+      "id": "01M8EJX99PQ27ESRH5B4PYENGK",
+      "name": "parent_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_tax_jurisdictions",
+    "columns": [
+      "01M8EJX99P50CT3Q74SN6644PH"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A88KAZEPHJJW4VHQWF",
+      "name": "uq_tax_jurisdictions_code",
+      "columns": [
+        "01M8EJX99P803M66TFKZZ1Z28E"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A82C0Z4YZSGEQCWYMN",
+      "name": "fk_tax_jurisdictions_country_code",
+      "columns": [
+        "01M8EJX99PWWDHGPPH448PNCZP"
+      ],
+      "referencesTable": "01M8EJX99QM2593EWW3DNC676T",
+      "referencesColumns": [
+        "01M8EJX99QZYYZX93FNJF0W9JT"
+      ],
+      "onDelete": "restrict"
+    },
+    {
+      "id": "01M8EJX9A84TV0V625FEFNT6T9",
+      "name": "fk_tax_jurisdictions_state_province_id",
+      "columns": [
+        "01M8EJX99P18KRRYW392QAY12X"
+      ],
+      "referencesTable": "01M8EJX99QRQPKABA5R9M6C92T",
+      "referencesColumns": [
+        "01M8EJX99QHE998424AKPJB5RN"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A8NSGWH1NWBCQ17TVB",
+      "name": "fk_tax_jurisdictions_parent_id",
+      "columns": [
+        "01M8EJX99PQ27ESRH5B4PYENGK"
+      ],
+      "referencesTable": "01M8EJX99P0R2MTZEVENPJNMRR",
+      "referencesColumns": [
+        "01M8EJX99P50CT3Q74SN6644PH"
+      ],
+      "onDelete": "set-null"
+    }
+  ],
+  "comment": "An authority that levies sales tax - a country, state, county or city."
+}

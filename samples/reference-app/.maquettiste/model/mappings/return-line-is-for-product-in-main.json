@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJFHYF2319K641CGQA",
+  "name": "return line is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2DMPMZT85RSK39NSRANZV6A",
+  "foreignKey": "01M8EJX9ABPRCH9J17XMFCBQ97"
+}

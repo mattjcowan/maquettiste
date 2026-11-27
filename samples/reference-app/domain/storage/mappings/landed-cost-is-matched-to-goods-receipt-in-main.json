@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJQETD0FRWRJRWSTJQ",
+  "name": "landed cost is matched to goods receipt in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M29VE9RSWRZ5XTYK61R3VAZD",
+  "foreignKey": "01M8EJX9ABM6PZWB8H8VFCE58T"
+}

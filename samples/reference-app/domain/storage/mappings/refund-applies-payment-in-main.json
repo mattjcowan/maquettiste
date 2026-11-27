@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CH3C753N5QDQZN2VXC",
+  "name": "refund applies payment in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M243XZT1RB3V73QBKDCWS7TK",
+  "foreignKey": "01M8EJX9A68D91B7CVRW6S0ASE"
+}

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJR1EHDVMV4C4M1191",
+  "name": "stock transfer line is for product in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2VXKTKWMVVWRXEJDG35B5ZH",
+  "foreignKey": "01M8EJX9AA7PRAHEMN3AK54CDH"
+}

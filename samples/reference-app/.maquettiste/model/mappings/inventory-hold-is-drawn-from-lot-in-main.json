@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01M8EJX9CJFB7ZEKVZWGRG23Y1",
+  "name": "inventory hold is drawn from lot in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M1SH9TQ9WZNJ297NG8FQFA9X",
+  "foreignKey": "01M8EJX9A9R15ZX2GBZT4JRS7C"
+}

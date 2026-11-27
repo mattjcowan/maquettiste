@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
@@ -6,6 +7,7 @@ namespace Maquettiste.Cli.Tests;
 /// The bulk read tools (docs/mcp.md "Reading a large model"): <c>get_model_kinds</c>, <c>get_elements</c>, <c>get_resolved_model</c>
 /// and the paged <c>get_model_index</c>, with the same bodies and paging as the editor API.
 /// </summary>
+[UsesProjectedFixtures]
 public sealed class McpBulkToolTests
 {
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";

@@ -1,0 +1,8 @@
+{
+  "kind": "mapping",
+  "id": "01M8EJX9CJ9JYF9GXQD9AW7TH4",
+  "name": "sales order is converted from quote in main",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "relation": "01M2S1V1ZHRK062QGBNVEKCBRA",
+  "foreignKey": "01M8EJX9AC17N91DA2VGETHQ6Y"
+}

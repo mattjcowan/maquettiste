@@ -171,15 +171,6 @@ entities:
       ipAddress: string(45) pii | Client IP address.
     refs:
       actor: UserAccount name=audit_event_is_performed_by_actor | Who did it; null for system jobs.
-    overlay:
-      description: Details are stored as jsonb so auditors can query inside them.
-      columns:
-        details:
-          nativeType: jsonb
-          comment: Before and after values, queried with jsonb operators.
-      indexes:
-        - name: ix_audit_events_entity
-          columns: [entityType, entityKey]
 
 relations:
   - name: user account holds role

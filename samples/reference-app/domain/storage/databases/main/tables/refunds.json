@@ -1,0 +1,171 @@
+{
+  "kind": "table",
+  "id": "01M8EJX99NCH598KTKG1A50BZ9",
+  "name": "refunds",
+  "database": "01M34AZ3RECQSPQQX1DXTCN03G",
+  "schema": "01M3284CYQRZY91V34X73GDH91",
+  "columns": [
+    {
+      "id": "01M8EJX99NS7T4RY56XB99YZFD",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false,
+      "comment": "Surrogate key of the refund."
+    },
+    {
+      "id": "01M8EJX99NGRGHYTXHDQDCHWS2",
+      "name": "refund_number",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "Refund number."
+    },
+    {
+      "id": "01M8EJX99N7FV8FYHCY8HKR1GZ",
+      "name": "refunded_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When it was paid out."
+    },
+    {
+      "id": "01M8EJX99N7A0CTTMT8VQZT29Z",
+      "name": "amount_amount",
+      "type": "decimal",
+      "precision": 19,
+      "scale": 4,
+      "nullable": false,
+      "comment": "The amount in the currency's major unit."
+    },
+    {
+      "id": "01M8EJX99N8ZHR9Y51YZ3BHHMS",
+      "name": "amount_currency",
+      "type": "string",
+      "length": 3,
+      "nullable": false,
+      "comment": "The ISO 4217 currency of the amount."
+    },
+    {
+      "id": "01M8EJX99NP8YTAYBC488SE2R4",
+      "name": "method",
+      "type": "string",
+      "length": 20,
+      "nullable": false,
+      "comment": "card, ach or check."
+    },
+    {
+      "id": "01M8EJX99N82HN0AAPWS42M4Q0",
+      "name": "status",
+      "type": "string",
+      "length": 4,
+      "nullable": false,
+      "default": "PEND",
+      "comment": "Processing state."
+    },
+    {
+      "id": "01M8EJX99NMG8AHH4N9S8RZCP5",
+      "name": "reference",
+      "type": "string",
+      "length": 64,
+      "comment": "Processor or bank reference."
+    },
+    {
+      "id": "01M8EJX99NP4QM1VW4V0VPM33A",
+      "name": "created_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "nullable": false,
+      "comment": "When the row was created."
+    },
+    {
+      "id": "01M8EJX99NNYZS6MRKGE6D4A58",
+      "name": "created_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the creator."
+    },
+    {
+      "id": "01M8EJX99N9KPEQBNNXDY1RQSD",
+      "name": "updated_at",
+      "type": "datetimeoffset",
+      "precision": 6,
+      "comment": "When the row was last changed."
+    },
+    {
+      "id": "01M8EJX99NCGQQQ0KW36ZT1T1X",
+      "name": "updated_by",
+      "type": "string",
+      "length": 64,
+      "comment": "User name of the last editor."
+    },
+    {
+      "id": "01M8EJX99N251B8F7B3JA6G676",
+      "name": "credit_note_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99NHRBW9DBCCPM6RHDT",
+      "name": "payment_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01M8EJX99N1FH7GJPYPYG9K81X",
+      "name": "customer_id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "name": "pk_refunds",
+    "columns": [
+      "01M8EJX99NS7T4RY56XB99YZFD"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01M8EJX9A6MFPAW1BA5DW51KHV",
+      "name": "uq_refunds_refund_number",
+      "columns": [
+        "01M8EJX99NGRGHYTXHDQDCHWS2"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01M8EJX9A6FWCB4CC8JQ6D4F6Y",
+      "name": "fk_refunds_credit_note_id",
+      "columns": [
+        "01M8EJX99N251B8F7B3JA6G676"
+      ],
+      "referencesTable": "01M8EJX99M0Y5G9EFCDNSHQYYX",
+      "referencesColumns": [
+        "01M8EJX99MG7ANKC4STT46BDSC"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A68D91B7CVRW6S0ASE",
+      "name": "fk_refunds_payment_id",
+      "columns": [
+        "01M8EJX99NHRBW9DBCCPM6RHDT"
+      ],
+      "referencesTable": "01M8EJX99N5EKCG57ND8KZGHZ4",
+      "referencesColumns": [
+        "01M8EJX99NBRGNW4MREK7W6QYQ"
+      ],
+      "onDelete": "set-null"
+    },
+    {
+      "id": "01M8EJX9A6GEHFRJ9M4WS3G5W5",
+      "name": "fk_refunds_customer_id",
+      "columns": [
+        "01M8EJX99N1FH7GJPYPYG9K81X"
+      ],
+      "referencesTable": "01M8EJX99P6TQY20H4KNV9E4WE",
+      "referencesColumns": [
+        "01M8EJX99P9XSGFG2VX6TR0BC7"
+      ],
+      "onDelete": "restrict"
+    }
+  ],
+  "comment": "Money returned to a customer, from an overpayment or a credit note."
+}
