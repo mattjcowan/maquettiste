@@ -940,7 +940,7 @@ Editor fixes. The engine, the file format and generated output do not change.
   `column.type_ref`, and `materialize-tables` and `materialize-columns` keep the logical type on the columns they
   write. Typing a column by a type stored as a lookup table, a CHECK, a native type or a bound table records a
   `change-type` that asks how values that are not codes convert. The [reference data
-  guide](guides/reference-data-and-seeds.md#11-type-a-column-of-your-own-table) walks through it.
+  guide](guides/reference-data-and-seeds.md#11-codes-in-a-column-of-your-own-table) walks through it.
 - **Sensitive columns.** A column's `sensitive` (`pii` or `secret`) is said once, on the column or on the attribute a
   binding maps to it, and both sides show it: `attribute.sensitive` and `column.sensitive` now give the borrowed value
   when there is no own one. A column's own `secret` also checks its literal default for credentials (MQ3017).
