@@ -46,10 +46,31 @@ public sealed record BindingConstantView(string Column, object? Value);
 /// left out when unset.</param>
 /// <param name="DiscriminatorColumn">The type column the entity shares with its base or the entities derived from it in one table, named
 /// by the binding's <c>discriminatorColumn</c> or inherited from its nearest base's binding to the database; left out when there is none.</param>
+/// <param name="BaseForeignKey">Table per type (retire-projection-design.md section 4): the id of the foreign key the binding's
+/// <c>baseForeignKey</c> names, joining its table to its nearest bound base's; left out without one, or when it does not resolve.</param>
+/// <param name="Key">With <paramref name="BaseForeignKey"/>: the key it gives, one field per key field of the base's binding on the foreign
+/// key's column, which the field map does not hold; left out otherwise (the key fields are the field map's with <c>isKey</c>).</param>
+/// <param name="Bases">The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none.</param>
 public sealed record EntityBindingRecord(string Id, string Database, string? SourceKind, string Source, string SourceName, string? WriteTable, string Delete,
     string? SoftDeleteColumn, object? SoftDeleteValue, IReadOnlyList<BindingConstantView> Constants, IReadOnlyList<BindingFieldRecord> Fields,
     IReadOnlyList<BindingColumnRecord> Columns, IReadOnlyList<BindingColumnRecord> WriteColumns,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? DiscriminatorValue = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] BindingDiscriminatorRecord? DiscriminatorColumn = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BaseForeignKey = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<BindingFieldRecord>? Key = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<BindingBaseRecord>? Bases = null);
+
+/// <summary>One table above a binding's own (table per type): the base's binding that reads and writes it, and how the table below joins it.</summary>
+/// <param name="Binding">The id of the base entity's binding to the database.</param>
+/// <param name="Entity">The base entity's id.</param>
+/// <param name="Table">The key of the table the base's binding writes, else its source's key.</param>
+/// <param name="ForeignKey">The id of the foreign key that joins the table below to this one (its name for a key without an id).</param>
+/// <param name="Columns">The foreign key's columns, in the table below, by key.</param>
+/// <param name="ReferencedColumns">The columns of this table they reference, in the order of <paramref name="Columns"/>.</param>
+/// <param name="DiscriminatorColumn">The table's type column, with the derived entity's code and the codes its statements keep; left out
+/// without one.</param>
+public sealed record BindingBaseRecord(string Binding, string Entity, string Table, string ForeignKey, IReadOnlyList<string> Columns,
+    IReadOnlyList<string> ReferencedColumns,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] BindingDiscriminatorRecord? DiscriminatorColumn = null);
 
 /// <summary>The type column of a resolved binding: one column a base entity and the entities derived from it share in one table.</summary>
@@ -89,7 +110,7 @@ public sealed record BindingFieldRecord(string Name, string Attribute, string? A
 /// <param name="Name">The column's physical name.</param>
 /// <param name="Key">The column's key, for a table.</param>
 /// <param name="Status"><c>field</c>, <c>constant</c>, <c>discriminator</c> (the binding's type column), <c>ignored</c>, <c>database</c>,
-/// <c>computed</c>, <c>identity</c>, <c>default</c>, <c>soft-delete</c> or <c>unaccounted</c>.</param>
+/// <c>computed</c>, <c>identity</c>, <c>default</c>, <c>soft-delete</c>, <c>relation</c> (a relation attribute on the foreign key's table) or <c>unaccounted</c>.</param>
 /// <param name="Field">The name of the field that maps it, with status <c>field</c>.</param>
 public sealed record BindingColumnRecord(string Name, string? Key, string Status, string? Field);
 
@@ -106,8 +127,21 @@ public sealed record BindingColumnRecord(string Name, string? Key, string Status
 /// <param name="Insert">The insert.</param>
 /// <param name="Update">The update by key.</param>
 /// <param name="Delete">The delete (or soft-delete update) by key.</param>
+/// <param name="Exists">The probe: a count of the rows of the binding's own source with the key, joining no base; left out without key fields.</param>
+/// <param name="Bases">With bases (table per type), each base's table's statements for this entity, nearest first; left out without bases.</param>
 public sealed record BindingSqlPreview(string EntityId, string BindingId, string Database, string Dialect, BindingStatement? Select, BindingStatement? SelectByKey,
-    BindingStatement? Insert, BindingStatement? Update, BindingStatement? Delete);
+    BindingStatement? Insert, BindingStatement? Update, BindingStatement? Delete,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] BindingStatement? Exists = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<BindingBaseSqlPreview>? Bases = null);
+
+/// <summary>The statements one base's table renders for a derived entity (table per type).</summary>
+/// <param name="Level">The level, from 1 for the nearest base up to the root.</param>
+/// <param name="EntityId">The base entity's id.</param>
+/// <param name="BindingId">The base's binding's id.</param>
+/// <param name="Insert">The base row's insert, with the derived entity's type code; the root's returns the generated key.</param>
+/// <param name="Update">The base row's update by key.</param>
+/// <param name="Delete">The base row's delete (or the root's soft-delete update) by key.</param>
+public sealed record BindingBaseSqlPreview(int Level, string EntityId, string BindingId, BindingStatement? Insert, BindingStatement? Update, BindingStatement? Delete);
 
 /// <summary>One rendered statement of a binding.</summary>
 /// <param name="Sql">The SQL text.</param>
@@ -141,34 +175,44 @@ internal static class BindingViews
         b.SoftDeleteColumn?.Name,
         b.SoftDeleteValue,
         Constants(b),
-        // holds and keyOf on the field forms of several-types-design.md decision 46, the binding's discriminatorValue (section 19.8) and its
-        // type column: each left out when null, so today's bindings keep their records.
-        [.. b.Fields.Select(f => new BindingFieldRecord(f.Name, f.AttributeRef, f.Attribute?.Id, f.Member?.Id, f.End?.Id, f.ColumnName, f.SourceColumn?.Key,
-            f.WriteColumn?.Key, f.Type, f.Nullable, f.IsKey, f.IsGenerated, f.InInsert, f.InUpdate, f.Holds, f.KeyOf?.Id))],
+        // holds and keyOf on the field forms of several-types-design.md decision 46, the binding's discriminatorValue (section 19.8), its
+        // type column and its table per type members: each left out when null, so today's bindings keep their records.
+        [.. b.Fields.Select(Field)],
         Columns(b.Columns),
         Columns(b.WriteColumns),
         b.DiscriminatorValue,
-        b.DiscriminatorColumn is { } d
-            ? new BindingDiscriminatorRecord(d.ColumnName, d.SourceColumn?.Key, d.WriteColumn?.Key, d.Base.Id, d.Value, [.. d.Codes])
-            : null);
+        Discriminator(b.DiscriminatorColumn),
+        b.BaseForeignKey is { } baseKey ? baseKey.Id ?? baseKey.Name : null,
+        b.BaseForeignKey is null ? null : [.. b.Key.Select(Field)],
+        b.Bases.Count == 0 ? null : [.. b.Bases.Select(l => new BindingBaseRecord(l.Binding.Id, l.Binding.Entity.Id,
+            (l.Binding.WriteTable ?? l.Binding.SourceTable)?.Key ?? l.Binding.Definition?.Source ?? "", l.ForeignKey.Id ?? l.ForeignKey.Name,
+            [.. l.ForeignKey.Columns.Select(c => c.Key)], [.. l.ForeignKey.ReferencedColumns.Select(c => c.Key)], Discriminator(l.DiscriminatorColumn)))]);
+
+    private static BindingFieldRecord Field(RBindingField f) => new(f.Name, f.AttributeRef, f.Attribute?.Id, f.Member?.Id, f.End?.Id, f.ColumnName,
+        f.SourceColumn?.Key, f.WriteColumn?.Key, f.Type, f.Nullable, f.IsKey, f.IsGenerated, f.InInsert, f.InUpdate, f.Holds, f.KeyOf?.Id);
+
+    private static BindingDiscriminatorRecord? Discriminator(RBindingDiscriminator? d) =>
+        d is null ? null : new BindingDiscriminatorRecord(d.ColumnName, d.SourceColumn?.Key, d.WriteColumn?.Key, d.Base.Id, d.Value, [.. d.Codes]);
 
     private static IReadOnlyList<BindingColumnRecord> Columns(IReadOnlyList<RBindingColumn> columns) =>
         [.. columns.Select(c => new BindingColumnRecord(c.Name, c.Column?.Key, c.Status, c.Field?.Name))];
 
-    /// <summary>The five statements of a binding for a dialect, with what the dialect cannot render.</summary>
+    /// <summary>The statements of a binding for a dialect (its bases' too), with what the dialect cannot render.</summary>
     public static (BindingSqlPreview Preview, IReadOnlyList<Diagnostic> Diagnostics) Preview(REntityBinding binding, string? dialect, QuerySqlOptions? options)
     {
         var diagnostics = new List<Diagnostic>();
-        BindingStatement? Statement(string name)
+        BindingStatement? Statement(string name, RBindingBase? level = null)
         {
-            var text = BindingSql.Render(binding, name, dialect, options);
+            var text = level is null ? BindingSql.Render(binding, name, dialect, options) : BindingSql.Render(level, name, dialect, options);
             diagnostics.AddRange(text.Diagnostics);
             return text.Sql.Length == 0 ? null : new BindingStatement(text.Sql, text.Parameters);
         }
 
         var name = dialect is not null && Rendering.SqlDialects.TryParse(dialect, out var parsed) ? DialectTypeMaps.Name(parsed) : binding.Database.Dialect;
         var preview = new BindingSqlPreview(binding.Entity.Id, binding.Id, binding.Database.Id, name, Statement("select"), Statement("select-by-key"),
-            Statement("insert"), Statement("update"), Statement("delete"));
+            Statement("insert"), Statement("update"), Statement("delete"), Statement("exists"),
+            binding.Bases.Count == 0 ? null : [.. binding.Bases.Select((l, i) => new BindingBaseSqlPreview(i + 1, l.Binding.Entity.Id, l.Binding.Id,
+                Statement("insert", l), Statement("update", l), Statement("delete", l)))]);
         return (preview, [.. diagnostics.DistinctBy(d => (d.Rule, d.Message))]);
     }
 }

@@ -173,6 +173,12 @@ share one table through an `entity_type` column), the columns the database fills
 | `UpdateAsync(entity)` | the binding's `update`, by key with the constants in the where clause |
 | `DeleteAsync(key…)` | the binding's `delete`: by key, or the soft-delete update |
 
+A binding with bases (a table per type, `baseForeignKey`) reads its table joined to its bases' tables. `InsertAsync` runs each
+base's insert first, root first, and reads the generated key back from the root's; `UpdateAsync` updates every table and
+returns true only when every table had the row; `DeleteAsync` deletes its own row first, then up the chain (a soft delete marks
+the base's row only). The statements run as one unit: in the `IDbTransaction` given to the repository, else in one the
+repository opens (opening the connection if it is closed) and commits.
+
 A binding that does not write (a view or query source, or `write: "none"`) gets a read-only repository: no `InsertAsync`,
 `UpdateAsync` or `DeleteAsync`. The private `Row` class has one property per field, named exactly as the field, because the
 select's aliases and the statements' parameters carry the field names. A field that holds a relation's key becomes a property of

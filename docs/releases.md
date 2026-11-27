@@ -5,6 +5,42 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.29.0 (not released yet)
+
+- **A table per type.** A derived entity can keep its own attributes in a table of its own, joined to its base's table.
+  Its binding names that table's foreign key to the base's table in `baseForeignKey` and maps only the entity's own
+  attributes. The key is the foreign key's columns. Reads join the base's table, up the chain for several levels. An insert
+  writes the base's row first, with the entity's type code, and the key the database makes there flows into the entity's
+  own row. Updates write each table; a delete removes the entity's row first; a soft delete is the base's. Reading the base
+  returns every row, and a new `exists` statement tells whether a base row has the entity's row when there is no type
+  column. Entities in their own tables count among a type column's members, and a relationship with several types reads
+  "shares the base's rows" from `baseForeignKey`.
+- **New rules MQ4128 to MQ4136** check the foreign key, the key, the base, writes, fields, the table, the delete and the
+  checks of such a binding. MQ4136 warns when the foreign key does not cascade on delete while the base deletes by key,
+  since a delete through the base then fails for those subtypes. Under a base that deletes softly, every binding below it
+  reads without the marked rows, whatever its own delete.
+- **Templates.** A binding has `base_foreign_key` and `bases` (each with `binding`, `foreign_key` and
+  `discriminator_column`); `binding_sql` takes one of the bases to render that table's insert, update or delete for the
+  entity, and renders `exists`. `preview_binding_sql` and the binding SQL endpoint also return `exists` and, per level,
+  the bases' statements. In the resolved model a binding has `baseForeignKey`, `key` and `bases`. The
+  `csharp-dapper` pack's bound repository reads joined, inserts root first with the generated key, updates every table and
+  deletes from the bottom up, in the caller's transaction or one it opens; its update is true only when every table had
+  the row.
+- **A relationship's own attributes on its foreign key.** A relation mapping's `attributes[].column` now works on the
+  foreign-key shape too, naming columns of the table that holds the foreign key. Naming `foreignKey` makes a relationship
+  with attributes a foreign key. The entity binding of that table counts the column as the relationship's (status
+  `relation`).
+- **Binding never changes storage.** None of this changes a table, its DDL, a migration snapshot or a fact.
+
+**When you update:**
+
+- Bindings without `baseForeignKey` keep their records, statements and generated code.
+- A relationship with several types between bound entities that relied on `conventions.inheritance: "tpt"` to treat a
+  derived entity's rows as its base's now needs `baseForeignKey` on the derived bindings. Resolution no longer reads that
+  convention for bound entities.
+- A relationship with attributes whose mapping names `foreignKey` is now the foreign-key shape, where it was refused before.
+- There is no editor screen for `baseForeignKey` or for a relationship's attribute columns yet: use the JSON tab.
+
 ## 0.28.0 (2026-11-26)
 
 - **Editor screens for subtypes in one table and for what a copy carries over.** On an entity's Storage tab, each binding of an

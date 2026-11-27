@@ -467,6 +467,11 @@ public sealed class RelationBuilder : ElementBuilder<RelationBuilder>
     /// <summary>The ids of the ends, in order.</summary>
     public IReadOnlyList<string> EndIds => [.. _ends.Select(e => e.Id)];
 
+    /// <summary>Returns the id of a relation attribute.</summary>
+    /// <param name="name">The attribute name.</param>
+    /// <returns>The id.</returns>
+    public string AttrId(string name) => _attributes.IdOf(name);
+
     /// <summary>Sets the relation kind.</summary>
     /// <param name="kind">The kind.</param>
     /// <returns>This builder.</returns>

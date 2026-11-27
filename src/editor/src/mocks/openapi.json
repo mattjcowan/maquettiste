@@ -4201,7 +4201,7 @@
         ],
         "operationId": "getBindingSql",
         "summary": "The statements of one entity binding for a dialect",
-        "description": "Renders an entity's binding to a database (erratum E43) as parameterised SQL for the database's dialect, or the one\nnamed: `select` (every row, the constants as a filter, soft-deleted rows left out; a query source is a derived table),\n`selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys\ncome back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the\nwhere clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a\nread-only binding has no insert, update or delete). Parameters are named after the fields. A model with errors returns\n`preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.\n",
+        "description": "Renders an entity's binding to a database (erratum E43) as parameterised SQL for the database's dialect, or the one\nnamed: `select` (every row, the constants as a filter, soft-deleted rows left out; a query source is a derived table),\n`selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys\ncome back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the\nwhere clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a\nread-only binding has no insert, update or delete). `exists` is the probe on the binding's own source by key. A binding\nwith bases (table per type) also has `bases`, nearest first, each with its `level` and that table's `insert`, `update`\nand `delete` for the entity. Parameters are named after the fields. A model with errors returns\n`preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetBindingSqlAsync(entityId, bindingId, dialect, options)",
         "parameters": [
@@ -22909,6 +22909,70 @@
           },
           "discriminatorColumn": {
             "$ref": "#/components/schemas/BindingDiscriminatorRecord"
+          },
+          "baseForeignKey": {
+            "type": "string",
+            "description": "Table per type (retire-projection-design.md section 4), the id of the foreign key the binding's `baseForeignKey` names; left out without one, or when it does not resolve."
+          },
+          "key": {
+            "type": "array",
+            "description": "With `baseForeignKey`, the key it gives, one field per key field of the base's binding on the foreign key's column, which `fields` does not hold; left out otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/BindingFieldRecord"
+            }
+          },
+          "bases": {
+            "type": "array",
+            "description": "The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none.",
+            "items": {
+              "$ref": "#/components/schemas/BindingBaseRecord"
+            }
+          }
+        }
+      },
+      "BindingBaseRecord": {
+        "x-engine-record": "Maquettiste.Engine.BindingBaseRecord",
+        "description": "One table above a binding's own (table per type), the base's binding that reads and writes it, and how the table below joins it.",
+        "type": "object",
+        "required": [
+          "binding",
+          "entity",
+          "table",
+          "foreignKey",
+          "columns",
+          "referencedColumns"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "table": {
+            "type": "string",
+            "description": "The key of the table the base's binding writes, else its source's key."
+          },
+          "foreignKey": {
+            "type": "string",
+            "description": "The id of the foreign key that joins the table below to this one."
+          },
+          "columns": {
+            "type": "array",
+            "description": "The foreign key's columns, in the table below, by key.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "referencedColumns": {
+            "type": "array",
+            "description": "The columns of this table they reference, in the order of columns.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "discriminatorColumn": {
+            "$ref": "#/components/schemas/BindingDiscriminatorRecord"
           }
         }
       },
@@ -23090,6 +23154,7 @@
               "identity",
               "default",
               "soft-delete",
+              "relation",
               "unaccounted"
             ]
           },
@@ -23180,6 +23245,72 @@
                 "type": "null"
               }
             ]
+          },
+          "insert": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BindingStatement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "update": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BindingStatement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delete": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BindingStatement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exists": {
+            "$ref": "#/components/schemas/BindingStatement",
+            "description": "The probe, a count of the rows of the binding's own source with the key, joining no base; left out without key fields."
+          },
+          "bases": {
+            "type": "array",
+            "description": "With bases (table per type), each base's table's statements for this entity, nearest first; left out without bases.",
+            "items": {
+              "$ref": "#/components/schemas/BindingBaseSqlPreview"
+            }
+          }
+        }
+      },
+      "BindingBaseSqlPreview": {
+        "x-engine-record": "Maquettiste.Engine.BindingBaseSqlPreview",
+        "description": "The statements one base's table renders for a derived entity (table per type).",
+        "type": "object",
+        "required": [
+          "level",
+          "entityId",
+          "bindingId",
+          "insert",
+          "update",
+          "delete"
+        ],
+        "properties": {
+          "level": {
+            "type": "integer",
+            "description": "From 1 for the nearest base up to the root."
+          },
+          "entityId": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "bindingId": {
+            "$ref": "#/components/schemas/Ulid"
           },
           "insert": {
             "oneOf": [
@@ -33101,6 +33232,7 @@
                 "id",
                 "database",
                 "source",
+                "baseForeignKey",
                 "constants",
                 "fields",
                 "columns",
@@ -33126,6 +33258,10 @@
                   "description": "What the entity reads: the id of a table (or a synthesized table key), a view or a query of the database.",
                   "type": "string",
                   "minLength": 1
+                },
+                "baseForeignKey": {
+                  "description": "Table per type: the id of a foreign key of the binding's write table (else its source) that references the write table of the binding to the same database of the entity's nearest bound base. Its columns are the table's whole primary key. The base's binding maps the inherited attributes and to-one ends, its constants and its type column; this binding maps only the entity's own, and no field for the key: the key is the foreign key's columns. Inserts write the base's row first (a key the base generates flows in), reads join the base's table, up the chain (MQ4128 to MQ4136).",
+                  "$ref": "#/components/schemas/id"
                 },
                 "constants": {
                   "description": "Columns with a fixed value: a filter on every read and a value on every insert.",

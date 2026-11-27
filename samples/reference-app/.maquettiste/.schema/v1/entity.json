@@ -409,6 +409,7 @@
           "id",
           "database",
           "source",
+          "baseForeignKey",
           "constants",
           "fields",
           "columns",
@@ -434,6 +435,10 @@
             "description": "What the entity reads: the id of a table (or a synthesized table key), a view or a query of the database.",
             "type": "string",
             "minLength": 1
+          },
+          "baseForeignKey": {
+            "description": "Table per type: the id of a foreign key of the binding's write table (else its source) that references the write table of the binding to the same database of the entity's nearest bound base. Its columns are the table's whole primary key. The base's binding maps the inherited attributes and to-one ends, its constants and its type column; this binding maps only the entity's own, and no field for the key: the key is the foreign key's columns. Inserts write the base's row first (a key the base generates flows in), reads join the base's table, up the chain (MQ4128 to MQ4136).",
+            "$ref": "common.json#/$defs/id"
           },
           "constants": {
             "description": "Columns with a fixed value: a filter on every read and a value on every insert.",

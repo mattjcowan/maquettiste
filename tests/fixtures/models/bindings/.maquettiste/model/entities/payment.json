@@ -1,0 +1,55 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000063",
+  "name": "Payment",
+  "package": "01K6BFX0000000000000000001",
+  "description": "A payment, bound to payments with its type code in kind. A bank transfer shares the table; a card payment adds a table of its own.",
+  "key": {
+    "attributes": [
+      "01K6BFX0000000000000000064"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000064",
+      "name": "id",
+      "type": "int64",
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000065",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 2,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000066",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000050",
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000064",
+          "column": "01K6BFX0000000000000000051"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000065",
+          "column": "01K6BFX0000000000000000053"
+        }
+      ],
+      "columns": [
+        {
+          "column": "01K6BFX0000000000000000054",
+          "status": "ignored"
+        }
+      ],
+      "discriminatorColumn": "01K6BFX0000000000000000052",
+      "discriminatorValue": "payment"
+    }
+  ]
+}

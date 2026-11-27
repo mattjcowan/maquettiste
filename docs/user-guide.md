@@ -1652,6 +1652,8 @@ line follow.
   derived from it share one table (see [A base and its subtypes in one table](#a-base-and-its-subtypes-in-one-table)).
 - `discriminatorValue`: the entity's type code in this database, a string or a whole number. Without it the code is the
   entity's name.
+- `baseForeignKey`: on a derived entity's binding to a table of its own, the foreign key of that table that references its
+  base's table (see [A table per type](#a-table-per-type)).
 - `provenance`: `{ "columns": { "<column id>": "<name part>:<type part>" } }`, what each column of a table file looked
   like when an operation last followed it (see [Provenance and drift](#provenance-and-drift)). The engine writes it; you
   never need to, and removing it stops the drift report for that binding.
@@ -1765,6 +1767,78 @@ entity in a hierarchy (one with a base, or with entities derived from it):
 - A numeric code is written as a number when the column holds integers, as text otherwise.
 
 Problems with the column or the codes (MQ4122 to MQ4126) appear in the Problems panel as for any binding.
+
+### A table per type
+
+A derived entity can keep its own attributes in a table of its own, joined to its base's table. Each row of that table is
+one row of the base's table: its primary key is also a foreign key to the base's key. The derived entity's binding names
+that foreign key in `baseForeignKey`.
+
+Say every payment is a row of `payments (id, kind, amount)`, with an identity `id`. A card payment adds a row to
+`card_payments (payment_id, last4)`, whose foreign key `fk_card_payments_payment` references `payments (id)`. `Payment`
+binds to `payments` and names its type column, as in the section above. `CardPayment` binds to `card_payments`:
+
+```json
+{
+  "kind": "entity",
+  "name": "CardPayment",
+  "base": "01K6BND0000000000000000040",
+  "bindings": [
+    {
+      "id": "01K6BND0000000000000000052",
+      "database": "01J92P0V1QRN2181XM2ZWE02W4",
+      "source": "01K6BND0000000000000000011",
+      "baseForeignKey": "01K6BND0000000000000000013",
+      "discriminatorValue": "card",
+      "fields": [{ "attribute": "01K6BND0000000000000000051", "column": "last4" }]
+    }
+  ]
+}
+```
+
+- The base's binding maps the inherited attributes and the to-one relation ends the base holds, with its constants and its
+  type column. The derived binding maps only what the entity adds. A field for an inherited attribute is MQ4132.
+- The key is the foreign key's columns, named after the base's key fields: `payment_id` is the field `id`. The binding maps
+  no field for it, and the column counts as mapped.
+- Reading a card payment joins the tables: `FROM card_payments t JOIN payments b1 ON b1.id = t.payment_id`, with the base's
+  fields first. When the base has a type column, the read keeps the card payment's code and those of the entities derived
+  from it: `WHERE b1.kind IN ('card', 'corporate-card')`.
+- Inserting writes the `payments` row first, with the card payment's own code (`'card'`) and the base's constants. The id the
+  database makes comes back (`RETURNING`, `OUTPUT INSERTED`, `LAST_INSERT_ID()` or `RETURNING … INTO`, by dialect), and the
+  `card_payments` insert takes it as `@id`.
+- An update writes each table. A delete removes the `card_payments` row first, then the `payments` row (or the foreign key's
+  `onDelete: cascade` does). A soft delete is the base's: it marks the `payments` row and leaves the other. Leave `delete`
+  out of the derived binding and it follows the base. Reads leave out the rows the base's soft delete marked, whatever the
+  derived binding deletes, a read-only one included.
+- Deleting through the base's binding removes only the `payments` row. When the base deletes by key, give the foreign key
+  `onDelete: cascade`, or that delete fails for a card payment (warning MQ4136).
+- Reading `Payment` returns every payment, card payments included, without joining `card_payments`. With a type column the
+  code says which kind each row is. Without one, the derived binding's `exists` statement tells whether a payment has a
+  `card_payments` row.
+- The chain can go on: `CorporateCardPayment` binds to `corporate_card_payments`, whose foreign key references
+  `card_payments`. Its reads join both tables above it, and its insert writes all three, root first.
+- A hierarchy can mix the two ways. A bank transfer can keep its rows in `payments` with its own code, while card payments
+  join a table of their own. Each binding says which it is.
+- A subtype can also share a table-per-type table: an entity derived from `CardPayment` bound to `card_payments`, with no
+  `baseForeignKey`, maps its key and the card columns there and shares `CardPayment`'s join to `payments`.
+
+Binding an entity this way changes no table. The tables, keys and DDL are what the table files say.
+
+Templates find the joins on the binding: `base_foreign_key`, and `bases`, the tables above its own, nearest first. Each base has
+`binding` (the base's binding), `foreign_key` and `discriminator_column` (the base's type column with this entity's code).
+`binding_sql(binding.bases[i], "insert")` renders that table's insert for the derived entity; `update` and `delete` work the
+same way. The binding's own `insert`, `update` and `delete` write its own table only, and `binding_sql(binding, "exists")` is
+the probe. The binding's SQL preview shows the probe and each base's statements, by level. In the resolved model the binding has `baseForeignKey`, `key` and `bases`.
+
+**The rules.** MQ4128: the foreign key is not one of the binding's table, or does not reference the base's table. MQ4129:
+its columns are not the table's whole primary key, or it does not reference the base's key. MQ4130: no base of the entity
+is bound to the database. MQ4131: the binding writes while the base's binding writes no table (a base read from a view or
+query leaves the derived binding read only). MQ4132: a field maps what the base's binding maps. MQ4133: the binding keeps its
+rows in its base's table. MQ4134: under a base that deletes softly, a binding that writes deletes by key or never; or it
+deletes softly under a base that does not. MQ4135: a check the binding lists reads an attribute a base's table stores, since a
+check goes into one table. MQ4136 (a warning): the foreign key does not cascade on delete while the base deletes by key.
+
+There is no editor screen for `baseForeignKey` yet: write it on the JSON tab.
 
 ### A read-only entity over a query
 
@@ -1976,6 +2050,15 @@ writes no description, so the text stays in one place.
 | MQ4124 | error | a constant or a soft delete is on the type column, which already holds the entity's type code |
 | MQ4125 | error | two entities that share the type column in one table have the same type code, or a type code does not fit the column |
 | MQ4126 | error | a derived entity's binding names `discriminatorColumn` while a base's binding in the same table already names one; remove the key, since the column is inherited |
+| MQ4128 | error | `baseForeignKey` is not a foreign key of the table the binding writes (else its source), or does not reference the table of the base's binding |
+| MQ4129 | error | the base foreign key's columns are not the binding's table's whole primary key, or the columns it references are not the key of the base's binding |
+| MQ4130 | error | a binding names `baseForeignKey`, but no base of the entity has a binding to the database |
+| MQ4131 | error | a binding with `baseForeignKey` writes, but the base's binding writes no table; the binding is read only |
+| MQ4132 | error | a field of a binding with `baseForeignKey` maps an attribute or a to-one end the base has; the base's binding maps it |
+| MQ4133 | error | a binding with `baseForeignKey` keeps its rows in its base's table; remove the key |
+| MQ4134 | error | the delete of a binding with `baseForeignKey` does not agree with its base's: under a soft-deleting base it deletes by key or never, it deletes softly under a base that does not, or its soft delete names another column |
+| MQ4135 | error | a binding with bases lists a check that reads an attribute a base's table stores |
+| MQ4136 | warning | the base foreign key does not cascade on delete while the base's binding deletes by key, so a delete through the base fails for that subtype |
 | MQ4045 | error | a field names nothing of the entity, a column the source does not have, a listed column of no table the binding uses, or maps an attribute or a column twice |
 | MQ4046 | error | a binding that writes maps no field for a key attribute |
 | MQ4047 | warning | a column of the source or write table is accounted for by nothing |
@@ -2088,6 +2171,15 @@ table's foreign key for it. Two bound ends with nothing named is MQ4011, shown i
 bound, the section says "Bind both ends to a table to name the foreign key"; a shape an older mapping names (Foreign key,
 Junction table, Promoted to an entity) shows there read only, and no mapping of that older format is made from here. For a
 relationship with an end of several types, see [Storing a relationship with several types](#storing-a-relationship-with-several-types).
+
+**A relationship's own attributes on its foreign key.** A one-to-many relationship can carry attributes, stored as columns of
+the table that holds its foreign key. Say a customer has many invoices and the relationship has a `termsNote`, kept in
+`invoices.terms_note`. The mapping names the foreign key and the column:
+`"foreignKey": invoices.fk_invoices_customer, "attributes": [{ "attribute": termsNote, "column": invoices.terms_note }]`.
+Naming the foreign key makes the relationship a foreign key, attributes and all. The column must be one of that table's, not
+one of the key's own columns (MQ4009). The resolved mapping lists it in `attributes`, and the invoice's binding counts the
+column as the relationship's (status `relation`), so it needs no field. Set it on the JSON tab; the Storage tab does not show
+it yet.
 
 ### Relationships with several types at an end
 

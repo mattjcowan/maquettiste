@@ -730,6 +730,64 @@
       ],
       "additionalProperties": false
     },
+    "bindingBaseRecord": {
+      "description": "One table above a binding's own (table per type): the base's binding that reads and writes it, and how the table below joins it.",
+      "type": "object",
+      "x-order": [
+        "binding",
+        "entity",
+        "table",
+        "foreignKey",
+        "columns",
+        "referencedColumns",
+        "discriminatorColumn"
+      ],
+      "properties": {
+        "binding": {
+          "description": "The id of the base entity's binding to the database.",
+          "type": "string"
+        },
+        "entity": {
+          "description": "The base entity's id.",
+          "type": "string"
+        },
+        "table": {
+          "description": "The key of the table the base's binding writes, else its source's key.",
+          "type": "string"
+        },
+        "foreignKey": {
+          "description": "The id of the foreign key that joins the table below to this one (its name for a key without an id).",
+          "type": "string"
+        },
+        "columns": {
+          "description": "The foreign key's columns, in the table below, by key.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "referencedColumns": {
+          "description": "The columns of this table they reference, in the order of `columns`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "discriminatorColumn": {
+          "description": "The table's type column, with the derived entity's code and the codes its statements keep; left out without one.",
+          "$ref": "#/$defs/bindingDiscriminatorRecord"
+        }
+      },
+      "required": [
+        "binding",
+        "entity",
+        "table",
+        "foreignKey",
+        "columns",
+        "referencedColumns"
+      ],
+      "additionalProperties": false
+    },
     "bindingColumnRecord": {
       "description": "A column of a binding's source or write table and what accounts for it.",
       "type": "object",
@@ -752,7 +810,7 @@
           ]
         },
         "status": {
-          "description": "`field`, `constant`, `discriminator` (the binding's type column), `ignored`, `database`, `computed`, `identity`, `default`, `soft-delete` or `unaccounted`.",
+          "description": "`field`, `constant`, `discriminator` (the binding's type column), `ignored`, `database`, `computed`, `identity`, `default`, `soft-delete`, `relation` (a relation attribute on the foreign key's table) or `unaccounted`.",
           "type": "string"
         },
         "field": {
@@ -2768,7 +2826,10 @@
         "columns",
         "writeColumns",
         "discriminatorValue",
-        "discriminatorColumn"
+        "discriminatorColumn",
+        "baseForeignKey",
+        "key",
+        "bases"
       ],
       "properties": {
         "id": {
@@ -2849,6 +2910,24 @@
         "discriminatorColumn": {
           "description": "The type column the entity shares with its base or the entities derived from it in one table, named by the binding's `discriminatorColumn` or inherited from its nearest base's binding to the database; left out when there is none.",
           "$ref": "#/$defs/bindingDiscriminatorRecord"
+        },
+        "baseForeignKey": {
+          "description": "Table per type: the id of the foreign key the binding's `baseForeignKey` names, joining its table to its nearest bound base's; left out without one, or when it does not resolve.",
+          "type": "string"
+        },
+        "key": {
+          "description": "With `baseForeignKey`: the key it gives, one field per key field of the base's binding on the foreign key's column, which the field map does not hold; left out otherwise (the key fields are the field map's with `isKey`).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingFieldRecord"
+          }
+        },
+        "bases": {
+          "description": "The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingBaseRecord"
+          }
         }
       },
       "required": [

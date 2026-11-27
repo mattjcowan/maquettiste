@@ -359,6 +359,9 @@ A resolved entity binding, as the resolved model's entity records carry it.
 | `writeColumns` | list of [bindingColumnRecord](#bindingcolumnrecord) | never | Every write table column with what accounts for it, when the write table is not the source. |
 | `discriminatorValue` | any | left out when not set | The entity's type code the binding sets, a string or an integer; left out when unset. |
 | `discriminatorColumn` | [bindingDiscriminatorRecord](#bindingdiscriminatorrecord) | left out when not set | The type column the entity shares with its base or the entities derived from it in one table, named by the binding's `discriminatorColumn` or inherited from its nearest base's binding to the database; left out when there is none. |
+| `baseForeignKey` | string | left out when not set | Table per type: the id of the foreign key the binding's `baseForeignKey` names, joining its table to its nearest bound base's; left out without one, or when it does not resolve. |
+| `key` | list of [bindingFieldRecord](#bindingfieldrecord) | left out when not set | With `baseForeignKey`: the key it gives, one field per key field of the base's binding on the foreign key's column, which the field map does not hold; left out otherwise (the key fields are the field map's with `isKey`). |
+| `bases` | list of [bindingBaseRecord](#bindingbaserecord) | left out when not set | The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none. |
 
 ### bindingConstantView
 
@@ -400,7 +403,7 @@ A column of a binding's source or write table and what accounts for it.
 | --- | --- | --- | --- |
 | `name` | string | never | The column's physical name. |
 | `key` | string | can be null | The column's key, for a table. Null otherwise. |
-| `status` | string | never | `field`, `constant`, `discriminator` (the binding's type column), `ignored`, `database`, `computed`, `identity`, `default`, `soft-delete` or `unaccounted`. |
+| `status` | string | never | `field`, `constant`, `discriminator` (the binding's type column), `ignored`, `database`, `computed`, `identity`, `default`, `soft-delete`, `relation` (a relation attribute on the foreign key's table) or `unaccounted`. |
 | `field` | string | can be null | The name of the field that maps it, with status `field`. Null otherwise. |
 
 ### bindingDiscriminatorRecord
@@ -415,6 +418,20 @@ The type column of a resolved binding: one column a base entity and the entities
 | `base` | string | never | The id of the entity whose binding names the column: this binding's entity, or its nearest base that names one. |
 | `value` | any | never | The entity's type code, a string or an integer: what the insert writes. |
 | `codes` | list of any | never | The codes reads, updates and deletes filter on: the entity's own, then those of the entities derived from it that share the column in the same table (for the entity whose binding names the column, its whole hierarchy there). |
+
+### bindingBaseRecord
+
+One table above a binding's own (table per type): the base's binding that reads and writes it, and how the table below joins it.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `binding` | string | never | The id of the base entity's binding to the database. |
+| `entity` | string | never | The base entity's id. |
+| `table` | string | never | The key of the table the base's binding writes, else its source's key. |
+| `foreignKey` | string | never | The id of the foreign key that joins the table below to this one (its name for a key without an id). |
+| `columns` | list of string | never | The foreign key's columns, in the table below, by key. |
+| `referencedColumns` | list of string | never | The columns of this table they reference, in the order of `columns`. |
+| `discriminatorColumn` | [bindingDiscriminatorRecord](#bindingdiscriminatorrecord) | left out when not set | The table's type column, with the derived entity's code and the codes its statements keep; left out without one. |
 
 ### entityCheckRecord
 

@@ -1,0 +1,40 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000067",
+  "name": "BankTransfer",
+  "package": "01K6BFX0000000000000000001",
+  "base": "01K6BFX0000000000000000063",
+  "description": "A payment by bank transfer, in the payments table with kind 'bank-transfer'.",
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000068",
+      "name": "reference",
+      "type": "string",
+      "length": 64,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000069",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000050",
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000064",
+          "column": "01K6BFX0000000000000000051"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000065",
+          "column": "01K6BFX0000000000000000053"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000068",
+          "column": "01K6BFX0000000000000000054"
+        }
+      ],
+      "discriminatorValue": "bank-transfer"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000059",
+  "name": "corporate_card_payments",
+  "database": "01K6BFX0000000000000000002",
+  "description": "What a corporate card payment adds to its card_payments row.",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000060",
+      "name": "payment_id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000061",
+      "name": "cost_center",
+      "type": "string",
+      "length": 32,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000060"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K6BFX0000000000000000062",
+      "name": "fk_corporate_card_payments_card_payment",
+      "columns": [
+        "01K6BFX0000000000000000060"
+      ],
+      "referencesTable": "01K6BFX0000000000000000055",
+      "referencesColumns": [
+        "01K6BFX0000000000000000056"
+      ],
+      "onDelete": "cascade"
+    }
+  ]
+}

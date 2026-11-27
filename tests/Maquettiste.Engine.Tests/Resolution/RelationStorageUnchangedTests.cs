@@ -11,7 +11,8 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// per fixture model over the relation mapping records, the entity mapping and binding records, each database view's JSON, the join paths of
 /// navigations and entity mappings as templates see them, and the dependency keys of relations, navigations and bindings, pinned at the commit
 /// before part 2's resolver changes, and pinned again in 0.28.0, when a query's view lost its entity, its collections and its fields'
-/// attributes (the database views hold the queries), and when a column view's <c>typeRef</c> became <c>boundType</c>. The showcase holds a designed junction (<c>uses-in-main.json</c>), the bindings
+/// attributes (the database views hold the queries), and when a column view's <c>typeRef</c> became <c>boundType</c>; the bindings fixture's pin moved in 0.29.0 only when it gained a
+/// table per type hierarchy (its earlier records unchanged). The showcase holds a designed junction (<c>uses-in-main.json</c>), the bindings
 /// fixture entity bindings.
 /// </summary>
 public sealed class RelationStorageUnchangedTests
@@ -21,7 +22,7 @@ public sealed class RelationStorageUnchangedTests
     [Theory]
     [InlineData("billing", "9182ab5f07a01673e54dca7f852d7c88", "entity joins ")]
     [InlineData("showcase", "2a2a635c00b30e3f8ade2f74365738a0", " junction conditions=0")]
-    [InlineData("bindings", "15ab1a5e8b885b66c75d411afbcebee0", "binding record ")]
+    [InlineData("bindings", "95f885af4539103f16ae89528bf384c7", "binding record ")]
     public async Task A_model_without_part_two_keeps_its_storage_records_joins_and_keys(string fixture, string hash, string covers)
     {
         var text = await Dump(fixture);

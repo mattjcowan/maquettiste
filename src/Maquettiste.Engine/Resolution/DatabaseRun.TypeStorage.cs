@@ -138,12 +138,11 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>The covered base whose table holds a placement's rows (TPH or TPT, or a base bound to the same table), or <see langword="null"/>.</summary>
-    private static Placement? RowsInCoveredBase(Placement p, HashSet<string> covered)
+    private Placement? RowsInCoveredBase(Placement p, HashSet<string> covered)
     {
         for (var b = p.Base; b is not null && !ReferenceEquals(b, p); b = b.Base)
         {
-            if (covered.Contains(b.Entity.Id) && b.Table is not null
-                && (ReferenceEquals(b.Table, p.Table) || SharesBaseRows(p)))
+            if (covered.Contains(b.Entity.Id) && b.Table is not null && SharesRowsWith(p, b))
                 return b;
         }
 
@@ -151,8 +150,17 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>
-    /// Whether a placement's rows are also in its base's table: TPT (the base holds the base row, also for designed tables bound with it), or
-    /// TPH for a table the engine makes; a bound TPH entity shares its base's rows only through the same table.
+    /// Whether a placement's rows are also in a base's table: the same table; for an entity bound by a binding, a base whose table its
+    /// <c>baseForeignKey</c> chain joins (table per type, retire-projection-design.md section 4); otherwise TPT (the base holds the base row,
+    /// also for designed tables bound with it), or TPH for a table the engine makes.
+    /// </summary>
+    private bool SharesRowsWith(Placement p, Placement b) =>
+        ReferenceEquals(b.Table, p.Table)
+        || (p.ViaBinding ? UpperLevels(p.Entity).Exists(l => ReferenceEquals(l, b.Entity)) : SharesBaseRows(p));
+
+    /// <summary>
+    /// Whether a placement the engine places by a mapping has its rows also in its base's table: TPT (the base holds the base row, also for
+    /// designed tables bound with it), or TPH for a table the engine makes; a bound TPH entity shares its base's rows only through the same table.
     /// </summary>
     private static bool SharesBaseRows(Placement p) => p.Strategy == InheritanceStrategy.Tpt || (!p.Bound && p.Strategy == InheritanceStrategy.Tph);
 
@@ -653,13 +661,13 @@ internal sealed partial class DatabaseRun
         : string.IsNullOrEmpty(c.NativeType) || string.Equals(c.NativeType, c.Type, StringComparison.OrdinalIgnoreCase) ? c.Type : c.Type + " (" + c.NativeType + ")";
 
     /// <summary>Whether a table holds a target's rows: its own table, or the table of a base that holds them (decision 41).</summary>
-    private static bool HoldsRowsOf(RTable table, Placement target)
+    private bool HoldsRowsOf(RTable table, Placement target)
     {
         if (ReferenceEquals(target.Table?.Table, table))
             return true;
         for (var b = target.Base; b is not null && !ReferenceEquals(b, target); b = b.Base)
         {
-            if (ReferenceEquals(b.Table?.Table, table) && (ReferenceEquals(b.Table, target.Table) || SharesBaseRows(target)))
+            if (ReferenceEquals(b.Table?.Table, table) && SharesRowsWith(target, b))
                 return true;
         }
 

@@ -2304,6 +2304,39 @@ public sealed class CompileTests
         var active = await summaries.ListAsync("%");
         Check(active.Select(s => s.DisplayName).SequenceEqual(["Ada"]), "a read-only entity over a query");
         Check((await summaries.GetAsync("A%", ada.Id))!.Email == "ada@example.com", "get by key over a query");
+
+        // Table per type: a bank transfer shares payments; card payments add card_payments, corporate ones corporate_card_payments too.
+        var payments = new PaymentRepository(connection);
+        var transfers = new BankTransferRepository(connection);
+        var cards = new CardPaymentRepository(connection);
+        var corporates = new CorporateCardPaymentRepository(connection);
+        var transfer = new BankTransfer { Amount = 20m, Reference = "TR-1" };
+        await transfers.InsertAsync(transfer);
+        var card = new CardPayment { Amount = 35m, Last4 = "4242" };
+        await cards.InsertAsync(card);
+        Check(card.Id > 0 && card.Id != transfer.Id, "the base's insert returns the key the card row takes");
+        var corporate = new CorporateCardPayment { Amount = 120m, Last4 = "1881", CostCenter = "CC-7" };
+        using (var unit = connection.BeginTransaction())
+        {
+            await new CorporateCardPaymentRepository(connection, unit).InsertAsync(corporate);
+            unit.Commit();
+        }
+
+        Check(await connection.ExecuteScalarAsync<string>("SELECT kind FROM payments WHERE id = @id", new { id = corporate.Id }) == "corporate-card", "the base's row holds the entity's code");
+        Check(await connection.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM card_payments WHERE payment_id = @id", new { id = corporate.Id }) == 1, "a row in each table up the chain");
+        var read = await corporates.GetAsync(corporate.Id);
+        Check(read is { Amount: 120m, Last4: "1881", CostCenter: "CC-7" }, "a read joins the chain");
+        Check((await cards.ListAsync()).Select(c => c.Id).SequenceEqual([card.Id, corporate.Id]), "reading card payments returns their subtypes too");
+        Check((await payments.ListAsync()).Count == 3, "the base reads every payment");
+        Check(await cards.GetAsync(transfer.Id) is null, "a bank transfer is no card payment");
+        corporate.Amount = 150m;
+        corporate.CostCenter = "CC-9";
+        Check(await corporates.UpdateAsync(corporate), "an update writes every table");
+        Check(await corporates.GetAsync(corporate.Id) is { Amount: 150m, Last4: "1881", CostCenter: "CC-9" }, "after the update");
+        await connection.ExecuteAsync("DELETE FROM card_payments WHERE payment_id = @id", new { id = card.Id });
+        Check(!await cards.UpdateAsync(card), "an update is true only when every table has the row");
+        Check(await corporates.DeleteAsync(corporate.Id), "a delete removes every row");
+        Check(await connection.ExecuteScalarAsync<long>("SELECT (SELECT COUNT(*) FROM payments WHERE id = @id) + (SELECT COUNT(*) FROM card_payments WHERE payment_id = @id) + (SELECT COUNT(*) FROM corporate_card_payments WHERE payment_id = @id)", new { id = corporate.Id }) == 0, "no row is left");
         Console.WriteLine("bindings round trip ok");
         """;
 

@@ -171,9 +171,6 @@ public sealed class ResolvedNullContractTests
         ["RRevisionAttribute"] = "revisions: ResolvedRevisionTests",
         ["RRevisionLink"] = "revisions: ResolvedRevisionTests",
 
-        // Subtypes in one table: no fixture model names a binding's type column, so that their golden output stays as it was;
-        // BindingSubtypeTests resolves it.
-        ["RBindingDiscriminator"] = "subtypes in one table: BindingSubtypeTests",
         // What a copy carries over (parts-and-copy-design.md): no fixture model holds a copy block, so that their golden output stays as it was;
         // PartsAndCopyTests resolves them.
         ["RCopy"] = "copy: PartsAndCopyTests",

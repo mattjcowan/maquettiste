@@ -1673,6 +1673,78 @@
     "canBeOff": false
   },
   {
+    "id": "MQ4128",
+    "defaultSeverity": "error",
+    "description": "A binding's base foreign key (baseForeignKey) is not a foreign key of the table the binding writes (else its source), or does not reference the table of the binding of the entity's nearest bound base.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4129",
+    "defaultSeverity": "error",
+    "description": "A binding's base foreign key does not fit a table per type: its columns are not the whole primary key of the binding's table, or the columns it references are not the key of the base's binding.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4130",
+    "defaultSeverity": "error",
+    "description": "A binding names a base foreign key, but its entity has no base with a binding to the same database, so no base's table holds the rest of its rows.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4131",
+    "defaultSeverity": "error",
+    "description": "A binding with a base foreign key writes, but the base's binding writes no table (it reads a view or a query, or writes none), so an insert has nowhere to put the base's row; the binding is read only.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4132",
+    "defaultSeverity": "error",
+    "description": "A field of a binding with a base foreign key maps an attribute the bound base has, or the key of a to-one relation end the base holds: the base's binding maps it in the base's table.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4133",
+    "defaultSeverity": "error",
+    "description": "A binding names a base foreign key, but it keeps its rows in the table of its base's binding: a subtype in its base's table needs no join, since its type code tells its rows apart.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4134",
+    "defaultSeverity": "error",
+    "description": "The delete of a binding with a base foreign key does not agree with its base's: one deletes softly and the other does not, or its soft delete names another column than the base's. A soft delete marks the base's row.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4135",
+    "defaultSeverity": "error",
+    "description": "A binding with bases (table per type) lists a check that reads an attribute a base's table stores: a check is lowered into one table.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4136",
+    "defaultSeverity": "warning",
+    "description": "A binding's base foreign key does not cascade on delete while the base's binding deletes by key: deleting the entity through the base fails, since its own table's row still points at the base's row. Give the foreign key onDelete cascade.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",

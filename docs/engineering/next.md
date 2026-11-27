@@ -270,6 +270,13 @@ Built since:
   through composition (`entity.parts`), each part with its own binding. `csharp-dapper` teaches the binding way and still
   renders a query that names an entity; the reference sample's `OpenSalesOrders` query lost its entity and its lines
   collection, and the new read-only entity `OpenSalesOrder` binds to it. Requested.
+- **A table per type (0.29.0, pull request 1 of "Retiring projection", unreleased).** A derived entity's binding names its
+  table's foreign key to the base's table (`baseForeignKey`) and maps only the entity's own attributes. The key is the
+  foreign key's columns; reads join up the chain; each base's table renders its insert, update and delete for the derived
+  entity (its type code, the base's constants), the root's insert returning the generated key; a soft delete is the base's;
+  `exists` probes a row. Type-column membership and several types read it. MQ4128 to MQ4136. A relation mapping's
+  `attributes[].column` also works on the foreign-key shape. `csharp-dapper` builds the repository. Child tables and
+  deeper field paths follow in the same pull request. [The design](retire-projection-design.md).
 - **Queries stop naming entities: removal (0.28.0).** `entity`, `collections` and a select field's `attribute` are gone
   from the query format, the resolved model, the SQL renderer (`query_collection_sql` too), `csharp-dapper` and the
   editor. A file that still has one does not load: MQ4127 is now an error at load that no setting changes, naming the

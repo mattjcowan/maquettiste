@@ -26,6 +26,16 @@ public sealed record EntityBinding
     [ElementRef(Keyed = true)]
     public required string Source { get; init; }
 
+    /// <summary>
+    /// Table per type (retire-projection-design.md section 4): the id of a foreign key of the binding's write table (else its source) that
+    /// references the write table of the binding to the same database of the entity's nearest bound base. The base's binding then maps the
+    /// inherited attributes and to-one ends, its constants and its type column; this binding maps only the entity's own. Its key is the foreign
+    /// key's columns, in the order of the base's key fields, and a key the base's insert generates flows into this binding's insert. Reads join
+    /// the base's table, up the chain. <see langword="null"/> (absent): the binding reads and writes its own table alone.
+    /// </summary>
+    [ElementRef(IndexKinds = ["key"])]
+    public string? BaseForeignKey { get; init; }
+
     /// <summary>Columns with a fixed value: a filter on every read and a value on every insert (several allowed).</summary>
     public IReadOnlyList<BindingConstant> Constants { get; init; } = [];
 

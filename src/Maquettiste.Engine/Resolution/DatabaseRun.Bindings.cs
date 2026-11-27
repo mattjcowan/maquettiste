@@ -10,7 +10,8 @@ namespace Maquettiste.Engine.Resolution;
 /// collected before anything is placed, so the entity is never projected here; the tables, views and queries a binding names get the
 /// entity's file among their dependency keys as they are created (they list the binding in <c>BoundBy</c>); and once the queries are
 /// resolved each binding resolves its source, type column, constants, field map, accounted columns, write table and delete, and the rules
-/// MQ4044 to MQ4053, MQ4058 and MQ4122 to MQ4125 report what it gets wrong with the JSON pointer of the binding's entry in the entity's file.
+/// MQ4044 to MQ4053, MQ4058, MQ4122 to MQ4126, MQ4128 to MQ4134 and MQ4136 report what it gets wrong with the JSON pointer of the binding's entry in
+/// the entity's file. A binding with a base foreign key (table per type) is built after its base's, whose resolved binding it reads.
 /// </summary>
 internal sealed partial class DatabaseRun
 {
@@ -68,14 +69,73 @@ internal sealed partial class DatabaseRun
     /// </summary>
     private REntity? TypeColumnOwner(REntity entity)
     {
-        for (var e = entity; e is not null; e = e.Base)
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var e = entity; e is not null && seen.Add(e.Id); e = e.Base)
         {
-            if (_bindingByEntity.TryGetValue(e.Id, out var bound) && bound.Binding.DiscriminatorColumn is not null && !NamesInheritedTypeColumn(e))
+            if (!_bindingByEntity.TryGetValue(e.Id, out var bound))
+                continue;
+            if (bound.Binding.DiscriminatorColumn is not null && !NamesInheritedTypeColumn(e))
+                return e;
+            // A binding joined to its base's table by a foreign key (table per type) keeps its own table: the base's type column is the
+            // base's table's, which the derived entity's statements reach through its bases.
+            if (IsPerType(e))
+                return null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Whether an entity's binding to this database joins its base's table by a foreign key (table per type): it names
+    /// <c>baseForeignKey</c>, has a bound base, and keeps its rows in another table than that base's binding.
+    /// </summary>
+    private bool IsPerType(REntity entity) =>
+        _bindingByEntity.TryGetValue(entity.Id, out var bound) && bound.Binding.BaseForeignKey is not null && BoundBase(entity) is { } b
+        && !string.Equals(BindingHostKey(bound.Binding), BindingHostKey(_bindingByEntity[b.Id].Binding), StringComparison.Ordinal);
+
+    /// <summary>The nearest base of an entity with a binding to this database, or <see langword="null"/>.</summary>
+    private REntity? BoundBase(REntity entity)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
+        for (var e = entity.Base; e is not null && seen.Add(e.Id); e = e.Base)
+        {
+            if (_bindingByEntity.ContainsKey(e.Id))
                 return e;
         }
 
         return null;
     }
+
+    /// <summary>The bound bases whose tables each entity's rows also live in, by entity id (built on first use).</summary>
+    private readonly Dictionary<string, List<REntity>> _upperLevels = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The bound bases whose tables an entity's rows also live in (table per type), nearest first, read from the files: the base a
+    /// <c>baseForeignKey</c> reaches, then its own levels; a binding without one in its bound base's table shares the base's levels. Empty
+    /// for every other binding. Whether the foreign key itself fits is the binding's resolution's (MQ4128 to MQ4130).
+    /// </summary>
+    private List<REntity> UpperLevels(REntity entity)
+    {
+        if (_upperLevels.TryGetValue(entity.Id, out var cached))
+            return cached;
+        _upperLevels[entity.Id] = []; // a cycle guard while the chain is walked
+        var levels = new List<REntity>();
+        if (_bindingByEntity.TryGetValue(entity.Id, out var own) && BoundBase(entity) is { } b)
+        {
+            if (IsPerType(entity))
+                levels.Add(b);
+            if (levels.Count > 0 || string.Equals(BindingHostKey(own.Binding), BindingHostKey(_bindingByEntity[b.Id].Binding), StringComparison.Ordinal))
+                levels.AddRange(UpperLevels(b).Where(l => !levels.Contains(l)));
+        }
+
+        _upperLevels[entity.Id] = levels;
+        return levels;
+    }
+
+    /// <summary>Whether an entity's rows live in the table a host key names: its own, or one of its levels' (table per type).</summary>
+    private bool KeepsRowsIn(REntity entity, string host) =>
+        string.Equals(BindingHostKey(_bindingByEntity[entity.Id].Binding), host, StringComparison.Ordinal)
+        || UpperLevels(entity).Exists(l => string.Equals(BindingHostKey(_bindingByEntity[l.Id].Binding), host, StringComparison.Ordinal));
 
     /// <summary>
     /// MQ4126: whether the entity's binding names <c>discriminatorColumn</c> while the binding of one of its bases to this database, in the
@@ -117,11 +177,16 @@ internal sealed partial class DatabaseRun
             _typeColumnMembers = new Dictionary<REntity, List<REntity>>(ReferenceEqualityComparer.Instance);
             foreach (var e in _boundEntities)
             {
-                if (TypeColumnOwner(e) is not { } o)
-                    continue;
-                if (!_typeColumnMembers.TryGetValue(o, out var list))
-                    _typeColumnMembers[o] = list = [];
-                list.Add(e);
+                // The type column of its own table, then those of the tables above it (table per type): the entity has rows in each.
+                foreach (var o in new[] { TypeColumnOwner(e) }.Concat(UpperLevels(e).Select(TypeColumnOwner)))
+                {
+                    if (o is null)
+                        continue;
+                    if (!_typeColumnMembers.TryGetValue(o, out var list))
+                        _typeColumnMembers[o] = list = [];
+                    if (!list.Contains(e))
+                        list.Add(e);
+                }
             }
         }
 
@@ -181,6 +246,12 @@ internal sealed partial class DatabaseRun
         return _tables.TryGetValue(key, out var t) && t.IsDesigned ? t : null;
     }
 
+    /// <summary>The bindings resolved so far in this database, by entity id.</summary>
+    private readonly Dictionary<string, REntityBinding> _resolvedBindings = new(StringComparer.Ordinal);
+
+    /// <summary>The entities whose binding waits for its base's (a guard against a cycle of bases).</summary>
+    private readonly HashSet<string> _building = new(StringComparer.Ordinal);
+
     private void ResolveBindings(List<RView> views)
     {
         if (_bindingByEntity.Count == 0)
@@ -199,11 +270,30 @@ internal sealed partial class DatabaseRun
         var queriesById = _queries.ToDictionary(q => q.Query.Id, q => q.Query, StringComparer.Ordinal);
         var boundBy = new Dictionary<object, List<REntityBinding>>(ReferenceEqualityComparer.Instance);
         var built = new List<REntityBinding>(_boundEntities.Count);
+        // A binding that joins its base's table (table per type), or shares the table of a base that does, reads the base's resolved
+        // binding: the base is built first.
+        _resolvedBindings.Clear();
+        REntityBinding BuildOne(REntity entity)
+        {
+            if (_resolvedBindings.TryGetValue(entity.Id, out var done))
+                return done;
+            if (UpperLevels(entity).Count > 0 && BoundBase(entity) is { } b && _building.Add(entity.Id))
+            {
+                BuildOne(b);
+                _building.Remove(entity.Id);
+            }
+
+            var (file, index) = _bindingByEntity[entity.Id];
+            var result = new BindingBuilder(this, entity, file, index, tables, viewsById, queriesById).Build();
+            _resolvedBindings[entity.Id] = result;
+            return result;
+        }
+
         foreach (var entity in _boundEntities)
         {
             _run.Ct.ThrowIfCancellationRequested();
             var (file, index) = _bindingByEntity[entity.Id];
-            var binding = new BindingBuilder(this, entity, file, index, tables, viewsById, queriesById).Build();
+            var binding = BuildOne(entity);
             _run.SetEntityBinding(entity, _db.Name, binding);
             _run.Register(binding);
             built.Add(binding);
@@ -260,6 +350,12 @@ internal sealed partial class DatabaseRun
                 check.ListedBy.Add(binding);
             if (binding.WriteTable is not { } table || check.Condition?.Root is not { } source)
                 continue;
+            // A check is lowered into one table: one that reads what a table above the binding's own stores (table per type) adds nothing,
+            // and the validator reports it from the files (MQ4135, ExpressionRules).
+            if (binding.Bases.Count > 0 && binding.Bases[0].Binding.Entity is { } above
+                && ExprResolution.Paths(source.Typed).Any(p => above.Attributes.Any(a => a.Id == p.Split('.')[0])))
+                continue;
+
             var columns = new Dictionary<string, RColumn>(StringComparer.Ordinal);
             foreach (var path in ExprResolution.Paths(source.Typed))
             {
@@ -341,8 +437,10 @@ internal sealed partial class DatabaseRun
 
             ResolveSource();
             ResolveWrite();
+            ResolveBase();
             var fields = ResolveFields();
             ResolveTypeColumn();
+            ResolveBaseTypeColumns();
             var constants = ResolveConstants();
             var listed = ResolveListedColumns();
             ResolveDelete();
@@ -351,9 +449,11 @@ internal sealed partial class DatabaseRun
             CheckQueryParameters(fields);
             _b.Fields = fields;
             _b.Constants = constants;
-            _b.Columns = Account(SourceColumns(), fields, constants, listed, write: _b.WriteTable is not null && ReferenceEquals(_b.WriteTable, _b.SourceTable));
+            // The key a base foreign key gives is not in the field map, but its columns are accounted for as the key fields'.
+            List<RBindingField> accounted = _baseKey.Count == 0 ? fields : [.. fields, .. _baseKey];
+            _b.Columns = Account(SourceColumns(), accounted, constants, listed, write: _b.WriteTable is not null && ReferenceEquals(_b.WriteTable, _b.SourceTable));
             _b.WriteColumns = _b.WriteTable is { } writeTable && !ReferenceEquals(writeTable, _b.SourceTable)
-                ? Account([.. writeTable.Columns.Select(c => (c.Name, (RColumn?)c, (string?)c.Type))], fields, constants, listed, write: true)
+                ? Account([.. writeTable.Columns.Select(c => (c.Name, (RColumn?)c, (string?)c.Type))], accounted, constants, listed, write: true)
                 : [];
             ReportUnaccounted();
             ReportUnmapped();
@@ -474,6 +574,204 @@ internal sealed partial class DatabaseRun
             }
         }
 
+        // ---- table per type --------------------------------------------------------------------------------------------------
+
+        /// <summary>The binding of the base whose table <c>baseForeignKey</c> joins, once the key fits; else <see langword="null"/>.</summary>
+        private REntityBinding? _base;
+
+        /// <summary>The key <c>baseForeignKey</c> gives: one field per key field of the base's binding, on the foreign key's column.</summary>
+        private readonly List<RBindingField> _baseKey = [];
+
+        /// <summary>
+        /// Table per type (retire-projection-design.md section 4): resolves <c>baseForeignKey</c> against the binding's write table (else its
+        /// source) and the table of the binding of the entity's nearest bound base, and gives the binding its bases: that base, then the base's
+        /// own. MQ4130 for an entity with no bound base, MQ4133 for a binding in its base's table, MQ4128 for a key that is not the table's or
+        /// does not reference the base's table, MQ4129 for one whose columns are not the table's whole primary key or that does not reference
+        /// the key of the base's binding, MQ4131 for a binding that writes while its base does not (it is then read only). A binding without
+        /// the key in the table of a base that has bases shares them.
+        /// </summary>
+        private void ResolveBase()
+        {
+            var baseEntity = run.BoundBase(entity);
+            if (file.BaseForeignKey is not { } foreignKeyId)
+            {
+                // A subtype in the table of a base joined to its own base: it shares the base's bases.
+                if (baseEntity is not null && run.UpperLevels(entity).Count > 0 && run._resolvedBindings.TryGetValue(baseEntity.Id, out var shared))
+                    _b.Bases = [.. shared.Bases.Select(l => Level(l.Binding, l.ForeignKey))];
+                return;
+            }
+
+            const string at = "/baseForeignKey";
+            var prefix = $"The binding of entity '{entity.Name}' to database '{run._db.Name}'";
+            if (baseEntity is null)
+            {
+                Report("MQ4130", $"{prefix} names a base foreign key, but {(entity.Base is null ? "the entity has no base" : "no base of the entity has a binding to the database")}, so no base's table holds the rest of its rows: bind the base to its table, or remove baseForeignKey.", at);
+                return;
+            }
+
+            var baseFile = run._bindingByEntity[baseEntity.Id].Binding;
+            if (string.Equals(HostOf(file), HostOf(baseFile), StringComparison.Ordinal))
+            {
+                Report("MQ4133", $"{prefix} names a base foreign key, but it keeps its rows in '{HostName(file)}', the table of base '{baseEntity.Name}': a subtype in its base's table needs no join (its type code tells its rows apart), so remove baseForeignKey, or bind the entity to a table of its own.", at);
+                return;
+            }
+
+            if (!run._resolvedBindings.TryGetValue(baseEntity.Id, out var baseBinding))
+                return; // a cycle of bases, which the entity rules report
+            var own = _b.WriteTable ?? _b.SourceTable;
+            if (!run._foreignKeysById.TryGetValue(foreignKeyId, out var spec) || !spec.Resolved || own is null || !ReferenceEquals(spec.Host.Table, own))
+            {
+                var what = spec is { Resolved: true } ? $"is foreign key '{spec.Result.Name}' of table '{spec.Host.Table.Name}'" : $"is no foreign key of database '{run._db.Name}'";
+                Report("MQ4128", own is null
+                    ? $"{prefix} names base foreign key '{foreignKeyId}', but the binding reads {_b.SourceKind ?? "nothing"} '{_b.SourceName}' and writes no table, so no table of its own holds the key: read or write a table."
+                    : $"{prefix} names base foreign key '{foreignKeyId}', which {what}, not of table '{own.Name}' the binding {(_b.WriteTable is null ? "reads" : "writes")}: name a foreign key of that table that references the base's table.", at);
+                return;
+            }
+
+            var key = spec.Result;
+            var baseTable = baseBinding.WriteTable ?? baseBinding.SourceTable;
+            if (baseTable is not null && !ReferenceEquals(key.ReferencedTable, baseTable))
+            {
+                Report("MQ4128", $"{prefix} names base foreign key '{key.Name}', which references table '{key.ReferencedTable.Name}', but base '{baseEntity.Name}' keeps its rows in table '{baseTable.Name}': name a foreign key that references that table.", at);
+                return;
+            }
+
+            var primary = own.PrimaryKey?.Columns ?? [];
+            if (primary.Count != key.Columns.Count || !primary.All(c => key.Columns.Contains(c)))
+            {
+                Report("MQ4129", $"{prefix} names base foreign key '{key.Name}' on {Columns(key.Columns)}, but the primary key of table '{own.Name}' is {(primary.Count == 0 ? "missing" : Columns(primary))}: a row of the table is one row of the base's table, so the key's columns are the whole primary key.", at);
+                return;
+            }
+
+            // The key, in the order of the base's key fields: each field's column in the base's table is one the foreign key references. A base
+            // read from a view or a query has no table to reference, so the columns pair by name.
+            var fields = new List<RBindingField>();
+            foreach (var baseField in baseBinding.Key)
+            {
+                var referenced = baseTable is null ? null : baseField.WriteColumn is { } w && ReferenceEquals(w.Table, baseTable) ? w : baseField.SourceColumn;
+                var j = -1;
+                for (var k = 0; k < key.ReferencedColumns.Count && j < 0; k++)
+                {
+                    if (referenced is not null ? ReferenceEquals(key.ReferencedColumns[k], referenced) : string.Equals(key.ReferencedColumns[k].Name, baseField.ColumnName, StringComparison.Ordinal))
+                        j = k;
+                }
+
+                if (j < 0)
+                    break;
+                fields.Add(KeyField(baseField, key.Columns[j]));
+            }
+
+            if (baseBinding.Key.Count == 0 || fields.Count != key.Columns.Count)
+            {
+                Report("MQ4129", $"{prefix} names base foreign key '{key.Name}', which references {Columns(key.ReferencedColumns)} of table '{key.ReferencedTable.Name}', but the key of base '{baseEntity.Name}' is {(baseBinding.Key.Count == 0 ? "not mapped there" : string.Join(", ", baseBinding.Key.Select(f => "'" + f.ColumnName + "'")))}: the key references the base's key columns.", at);
+                return;
+            }
+
+            if (_b.Writes && !baseBinding.Writes)
+            {
+                Report("MQ4131", $"{prefix} writes, but the binding of base '{baseEntity.Name}' writes no table ({(baseBinding.SourceKind is "view" or "query" ? "it reads " + baseBinding.SourceKind + " '" + baseBinding.SourceName + "'" : "it writes none")}), so the base's row of an insert has nowhere to go: write \"none\", or let the base write its table.", "/write");
+                _b.Writes = false;
+                foreach (var field in fields)
+                    field.InInsert = false;
+            }
+
+            // A hard delete through the base's binding removes the base's row alone: the database refuses it while this table's row
+            // points at it, unless the key cascades.
+            if (baseBinding.Delete == "key" && key.OnDelete != "cascade")
+                Report("MQ4136", $"{prefix} names base foreign key '{key.Name}', which does not cascade on delete, while the binding of base '{baseEntity.Name}' deletes by key: deleting a {entity.Name} through the base fails, since its row in table '{own.Name}' still points at the base's row. Give the foreign key onDelete \"cascade\".", at);
+
+            _base = baseBinding;
+            _baseKey.AddRange(fields);
+            _b.BaseForeignKey = key;
+            _b.Bases = [Level(baseBinding, key), .. baseBinding.Bases.Select(l => Level(l.Binding, l.ForeignKey))];
+            _deps.AddRange(baseBinding.Dependencies);
+
+            static string Columns(IReadOnlyList<RColumn> columns) => string.Join(", ", columns.Select(c => "'" + c.Name + "'"));
+        }
+
+        private RBindingBase Level(REntityBinding binding, RForeignKey key) => new() { Derived = _b, Binding = binding, ForeignKey = key };
+
+        /// <summary>A key field the base foreign key gives: the base's key field's name and attribute, on the foreign key's column.</summary>
+        private RBindingField KeyField(RBindingField baseField, RColumn column)
+        {
+            var found = FindSourceColumn(column.Name);
+            var write = _b.WriteTable is { } w && ReferenceEquals(column.Table, w) ? column : _b.WriteTable is { } other ? FindTableColumn(other, column.Name) : null;
+            return new RBindingField
+            {
+                Name = baseField.Name,
+                AttributeRef = baseField.AttributeRef,
+                Attribute = entity.Attributes.FirstOrDefault(a => ReferenceEquals(a, baseField.Attribute) || a.Id == baseField.Attribute?.Id) ?? baseField.Attribute,
+                Column = column.Key,
+                ColumnName = found?.Name ?? column.Name,
+                SourceColumn = found?.Table,
+                ViewColumn = found?.View,
+                QueryField = found?.Query,
+                WriteColumn = write,
+                IsKey = true,
+                InInsert = _b.Writes && write is not null,
+                Type = PhysicalType(column),
+                NativeType = column.NativeType,
+                Nullable = false,
+            };
+        }
+
+        /// <summary>
+        /// The type column of each table above the binding's own (table per type): the column the base's binding there names or inherits in
+        /// that table, with the entity's code, and the codes of the entity and the entities derived from it that keep rows in the table. MQ4125
+        /// for a code an earlier entity with rows in the table already has, or one the column cannot hold.
+        /// </summary>
+        private void ResolveBaseTypeColumns()
+        {
+            if (_b.Bases.Count == 0)
+                return;
+            var codeAt = file.DiscriminatorValue is not null ? "/discriminatorValue" : "";
+            var value = run.CodeOf(entity);
+            foreach (var level in _b.Bases)
+            {
+                var levelEntity = level.Binding.Entity;
+                if (run.TypeColumnOwner(levelEntity) is not { } owner || level.Binding.DiscriminatorColumn is not { } column)
+                    continue;
+                _deps.Element(owner.Id);
+                var host = HostOf(run._bindingByEntity[levelEntity.Id].Binding);
+                var codes = new List<object> { value };
+                var members = run.TypeColumnMembers(owner);
+                foreach (var other in members)
+                {
+                    if (ReferenceEquals(other, entity) || !DerivesFrom(other, entity) || !run.KeepsRowsIn(other, host))
+                        continue;
+                    _deps.Element(other.Id);
+                    var code = run.CodeOf(other);
+                    if (!codes.Exists(c => SameCode(c, code)))
+                        codes.Add(code);
+                }
+
+                level.DiscriminatorColumn = new RBindingDiscriminator
+                {
+                    Column = column.Column, ColumnName = column.ColumnName, SourceColumn = column.SourceColumn, ViewColumn = column.ViewColumn,
+                    QueryField = column.QueryField, WriteColumn = column.WriteColumn, Base = owner, Value = value, Codes = codes,
+                };
+                if ((column.WriteColumn ?? column.SourceColumn) is { } fit)
+                    CheckCodeFit(value, PhysicalType(fit), fit.Length, fit.Name, codeAt);
+                foreach (var other in members)
+                {
+                    if (ReferenceEquals(other, entity))
+                        break;
+                    if (!run.KeepsRowsIn(other, host) || !SameCode(run.CodeOf(other), value))
+                        continue;
+                    Report("MQ4125", $"Entities '{other.Name}' and '{entity.Name}' share type column '{column.ColumnName}' in '{HostName(run._bindingByEntity[levelEntity.Id].Binding)}' and both have type code {QuotedCode(value)}, so reads cannot tell their rows apart: set a different discriminatorValue on one.", codeAt);
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// MQ4132: whether a field of a binding joined to its base's table maps what the base's binding maps: an attribute the bound base has
+        /// (its own or inherited), or the end of a to-one relation the base holds.
+        /// </summary>
+        private bool MapsInherited(RBindingField field, REntity baseEntity) =>
+            field.End is { Opposite.Entity: { } holder } ? DerivesFrom(baseEntity, holder)
+            : field.Attribute is { } attribute && baseEntity.Attributes.Any(a => a.Id == attribute.Id);
+
         // ---- columns ---------------------------------------------------------------------------------------------------------
 
         /// <summary>The source's columns as (name, table column, type keyword).</summary>
@@ -543,6 +841,7 @@ internal sealed partial class DatabaseRun
             var fields = new List<RBindingField>();
             var attributes = new Dictionary<string, int>(StringComparer.Ordinal);
             var columns = new Dictionary<string, int>(StringComparer.Ordinal);
+            var perTypeBase = run.IsPerType(entity) ? run.BoundBase(entity) : null;
             for (var i = 0; i < file.Fields.Count; i++)
             {
                 var f = file.Fields[i];
@@ -555,6 +854,8 @@ internal sealed partial class DatabaseRun
                 }
                 else if (!attributes.TryAdd(f.Attribute, i))
                     Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' twice (fields {attributes[f.Attribute].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", at + "/attribute");
+                else if (perTypeBase is not null && MapsInherited(field, perTypeBase))
+                    Report("MQ4132", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' maps {(field.End is null ? "an attribute" : "the key of a relation end")} that base '{perTypeBase.Name}' has, but the binding joins the base's table by its base foreign key, so the base's binding maps it there: remove the field.", at + "/attribute");
 
                 if (FindSourceColumn(f.Column) is { } column)
                 {
@@ -810,7 +1111,7 @@ internal sealed partial class DatabaseRun
             var members = run.TypeColumnMembers(owner);
             foreach (var other in members)
             {
-                if (ReferenceEquals(other, entity) || !DerivesFrom(other, entity) || !string.Equals(HostOf(run._bindingByEntity[other.Id].Binding), host, StringComparison.Ordinal))
+                if (ReferenceEquals(other, entity) || !DerivesFrom(other, entity) || !run.KeepsRowsIn(other, host))
                     continue;
                 _deps.Element(other.Id);
                 var code = run.CodeOf(other);
@@ -819,7 +1120,7 @@ internal sealed partial class DatabaseRun
             }
 
             d.Codes = codes;
-            if (own && !members.Exists(o => !ReferenceEquals(o, entity) && string.Equals(HostOf(run._bindingByEntity[o.Id].Binding), host, StringComparison.Ordinal)))
+            if (own && !members.Exists(o => !ReferenceEquals(o, entity) && run.KeepsRowsIn(o, host)))
                 Report("MQ4123", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' names type column '{text}', but no entity derived from '{entity.Name}' has a binding to the database that shares it in the same table, so the column tells no rows apart: remove discriminatorColumn, or bind the derived entities to that table.", "/discriminatorColumn");
 
             // Two entities that share the column in one table with one code: reported on the later one, in entity order.
@@ -827,7 +1128,7 @@ internal sealed partial class DatabaseRun
             {
                 if (ReferenceEquals(other, entity))
                     break;
-                if (!string.Equals(HostOf(run._bindingByEntity[other.Id].Binding), host, StringComparison.Ordinal) || !SameCode(run.CodeOf(other), d.Value))
+                if (!run.KeepsRowsIn(other, host) || !SameCode(run.CodeOf(other), d.Value))
                     continue;
                 Report("MQ4125", $"Entities '{other.Name}' and '{entity.Name}' share type column '{d.ColumnName}' in '{HostName(file)}' and both have type code {QuotedCode(d.Value)}, so reads cannot tell their rows apart: set a different discriminatorValue on one.", codeAt);
                 break;
@@ -886,8 +1187,57 @@ internal sealed partial class DatabaseRun
 
         // ---- delete, key, write flags ----------------------------------------------------------------------------------------
 
+        /// <summary>
+        /// The delete of a binding joined to its base's table: its own <c>delete</c>, absent following the base's, and agreeing with it (MQ4134):
+        /// under a base that deletes softly, a binding that writes deletes softly too (an explicit <c>key</c> or <c>none</c> is refused). A soft
+        /// delete is the root's: it marks the root's row, so a <c>soft</c> entry names the root's column. Whatever the binding writes or deletes,
+        /// its reads leave out the rows the root's soft delete marked: <see cref="REntityBinding.SoftDeleteColumn"/> and its value are the root's.
+        /// </summary>
+        private void ResolveDeleteFromBase(REntityBinding baseBinding)
+        {
+            var prefix = $"The binding of entity '{entity.Name}' to database '{run._db.Name}'";
+            var baseName = baseBinding.Entity.Name;
+            // The root's soft delete reaches every binding below it, for its reads (a base below the root carries it on).
+            var column = baseBinding.SoftDeleteColumn;
+            (_b.SoftDeleteColumn, _b.SoftDeleteValue) = (column, column is null ? null : baseBinding.SoftDeleteValue);
+            var soft = column is not null;
+            switch (file.Delete?.Mode)
+            {
+                case null when _b.Writes:
+                    _b.Delete = soft ? "soft" : baseBinding.Delete;
+                    return;
+                case BindingDeleteMode.Key or BindingDeleteMode.None when soft && _b.Writes:
+                    Report("MQ4134", file.Delete!.Mode == BindingDeleteMode.Key
+                        ? $"{prefix} deletes by key, but the binding of base '{baseName}' deletes softly: a delete by key would remove the base's row its soft delete keeps. Remove delete, so the binding follows its base."
+                        : $"{prefix} never deletes, but the binding of base '{baseName}' deletes softly, so its rows could only be removed through the base. Remove delete, so the binding follows its base.", "/delete");
+                    _b.Delete = file.Delete.Mode == BindingDeleteMode.Key ? "key" : "none";
+                    return;
+                case BindingDeleteMode.Key when _b.Writes:
+                    _b.Delete = "key";
+                    return;
+                case BindingDeleteMode.Soft when !soft:
+                    Report("MQ4134", $"{prefix} deletes softly, but the binding of base '{baseName}' {(baseBinding.Delete == "key" ? "deletes by key" : "never deletes")}: a soft delete marks the base's row, so the base's binding sets it. Delete softly there, or remove delete here.", "/delete");
+                    _b.Delete = "none";
+                    return;
+                case BindingDeleteMode.Soft when _b.Writes:
+                    if (file.Delete?.Soft is { } entry && !ReferenceEquals(FindTableColumn(column!.Table, entry.Column), column))
+                        Report("MQ4134", $"{prefix} deletes softly by column '{entry.Column}', but the soft delete is the base's: the binding of base '{baseName}' sets column '{column.Name}' of table '{column.Table.Name}'. Remove delete, so the binding follows its base.", "/delete/soft/column");
+                    _b.Delete = "soft";
+                    return;
+                default:
+                    _b.Delete = "none";
+                    return;
+            }
+        }
+
         private void ResolveDelete()
         {
+            if (_base is { } baseBinding)
+            {
+                ResolveDeleteFromBase(baseBinding);
+                return;
+            }
+
             var mode = file.Delete?.Mode ?? (_b.Writes ? BindingDeleteMode.Key : BindingDeleteMode.None);
             switch (mode)
             {
@@ -934,6 +1284,13 @@ internal sealed partial class DatabaseRun
 
         private void ResolveKey(List<RBindingField> fields)
         {
+            // A base foreign key gives the key (MQ4128 to MQ4130 and MQ4133 when it doesn't): the binding maps no field for it.
+            if (file.BaseForeignKey is not null)
+            {
+                _b.Key = [.. _baseKey];
+                return;
+            }
+
             var key = new List<RBindingField>();
             var missing = new List<string>();
             foreach (var attribute in entity.Key?.Attributes ?? RList<RAttribute>.Empty)
@@ -1040,6 +1397,12 @@ internal sealed partial class DatabaseRun
                 {
                     entry.Status = ResolutionValues.Kebab(status);
                 }
+                else if (column is not null && run._relationAttributeColumns.TryGetValue(column, out var stored))
+                {
+                    // A relation attribute on the foreign key's table (retire-projection-design.md section 6): the relation's mapping stores it.
+                    entry.Status = "relation";
+                    _deps.Element(stored.Relation.Id).Element(stored.Mapping.Id);
+                }
                 else if (column is not null && ReferenceEquals(column, _b.SoftDeleteColumn))
                 {
                     entry.Status = "soft-delete";
@@ -1088,10 +1451,14 @@ internal sealed partial class DatabaseRun
             if (_b.SourceKind is null)
                 return;
             var mapped = file.Fields.Select(f => f.Attribute).ToHashSet(StringComparer.Ordinal);
+            // What the tables above the binding's own store (table per type): the attributes of the nearest base whose table it joins.
+            var above = run.UpperLevels(entity).FirstOrDefault() ?? (file.BaseForeignKey is not null ? run.BoundBase(entity) : null);
             var names = new List<string>();
             foreach (var attribute in entity.Attributes)
             {
                 if (attribute.Collection || attribute.Derived is { Stored: false })
+                    continue;
+                if (above is not null && above.Attributes.Any(a => a.Id == attribute.Id))
                     continue;
                 if (attribute.Type is { Kind: "value-object", ValueObject: { } valueObject })
                 {

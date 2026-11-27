@@ -682,7 +682,9 @@ export interface paths {
          *     `selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys
          *     come back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the
          *     where clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a
-         *     read-only binding has no insert, update or delete). Parameters are named after the fields. A model with errors returns
+         *     read-only binding has no insert, update or delete). `exists` is the probe on the binding's own source by key. A binding
+         *     with bases (table per type) also has `bases`, nearest first, each with its `level` and that table's `insert`, `update`
+         *     and `delete` for the entity. Parameters are named after the fields. A model with errors returns
          *     `preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.
          */
         get: operations["getBindingSql"];
@@ -6205,6 +6207,26 @@ export interface components {
             /** @description The entity's type code the binding sets (several-types-design.md decision 42); left out when unset. */
             discriminatorValue?: string | number;
             discriminatorColumn?: components["schemas"]["BindingDiscriminatorRecord"];
+            /** @description Table per type (retire-projection-design.md section 4), the id of the foreign key the binding's `baseForeignKey` names; left out without one, or when it does not resolve. */
+            baseForeignKey?: string;
+            /** @description With `baseForeignKey`, the key it gives, one field per key field of the base's binding on the foreign key's column, which `fields` does not hold; left out otherwise. */
+            key?: components["schemas"]["BindingFieldRecord"][];
+            /** @description The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none. */
+            bases?: components["schemas"]["BindingBaseRecord"][];
+        };
+        /** @description One table above a binding's own (table per type), the base's binding that reads and writes it, and how the table below joins it. */
+        BindingBaseRecord: {
+            binding: components["schemas"]["Ulid"];
+            entity: components["schemas"]["Ulid"];
+            /** @description The key of the table the base's binding writes, else its source's key. */
+            table: string;
+            /** @description The id of the foreign key that joins the table below to this one. */
+            foreignKey: string;
+            /** @description The foreign key's columns, in the table below, by key. */
+            columns: string[];
+            /** @description The columns of this table they reference, in the order of columns. */
+            referencedColumns: string[];
+            discriminatorColumn?: components["schemas"]["BindingDiscriminatorRecord"];
         };
         /** @description The type column a base entity and the entities derived from it share in one table, named by the binding's `discriminatorColumn` or inherited from its nearest base's binding to the database; left out of the binding when there is none. */
         BindingDiscriminatorRecord: {
@@ -6246,7 +6268,7 @@ export interface components {
             name: string;
             key: string | null;
             /** @enum {string} */
-            status: "field" | "constant" | "discriminator" | "ignored" | "database" | "computed" | "identity" | "default" | "soft-delete" | "unaccounted";
+            status: "field" | "constant" | "discriminator" | "ignored" | "database" | "computed" | "identity" | "default" | "soft-delete" | "relation" | "unaccounted";
             field: string | null;
         };
         BindingSqlResult: {
@@ -6261,6 +6283,20 @@ export interface components {
             dialect: "postgresql" | "sqlserver" | "mysql" | "sqlite" | "oracle";
             select: components["schemas"]["BindingStatement"] | null;
             selectByKey: components["schemas"]["BindingStatement"] | null;
+            insert: components["schemas"]["BindingStatement"] | null;
+            update: components["schemas"]["BindingStatement"] | null;
+            delete: components["schemas"]["BindingStatement"] | null;
+            /** @description The probe, a count of the rows of the binding's own source with the key, joining no base; left out without key fields. */
+            exists?: components["schemas"]["BindingStatement"];
+            /** @description With bases (table per type), each base's table's statements for this entity, nearest first; left out without bases. */
+            bases?: components["schemas"]["BindingBaseSqlPreview"][];
+        };
+        /** @description The statements one base's table renders for a derived entity (table per type). */
+        BindingBaseSqlPreview: {
+            /** @description From 1 for the nearest base up to the root. */
+            level: number;
+            entityId: components["schemas"]["Ulid"];
+            bindingId: components["schemas"]["Ulid"];
             insert: components["schemas"]["BindingStatement"] | null;
             update: components["schemas"]["BindingStatement"] | null;
             delete: components["schemas"]["BindingStatement"] | null;
@@ -9271,6 +9307,8 @@ export interface components {
                 database: components["schemas"]["id"];
                 /** @description What the entity reads: the id of a table (or a synthesized table key), a view or a query of the database. */
                 source: string;
+                /** @description Table per type: the id of a foreign key of the binding's write table (else its source) that references the write table of the binding to the same database of the entity's nearest bound base. Its columns are the table's whole primary key. The base's binding maps the inherited attributes and to-one ends, its constants and its type column; this binding maps only the entity's own, and no field for the key: the key is the foreign key's columns. Inserts write the base's row first (a key the base generates flows in), reads join the base's table, up the chain (MQ4128 to MQ4136). */
+                baseForeignKey?: components["schemas"]["id"];
                 /**
                  * @description Columns with a fixed value: a filter on every read and a value on every insert.
                  * @default []

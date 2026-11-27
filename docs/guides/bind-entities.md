@@ -178,6 +178,49 @@ code and write it. Switch the dialect to
 see another database's form. Generation uses the same statements (the `csharp-dapper` pack builds a bound entity's
 repository from them).
 
+## 10. Table per type
+
+Some teams keep a subtype's own columns in a table of its own. Take a billing model: every payment is a row of
+`payments (id, kind, amount)`, and a card payment adds a row to `card_payments (payment_id, last4)`. The primary key of
+`card_payments` is also its foreign key to `payments`, so each card row belongs to one payment row.
+
+1. Bind `Payment` to `payments`, and name `kind` as its type column (`discriminatorColumn`).
+2. Bind `CardPayment`, which derives from `Payment`, to `card_payments`. Map only `last4`: the base's binding maps `id` and
+   `amount`.
+3. On the binding's JSON tab, set `baseForeignKey` to the id of the foreign key of `card_payments` that references
+   `payments`.
+
+```json
+"bindings": [{
+  "id": "…", "database": "…",
+  "source": "<card_payments>",
+  "baseForeignKey": "<fk_card_payments_payment>",
+  "discriminatorValue": "card",
+  "fields": [{ "attribute": "<last4>", "column": "<last4>" }]
+}]
+```
+
+Open the **SQL** section of `CardPayment`'s binding:
+
+- **select** joins the two tables and keeps the card codes:
+  `FROM card_payments t JOIN payments b1 ON b1.id = t.payment_id WHERE b1.kind IN ('card', ...)`.
+- **insert** writes `card_payments`, with the key as `@id`. The `payments` row comes first, written by the base's insert
+  for the card payment: its code is `'card'`, and the id the database makes comes back to fill `@id`.
+- **update** and **delete** work on `card_payments`; the base's table has its own for the card payment. A delete removes
+  the card row first, then the payment row. A soft delete is the base's and marks the payment row only.
+
+Reading `Payment` still returns every payment, card payments included. A `CorporateCardPayment` can go one level further,
+with a table whose foreign key references `card_payments`; its reads then join both tables above it. A `BankTransfer` can
+keep its rows in `payments` with its own code at the same time.
+
+Binding this way never changes a table. The `csharp-dapper` pack builds the card payment's repository from these statements:
+it inserts root first, carries the new id down, updates every table and deletes from the bottom up, all in one transaction.
+
+Give the foreign key of `card_payments` `onDelete: cascade` when `Payment`'s binding deletes by key. Deleting a payment
+through `Payment`'s repository removes only the `payments` row, and without the cascade the database refuses it for a card
+payment, whose card row still points at it. Warning MQ4136 says so. The rules MQ4128 to MQ4136 say what doesn't fit (see
+[A table per type](../user-guide.md#a-table-per-type)).
+
 ## Undoing and removing
 
 Every gesture on the Storage tab is one save of the entity and one undo step. The trash button on a binding card removes
@@ -205,8 +248,9 @@ maquettiste binding resync --database main Rental --keep-names          # catch 
   [Auto-map to existing tables](../user-guide.md#auto-map-to-existing-tables) and
   [Relationship storage](../user-guide.md#relationship-storage).
 - [Binding entities to tables, views and queries](../user-guide.md#binding-entities-to-tables-views-and-queries): the
-  file shape, several entities over one table, a base and its subtypes in one table, and a read-only entity over a query.
+  file shape, several entities over one table, a base and its subtypes in one table, a table per type, and a read-only entity
+  over a query.
 - [Materialize, both ways](../user-guide.md#materialize-both-ways),
   [Provenance and drift](../user-guide.md#provenance-and-drift),
   [Column comments as descriptions](../user-guide.md#column-comments-as-descriptions) and
-  [The rules for bindings](../user-guide.md#the-rules-for-bindings) (MQ4044 to MQ4055, MQ4087 to MQ4089).
+  [The rules for bindings](../user-guide.md#the-rules-for-bindings) (MQ4044 to MQ4055, MQ4087 to MQ4089, MQ4122 to MQ4136).

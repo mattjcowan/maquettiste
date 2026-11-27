@@ -2146,7 +2146,17 @@ internal static class ExpressionRules
                 }
 
                 listed.Add(id);
-                if ((trees.GetValueOrDefault(id) ?? inherited.GetValueOrDefault(id).Tree) is { } tree && Unenforceable(model, binding, table, tree, TypedOf(id)) is { } problem)
+                var checkTree = trees.GetValueOrDefault(id) ?? inherited.GetValueOrDefault(id).Tree;
+                // Table per type: a check lowered into the binding's own table can't read what a base's table stores (MQ4135).
+                if (checkTree is not null && BindingDrift.UpperBase(model, entity, binding) is { } upper && StoredAbove(model, upper) is var above
+                    && ExprSites.PathsOf(checkTree, TypedOf(id)).Where(p => p.Count > 0).Select(p => p[0]).FirstOrDefault(above.ContainsKey) is { } stored)
+                {
+                    report.Add("MQ4135", $"The binding lists a check that reads '{above[stored]}', which the table of base '{upper.Name}' stores, "
+                        + "but the binding's reads join that table and a check is lowered into one table: list it on the base's binding when it reads only the base's attributes, or check it in code.", at, binding.Id);
+                    continue;
+                }
+
+                if (checkTree is { } tree && Unenforceable(model, binding, table, tree, TypedOf(id)) is { } problem)
                     report.Add("MQ3110", problem, at, binding.Id);
             }
         }
@@ -2160,6 +2170,20 @@ internal static class ExpressionRules
                     + "list it in that binding's checks.", Ptr.At("/checks", i), check.Id);
             }
         }
+    }
+
+    /// <summary>The attributes a base and its own bases have, by id to name: what the tables above a binding with bases store.</summary>
+    private static Dictionary<string, string> StoredAbove(ModelSnapshot model, Entity upper)
+    {
+        var above = new Dictionary<string, string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (Entity? b = upper; b is not null && seen.Add(b.Id); b = b.Base is { } next ? model.Get<Entity>(next) : null)
+        {
+            foreach (var attribute in b.Attributes)
+                above.TryAdd(attribute.Id, attribute.Name);
+        }
+
+        return above;
     }
 
     /// <summary>The table a binding writes: its write table, else its source when that is a table; none when it never writes.</summary>

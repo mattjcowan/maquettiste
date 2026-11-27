@@ -364,13 +364,21 @@ internal sealed partial class Materializer
             Name(constant.Column);
         if (BindingDrift.TypeColumnOf(snapshot, entity, binding) is { } typeColumn)
             Name(typeColumn);
+        foreach (var keyColumn in BindingDrift.BaseKeyColumnsOf(snapshot, binding))
+            Name(keyColumn);
+        if (BindingDrift.SourceOf(snapshot, binding, out var sourceTable) == DriftSource.TableFile)
+        {
+            foreach (var relationColumn in BindingDrift.RelationAttributeColumnsOf(snapshot, sourceTable!))
+                Name(relationColumn);
+        }
         foreach (var listed in binding.Columns)
             Name(listed.Column);
         if (binding.Delete?.Soft is { } soft)
             Name(soft.Column);
 
         var mapped = binding.Fields.Select(f => f.Attribute).ToHashSet(StringComparer.Ordinal);
-        var open = Candidates(entity).Where(c => !mapped.Contains(c.Ref)).ToList();
+        // A binding with a base foreign key maps only what the entity adds below its bound base (table per type): the base's binding maps the rest.
+        var open = Candidates(entity, binding.BaseForeignKey is null ? null : BoundBase(entity, binding.Database)).Where(c => !mapped.Contains(c.Ref)).ToList();
         var matches = new List<(FieldCandidate, ShapeColumn)>();
         for (var i = 0; i < columns.Count && open.Count > 0; i++)
         {
@@ -395,9 +403,11 @@ internal sealed partial class Materializer
     /// What a binding of the entity can map, from files: root first, each level's own attributes then its stereotypes' ones (a value
     /// object attribute stands for its members, a collection has no column), then the to-one navigation keys, by relation id.
     /// </summary>
-    private List<FieldCandidate> Candidates(Entity entity)
+    private List<FieldCandidate> Candidates(Entity entity, Entity? below = null)
     {
         var chain = Chain(entity);
+        if (below is not null && chain.FindIndex(e => string.Equals(e.Id, below.Id, StringComparison.Ordinal)) is var cut and >= 0)
+            chain = chain[..cut];
         var result = new List<FieldCandidate>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         void Add(ModelAttribute attribute)
@@ -474,6 +484,10 @@ internal sealed partial class Materializer
     }
 
     /// <summary>The entity and its bases, the entity first, stopping at a loop.</summary>
+    /// <summary>The nearest base of an entity with a binding to the database, or <see langword="null"/>.</summary>
+    private Entity? BoundBase(Entity entity, string database) =>
+        Chain(entity).Skip(1).FirstOrDefault(e => e.Bindings.Any(b => string.Equals(b.Database, database, StringComparison.Ordinal)));
+
     private List<Entity> Chain(Entity entity)
     {
         var chain = new List<Entity>();

@@ -183,7 +183,7 @@ internal sealed partial class DatabaseRun
             return RelationShape.Promoted;
         if (nary)
             return RelationShape.Junction;
-        var shape = m?.Shape ?? (m?.JunctionTable is not null ? RelationShape.Junction : rel.Attributes.Count > 0 ? _conv.RelationsWithAttributes : manyToMany ? RelationShape.Junction : RelationShape.ForeignKey);
+        var shape = m?.Shape ?? (m?.JunctionTable is not null ? RelationShape.Junction : rel.Attributes.Count > 0 ? (m?.ForeignKey is not null ? RelationShape.ForeignKey : _conv.RelationsWithAttributes) : manyToMany ? RelationShape.Junction : RelationShape.ForeignKey);
         return shape == RelationShape.ForeignKey && manyToMany ? RelationShape.Junction : shape;
     }
 

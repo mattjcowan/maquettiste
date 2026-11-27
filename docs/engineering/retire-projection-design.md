@@ -82,7 +82,7 @@ names it.
 - **The key** of the derived binding is the foreign key's columns, in the order of the base's key fields; the derived
   binding maps no field for an inherited key attribute (MQ4046 is satisfied by the foreign key). A key the base's
   insert generates (identity, sequence, default) flows into the derived insert: the engine renders the base insert with
-  the dialect's way to return it (`RETURNING`, `OUTPUT`, `LAST_INSERT_ID()`, a sequence read first on Oracle).
+  the dialect's way to return it (`RETURNING`, `OUTPUT`, `LAST_INSERT_ID()`, `RETURNING … INTO` on Oracle).
 - **The engine renders the base table's statements per derived entity.** Inserting a card payment writes the payments
   row with the card payment's own type code (when the base table has a type column) and the base's constants, then the
   card payments row; an update writes each table whose fields changed; a delete removes the derived row first, then the

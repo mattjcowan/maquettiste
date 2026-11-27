@@ -54,7 +54,10 @@ public sealed class REntityBinding : RAnnotated
     /// <summary><c>key</c>, <c>soft</c> or <c>none</c>.</summary>
     public string Delete { get; internal set; } = "none";
 
-    /// <summary>The column a soft delete sets, with <see cref="Delete"/> <c>soft</c>.</summary>
+    /// <summary>
+    /// The column a soft delete sets, with <see cref="Delete"/> <c>soft</c>; reads leave out the rows it marks. A binding with
+    /// <see cref="Bases"/> under a root that deletes softly has the root's column whatever its own delete, since its reads filter on it.
+    /// </summary>
     public RColumn? SoftDeleteColumn { get; internal set; }
 
     /// <summary>The value a soft delete sets (a plain value; <see langword="null"/> is SQL NULL).</summary>
@@ -73,8 +76,27 @@ public sealed class REntityBinding : RAnnotated
     /// </summary>
     public RBindingDiscriminator? DiscriminatorColumn { get; internal set; }
 
-    /// <summary>The fields that map the entity's key attributes, in key order.</summary>
+    /// <summary>
+    /// The fields that map the entity's key attributes, in key order. With <see cref="BaseForeignKey"/>, the foreign key's columns instead,
+    /// one field per key field of the base's binding, with its name and attribute: they are not in <see cref="Fields"/>, since the binding
+    /// maps no field for an inherited key attribute, and the insert writes them with the base's key.
+    /// </summary>
     public IReadOnlyList<RBindingField> Key { get; internal set; } = [];
+
+    /// <summary>
+    /// Table per type (retire-projection-design.md section 4): the foreign key of the binding's write table (else its source) that its
+    /// <c>baseForeignKey</c> names, joining it to the table of its nearest bound base; <see langword="null"/> without one, or when it does
+    /// not resolve (MQ4128 to MQ4130, MQ4133).
+    /// </summary>
+    public RForeignKey? BaseForeignKey { get; internal set; }
+
+    /// <summary>
+    /// The tables above the binding's own that its entity's rows also live in, nearest first, each with the base's binding that reads and
+    /// writes it: the base its <see cref="BaseForeignKey"/> reaches, then that binding's own bases, up the chain. A binding without a base
+    /// foreign key in the table of a base that has bases shares them (a subtype in a table per type's table). Reads join them; an insert
+    /// writes them first, root first; a delete removes them last. Empty for every other binding.
+    /// </summary>
+    public IReadOnlyList<RBindingBase> Bases { get; internal set; } = [];
 
     /// <summary>The key fields whose value the database generates on insert (identity, a sequence, a default the binding marks).</summary>
     public IReadOnlyList<RBindingField> Generated { get; internal set; } = [];
@@ -84,6 +106,34 @@ public sealed class REntityBinding : RAnnotated
 
     /// <summary>The index of the binding in the entity's <c>bindings</c> (for diagnostics).</summary>
     internal int Index { get; set; }
+}
+
+/// <summary>
+/// One table above a binding's own (retire-projection-design.md section 4): the base's binding that reads and writes it, the foreign key that
+/// joins the table below to it, and its type column as the derived entity's statements use it. <c>BindingSql</c> (the template helper
+/// <c>binding_sql</c>, given the level) renders the table's insert, update and delete for the derived entity: the base's fields, constants
+/// and key, the derived entity's type code, the base's soft delete.
+/// </summary>
+public sealed class RBindingBase
+{
+    /// <summary>The binding whose entity's rows the table holds a part of: the derived entity's.</summary>
+    public REntityBinding Derived { get; internal set; } = null!;
+
+    /// <summary>The base entity's binding to the same database, which reads and writes the table: its fields, constants and key.</summary>
+    public REntityBinding Binding { get; internal set; } = null!;
+
+    /// <summary>
+    /// The foreign key that joins the table below (the derived binding's own for the nearest base, else the level below's) to this one: its
+    /// columns are the table below's, its referenced columns this table's key columns.
+    /// </summary>
+    public RForeignKey ForeignKey { get; internal set; } = null!;
+
+    /// <summary>
+    /// The table's type column, when the base's binding has one: the derived entity's type code is the value an insert writes, and the codes
+    /// of the derived entity and the entities derived from it that keep rows in the table are those its reads, updates and deletes keep;
+    /// <see langword="null"/> without a type column.
+    /// </summary>
+    public RBindingDiscriminator? DiscriminatorColumn { get; internal set; }
 }
 
 /// <summary>A constant column of a resolved binding.</summary>
@@ -239,7 +289,7 @@ public sealed class RBindingColumn
 
     /// <summary>
     /// <c>field</c>, <c>constant</c>, <c>discriminator</c> (the binding's type column), <c>ignored</c>, <c>database</c>,
-    /// <c>computed</c>, <c>identity</c> (identity or a key sequence), <c>default</c> (a column default), <c>soft-delete</c> or
+    /// <c>computed</c>, <c>identity</c> (identity or a key sequence), <c>default</c> (a column default), <c>soft-delete</c>, <c>relation</c> (a relation attribute the relation's mapping stores on its foreign key) or
     /// <c>unaccounted</c> (MQ4047).
     /// </summary>
     public string Status { get; internal set; } = "unaccounted";

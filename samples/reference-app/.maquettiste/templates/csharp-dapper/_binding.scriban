@@ -2,7 +2,10 @@
 # The repository of an entity with a binding (erratum E43), included by repository.scriban: reads through the binding's select
 # statements (its constants applied, so several entities share one table), writes through its insert and update (constants set,
 # the columns the database fills left out), and deletes through its delete (by key, or the soft-delete update). A binding that
-# does not write gets a read-only repository: no Insert, Update or Delete. Needs _csharp.scriban and _dapper.scriban.
+# does not write gets a read-only repository: no Insert, Update or Delete. A binding with bases (table per type: baseForeignKey)
+# reads its table joined to its bases' tables, inserts each base's row first, root first (the root's insert returns the generated
+# key), updates every table, and deletes its own row first, then up the chain, in the caller's transaction or one it opens.
+# Needs _csharp.scriban and _dapper.scriban.
 b = dapper_binding(entity)
 name = type_name(entity)
 db = b.database
@@ -12,6 +15,32 @@ insert_sql = binding_sql b "insert"
 update_sql = binding_sql b "update"
 delete_sql = binding_sql b "delete"
 writes = insert_sql != ""
+# Table per type: each base's table, root first, with its statements for this entity; the row holds every level's fields.
+levels = []
+for lv in b.bases | array.reverse
+  levels[levels.size] = { name: type_name(lv.binding.entity), insert: (binding_sql lv "insert"), update: (binding_sql lv "update"), delete: (binding_sql lv "delete") }
+end
+row_fields = b.fields
+if levels.size > 0
+  $own = b.fields | array.map "name"
+  $seen = []
+  row_fields = []
+  for lv in b.bases | array.reverse
+    for f in lv.binding.fields
+      if !($own | array.contains f.name) && !($seen | array.contains f.name)
+        row_fields[row_fields.size] = f
+        $seen[$seen.size] = f.name
+      end
+    end
+  end
+  row_fields = row_fields | array.concat b.fields
+end
+deletes = delete_sql != ""
+for lv in levels
+  if lv.delete != ""
+    deletes = true
+  end
+end
 
 # C# expression reading a field's attribute (not a value object member) from its row property; a number of another type is cast.
 func bind_read(a, f)
@@ -107,7 +136,8 @@ paging = d == "sqlserver" ? "OFFSET @mq_skip ROWS FETCH NEXT @mq_take ROWS ONLY"
 get_params = (query_params | array.concat key_params | array.add "CancellationToken cancellationToken = default") | array.join ", "
 list_params = (query_params | array.add "int mq_skip = 0" | array.add "int mq_take = 100" | array.add "CancellationToken cancellationToken = default") | array.join ", "
 delete_params = (key_params | array.add "CancellationToken cancellationToken = default") | array.join ", "
-generated = b.generated.size == 1 ? b.generated[0] : null
+gen_b = b.bases.size > 0 ? (b.bases | array.last).binding : b
+generated = gen_b.generated.size == 1 ? gen_b.generated[0] : null
 key_strategy = entity.key ? entity.key.strategy : ""
 key_attr = (b.key.size == 1 && !b.key[0].is_generated) ? b.key[0].attribute : null
 uses = []
@@ -151,7 +181,7 @@ public partial interface I{{ name }}Repository
     /// <summary>Updates the entity; returns false when no row has its key.</summary>
     Task<bool> UpdateAsync({{ name }} entity, CancellationToken cancellationToken = default);
 {{- end }}
-{{- if delete_sql != "" }}
+{{- if deletes }}
 
     /// <summary>{{ if b.delete == "soft" }}Marks the entity with the given key deleted{{ else }}Deletes the entity with the given key{{ end }}; returns false when there was none.</summary>
     Task<bool> DeleteAsync({{ delete_params }});
@@ -189,6 +219,26 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
 {{ indent delete_sql 8 }}
         """;
 {{- end }}
+{{- for lv in levels }}
+{{- if lv.insert != "" }}
+
+    private const string {{ lv.name }}InsertSql = """
+{{ indent lv.insert 8 }}
+        """;
+{{- end }}
+{{- if lv.update != "" }}
+
+    private const string {{ lv.name }}UpdateSql = """
+{{ indent lv.update 8 }}
+        """;
+{{- end }}
+{{- if lv.delete != "" }}
+
+    private const string {{ lv.name }}DeleteSql = """
+{{ indent lv.delete 8 }}
+        """;
+{{- end }}
+{{- end }}
 
     /// <inheritdoc/>
     public async Task<{{ name }}?> GetAsync({{ get_params }})
@@ -216,7 +266,20 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
         if (string.IsNullOrEmpty(entity.{{ prop_name(key_attr, name) }}))
             entity.{{ prop_name(key_attr, name) }} = UlidGenerator.NewUlid();
 {{- end }}
-{{- if generated && generated.attribute }}
+{{- if levels.size > 0 }}
+        await InUnitAsync(async unit =>
+        {
+{{- for lv in levels }}
+{{- if for.first && generated && generated.attribute }}
+            entity.{{ prop_name(generated.attribute, name) }} = await connection.ExecuteScalarAsync<{{ type_of generated.attribute "csharp" }}>(new CommandDefinition({{ lv.name }}InsertSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- else }}
+            await connection.ExecuteAsync(new CommandDefinition({{ lv.name }}InsertSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- end }}
+{{- end }}
+            await connection.ExecuteAsync(new CommandDefinition(InsertSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            return true;
+        }).ConfigureAwait(false);
+{{- else if generated && generated.attribute }}
         entity.{{ prop_name(generated.attribute, name) }} = await connection.ExecuteScalarAsync<{{ type_of generated.attribute "csharp" }}>(new CommandDefinition(InsertSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
 {{- else }}
         await connection.ExecuteAsync(new CommandDefinition(InsertSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
@@ -229,14 +292,46 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
     public async Task<bool> UpdateAsync({{ name }} entity, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entity);
-{{- if update_sql | string.starts_with "SELECT" }}
+{{- if levels.size > 0 }}
+        // True only when every table has the entity's row.
+        return await InUnitAsync(async unit =>
+        {
+            var found = true;
+{{- for lv in levels }}
+{{- if lv.update != "" }}
+            found &= await connection.{{ (lv.update | string.starts_with "SELECT") ? "ExecuteScalarAsync<long>" : "ExecuteAsync" }}(new CommandDefinition({{ lv.name }}UpdateSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- end }}
+{{- end }}
+            found &= await connection.{{ (update_sql | string.starts_with "SELECT") ? "ExecuteScalarAsync<long>" : "ExecuteAsync" }}(new CommandDefinition(UpdateSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+            return found;
+        }).ConfigureAwait(false);
+{{- else if update_sql | string.starts_with "SELECT" }}
         return await connection.ExecuteScalarAsync<long>(new CommandDefinition(UpdateSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
 {{- else }}
         return await connection.ExecuteAsync(new CommandDefinition(UpdateSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
 {{- end }}
     }
 {{- end }}
+{{- if levels.size > 0 && deletes }}
+
+    /// <inheritdoc/>
+    public async Task<bool> DeleteAsync({{ delete_params }})
+    {
+        return await InUnitAsync(async unit =>
+        {
+            var deleted = false;
 {{- if delete_sql != "" }}
+            deleted |= await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { {{ key_args | array.join ", " }} }, unit, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- end }}
+{{- for lv in levels | array.reverse }}
+{{- if lv.delete != "" }}
+            deleted |= await connection.ExecuteAsync(new CommandDefinition({{ lv.name }}DeleteSql, new { {{ key_args | array.join ", " }} }, unit, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- end }}
+{{- end }}
+            return deleted;
+        }).ConfigureAwait(false);
+    }
+{{- else if delete_sql != "" }}
 
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync({{ delete_params }})
@@ -245,16 +340,41 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
     }
 {{- end }}
 
+{{- if levels.size > 0 && writes }}
+
+    /// <summary>Runs writes to several tables as one unit: in the caller's transaction, else in one this repository opens and commits.</summary>
+    private async Task<T> InUnitAsync<T>(Func<IDbTransaction, Task<T>> work)
+    {
+        if (transaction is not null)
+            return await work(transaction).ConfigureAwait(false);
+        var opened = connection.State != ConnectionState.Open;
+        if (opened)
+            connection.Open();
+        try
+        {
+            using var unit = connection.BeginTransaction();
+            var result = await work(unit).ConfigureAwait(false);
+            unit.Commit();
+            return result;
+        }
+        finally
+        {
+            if (opened)
+                connection.Close();
+        }
+    }
+{{- end }}
+
     /// <summary>One row of {{ source_text }} as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-{{- for f in b.fields }}
+{{- for f in row_fields }}
         public {{ bind_row_type(f) }} {{ cs_ident f.name }} { get; set; }{{ if !bind_nullable(f) && !(cs_value_type bind_row_type(f)) }} = default!;{{ end }}
 {{- end }}
 
         public static {{ name }} ToEntity(Row row) => new()
         {
-{{- for line in bind_assignments(entity, b.fields) }}
+{{- for line in bind_assignments(entity, row_fields) }}
             {{ line }},
 {{- end }}
         };
@@ -262,7 +382,7 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
 
         public static Row From({{ name }} entity) => new()
         {
-{{- for f in b.fields }}
+{{- for f in row_fields }}
             {{ cs_ident f.name }} = {{ bind_write(entity, f) }},
 {{- end }}
         };

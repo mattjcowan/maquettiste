@@ -1,0 +1,42 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000055",
+  "name": "card_payments",
+  "database": "01K6BFX0000000000000000002",
+  "description": "What a card payment adds to its payments row: one row per card payment, keyed by the payment's id.",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000056",
+      "name": "payment_id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000057",
+      "name": "last4",
+      "type": "string",
+      "length": 4,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000056"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K6BFX0000000000000000058",
+      "name": "fk_card_payments_payment",
+      "columns": [
+        "01K6BFX0000000000000000056"
+      ],
+      "referencesTable": "01K6BFX0000000000000000050",
+      "referencesColumns": [
+        "01K6BFX0000000000000000051"
+      ],
+      "onDelete": "cascade"
+    }
+  ]
+}

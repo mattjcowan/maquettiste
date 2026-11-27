@@ -257,6 +257,12 @@ internal static class MappingRules
                 CheckAttributeMapping(context, item with { Column = null }, attribute, null, Ptr.At("/attributes", i), report);
                 CheckAttributeColumn(context, item, attribute, linkTable, Ptr.At("/attributes", i), i, report);
             }
+            else if (item.Column is not null && mapping.JunctionTable is null && ForeignKeyOwner(context, mapping) is { } holder)
+            {
+                // On the foreign-key shape, the column is one of the table that holds the foreign key (retire-projection-design.md section 6).
+                CheckAttributeMapping(context, item with { Column = null }, attribute, null, Ptr.At("/attributes", i), report);
+                CheckForeignKeyAttributeColumn(context, item, attribute, holder, mapping.ForeignKey!, Ptr.At("/attributes", i), i, report);
+            }
             else
             {
                 CheckAttributeMapping(context, item, attribute, null, Ptr.At("/attributes", i), report);
@@ -564,6 +570,26 @@ internal static class MappingRules
     private static bool IsCompound(ValidationContext context, ModelAttribute attribute) =>
         attribute.Collection || AttributeRules.Resolve(context.Model, attribute.Type).ValueObject is not null;
 
+    /// <summary>The designed or imported table of the mapping's database that declares the mapping's <c>foreignKey</c>, or <see langword="null"/>.</summary>
+    private static Table? ForeignKeyOwner(ValidationContext context, Mapping mapping) =>
+        mapping.ForeignKey is { } id && context.Model.GetDocument(id)?.Element is Table { Origin: not TableOrigin.Synthesized } owner
+        && owner.Database == mapping.Database && owner.ForeignKeys.Any(f => f.Id == id) ? owner : null;
+
+    /// <summary>
+    /// MQ4009 for a relation attribute's column on the foreign-key shape (retire-projection-design.md section 6): a column of the table that holds
+    /// the foreign key, not one of the key's own columns, for an attribute one column can hold.
+    /// </summary>
+    private static void CheckForeignKeyAttributeColumn(ValidationContext context, AttributeMapping item, ModelAttribute attribute, Table holder, string foreignKeyId,
+        string pointer, int index, Report report)
+    {
+        if (!holder.Columns.Any(c => c.Id == item.Column))
+            Invalid(report, pointer + "/column", $"'{item.Column}' is not a column of table '{holder.Name}', which holds the relation's foreign key.");
+        else if (holder.ForeignKeys.FirstOrDefault(f => f.Id == foreignKeyId) is { } key && key.Columns.Contains(item.Column!))
+            Invalid(report, pointer + "/column", $"Column '{holder.Columns.First(c => c.Id == item.Column).Name}' is a column of the relation's foreign key, so it can't also hold attribute '{attribute.Name}'.");
+        if (IsCompound(context, attribute))
+            Invalid(report, pointer + "/column", $"Attribute {index.ToString(CultureInfo.InvariantCulture)} is a collection or value object, so it can't map one column.");
+    }
+
     /// <summary>MQ4009 for a relation attribute's column in a link table (several-types-design.md decision 45).</summary>
     private static void CheckAttributeColumn(ValidationContext context, AttributeMapping item, ModelAttribute attribute, Table linkTable, string pointer, int index,
         Report report)
@@ -675,6 +701,9 @@ internal static class MappingRules
             return RelationShape.Junction;
         if (relation.Attributes.Count > 0)
         {
+            // A mapping that names its foreign key stores the relation on it, attributes included (retire-projection-design.md section 6).
+            if (mapping?.ForeignKey is not null && mapping.JunctionTable is null && !relation.Ends.All(e => e.Max == MaxCardinality.Many))
+                return RelationShape.ForeignKey;
             var settings = context.Model.Settings;
             var name = context.Model.Get<Database>(databaseId)?.Name;
             var perDatabase = name is not null && settings.Databases.TryGetValue(name, out var conventions) ? conventions.RelationsWithAttributes : null;

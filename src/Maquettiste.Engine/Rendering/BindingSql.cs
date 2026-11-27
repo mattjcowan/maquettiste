@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Rendering;
@@ -12,28 +13,37 @@ namespace Maquettiste.Engine;
 /// "Bindings and materialize"), with the quoting, placeholder styles and dialect handling of <see cref="QuerySql"/>:
 /// <list type="bullet">
 /// <item><c>select</c>: every row, the columns the fields map aliased to the field names, filtered by the constants and the type codes
-/// (and, with a soft delete, leaving out the deleted rows); a query source is wrapped as a derived table <c>FROM (&lt;query sql&gt;) q</c>.</item>
+/// (and, with a soft delete, leaving out the deleted rows); a query source is wrapped as a derived table <c>FROM (&lt;query sql&gt;) q</c>.
+/// A binding with bases (table per type, retire-projection-design.md section 4) joins each base's source on its foreign key
+/// (<c>JOIN &lt;base&gt; b1 ON b1.&lt;key&gt; = t.&lt;column&gt;</c>, <c>b2</c> for the base's base) and reads the bases' fields first, root
+/// first, each base filtered by its constants and the type codes of its table.</item>
 /// <item><c>select-by-key</c>: the same, for the row whose key fields equal their parameters.</item>
 /// <item><c>insert</c>: the written fields, the constants and the type code, without the columns the database fills; the generated key
 /// columns come back through <c>RETURNING</c> (PostgreSQL, SQLite), <c>OUTPUT INSERTED</c> (SQL Server), <c>RETURNING … INTO</c> (Oracle)
-/// or a second statement <c>SELECT LAST_INSERT_ID()</c> (MySQL, one identity key).</item>
+/// or a second statement <c>SELECT LAST_INSERT_ID()</c> (MySQL, one identity key). A binding with bases writes its own table only, its key
+/// columns first: the bases' rows come first, each through its base's <c>insert</c>, the root's returning the key.</item>
 /// <item><c>update</c>: the updatable fields by key, the constants and the type codes in the where clause; with nothing to set, a count
 /// of the matching rows.</item>
-/// <item><c>delete</c>: by key plus the constants and the type codes, or the soft-delete update.</item>
+/// <item><c>delete</c>: by key plus the constants and the type codes, or the soft-delete update. A soft delete is rendered by the
+/// statement of the table that holds its column: a binding with bases leaves it to the base's.</item>
+/// <item><c>exists</c>: a count of the rows of the binding's own source with the key, filtered as its reads are, joining no base: the probe
+/// that tells whether a base's row is one of this entity's when the base's table has no type column.</item>
 /// </list>
 /// The type codes are those of <see cref="REntityBinding.DiscriminatorColumn"/>: <c>column = code</c> for one, <c>column IN (…)</c> for
-/// several.
+/// several. A base of a binding (<see cref="RBindingBase"/>) renders its table's <c>insert</c>, <c>update</c> and <c>delete</c> for the
+/// derived entity: the base's fields, constants and key, the derived entity's code in the table's type column, and the derived binding's
+/// writes and delete; its <c>select</c>, <c>select-by-key</c> and <c>exists</c> are empty (the derived binding's select joins it).
 /// Parameters are named after the fields. A statement the binding does not have (a write of a read-only binding, a lookup by key
 /// without key fields) renders as the empty string.
 /// </summary>
-public static class BindingSql
+public static partial class BindingSql
 {
     /// <summary>The statements a binding renders, in order.</summary>
-    public static IReadOnlyList<string> Statements { get; } = ["select", "select-by-key", "insert", "update", "delete"];
+    public static IReadOnlyList<string> Statements { get; } = ["select", "select-by-key", "insert", "update", "delete", "exists"];
 
     /// <summary>Renders one statement of a binding.</summary>
     /// <param name="binding">The resolved binding.</param>
-    /// <param name="statement"><c>select</c>, <c>select-by-key</c>, <c>insert</c>, <c>update</c> or <c>delete</c>.</param>
+    /// <param name="statement"><c>select</c>, <c>select-by-key</c>, <c>insert</c>, <c>update</c>, <c>delete</c> or <c>exists</c>.</param>
     /// <param name="dialect">A dialect name, or <see langword="null"/> for the binding's database's.</param>
     /// <param name="options">The options, or <see langword="null"/> for <see cref="QuerySqlOptions.Default"/> (<c>lists</c> does not apply).</param>
     /// <returns>The statement, empty when the binding does not have it.</returns>
@@ -42,29 +52,21 @@ public static class BindingSql
     {
         ArgumentNullException.ThrowIfNull(binding);
         ArgumentNullException.ThrowIfNull(statement);
-        var writer = new Writer(binding, dialect, options);
-        switch (statement)
-        {
-            case "select":
-                writer.Select(byKey: false);
-                break;
-            case "select-by-key":
-                writer.Select(byKey: true);
-                break;
-            case "insert":
-                writer.Insert();
-                break;
-            case "update":
-                writer.Update();
-                break;
-            case "delete":
-                writer.Delete();
-                break;
-            default:
-                throw new ArgumentException($"'{statement}' is not a binding statement (select, select-by-key, insert, update, delete).", nameof(statement));
-        }
+        return Render(new Writer(binding, null, dialect, options), statement);
+    }
 
-        return writer.Result();
+    /// <summary>Renders one statement of a base's table for the derived entity whose binding has the base (table per type).</summary>
+    /// <param name="level">One of a binding's <see cref="REntityBinding.Bases"/>.</param>
+    /// <param name="statement"><c>insert</c>, <c>update</c> or <c>delete</c>; the others render as the empty string.</param>
+    /// <param name="dialect">A dialect name, or <see langword="null"/> for the binding's database's.</param>
+    /// <param name="options">The options, or <see langword="null"/> for <see cref="QuerySqlOptions.Default"/>.</param>
+    /// <returns>The statement, empty when the level does not have it.</returns>
+    /// <exception cref="ArgumentException">The statement, the dialect or an option is not one this renderer knows.</exception>
+    public static QuerySqlText Render(RBindingBase level, string statement, string? dialect = null, QuerySqlOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(level);
+        ArgumentNullException.ThrowIfNull(statement);
+        return Render(new Writer(level.Binding, level, dialect, options), statement);
     }
 
     /// <summary>The parameter names of a statement in placeholder order (the template helper <c>binding_sql_parameters</c>).</summary>
@@ -76,9 +78,47 @@ public static class BindingSql
     public static IReadOnlyList<string> Parameters(REntityBinding binding, string statement, string? dialect = null, QuerySqlOptions? options = null) =>
         Render(binding, statement, dialect, options).Parameters;
 
+    private static QuerySqlText Render(Writer writer, string statement)
+    {
+        switch (statement)
+        {
+            case "select":
+                writer.Select(byKey: false, exists: false);
+                break;
+            case "select-by-key":
+                writer.Select(byKey: true, exists: false);
+                break;
+            case "insert":
+                writer.Insert();
+                break;
+            case "update":
+                writer.Update();
+                break;
+            case "delete":
+                writer.Delete();
+                break;
+            case "exists":
+                writer.Select(byKey: true, exists: true);
+                break;
+            default:
+                throw new ArgumentException($"'{statement}' is not a binding statement (select, select-by-key, insert, update, delete, exists).", nameof(statement));
+        }
+
+        return writer.Result();
+    }
+
+    [GeneratedRegex(@"(?<![\w$])\$(\d+)(?!\d)", RegexOptions.CultureInvariant)]
+    private static partial Regex DollarPlaceholder();
+
     private sealed class Writer
     {
         private readonly REntityBinding _b;
+        private readonly RBindingBase? _level;
+        private readonly RBindingDiscriminator? _type;
+        private readonly bool _writes;
+        private readonly string _delete;
+        private readonly RColumn? _softColumn;
+        private readonly object? _softValue;
         private readonly Dialect _dialect;
         private readonly Quoting _quoting;
         private readonly QuerySqlOptions _options;
@@ -86,9 +126,18 @@ public static class BindingSql
         private readonly List<Diagnostic> _diagnostics = [];
         private readonly StringBuilder _sb = new();
 
-        public Writer(REntityBinding binding, string? dialect, QuerySqlOptions? options)
+        /// <summary>A writer for a binding's own statements, or with <paramref name="level"/> for a base's table's statements of the derived entity.</summary>
+        public Writer(REntityBinding binding, RBindingBase? level, string? dialect, QuerySqlOptions? options)
         {
             _b = binding;
+            _level = level;
+            // A base's statements for the derived entity: the derived entity's code in the base's type column, and the derived binding's
+            // writes and delete (a soft delete is the base's, so its column and value are the same).
+            var owner = level?.Derived ?? binding;
+            _type = level is null ? binding.DiscriminatorColumn : level.DiscriminatorColumn;
+            _writes = owner.Writes && binding.Writes;
+            _delete = owner.Delete;
+            (_softColumn, _softValue) = (owner.SoftDeleteColumn, owner.SoftDeleteValue);
             var name = dialect ?? binding.Database.Dialect;
             if (!SqlDialects.TryParse(name, out _dialect))
                 throw new ArgumentException($"'{name}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
@@ -128,71 +177,182 @@ public static class BindingSql
             value is null ? column + " IS NULL" : column + " = " + literal(value);
 
         /// <summary>The type codes a read, update or delete keeps, or <see langword="null"/> without a type column.</summary>
-        private string? Codes(string column) => _b.DiscriminatorColumn is not { Codes: { Count: > 0 } codes }
+        private string? Codes(RBindingDiscriminator? type, string column) => type is not { Codes: { Count: > 0 } codes }
             ? null
             : codes.Count == 1 ? column + " = " + Literal(codes[0]) : column + " IN (" + string.Join(", ", codes.Select(Literal)) + ")";
 
-        public void Select(bool byKey)
+        private static bool Reads(RBindingConstant c) => (c.SourceColumn ?? (object?)c.ViewColumn ?? c.QueryField) is not null;
+
+        private static bool Reads(RBindingDiscriminator d) => (d.SourceColumn ?? (object?)d.ViewColumn ?? d.QueryField) is not null;
+
+        private static bool Reads(RBindingField f) => f.ColumnName.Length > 0 && (f.SourceColumn ?? (object?)f.ViewColumn ?? f.QueryField) is not null;
+
+        /// <summary>The key fields a base foreign key gives, which are not in the field map: the insert writes them first.</summary>
+        private IEnumerable<RBindingField> KeyOnly() => _b.Key.Where(k => !_b.Fields.Contains(k));
+
+        /// <summary>One source the select reads: the binding's own, or a base's, joined on its foreign key to the one before it.</summary>
+        private sealed record Part(REntityBinding Binding, string Alias, RBindingDiscriminator? Type, RForeignKey? Join, string? JoinTo);
+
+        public void Select(bool byKey, bool exists)
         {
-            if (_b.SourceKind is null || (byKey && _b.Key.Count == 0))
+            if (_level is not null || _b.SourceKind is null || (byKey && _b.Key.Count == 0))
                 return;
-            var alias = _b.SourceQuery is null ? "t" : "q";
-            string Column(string name) => Q(alias) + "." + Q(name);
-            var fields = _b.Fields.Where(f => f.ColumnName.Length > 0 && (f.SourceColumn ?? (object?)f.ViewColumn ?? f.QueryField) is not null).ToList();
-            // A query with named queries puts its WITH first, before the select over it (sql-queries-design.md decision 16).
-            var (with, inner) = _b.SourceQuery is { } query
-                ? QuerySql.RenderParts(query.ForDerivedTable(), DialectTypeMaps.Name(_dialect), _options with { Lists = "expand" })
-                : ("", null);
-            if (with.Length > 0)
-                _sb.Append(with).Append('\n');
-            _sb.Append("SELECT ").Append(string.Join(", ", fields.Select(f => Column(f.ColumnName) + " AS " + Q(f.Name))));
-            _sb.Append('\n').Append("FROM ");
-            if (inner is not null)
+            var parts = new List<Part> { new(_b, _b.SourceQuery is null ? "t" : "q", _type, null, null) };
+            if (!exists)
             {
-                _diagnostics.AddRange(inner.Diagnostics);
-                _parameters.AddRange(inner.Parameters);
-                _sb.Append("(\n").Append(inner.Sql).Append("\n) ").Append(Q(alias));
+                for (var i = 0; i < _b.Bases.Count; i++)
+                {
+                    var level = _b.Bases[i];
+                    if (level.Binding.SourceKind is null)
+                        break;
+                    parts.Add(new Part(level.Binding, "b" + (i + 1).ToString(CultureInfo.InvariantCulture), level.DiscriminatorColumn, level.ForeignKey, parts[^1].Alias));
+                }
             }
-            else if (_b.SourceTable is { } table)
+
+            string Column(Part part, string name) => Q(part.Alias) + "." + Q(name);
+
+            // The bases' fields first, root first, then the binding's own; a name the binding's own fields use is read from its own source.
+            var own = new HashSet<string>(_b.Fields.Where(Reads).Select(f => f.Name), StringComparer.Ordinal);
+            var selected = new List<string>();
+            var seen = new HashSet<string>(own, StringComparer.Ordinal);
+            for (var i = parts.Count - 1; i >= 1; i--)
             {
-                _sb.Append(Qualified(table)).Append(' ').Append(Q(alias));
+                foreach (var field in parts[i].Binding.Fields.Where(Reads))
+                {
+                    if (seen.Add(field.Name))
+                        selected.Add(Column(parts[i], field.ColumnName) + " AS " + Q(field.Name));
+                }
             }
-            else if (_b.SourceView is { } view)
+
+            selected.AddRange(_b.Fields.Where(Reads).Select(f => Column(parts[0], f.ColumnName) + " AS " + Q(f.Name)));
+
+            // A query with named queries puts its WITH first, before the select over it (sql-queries-design.md decision 16). With bases,
+            // every level's named queries go into that one WITH clause, which every dialect takes at the top of a statement (SQL Server
+            // takes no WITH inside a derived table); a name an earlier level already uses is renamed for the later one.
+            var sources = new List<string>();
+            var entries = new List<string>();
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var recursive = false;
+            foreach (var part in parts)
             {
-                var name = view.Schema is { Length: > 0 } schema && _dialect != Dialect.Sqlite ? Q(schema) + "." + Q(view.Name) : Q(view.Name);
-                _sb.Append(name).Append(' ').Append(Q(alias));
+                if (part.Binding.SourceQuery is { } source)
+                {
+                    var query = source.ForDerivedTable();
+                    var (with, inner) = QuerySql.RenderParts(query, DialectTypeMaps.Name(_dialect), _options with { Lists = "expand" });
+                    _diagnostics.AddRange(inner.Diagnostics);
+                    var sql = Renumbered(inner.Sql, inner.Parameters);
+                    with = Renumbered(with, inner.Parameters);
+                    if (with.Length > 0)
+                    {
+                        foreach (var entry in query.With)
+                        {
+                            if (names.Add(entry.Name))
+                                continue;
+                            var renamed = entry.Name + "_" + part.Alias;
+                            for (var n = 2; !names.Add(renamed); n++)
+                                renamed = entry.Name + "_" + part.Alias + "_" + n.ToString(CultureInfo.InvariantCulture);
+                            (with, sql) = (Renamed(with, entry.Name, renamed), Renamed(sql, entry.Name, renamed));
+                        }
+
+                        recursive |= with.StartsWith("WITH RECURSIVE ", StringComparison.Ordinal);
+                        entries.Add(with[(with.StartsWith("WITH RECURSIVE ", StringComparison.Ordinal) ? "WITH RECURSIVE ".Length : "WITH ".Length)..]);
+                    }
+
+                    sources.Add("(\n" + sql + "\n) " + Q(part.Alias));
+                }
+                else if (part.Binding.SourceTable is { } table)
+                {
+                    sources.Add(Qualified(table) + " " + Q(part.Alias));
+                }
+                else if (part.Binding.SourceView is { } view)
+                {
+                    var name = view.Schema is { Length: > 0 } schema && _dialect != Dialect.Sqlite ? Q(schema) + "." + Q(view.Name) : Q(view.Name);
+                    sources.Add(name + " " + Q(part.Alias));
+                }
+            }
+
+            if (entries.Count > 0)
+                _sb.Append(recursive ? "WITH RECURSIVE " : "WITH ").Append(string.Join(",\n", entries)).Append('\n');
+            _sb.Append("SELECT ").Append(exists ? "COUNT(*)" : string.Join(", ", selected));
+            _sb.Append('\n').Append("FROM ").Append(sources[0]);
+            for (var i = 1; i < parts.Count; i++)
+            {
+                // Each side by its own source's column: the base's key field there, and the column of the table below that holds the key.
+                var part = parts[i];
+                var below = parts[i - 1];
+                var on = part.Join!.Columns.Select((c, k) => Column(part, ColumnIn(part.Binding, part.Join.ReferencedColumns[k])) + " = " + Column(below, ColumnIn(below.Binding, c)));
+                _sb.Append('\n').Append("JOIN ").Append(sources[i]).Append(" ON ").Append(string.Join(" AND ", on));
             }
 
             var conditions = new List<string>();
-            foreach (var constant in _b.Constants.Where(c => (c.SourceColumn ?? (object?)c.ViewColumn ?? c.QueryField) is not null))
-                conditions.Add(Equal(Column(constant.ColumnName), constant.Value, Literal));
-            if (_b.DiscriminatorColumn is { } typeColumn && (typeColumn.SourceColumn ?? (object?)typeColumn.ViewColumn ?? typeColumn.QueryField) is not null
-                && Codes(Column(typeColumn.ColumnName)) is { } kept)
-                conditions.Add(kept);
-            if (_b.Delete == "soft" && _b.SoftDeleteColumn is { } soft && ReferenceEquals(soft.Table, _b.SourceTable))
-                conditions.Add(NotDeleted(Column(soft.Name)));
+            foreach (var part in parts)
+            {
+                foreach (var constant in part.Binding.Constants.Where(Reads))
+                    conditions.Add(Equal(Column(part, constant.ColumnName), constant.Value, Literal));
+                if (part.Type is { } typeColumn && Reads(typeColumn) && Codes(typeColumn, Column(part, typeColumn.ColumnName)) is { } kept)
+                    conditions.Add(kept);
+            }
+
+            // The soft delete's column filters reads: a binding with bases takes the root's, whatever it writes or deletes itself.
+            if (_softColumn is { } soft && parts.Find(p => ReferenceEquals(soft.Table, p.Binding.SourceTable)) is { } holder)
+                conditions.Add(NotDeleted(Column(holder, soft.Name)));
             if (byKey)
             {
                 foreach (var key in _b.Key)
-                    conditions.Add(Column(key.ColumnName) + " = " + Placeholder(key.Name));
+                    conditions.Add(Column(parts[0], key.ColumnName) + " = " + Placeholder(key.Name));
             }
 
             if (conditions.Count > 0)
                 _sb.Append('\n').Append("WHERE ").Append(string.Join(" AND ", conditions));
         }
 
+        /// <summary>
+        /// The name a binding's source gives a table column: the source column of the key field or field that reads or writes it (a view's or a
+        /// query's column may be named otherwise), else the column's own name.
+        /// </summary>
+        private static string ColumnIn(REntityBinding binding, RColumn column) =>
+            binding.Key.Concat(binding.Fields).FirstOrDefault(f => ReferenceEquals(f.SourceColumn, column) || ReferenceEquals(f.WriteColumn, column))?.ColumnName
+            ?? column.Name;
+
+        /// <summary>
+        /// A query's text with its parameters joined to the statement's: with <c>$n</c> placeholders, each one renumbered to the statement's
+        /// position of its name, so two levels' queries never share a number for two names; the names of other styles are kept.
+        /// </summary>
+        private string Renumbered(string sql, IReadOnlyList<string> parameters)
+        {
+            if (_options.Placeholder != "$")
+            {
+                foreach (var name in parameters)
+                    Placeholder(name);
+                return sql;
+            }
+
+            var numbers = parameters.Select(Placeholder).ToList();
+            return sql.Length == 0 ? sql : BindingSql.DollarPlaceholder().Replace(sql, m =>
+                int.TryParse(m.Groups[1].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n >= 1 && n <= numbers.Count ? numbers[n - 1] : m.Value);
+        }
+
+        /// <summary>A named query's name renamed in a text: its quoted form, else the bare word where it stands as a name (not after a dot).</summary>
+        private string Renamed(string sql, string name, string renamed)
+        {
+            var quoted = Q(name);
+            if (!string.Equals(quoted, name, StringComparison.Ordinal))
+                return sql.Replace(quoted, Q(renamed), StringComparison.Ordinal);
+            return Regex.Replace(sql, @"(?<![\w.$""\[`])" + Regex.Escape(name) + @"(?![\w""\]`])", Q(renamed), RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        }
+
         /// <summary>A row the soft delete has not marked: the column is null or holds another value.</summary>
-        private string NotDeleted(string column) => _b.SoftDeleteValue is null
+        private string NotDeleted(string column) => _softValue is null
             ? column + " IS NOT NULL"
-            : "(" + column + " IS NULL OR " + column + " <> " + Literal(_b.SoftDeleteValue) + ")";
+            : "(" + column + " IS NULL OR " + column + " <> " + Literal(_softValue) + ")";
 
         public void Insert()
         {
-            if (!_b.Writes || _b.WriteTable is not { } table)
+            if (!_writes || _b.WriteTable is not { } table)
                 return;
             var columns = new List<string>();
             var values = new List<string>();
-            foreach (var field in _b.Fields.Where(f => f.InInsert && f.WriteColumn is not null))
+            foreach (var field in KeyOnly().Concat(_b.Fields).Where(f => f.InInsert && f.WriteColumn is not null))
             {
                 columns.Add(Q(field.WriteColumn!.Name));
                 values.Add(Placeholder(field.Name));
@@ -204,7 +364,7 @@ public static class BindingSql
                 values.Add(Literal(constant.Value));
             }
 
-            if (_b.DiscriminatorColumn is { WriteColumn: { } typeColumn } discriminator)
+            if (_type is { WriteColumn: { } typeColumn } discriminator)
             {
                 columns.Add(Q(typeColumn.Name));
                 values.Add(Literal(discriminator.Value));
@@ -245,14 +405,14 @@ public static class BindingSql
                 conditions.Add(Q(key.WriteColumn!.Name) + " = " + Placeholder(key.Name));
             foreach (var constant in _b.Constants.Where(c => c.WriteColumn is not null))
                 conditions.Add(Equal(Q(constant.WriteColumn!.Name), constant.Value, Literal));
-            if (_b.DiscriminatorColumn is { WriteColumn: { } typeColumn } && Codes(Q(typeColumn.Name)) is { } kept)
+            if (_type is { WriteColumn: { } typeColumn } && Codes(_type, Q(typeColumn.Name)) is { } kept)
                 conditions.Add(kept);
             return string.Join(" AND ", conditions);
         }
 
         public void Update()
         {
-            if (!_b.Writes || _b.WriteTable is not { } table || _b.Key.Count == 0)
+            if (!_writes || _b.WriteTable is not { } table || _b.Key.Count == 0)
                 return;
             var sets = _b.Fields.Where(f => f.InUpdate && f.WriteColumn is not null)
                 .Select(f => Q(f.WriteColumn!.Name) + " = " + Placeholder(f.Name)).ToList();
@@ -270,13 +430,13 @@ public static class BindingSql
         {
             if (_b.WriteTable is not { } table || _b.Key.Count == 0)
                 return;
-            switch (_b.Delete)
+            switch (_delete)
             {
                 case "key":
                     _sb.Append("DELETE FROM ").Append(Qualified(table)).Append('\n').Append("WHERE ").Append(WriteWhere());
                     break;
-                case "soft" when _b.SoftDeleteColumn is { } soft:
-                    _sb.Append("UPDATE ").Append(Qualified(table)).Append(" SET ").Append(Q(soft.Name)).Append(" = ").Append(Literal(_b.SoftDeleteValue))
+                case "soft" when _softColumn is { } soft && ReferenceEquals(soft.Table, table):
+                    _sb.Append("UPDATE ").Append(Qualified(table)).Append(" SET ").Append(Q(soft.Name)).Append(" = ").Append(Literal(_softValue))
                         .Append('\n').Append("WHERE ").Append(WriteWhere());
                     break;
             }

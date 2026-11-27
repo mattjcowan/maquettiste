@@ -3026,7 +3026,9 @@ paths:
         `selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys
         come back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the
         where clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a
-        read-only binding has no insert, update or delete). Parameters are named after the fields. A model with errors returns
+        read-only binding has no insert, update or delete). `exists` is the probe on the binding's own source by key. A binding
+        with bases (table per type) also has `bases`, nearest first, each with its `level` and that table's `insert`, `update`
+        and `delete` for the entity. Parameters are named after the fields. A model with errors returns
         `preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetBindingSqlAsync(entityId, bindingId, dialect, options)
@@ -14078,6 +14080,50 @@ components:
           description: The entity's type code the binding sets (several-types-design.md decision 42); left out when unset.
         discriminatorColumn:
           $ref: '#/components/schemas/BindingDiscriminatorRecord'
+        baseForeignKey:
+          type: string
+          description: Table per type (retire-projection-design.md section 4), the id of the foreign key the binding's `baseForeignKey` names;
+            left out without one, or when it does not resolve.
+        key:
+          type: array
+          description: With `baseForeignKey`, the key it gives, one field per key field of the base's binding on the foreign key's column,
+            which `fields` does not hold; left out otherwise.
+          items:
+            $ref: '#/components/schemas/BindingFieldRecord'
+        bases:
+          type: array
+          description: The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none.
+          items:
+            $ref: '#/components/schemas/BindingBaseRecord'
+    BindingBaseRecord:
+      x-engine-record: Maquettiste.Engine.BindingBaseRecord
+      description: One table above a binding's own (table per type), the base's binding that reads and writes it, and how the table below
+        joins it.
+      type: object
+      required: [binding, entity, table, foreignKey, columns, referencedColumns]
+      properties:
+        binding:
+          $ref: '#/components/schemas/Ulid'
+        entity:
+          $ref: '#/components/schemas/Ulid'
+        table:
+          type: string
+          description: The key of the table the base's binding writes, else its source's key.
+        foreignKey:
+          type: string
+          description: The id of the foreign key that joins the table below to this one.
+        columns:
+          type: array
+          description: The foreign key's columns, in the table below, by key.
+          items:
+            type: string
+        referencedColumns:
+          type: array
+          description: The columns of this table they reference, in the order of columns.
+          items:
+            type: string
+        discriminatorColumn:
+          $ref: '#/components/schemas/BindingDiscriminatorRecord'
     BindingDiscriminatorRecord:
       x-engine-record: Maquettiste.Engine.BindingDiscriminatorRecord
       description: The type column a base entity and the entities derived from it share in one table, named by the binding's
@@ -14155,7 +14201,7 @@ components:
           type: [string, 'null']
         status:
           type: string
-          enum: [field, constant, discriminator, ignored, database, computed, identity, default, soft-delete, unaccounted]
+          enum: [field, constant, discriminator, ignored, database, computed, identity, default, soft-delete, relation, unaccounted]
         field:
           type: [string, 'null']
     BindingSqlResult:
@@ -14193,6 +14239,40 @@ components:
           oneOf:
             - $ref: '#/components/schemas/BindingStatement'
             - type: 'null'
+        insert:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        update:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        delete:
+          oneOf:
+            - $ref: '#/components/schemas/BindingStatement'
+            - type: 'null'
+        exists:
+          $ref: '#/components/schemas/BindingStatement'
+          description: The probe, a count of the rows of the binding's own source with the key, joining no base; left out without key
+            fields.
+        bases:
+          type: array
+          description: With bases (table per type), each base's table's statements for this entity, nearest first; left out without bases.
+          items:
+            $ref: '#/components/schemas/BindingBaseSqlPreview'
+    BindingBaseSqlPreview:
+      x-engine-record: Maquettiste.Engine.BindingBaseSqlPreview
+      description: The statements one base's table renders for a derived entity (table per type).
+      type: object
+      required: [level, entityId, bindingId, insert, update, delete]
+      properties:
+        level:
+          type: integer
+          description: From 1 for the nearest base up to the root.
+        entityId:
+          $ref: '#/components/schemas/Ulid'
+        bindingId:
+          $ref: '#/components/schemas/Ulid'
         insert:
           oneOf:
             - $ref: '#/components/schemas/BindingStatement'
