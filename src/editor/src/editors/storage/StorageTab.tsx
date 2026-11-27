@@ -52,11 +52,11 @@ export { ConstantsGrid } from "./ConstantsGrid";
 import { ConstantsGrid } from "./ConstantsGrid";
 import { baseProblems, boundBaseOf } from "./baseTable";
 import { bindingShape } from "./bindingShape";
-import { BaseTableSection, ChildTablesSection, Problems } from "./StorageShapes";
+import { BaseTableSection, ChildTablesSection, Problems, StoreWholeAsJson } from "./StorageShapes";
 import { plainTable, type TableDoc } from "./tableDoc";
 import { commitMaterialize, databasesOf, useBindingSources, useMaterializeStatuses, useRelationColumns, useStorageAttributes } from "./useStorage";
 import { STORAGE_LABELS } from "./labels";
-import { derivedOf } from "@/editors/refWalk";
+import { derivedOf, WALK_LIMITS } from "@/editors/refWalk";
 import {
   codeValue,
   hostOf,
@@ -431,14 +431,28 @@ function BindingCard({
   );
   const { base, host: hostDoc, baseHost: baseHostDoc, baseAttributes: baseAttrs } = shape;
   const { baseStored = new Set<string>(), childStored = new Set<string>() } = shape.extras;
-  const offered = attributes.filter((a) => !baseStored.has(a.ref) && !storedByChild(a.ref, childStored));
-  const relationColumns = useRelationColumns(entityId, binding.database, hierarchyDocs);
-  const extras: ProblemExtras = { ...shape.extras, ...(relationColumns ? { relationColumns } : {}) };
-  const fieldRows = attributeRows(binding, offered, columns);
+  // A binding with a base foreign key leaves what the base stores to the base's binding; one that shares a per-type table keeps the rows
+  // (it may map the key) but nothing it leaves unmapped is expected.
+  const hidesBase = !!binding.baseForeignKey;
+  const offered = attributes.filter((a) => !(hidesBase && baseStored.has(a.ref)) && !storedByChild(a.ref, childStored));
+  const relations = useRelationColumns(entityId, binding.database, hierarchyDocs);
+  const extras: ProblemExtras = {
+    ...shape.extras,
+    ...(relations.columns ? { relationColumns: relations.columns } : {}),
+    ...(relations.incomplete ? { relationColumnsIncomplete: true } : {}),
+  };
+  const allRows = attributeRows(binding, offered, columns).map((r) =>
+    r.status === "unmapped" && baseStored.has(r.attribute.ref) ? { ...r, status: "optional" as const } : r,
+  );
+  // A value object or list held whole in a JSON column shows its row only once a field maps it; "Store whole as JSON" adds one.
+  const fieldRows = allRows.filter((r) => !(r.attribute.json && !r.field));
   const colRows = columnRows(binding, attributes, columns, typeColumn, extras);
   const validation = useValidation();
   const names = { entity: entityName, database: databaseName };
-  const local = source || !pending ? [...bindingProblems(binding, attributes, source, names, typeColumn, extras), ...baseProblems(binding, base, hostDoc)] : [];
+  const local =
+    source || !pending
+      ? [...bindingProblems(binding, attributes, source, names, typeColumn, extras), ...baseProblems(binding, base, hostDoc, baseHostDoc)]
+      : [];
   const localRules = new Set(local.map((p) => p.rule));
   const at = `/bindings/${index}`;
   const mine = (validation.data?.diagnostics ?? []).filter(
@@ -478,7 +492,7 @@ function BindingCard({
     if (failed) services.store.getState().notify(failed, "error");
   };
   // Columns for the attributes the binding leaves unmapped (materialize-columns): only a table file the binding reads and writes.
-  const unmappedAttrs = fieldRows.filter((r) => r.status === "unmapped" || r.status === "optional");
+  const unmappedAttrs = fieldRows.filter((r) => (r.status === "unmapped" || r.status === "optional") && !r.attribute.json);
   const canAddColumns =
     !!source &&
     source.kind === "table" &&
@@ -585,7 +599,6 @@ function BindingCard({
         binding={binding}
         bindingIndex={index}
         docs={hierarchyDocs}
-        baseBinding={base?.binding}
         host={hostDoc}
         tables={sources.filter((s) => s.kind === "table" && !s.projected).map((s) => ({ id: s.id, name: s.name, schema: s.schema }))}
         server={childServer}
@@ -621,7 +634,7 @@ function BindingCard({
         >
           Field map
         </SectionTitle>
-        {baseStored.size ? (
+        {hidesBase && baseStored.size ? (
           <p className="text-12 text-secondary" data-testid="field-map-base-stored">
             Stored by {base?.name ?? "the base"}&apos;s binding, not mapped here:{" "}
             {attributes
@@ -707,6 +720,18 @@ function BindingCard({
             ))}
           </tbody>
         </table>
+        <StoreWholeAsJson
+          rows={offered}
+          fields={binding.fields ?? []}
+          columns={columns}
+          onPick={(ref, column) => onEdit((b) => setField(b, ref, column, columns))}
+        />
+        {relations.incomplete ? (
+          <p className="text-12 text-secondary" data-testid="relation-columns-incomplete">
+            Some relationships were not read (the list is cut at {WALK_LIMITS.relations}): a column that looks unaccounted may be a relationship&apos;s
+            attribute.
+          </p>
+        ) : null}
       </section>
 
       <section className="flex flex-col gap-1">

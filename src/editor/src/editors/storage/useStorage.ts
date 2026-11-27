@@ -16,6 +16,9 @@ import { sourcesOf, storageAttributes, tableSource, type BindingSource, type Sto
 
 type Json = Record<string, unknown>;
 
+/** The most levels of value objects inside value objects the Storage tab reads. */
+const NESTING_CAP = 12;
+
 /**
  * The documents the bindable attributes of some entities come from (the entities, their bases, the value objects their
  * attributes use, the stereotypes and the relations at their ends), with the editor's drafts over them (`overrides`), and
@@ -52,23 +55,37 @@ export function useStorageAttributes(entityIds: readonly string[], overrides?: R
   };
   const voIds = useMemo(() => round(docs1.byId.values(), new Set()), [docs1.byId, lookup]); // eslint-disable-line react-hooks/exhaustive-deps -- round reads only the index
   const docs2 = useElements(voIds);
+  // Value objects nest to any depth: the deeper levels are read in rounds, each naming the next, up to a generous cap.
+  const qc = useQueryClient();
   const voIds3 = useMemo(() => round(docs2.byId.values(), new Set(voIds)), [docs2.byId, voIds, lookup]); // eslint-disable-line react-hooks/exhaustive-deps
-  const docs3 = useElements(voIds3);
-  const voIds4 = useMemo(() => round(docs3.byId.values(), new Set([...voIds, ...voIds3])), [docs3.byId, voIds, voIds3, lookup]); // eslint-disable-line react-hooks/exhaustive-deps
-  const docs4 = useElements(voIds4);
-  const voIds5 = useMemo(() => round(docs4.byId.values(), new Set([...voIds, ...voIds3, ...voIds4])), [docs4.byId, voIds, voIds3, voIds4, lookup]); // eslint-disable-line react-hooks/exhaustive-deps
-  const docs5 = useElements(voIds5);
+  const deep = useQuery({
+    queryKey: ["storage-nested-value-objects", voIds3.join(","), index.dataUpdatedAt],
+    enabled: voIds3.length > 0,
+    queryFn: async () => {
+      const out: Json[] = [];
+      const seen = new Set([...voIds, ...voIds3]);
+      let ids = voIds3;
+      for (let depth = 0; ids.length && depth < NESTING_CAP; depth++) {
+        const read = await Promise.all(ids.map((id) => qc.fetchQuery({ queryKey: keys.element(id), queryFn: () => loadElement(id), staleTime: 30_000 })));
+        out.push(...read.map((d) => d.json as Json));
+        ids = round(read, seen);
+        for (const id of ids) seen.add(id);
+      }
+      return out;
+    },
+  });
+  const deepPending = voIds3.length > 0 && deep.isPending;
   return useMemo(() => {
     const docs = new Map<string, Json>();
     // Names of the entities at the far end of a relation, from the index (their documents are not needed).
     for (const e of lookup.ofKind("entity")) docs.set(e.id, { kind: "entity", id: e.id, name: e.name });
-    for (const d of [...docs1.byId.values(), ...docs2.byId.values(), ...docs3.byId.values(), ...docs4.byId.values(), ...docs5.byId.values()])
-      docs.set(String((d.json as Json).id), d.json as Json);
+    for (const d of [...docs1.byId.values(), ...docs2.byId.values()]) docs.set(String((d.json as Json).id), d.json as Json);
+    for (const json of deep.data ?? []) docs.set(String(json.id), json);
     for (const [id, json] of overrides ?? []) docs.set(id, json);
     const attributes = new Map<string, StorageAttribute[]>();
     for (const id of entityIds) attributes.set(id, storageAttributes(id, docs));
-    return { docs, attributes, pending: docs1.pending || docs2.pending || docs3.pending || docs4.pending || docs5.pending };
-  }, [lookup, docs1, docs2, docs3, docs4, docs5, overrides, entityIds]);
+    return { docs, attributes, pending: docs1.pending || docs2.pending || deepPending };
+  }, [lookup, docs1, docs2, deep.data, deepPending, overrides, entityIds]);
 }
 
 /** ["tables", db, "materialize"]: under the database's tables key, so a model change that reshapes tables refetches it. */
@@ -271,19 +288,23 @@ export function removeBindings(services: AppServices, ids: readonly string[], da
  * stored by a foreign key (a relation mapping with `foreignKey` and no junction table): the binding's table counts them as the
  * relationship's (status `relation`). Reads only those relations' mappings, found through where-used, one element at a time.
  */
-export function useRelationColumns(entityId: string, database: string, docs: ReadonlyMap<string, Json>): ReadonlySet<string> | undefined {
+export function useRelationColumns(
+  entityId: string,
+  database: string,
+  docs: ReadonlyMap<string, Json>,
+): { columns: ReadonlySet<string> | undefined; incomplete: boolean } {
   const index = useIndex();
   const lookup = indexLookup(index.data);
   const qc = useQueryClient();
-  const relations = useMemo(
+  const all = useMemo(
     () =>
       [...docs.values()]
         .filter((d) => d.kind === "relation" && Array.isArray(d.attributes) && (d.attributes as unknown[]).length > 0)
         .map((d) => String(d.id))
-        .sort()
-        .slice(0, WALK_LIMITS.relations),
+        .sort(),
     [docs],
   );
+  const relations = useMemo(() => all.slice(0, WALK_LIMITS.relations), [all]);
   const query = useQuery({
     queryKey: ["relation-columns", entityId, database, relations.join(","), index.dataUpdatedAt],
     enabled: relations.length > 0,
@@ -299,5 +320,5 @@ export function useRelationColumns(entityId: string, database: string, docs: Rea
       return out;
     },
   });
-  return query.data;
+  return { columns: query.data, incomplete: all.length > WALK_LIMITS.relations };
 }

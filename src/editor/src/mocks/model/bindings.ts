@@ -1071,7 +1071,7 @@ export function bindingFindings(view: DatabaseView, docs: ReadonlyMap<string, Js
           typeColumnOf(String(e.id), b, docs),
           extras,
         ),
-        ...baseProblems(b, shape.base, shape.host),
+        ...baseProblems(b, shape.base, shape.host, shape.baseHost),
       ])
         push(p.rule, p.severity, p.message, p.pointer);
       (b.childTables ?? []).forEach((entry, j) => {

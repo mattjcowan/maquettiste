@@ -612,7 +612,10 @@ internal sealed partial class DatabaseRun
 
         // ---- table per type --------------------------------------------------------------------------------------------------
 
-        /// <summary>The binding of the base whose table <c>baseForeignKey</c> joins, once the key fits; else <see langword="null"/>.</summary>
+        /// <summary>
+        /// The binding of the base whose table <c>baseForeignKey</c> joins, once the key fits, or of the base whose table a subtype without the
+        /// key shares while that base is joined to its own (the subtype's delete follows it); else <see langword="null"/>.
+        /// </summary>
         private REntityBinding? _base;
 
         /// <summary>The key <c>baseForeignKey</c> gives: one field per key field of the base's binding, on the foreign key's column.</summary>
@@ -624,16 +627,22 @@ internal sealed partial class DatabaseRun
         /// own. MQ4130 for an entity with no bound base, MQ4133 for a binding in its base's table, MQ4128 for a key that is not the table's or
         /// does not reference the base's table, MQ4129 for one whose columns are not the table's whole primary key or that does not reference
         /// the key of the base's binding, MQ4131 for a binding that writes while its base does not (it is then read only). A binding without
-        /// the key in the table of a base that has bases shares them.
+        /// the key in the table of a base that has bases shares them, and its delete follows that base's.
         /// </summary>
         private void ResolveBase()
         {
             var baseEntity = run.BoundBase(entity);
             if (file.BaseForeignKey is not { } foreignKeyId)
             {
-                // A subtype in the table of a base joined to its own base: it shares the base's bases.
+                // A subtype in the table of a base joined to its own base: it shares the base's bases, follows the root's soft delete as a
+                // binding with its own key does (its base-level delete marks the root's row), and depends on what the base's binding read.
                 if (baseEntity is not null && run.UpperLevels(entity).Count > 0 && run._resolvedBindings.TryGetValue(baseEntity.Id, out var shared))
+                {
                     _b.Bases = [.. shared.Bases.Select(l => Level(l.Binding, l.ForeignKey))];
+                    _deps.AddRange(shared.Dependencies);
+                    _base = shared;
+                }
+
                 return;
             }
 
@@ -725,9 +734,14 @@ internal sealed partial class DatabaseRun
             static string Columns(IReadOnlyList<RColumn> columns) => string.Join(", ", columns.Select(c => "'" + c.Name + "'"));
         }
 
+        /// <summary>
+        /// One base of the binding. Under a binding that writes no table, each of the base's child tables is a copy that writes nothing, so it
+        /// renders only its select: the derived entity's rows there are read through it, never written.
+        /// </summary>
         private RBindingBase Level(REntityBinding binding, RForeignKey key) => new()
         {
-            Derived = _b, Binding = binding, ForeignKey = key, ChildTables = [.. binding.ChildTables.Select(c => new RBindingBaseChild { ChildTable = c })],
+            Derived = _b, Binding = binding, ForeignKey = key,
+            ChildTables = [.. binding.ChildTables.Select(c => new RBindingBaseChild { ChildTable = _b.Writes || !c.Writes ? c : c.ReadOnly() })],
         };
 
         /// <summary>A key field the base foreign key gives: the base's key field's name and attribute, on the foreign key's column.</summary>

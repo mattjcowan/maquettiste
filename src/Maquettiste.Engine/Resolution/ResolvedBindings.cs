@@ -153,7 +153,10 @@ public sealed class RBindingBase
 /// <summary>A child table of a base's binding, as a derived entity (table per type) uses it.</summary>
 public sealed class RBindingBaseChild
 {
-    /// <summary>The base's binding's entry: its table, owner key, fields and statements.</summary>
+    /// <summary>
+    /// The base's binding's entry: its table, owner key, fields and statements. Under a derived binding that writes no table, a copy whose
+    /// <see cref="RBindingChildTable.Writes"/> is false, so it renders only its select.
+    /// </summary>
     public RBindingChildTable ChildTable { get; internal set; } = null!;
 
     /// <summary>
@@ -365,14 +368,34 @@ public sealed class RBindingChildTable
     /// <summary>Every column of the child table, in its order, with what accounts for it (<c>owner</c> and <c>order</c> besides a binding's statuses).</summary>
     public IReadOnlyList<RBindingColumn> Columns { get; internal set; } = [];
 
-    /// <summary>Whether the entry writes its rows: the binding writes, and the entry resolves.</summary>
+    /// <summary>
+    /// Whether the entry writes its rows: the binding writes, and the entry resolves. A base's entry as a derived binding that writes no table
+    /// uses it (<see cref="RBindingBaseChild.ChildTable"/>) writes nothing.
+    /// </summary>
     public bool Writes { get; internal set; }
 
     /// <summary>
     /// What a copy of the owner does with the rows (parts-and-copy-design.md): <c>copy</c> copies them with the copied owner; <c>clear</c> and
     /// <c>reset</c>, the attribute's <c>onCopy</c> merged through the bases, leave none.
     /// </summary>
-    public string OnCopy { get; internal set; } = "copy";
+    public string OnCopy
+    {
+        get => _original?.OnCopy ?? _onCopy;
+        internal set => _onCopy = value;
+    }
+
+    private string _onCopy = "copy";
+
+    /// <summary>The entry a read-only copy was made from (its <see cref="OnCopy"/> is set after the copy is made); else <see langword="null"/>.</summary>
+    private RBindingChildTable? _original;
+
+    /// <summary>The entry as a derived binding that writes no table uses it: the same, writing nothing.</summary>
+    internal RBindingChildTable ReadOnly() => new()
+    {
+        Id = Id, Binding = Binding, AttributeRef = AttributeRef, Attribute = Attribute, IsList = IsList, Table = Table, OwnerForeignKey = OwnerForeignKey,
+        Owner = Owner, Fields = Fields, OrderColumn = OrderColumn, OrderParameter = OrderParameter, Constants = Constants, Columns = Columns, Writes = false,
+        _original = this,
+    };
 }
 
 /// <summary>One column of a child table's owner foreign key, paired with the owning table's column it references.</summary>

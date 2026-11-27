@@ -22,6 +22,8 @@ export interface TableDocFk {
 }
 export interface TableDoc {
   id: string;
+  /** The element kind, when known: a view or query read as a source is no table file. */
+  kind?: string;
   name?: string;
   columns?: TableDocColumn[];
   primaryKey?: { columns: string[] };

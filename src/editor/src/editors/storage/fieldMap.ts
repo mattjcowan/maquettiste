@@ -620,8 +620,10 @@ export interface ProblemExtras extends ColumnExtras {
   baseStored?: ReadonlySet<string>;
   /** Attribute ids stored by child tables: not expected here. */
   childStored?: ReadonlySet<string>;
-  /** The attribute ids of the entity's own key, which a base foreign key supplies. */
-  keyFromBase?: boolean;
+  /** The binding names a base foreign key: a field for something the base maps is MQ4132, and the key comes from the foreign key. */
+  baseFieldsRefused?: boolean;
+  /** The relations were read only up to a limit: a column nothing accounts for may be a relationship's, so MQ4047 is left to the engine. */
+  relationColumnsIncomplete?: boolean;
 }
 
 /** Whether a ref is an attribute a child table stores, or a path below one. */
@@ -668,7 +670,7 @@ export function bindingProblems(
   const usedColumns = new Map<string, number>();
   const seenAttributes = new Set<string>();
   (binding.fields ?? []).forEach((f, i) => {
-    if (extras.baseStored?.has(f.attribute))
+    if (extras.baseFieldsRefused && extras.baseStored?.has(f.attribute))
       out.push({
         rule: "MQ4132",
         severity: "error",
@@ -713,7 +715,9 @@ export function bindingProblems(
       });
   });
   if (writes(binding, source)) {
-    const missing = attributes.filter((a) => a.isKey && !extras.baseStored?.has(a.ref) && !(binding.fields ?? []).some((f) => f.attribute === a.ref));
+    const missing = attributes.filter(
+      (a) => a.isKey && !(extras.baseFieldsRefused && extras.baseStored?.has(a.ref)) && !(binding.fields ?? []).some((f) => f.attribute === a.ref),
+    );
     if (missing.length)
       out.push({
         rule: "MQ4046",
@@ -723,7 +727,7 @@ export function bindingProblems(
       });
   }
   const unaccounted = columnRows(binding, attributes, source.columns, typeColumn, extras).filter((r) => r.status === "unaccounted");
-  if (unaccounted.length)
+  if (unaccounted.length && !extras.relationColumnsIncomplete)
     out.push({
       rule: "MQ4047",
       severity: "warning",

@@ -15,6 +15,8 @@ const ID = {
   customer: ulid(5),
   invoice: ulid(6),
   note: ulid(7),
+  geo: ulid(17),
+  addr: ulid(18),
   rel: ulid(8),
   mapping: ulid(9),
   tPayments: ulid(10),
@@ -49,6 +51,14 @@ const table = (id: string, name: string, columns: object[], extra: object = {}) 
 async function seed(page: Page) {
   const operations = [
     { kind: "database", id: ID.db, name: "Shapes", dialect: "postgresql", byConvention: "none" },
+    { kind: "value-object", id: ID.geo, name: "GeoPoint", package: BILLING, attributes: [attribute(34, "latitude", "decimal")] },
+    {
+      kind: "value-object",
+      id: ID.addr,
+      name: "PostalAddress",
+      package: BILLING,
+      attributes: [attribute(32, "line1", "string"), attribute(33, "geo", { ref: ID.geo })],
+    },
     {
       kind: "value-object",
       id: ID.note,
@@ -60,7 +70,7 @@ async function seed(page: Page) {
     table(ID.tCards, "card_payments", [column(3, "payment_id", "int32"), column(4, "last4", "string", { length: 4 })], {
       foreignKeys: [{ id: ID.fkCard, name: "fk_card_payment", columns: [ID.col(3)], referencesTable: ID.tPayments, referencesColumns: [ID.col(1)] }],
     }),
-    table(ID.tQuotes, "quotes", [column(5, "id", "int32")]),
+    table(ID.tQuotes, "quotes", [column(5, "id", "int32"), column(16, "ship_json", "json")]),
     table(
       ID.tNotes,
       "quote_notes",
@@ -125,6 +135,7 @@ async function seed(page: Page) {
         attribute(4, "id", "int32", { required: true }),
         attribute(5, "notes", { ref: ID.note }, { collection: true }),
         attribute(6, "labels", "string", { collection: true }),
+        attribute(10, "shipTo", { ref: ID.addr }),
       ],
       bindings: [{ id: ID.bind(3), database: ID.db, source: ID.tQuotes, fields: [{ attribute: ID.att(4), column: ID.col(5) }] }],
     },
@@ -234,6 +245,9 @@ test("a list is stored in a child table of its own: owner key, order column and 
   await section.getByTestId("child-table-attribute").selectOption({ label: "notes (list)" });
   await section.getByTestId("child-table-add").click();
   const entry = section.locator(`[data-testid="child-table-entry"][data-attribute="notes"]`);
+  // Until it names its table and owner key the entry is not in the saved file (the file requires both).
+  await expect(entry.getByTestId("child-table-incomplete")).toContainText("pick the table");
+  expect(((await saved(page, ID.quote)).bindings as { childTables?: unknown[] }[])[0].childTables).toBeUndefined();
   await entry.getByTestId("child-table-table").selectOption(ID.tNotes);
 
   // The one foreign key that fits is the owner key; the position column and the members are found by name.
@@ -301,4 +315,22 @@ test("a relationship's attribute takes a column of the table that holds its fore
   const row = statement.getByTestId("column-row-terms_note");
   await expect(row).toHaveAttribute("data-status", "relation");
   await expect(statement.getByTestId("binding-problems")).not.toContainText("terms_note");
+});
+
+test("a value object is stored whole in a JSON column from an action, not a row of the field map", async ({ page }) => {
+  const editor = await open(page, "Quote", "Storage");
+  const card = editor.getByTestId("binding-card");
+  // The JSON rows are left out until a field maps one.
+  await expect(card.getByTestId("field-row-shipTo")).toHaveCount(0);
+  await expect(card.getByTestId("field-row-shipToGeoLatitude")).toBeVisible();
+  const action = card.getByTestId("store-whole-json");
+  await action.getByTestId("store-whole-json-attribute").selectOption({ label: "shipTo" });
+  // Only JSON columns are offered.
+  await expect(action.getByTestId("store-whole-json-column").locator("option")).toHaveText(["Pick a JSON column", "ship_json"]);
+  await action.getByTestId("store-whole-json-column").selectOption({ label: "ship_json" });
+  await expect(card.getByTestId("field-row-shipTo")).toHaveAttribute("data-status", "mapped");
+  await expect(card.getByTestId("field-row-shipToGeoLatitude")).toHaveAttribute("data-status", "whole");
+  await expect
+    .poll(async () => ((await saved(page, ID.quote)).bindings as { fields: { attribute: string; column: string }[] }[])[0].fields)
+    .toContainEqual({ attribute: ID.att(10), column: ID.col(16) });
 });

@@ -11074,7 +11074,7 @@ export interface components {
             /** @default [] */
             attributes?: {
                 attribute: components["schemas"]["id"];
-                /** @description The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). */
+                /** @description The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). On a relation mapping of the foreign-key shape: a column of the table that holds the foreign key, not one of the key's own columns (MQ4009). */
                 column?: components["schemas"]["id"];
                 /** @enum {unknown} */
                 storage?: "int" | "string" | "embedded" | "table" | "json";

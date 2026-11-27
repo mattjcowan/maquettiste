@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 import { baseKeyChoices, baseProblems, boundBaseOf, joinedKeyColumns, setBaseForeignKey } from "@/editors/storage/baseTable";
 import { bindingShape } from "@/editors/storage/bindingShape";
 import {
-  addChildTable,
+  childTableComplete,
+  newChildTable,
+  upsertChildTable,
   childAttribute,
   childCandidates,
   childColumnRows,
@@ -171,6 +173,64 @@ describe("table per type: the base binding and its key", () => {
   });
 });
 
+describe("table per type: what the engine reads the same way", () => {
+  it("a subtype that shares a per-type table skips the upper level's attributes as unmapped, and may map the key", () => {
+    const sharing: Json = {
+      kind: "entity",
+      id: "E_SH",
+      name: "SharingCard",
+      base: "E_CARD",
+      attributes: [],
+      bindings: [{ id: "B_SH", database: DB, source: "T_CARD", fields: [{ attribute: "a_last4", column: "cc_last4" }] }],
+    };
+    const d = docs(payment, card(), sharing);
+    const binding = (sharing.bindings as Binding[])[0];
+    const shape = bindingShape("E_SH", binding, d, (id) => ({ T_PAY: payments, T_CARD: cards })[id]);
+    // The nearest upper level is the payment: its attributes are expected nowhere here, but a field for the key is no error.
+    expect([...shape.extras.baseStored!].sort()).toEqual(["a_amount", "a_id"]);
+    expect(shape.extras.baseFieldsRefused).toBe(false);
+    const source: BindingSource = { kind: "table", id: "T_CARD", name: "card_payments", schema: null, columns: tableDocColumns(cards) };
+    const attrs = storageAttributes("E_SH", d);
+    const rules = bindingProblems(binding, attrs, source, undefined, undefined, shape.extras).map((p) => p.rule);
+    expect(rules).not.toContain("MQ4058");
+    expect(rules).not.toContain("MQ4132");
+    const mapsKey = { ...binding, fields: [...binding.fields!, { attribute: "a_id", column: "cc_pid" }] };
+    expect(bindingProblems(mapsKey, attrs, source, undefined, undefined, shape.extras).map((p) => p.rule)).not.toContain("MQ4132");
+  });
+
+  it("a base read from a view writes nothing: MQ4131 for a writing subtype, and no MQ4128 for a read-only one", () => {
+    const view: TableDoc = { id: "T_PAY", kind: "view", name: "payments_view" };
+    const viewBase = { entityId: "E_PAY", name: "Payment", binding: { id: "B_PAY", database: DB, source: "T_PAY" } as Binding };
+    const keyElsewhere = { ...(card().bindings as Binding[])[0], baseForeignKey: "FK_CARD_SELF" };
+    expect(baseProblems(keyElsewhere, viewBase, cards, view).map((p) => p.rule)).toEqual(["MQ4131"]);
+    expect(baseProblems({ ...keyElsewhere, write: "none" }, viewBase, cards, view)).toEqual([]);
+    // A base over a table file writes it; one not read yet says nothing.
+    expect(baseProblems(keyElsewhere, viewBase, cards, payments).map((p) => p.rule)).toEqual(["MQ4128"]);
+    expect(baseProblems(keyElsewhere, viewBase, cards, undefined).map((p) => p.rule)).toEqual(["MQ4128"]);
+  });
+
+  it("leaves MQ4047 to the engine when the relations were read only up to a limit", () => {
+    const d = docs(payment, card());
+    const binding = (d.get("E_CARD")!.bindings as Binding[])[0];
+    const source: BindingSource = {
+      kind: "table",
+      id: "T_CARD",
+      name: "card_payments",
+      schema: null,
+      columns: [
+        ...tableDocColumns(cards),
+        { key: "x", name: "terms", type: "string", nullable: true, identity: false, computed: false, hasDefault: false, isPrimaryKey: false },
+      ],
+    };
+    const shape = bindingShape("E_CARD", binding, d, (id) => ({ T_PAY: payments, T_CARD: cards })[id]);
+    const attrs = storageAttributes("E_CARD", d);
+    expect(bindingProblems(binding, attrs, source, undefined, undefined, shape.extras).map((p) => p.rule)).toContain("MQ4047");
+    expect(
+      bindingProblems(binding, attrs, source, undefined, undefined, { ...shape.extras, relationColumnsIncomplete: true }).map((p) => p.rule),
+    ).not.toContain("MQ4047");
+  });
+});
+
 // A quote with notes (a list of single-field value objects) and a shipping address (a value object holding a geo point).
 const geo: Json = {
   kind: "value-object",
@@ -302,17 +362,45 @@ describe("child tables", () => {
     expect(childCandidates("E_Q", b, all()).map((c) => c.name)).toEqual(["labels", "shipTo"]);
   });
 
-  it("does not offer what a base's binding stores in a child table, when the key joins the base's table", () => {
-    const base: Binding = {
-      id: "BB",
+  it("offers nothing a base level above stores, by a child table or by fields, along the whole chain", () => {
+    const rootBinding: Binding = {
+      id: "BR",
       database: DB,
       source: "T_Q",
+      fields: [{ attribute: "q_ship.ad_line", column: "x" }],
       childTables: [{ id: "C0", attribute: "q_notes", table: "T_QN", ownerForeignKey: "FK_QN_Q" }],
     };
-    const derived = docs({ ...quote, id: "E_QD", name: "QuoteD", base: "E_Q", attributes: [] }, quote, geo, address, note);
-    const joined = binding({ baseForeignKey: "FK" });
-    expect(childCandidates("E_QD", joined, derived, base).map((c) => c.name)).toEqual(["labels", "shipTo"]);
-    expect(childCandidates("E_QD", binding(), derived, base).map((c) => c.name)).toEqual(["notes", "labels", "shipTo"]);
+    const mid = { kind: "entity", id: "E_M", name: "Mid", base: "E_Q", bindings: [{ id: "BM", database: DB, source: "T_M", baseForeignKey: "FK_M" }] };
+    const leaf = { kind: "entity", id: "E_L", name: "Leaf", base: "E_M", bindings: [{ id: "BL", database: DB, source: "T_L", baseForeignKey: "FK_L" }] };
+    const chain = docs({ ...quote, bindings: [rootBinding] }, mid, leaf, geo, address, note);
+    // Two levels up from the leaf: the root's child table and fields still count.
+    expect(childCandidates("E_L", (leaf.bindings as Binding[])[0], chain).map((c) => c.name)).toEqual(["labels"]);
+    // Without a key and in another table, the binding joins nothing and every attribute is its own.
+    expect(childCandidates("E_L", { id: "BL", database: DB, source: "T_L" }, chain).map((c) => c.name)).toEqual(["notes", "labels", "shipTo"]);
+    // A subtype that shares a per-type table has the same levels above it.
+    const sharing = { kind: "entity", id: "E_S", name: "Sharing", base: "E_M", bindings: [{ id: "BS", database: DB, source: "T_M" }] };
+    const shared = docs({ ...quote, bindings: [rootBinding] }, mid, sharing, geo, address, note);
+    expect(childCandidates("E_S", (sharing.bindings as Binding[])[0], shared).map((c) => c.name)).toEqual(["labels"]);
+  });
+
+  it("holds an entry back until it names its table and owner key, then saves it once", () => {
+    const entry = newChildTable("C1", "q_notes");
+    expect(childTableComplete(entry)).toBe(false);
+    expect(childTableComplete({ ...entry, table: "T_QN" })).toBe(false);
+    const b = binding({
+      fields: [
+        { attribute: "q_id", column: "qc_id" },
+        { attribute: "q_notes.n_text", column: "x" },
+      ],
+    });
+    expect(b.childTables).toBeUndefined();
+    const done = { ...entry, table: "T_QN", ownerForeignKey: "FK_QN_Q" };
+    expect(childTableComplete(done)).toBe(true);
+    upsertChildTable(b, done);
+    expect(b.childTables).toEqual([done]);
+    expect(b.fields).toEqual([{ attribute: "q_id", column: "qc_id" }]);
+    upsertChildTable(b, { ...done, orderColumn: "nc_pos" });
+    expect(b.childTables).toHaveLength(1);
   });
 
   it("maps a list of value objects by member path, and a list of single values by the attribute itself", () => {
@@ -334,7 +422,8 @@ describe("child tables", () => {
 
   it("starts an entry from a table: the owner key, the members by name and the position column", () => {
     const b = binding();
-    const entry = addChildTable(b, "C1", "q_notes");
+    const entry = newChildTable("C1", "q_notes");
+    upsertChildTable(b, entry);
     const items = itemAttributes(childAttribute("E_Q", "q_notes", all()), all());
     pickChildTable(entry, quoteNotes, tableDocColumns(quoteNotes), ownerKeyChoices(quoteNotes, "T_Q", quotes), items, true, "notes");
     expect(entry).toMatchObject({ table: "T_QN", ownerForeignKey: "FK_QN_Q", orderColumn: "nc_pos" });
@@ -361,7 +450,7 @@ describe("child tables", () => {
         { attribute: "q_ship", column: "y" },
       ],
     });
-    addChildTable(b, "C1", "q_ship");
+    upsertChildTable(b, newChildTable("C1", "q_ship"));
     expect(b.fields).toEqual([{ attribute: "q_id", column: "qc_id" }]);
     expect(b.childTables).toHaveLength(1);
   });

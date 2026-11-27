@@ -570,6 +570,87 @@ public sealed class BindingPerTypeTests
         Assert.EndsWith(Kept, Sql(voided, "select"), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// <c>VirtualCardPayment</c> shares <c>card_payments</c> with <c>CardPayment</c>, without a base foreign key of its own (as in
+    /// <see cref="A_subtype_in_a_table_per_type_table_shares_its_bases"/>), with an optional delete of its own.
+    /// </summary>
+    private static (Payments Payments, ResolvedModel Model) VirtualCard(Dialect dialect = Dialect.PostgreSql, bool soft = true, BindingDelete? delete = null, bool readOnly = false)
+    {
+        var payments = new Payments(dialect: dialect, soft: soft);
+        var virtualCard = payments.B.Entity("VirtualCardPayment").Base(payments.CardPayment);
+        virtualCard.Bind(new EntityBinding
+        {
+            Id = "", Database = payments.Main, Source = payments.CardTable, DiscriminatorValue = Payments.Json("\"virtual-card\""), Delete = delete,
+            Write = readOnly ? new BindingWrite { None = true } : null,
+            Fields = [Payments.Field(payments.Payment, "id", payments.CardId), Payments.Field(payments.CardPayment, "last4", payments.Last4)],
+        });
+        return (payments, payments.Resolve());
+    }
+
+    [Fact]
+    public void A_subtype_sharing_a_table_per_type_table_follows_the_roots_soft_delete()
+    {
+        var (payments, model) = VirtualCard();
+
+        NoProblems(model);
+        var binding = BindingOf(model, "VirtualCardPayment");
+        Assert.Equal(("soft", "voided", true), (binding.Delete, binding.SoftDeleteColumn!.Name, binding.SoftDeleteValue));
+        // Its reads leave out the rows the root marked; its delete marks the root's row and removes none.
+        Assert.Equal("SELECT b1.amount AS amount, t.payment_id AS id, t.last4 AS last4\nFROM public.card_payments t\nJOIN public.payments b1 ON b1.id = t.payment_id\n"
+            + "WHERE b1.kind = 'virtual-card' AND (b1.voided IS NULL OR b1.voided <> true)", Sql(binding, "select"));
+        Assert.EndsWith("AND (b1.voided IS NULL OR b1.voided <> true) AND t.payment_id = @id", Sql(binding, "select-by-key"), StringComparison.Ordinal);
+        Assert.Equal("", Sql(binding, "delete"));
+        Assert.Equal("UPDATE public.payments SET voided = true\nWHERE id = @id AND kind = 'virtual-card'", Sql(binding.Bases[0], "delete"));
+
+        // A delete by key under the soft root is refused, as for a binding with its own base foreign key; a read-only one reads the same way.
+        var (_, refusedModel) = VirtualCard(delete: new BindingDelete { Mode = BindingDeleteMode.Key });
+        var refused = Assert.Single(refusedModel.Diagnostics, d => d.Rule == "MQ4134");
+        Assert.Equal((refusedModel.Entity("VirtualCardPayment").Id, "/bindings/0/delete"), (refused.ElementId, refused.JsonPointer));
+        var readOnly = BindingOf(VirtualCard(readOnly: true).Model, "VirtualCardPayment");
+        Assert.Equal(("none", "voided"), (readOnly.Delete, readOnly.SoftDeleteColumn!.Name));
+        Assert.EndsWith("(b1.voided IS NULL OR b1.voided <> true)", Sql(readOnly, "select"), StringComparison.Ordinal);
+        Assert.Equal("", Sql(readOnly.Bases[0], "delete"));
+
+        // Under a root that deletes by key, it deletes by key through each table, as before.
+        var hard = BindingOf(VirtualCard(soft: false).Model, "VirtualCardPayment");
+        Assert.Equal(("key", null), (hard.Delete, hard.SoftDeleteColumn));
+        Assert.Equal("DELETE FROM public.payments\nWHERE id = @id AND kind = 'virtual-card'", Sql(hard.Bases[0], "delete"));
+        Assert.Equal("DELETE FROM public.card_payments\nWHERE payment_id = @id", Sql(hard, "delete"));
+
+        // It depends on whatever its base's binding read (the files and tables above it), so an edit there renders it again.
+        var card = BindingOf(model, "CardPayment");
+        Assert.Empty(card.Dependencies.Except(binding.Dependencies));
+        Assert.Contains(binding.Dependencies, d => d.Contains(payments.PaymentsTable, StringComparison.Ordinal));
+    }
+
+    public static TheoryData<string, string, string> SharedSoftDeletes() => new()
+    {
+        { "postgresql", "UPDATE public.payments SET voided = true\nWHERE id = @id AND kind = 'virtual-card'", "WHERE b1.kind = 'virtual-card' AND (b1.voided IS NULL OR b1.voided <> true)" },
+        { "sqlserver", "UPDATE dbo.payments SET voided = 1\nWHERE id = @id AND kind = N'virtual-card'", "WHERE b1.kind = N'virtual-card' AND (b1.voided IS NULL OR b1.voided <> 1)" },
+        { "mysql", "UPDATE payments SET voided = 1\nWHERE id = @id AND kind = 'virtual-card'", "WHERE b1.kind = 'virtual-card' AND (b1.voided IS NULL OR b1.voided <> 1)" },
+        { "sqlite", "UPDATE payments SET voided = 1\nWHERE id = @id AND kind = 'virtual-card'", "WHERE b1.kind = 'virtual-card' AND (b1.voided IS NULL OR b1.voided <> 1)" },
+        { "oracle", "UPDATE payments SET voided = 1\nWHERE id = @id AND kind = 'virtual-card'", "WHERE b1.kind = 'virtual-card' AND (b1.voided IS NULL OR b1.voided <> 1)" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SharedSoftDeletes))]
+    public void A_subtype_sharing_a_table_per_type_table_marks_the_roots_row_in_each_dialect(string dialect, string delete, string filter)
+    {
+        var parsed = dialect switch
+        {
+            "sqlserver" => Dialect.SqlServer,
+            "mysql" => Dialect.MySql,
+            "sqlite" => Dialect.Sqlite,
+            "oracle" => Dialect.Oracle,
+            _ => Dialect.PostgreSql,
+        };
+        var binding = BindingOf(VirtualCard(parsed).Model, "VirtualCardPayment");
+
+        Assert.Equal(delete, Sql(binding.Bases[0], "delete"));
+        Assert.Equal("", Sql(binding, "delete"));
+        Assert.EndsWith(filter, Sql(binding, "select"), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_base_foreign_key_that_does_not_cascade_under_a_hard_deleting_base_is_a_warning()
     {

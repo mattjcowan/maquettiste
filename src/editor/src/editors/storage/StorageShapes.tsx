@@ -13,18 +13,20 @@ import { newId } from "@/lib/ids";
 import { ConstantsGrid } from "./ConstantsGrid";
 import { baseKeyChoices, joinedKeyColumns, setBaseForeignKey, type BoundBase } from "./baseTable";
 import {
-  addChildTable,
   childAttribute,
   childCandidates,
   childColumnRows,
   childProblems,
+  childTableComplete,
   itemAttributes,
+  newChildTable,
   ownerColumnsOf,
   ownerKeyChoices,
   pickChildTable,
   removeChildTable,
   setOrderColumn,
   setOwnerKey,
+  upsertChildTable,
 } from "./childTables";
 import {
   attributeRows,
@@ -33,11 +35,13 @@ import {
   setColumnStatus,
   setField,
   type Binding,
+  type BindingField,
   type ChildTable,
   type ListedStatus,
   type MapProblem,
   type SourceColumn,
   type StorageAttribute,
+  wholeAbove,
 } from "./fieldMap";
 import { foreignKeyLabel, plainTable, tableDocColumns, type TableDoc } from "./tableDoc";
 import { hostOf, isIntegerColumn } from "./typeColumn";
@@ -186,7 +190,6 @@ export function ChildTablesSection({
   binding,
   bindingIndex,
   docs,
-  baseBinding,
   host,
   tables,
   server,
@@ -199,7 +202,6 @@ export function ChildTablesSection({
   binding: Binding;
   bindingIndex: number;
   docs: ReadonlyMap<string, Json>;
-  baseBinding: Binding | undefined;
   /** The document of the table that owns the child rows: the binding's write table (else its source). */
   host: TableDoc | undefined;
   tables: { id: string; name: string; schema: string | null }[];
@@ -208,8 +210,28 @@ export function ChildTablesSection({
   databaseName: string;
   onEdit: (change: (b: Binding) => void) => void;
 }) {
-  const entries = binding.childTables ?? [];
-  const candidates = childCandidates(entityId, binding, docs, baseBinding);
+  const saved = binding.childTables ?? [];
+  // An entry is saved once it names its table and owner key (the file requires both); until then it lives here, apart from the document.
+  const [drafts, setDrafts] = useState<Record<string, ChildTable>>({});
+  const entries = [...saved.map((e) => drafts[e.id] ?? e), ...Object.values(drafts).filter((d) => !saved.some((e) => e.id === d.id))];
+  const candidates = childCandidates(
+    entityId,
+    binding,
+    docs,
+    Object.values(drafts).map((d) => d.attribute),
+  );
+  const editEntry = (base: ChildTable, change: (e: ChildTable) => void) => {
+    const next = structuredClone(drafts[base.id] ?? base);
+    change(next);
+    if (childTableComplete(next)) {
+      setDrafts(({ [base.id]: _gone, ...rest }) => rest);
+      onEdit((b) => void upsertChildTable(b, next));
+    } else setDrafts((d) => ({ ...d, [base.id]: next }));
+  };
+  const removeEntry = (id: string) => {
+    setDrafts(({ [id]: _gone, ...rest }) => rest);
+    if (saved.some((e) => e.id === id)) onEdit((b) => void removeChildTable(b, id));
+  };
   const [picked, setPicked] = useState("");
   const choice = candidates.find((c) => c.id === picked) ?? candidates[0];
   if (!entries.length && !candidates.length) return null;
@@ -242,7 +264,8 @@ export function ChildTablesSection({
               title={choice ? `Store ${choice.name} in a table of its own.` : "Every list and value object is stored already."}
               onClick={() => {
                 if (!choice) return;
-                onEdit((b) => void addChildTable(b, newId(), choice.id));
+                const entry = newChildTable(newId(), choice.id);
+                setDrafts((d) => ({ ...d, [entry.id]: entry }));
                 setPicked("");
               }}
             >
@@ -254,29 +277,28 @@ export function ChildTablesSection({
         Child tables
       </SectionTitle>
       {entries.length ? null : <p className="text-12 text-secondary">None: lists and value objects are not stored by this binding.</p>}
-      {entries.map((entry, i) => (
-        <ChildEntry
-          key={entry.id}
-          dom={`${dom}-child-${i}`}
-          entityId={entityId}
-          entityName={entityName}
-          binding={binding}
-          entry={entry}
-          pointer={`/bindings/${bindingIndex}/childTables/${i}`}
-          docs={docs}
-          host={host}
-          tables={tables}
-          server={server}
-          databaseName={databaseName}
-          onEdit={(change) =>
-            onEdit((b) => {
-              const e = b.childTables?.find((x) => x.id === entry.id);
-              if (e) change(e);
-            })
-          }
-          onRemove={() => onEdit((b) => void removeChildTable(b, entry.id))}
-        />
-      ))}
+      {entries.map((entry, i) => {
+        const at = saved.findIndex((e) => e.id === entry.id);
+        return (
+          <ChildEntry
+            key={entry.id}
+            dom={`${dom}-child-${i}`}
+            entityId={entityId}
+            entityName={entityName}
+            binding={binding}
+            entry={entry}
+            incomplete={!childTableComplete(entry) || !!drafts[entry.id]}
+            pointer={at >= 0 && !drafts[entry.id] ? `/bindings/${bindingIndex}/childTables/${at}` : null}
+            docs={docs}
+            host={host}
+            tables={tables}
+            server={server}
+            databaseName={databaseName}
+            onEdit={(change) => editEntry(entry, change)}
+            onRemove={() => removeEntry(entry.id)}
+          />
+        );
+      })}
     </section>
   );
 }
@@ -287,6 +309,7 @@ function ChildEntry({
   entityName,
   binding,
   entry,
+  incomplete,
   pointer,
   docs,
   host,
@@ -301,7 +324,10 @@ function ChildEntry({
   entityName: string;
   binding: Binding;
   entry: ChildTable;
-  pointer: string;
+  /** Not saved yet: it lacks its table or owner key. */
+  incomplete: boolean;
+  /** The entry's JSON pointer in the entity file, when it is saved. */
+  pointer: string | null;
   docs: ReadonlyMap<string, Json>;
   host: TableDoc | undefined;
   tables: { id: string; name: string; schema: string | null }[];
@@ -322,30 +348,34 @@ function ChildEntry({
   const ownerTable = plainTable(hostOf(binding));
   const fits = ownerKeyChoices(child, ownerTable, host);
   const owned = ownerColumnsOf(entry, child);
-  const rows = attributeRows(entry, items, columns, entry.fields ?? []);
+  const allRows = attributeRows(entry, items, columns, entry.fields ?? []);
+  const rows = allRows.filter((r) => !(r.attribute.json && !r.field));
   const colRows = childColumnRows(entry, items, columns, child);
   const tableName = child?.name ?? tables.find((t) => t.id === entry.table)?.name ?? entry.table ?? "the table";
   const baseOwnsKey = !!binding.baseForeignKey;
-  const local = loading
-    ? []
-    : childProblems(
-        entry,
-        attribute,
-        items,
-        columns,
-        child,
-        host,
-        binding,
-        !!child || !entry.table || !loading,
-        { entity: entityName, table: tableName },
-        baseOwnsKey,
-      );
-  const localKeys = new Set(local.map((p) => `${p.rule}:${p.pointer}`));
+  const local =
+    loading || !entry.table
+      ? []
+      : childProblems(
+          entry,
+          attribute,
+          items,
+          columns,
+          child,
+          host,
+          binding,
+          !!child || !entry.table || !loading,
+          { entity: entityName, table: tableName },
+          baseOwnsKey,
+        );
+  // The engine's findings at this entry (exactly, or below it: entry 1 is not entry 10), unless they repeat a local one.
+  const within = (p: { pointer: string }) => pointer !== null && (p.pointer === pointer || p.pointer.startsWith(`${pointer}/`));
   const shown: MapProblem[] = [
     ...local,
     ...server
-      .filter((p) => p.pointer.startsWith(pointer) && !localKeys.has(`${p.rule}:${p.pointer.slice(pointer.length)}`) && !local.some((l) => l.rule === p.rule))
-      .map((p) => ({ ...p, pointer: p.pointer.slice(pointer.length) })),
+      .filter((p) => within(p))
+      .map((p) => ({ ...p, pointer: p.pointer.slice(pointer?.length ?? 0) }))
+      .filter((p) => !local.some((l) => l.rule === p.rule && l.pointer === p.pointer && l.message === p.message)),
   ];
   // The columns a field may take: not the owner key, the position or a column another field reads.
   const usedElsewhere = (ref: string) => new Set((entry.fields ?? []).filter((f) => f.attribute !== ref).map((f) => findColumn(columns, f.column)?.key));
@@ -444,6 +474,11 @@ function ChildEntry({
           <Trash2 />
         </Button>
       </div>
+      {incomplete ? (
+        <p className="text-12 text-warning" data-testid="child-table-incomplete">
+          Not saved yet: {entry.table ? "pick the owner key" : "pick the table"} (a child table needs both to be saved).
+        </p>
+      ) : null}
       <Problems problems={shown} testid="child-table-problems" />
       {child ? (
         <>
@@ -496,6 +531,12 @@ function ChildEntry({
               ))}
             </tbody>
           </table>
+          <StoreWholeAsJson
+            rows={items}
+            fields={entry.fields ?? []}
+            columns={free("")}
+            onPick={(ref, column) => onEdit((x) => void setField(x, ref, column, columns))}
+          />
           <ConstantsGrid
             dom={`${dom}-constants`}
             binding={entry}
@@ -551,6 +592,71 @@ function ChildEntry({
           {loading ? `Loading ${databaseName}…` : entry.table ? "The table is not a table file of the database." : "Pick the table that holds the rows."}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * "Store whole as JSON…": a value object or list (nested ones included) held whole in one JSON column. Its row is left out of the field map
+ * until a field maps it, so the map stays short; the action picks the attribute, then a column that can hold JSON.
+ */
+export function StoreWholeAsJson({
+  rows,
+  fields,
+  columns,
+  onPick,
+}: {
+  rows: readonly StorageAttribute[];
+  fields: readonly BindingField[];
+  columns: readonly SourceColumn[];
+  onPick: (ref: string, column: SourceColumn) => void;
+}) {
+  const [ref, setRef] = useState("");
+  const candidates = rows.filter(
+    (r) => r.json && !fields.some((f) => f.attribute === r.ref || f.attribute.startsWith(`${r.ref}.`)) && !wholeAbove(r.ref, fields),
+  );
+  if (!candidates.length) return null;
+  const used = new Set(fields.map((f) => findColumn(columns, f.column)?.key));
+  const jsonColumns = columns.filter((c) => /json/i.test(c.type ?? "") && !used.has(c.key));
+  const chosen = candidates.find((c) => c.ref === ref);
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-12" data-testid="store-whole-json">
+      <Select
+        aria-label="Store whole as JSON"
+        className="h-6 w-56"
+        value={chosen?.ref ?? ""}
+        onChange={(e) => setRef(e.target.value)}
+        data-testid="store-whole-json-attribute"
+      >
+        <option value="">Store whole as JSON…</option>
+        {candidates.map((c) => (
+          <option key={c.ref} value={c.ref}>
+            {c.name}
+          </option>
+        ))}
+      </Select>
+      {chosen ? (
+        <Select
+          aria-label={`JSON column for ${chosen.name}`}
+          className="h-6 w-48"
+          value=""
+          data-testid="store-whole-json-column"
+          onChange={(e) => {
+            const column = jsonColumns.find((c) => c.key === e.target.value);
+            if (column) {
+              onPick(chosen.ref, column);
+              setRef("");
+            }
+          }}
+        >
+          <option value="">{jsonColumns.length ? "Pick a JSON column" : "No free JSON column in the table"}</option>
+          {jsonColumns.map((c) => (
+            <option key={c.key} value={c.key}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+      ) : null}
     </div>
   );
 }

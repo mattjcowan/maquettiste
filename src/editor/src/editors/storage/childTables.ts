@@ -22,6 +22,7 @@ import {
 } from "./fieldMap";
 import { columnIds, isPrimaryOrUnique, type TableDoc, type TableDocFk } from "./tableDoc";
 import { isIntegerColumn } from "./typeColumn";
+import { upperLevels } from "./baseTable";
 
 type Json = Record<string, unknown>;
 
@@ -47,18 +48,28 @@ const voOf = (a: AttrJson, docs: ReadonlyMap<string, Json>): Json | undefined =>
   return target?.kind === "value-object" ? target : undefined;
 };
 
+/** Whether a binding stores an attribute: a field on it or on one of its members, or a child table. */
+const storedBy = (binding: Binding, attributeId: string): boolean =>
+  (binding.childTables ?? []).some((c) => c.attribute === attributeId) ||
+  (binding.fields ?? []).some((f) => f.attribute === attributeId || f.attribute.startsWith(`${attributeId}.`));
+
 /**
  * The attributes a binding can store in a table of its own: the entity's lists and single value objects, its own and inherited, that no
- * entry stores yet and that the base's binding does not store (when this binding joins its base's table). `baseBinding` is the bound base's.
+ * entry stores yet (`pending` holds the attributes of entries not saved yet) and that no table above stores (the engine refuses one a
+ * base level's binding stores, by fields or by a child table, along the whole chain).
  */
-export function childCandidates(entityId: string, binding: Binding, docs: ReadonlyMap<string, Json>, baseBinding?: Binding): ChildCandidate[] {
+export function childCandidates(entityId: string, binding: Binding, docs: ReadonlyMap<string, Json>, pending: readonly string[] = []): ChildCandidate[] {
   const out: ChildCandidate[] = [];
-  const taken = new Set((binding.childTables ?? []).map((c) => c.attribute));
-  const baseStores = new Set(binding.baseForeignKey ? (baseBinding?.childTables ?? []).map((c) => c.attribute) : []);
+  const taken = new Set([...(binding.childTables ?? []).map((c) => c.attribute), ...pending]);
+  const levels = upperLevels(entityId, binding, docs).map((l) => ({
+    binding: l.binding,
+    ids: new Set(hierarchyOf(l.entityId, docs).flatMap((e) => ((docs.get(e)?.attributes as AttrJson[] | undefined) ?? []).map((a) => a.id))),
+  }));
   for (const id of hierarchyOf(entityId, docs).reverse()) {
     const level = docs.get(id);
     for (const a of (level?.attributes as AttrJson[] | undefined) ?? []) {
-      if (!a?.id || taken.has(a.id) || baseStores.has(a.id) || (a.derived && a.derived.stored !== true)) continue;
+      if (!a?.id || taken.has(a.id) || (a.derived && a.derived.stored !== true)) continue;
+      if (levels.some((l) => l.ids.has(a.id) && storedBy(l.binding, a.id))) continue;
       if (a.collection === true || voOf(a, docs))
         out.push({ id: a.id, name: a.name, isList: a.collection === true, from: id === entityId ? undefined : String(level?.name ?? "") });
     }
@@ -261,13 +272,24 @@ const tableDocColumnsOf = (t: TableDoc) => (t.columns ?? []).map((c) => ({ key: 
 
 // ------------------------------------------------------------------ edits (each one gesture: one save, one undo step)
 
-/** Adds an entry for the attribute (its table comes next); a field of the binding that mapped the attribute or its members goes. */
-export function addChildTable(b: Binding, id: string, attribute: string): ChildTable {
-  const entry: ChildTable = { id, attribute, table: "", ownerForeignKey: "" };
-  b.fields = (b.fields ?? []).filter((f) => f.attribute !== attribute && !f.attribute.startsWith(`${attribute}.`));
-  if (!b.fields.length) delete b.fields;
-  b.childTables = [...(b.childTables ?? []), entry];
-  return entry;
+/** A new entry for the attribute, not in the binding yet: it is saved once its table and owner key are set (the file needs both). */
+export function newChildTable(id: string, attribute: string): ChildTable {
+  return { id, attribute, table: "", ownerForeignKey: "" };
+}
+
+/** Whether an entry can be saved: the file requires a table and an owner foreign key. */
+export const childTableComplete = (e: ChildTable): boolean => !!e.table && !!e.ownerForeignKey;
+
+/** Saves an entry (replacing the one with its id, or adding it); a field of the binding that mapped the attribute or its members goes. */
+export function upsertChildTable(b: Binding, entry: ChildTable): Binding {
+  const list = b.childTables ?? [];
+  if (list.some((c) => c.id === entry.id)) b.childTables = list.map((c) => (c.id === entry.id ? entry : c));
+  else {
+    b.childTables = [...list, entry];
+    b.fields = (b.fields ?? []).filter((f) => f.attribute !== entry.attribute && !f.attribute.startsWith(`${entry.attribute}.`));
+    if (!b.fields.length) delete b.fields;
+  }
+  return b;
 }
 
 /** Removes an entry. */

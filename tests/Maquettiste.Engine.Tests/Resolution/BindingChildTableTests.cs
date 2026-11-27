@@ -671,7 +671,7 @@ public sealed class BindingChildTableTests
     /// table; <c>DraftDocument</c> shares the base's table and stores them in the base's child table.
     /// </summary>
     private static (ResolvedModel Model, EntityBuilder Signed, EntityBuilder Counter, EntityBuilder Draft, EntityBuilder Document) Documents(
-        bool baseStores, bool signedStores, bool counterStores, Func<EntityBuilder, EntityCopy>? counterCopy = null)
+        bool baseStores, bool signedStores, bool counterStores, Func<EntityBuilder, EntityCopy>? counterCopy = null, bool signedReadOnly = false)
     {
         var b = new ModelBuilder(seed: 74);
         var db = b.Database("main", Dialect.PostgreSql);
@@ -716,7 +716,11 @@ public sealed class BindingChildTableTests
         };
         document.Bind(new EntityBinding { Id = "", Database = db.Id, Source = docs, Fields = [new BindingField { Attribute = document.AttrId("id"), Column = docId }], ChildTables = baseStores ? [Child(docNotes)] : [] });
         var signedDocument = b.Entity("SignedDocument").Base(document);
-        signedDocument.Bind(new EntityBinding { Id = "", Database = db.Id, Source = signed.Table, BaseForeignKey = signed.Key, ChildTables = signedStores ? [Child(signedNotes)] : [] });
+        signedDocument.Bind(new EntityBinding
+        {
+            Id = "", Database = db.Id, Source = signed.Table, BaseForeignKey = signed.Key, ChildTables = signedStores ? [Child(signedNotes)] : [],
+            Write = signedReadOnly ? new BindingWrite { None = true } : null,
+        });
         var counterDocument = b.Entity("CounterSignedDocument").Base(signedDocument);
         if (counterCopy is not null)
             counterDocument.Copy(counterCopy(document));
@@ -760,6 +764,35 @@ public sealed class BindingChildTableTests
         Assert.Equal("copy", model.Entity("Document").Bindings["main"].ChildTables[0].OnCopy);
         Assert.Equal("clear", BindingViews.Record(counter).Bases![1].ChildTables![0].OnCopy);
         Editor.ContractCheck.Validate(model, "bindingBaseChildRecord");
+    }
+
+    [Fact]
+    public void A_bases_child_table_under_a_read_only_subtype_writes_nothing()
+    {
+        // SignedDocument writes no table: the notes Document stores reach it read only, so they render their select and no insert or delete.
+        var (model, _, _, _, _) = Documents(baseStores: true, signedStores: false, counterStores: false,
+            counterCopy: d => new EntityCopy { Attributes = [new CopyAttributeEntry { Attribute = d.AttrId("notes"), OnCopy = AttributeOnCopy.Clear }] }, signedReadOnly: true);
+
+        var signed = model.Entity("SignedDocument").Bindings["main"];
+        Assert.False(signed.Writes);
+        var inherited = signed.Bases[0].ChildTables[0].ChildTable;
+        Assert.False(inherited.Writes);
+        Assert.Equal("SELECT t.text AS text\nFROM public.document_notes t\nWHERE t.document_id = @ownerId", Sql(inherited, "select"));
+        Assert.Equal(("", ""), (Sql(inherited, "insert"), Sql(inherited, "delete")));
+        // The base's own entry still writes, and the read-only copy keeps its onCopy.
+        var own = model.Entity("Document").Bindings["main"].ChildTables[0];
+        Assert.True(own.Writes);
+        Assert.StartsWith("INSERT INTO public.document_notes", Sql(own, "insert"), StringComparison.Ordinal);
+        Assert.Equal((own.Id, own.OnCopy), (inherited.Id, inherited.OnCopy));
+        // A subtype below it is read only too (MQ4131), and so are the entries it inherits.
+        var counter = model.Entity("CounterSignedDocument").Bindings["main"];
+        Assert.False(counter.Writes);
+        Assert.False(counter.Bases[1].ChildTables[0].ChildTable.Writes);
+        Assert.Equal("clear", counter.Bases[1].ChildTables[0].OnCopy);
+
+        // A subtype that writes uses the base's entry itself.
+        var (writing, _, _, _, _) = Documents(baseStores: true, signedStores: false, counterStores: false);
+        Assert.Same(writing.Entity("Document").Bindings["main"].ChildTables[0], writing.Entity("SignedDocument").Bindings["main"].Bases[0].ChildTables[0].ChildTable);
     }
 
     [Fact]

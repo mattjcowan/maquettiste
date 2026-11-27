@@ -25,8 +25,29 @@ export function boundBaseOf(entityId: string, database: string, docs: ReadonlyMa
   return undefined;
 }
 
-/** Whether the base's binding writes a table (a base read from a view or query, or one that writes none, leaves the derived binding read only). */
-export const baseWrites = (base: Binding): boolean => base.write !== "none" && (typeof base.write === "object" || !!base.source);
+/**
+ * Whether the base's binding writes a table: a named write table does, `none` does not, and by default it writes its source when that is a
+ * table file (a base read from a view or a query writes nothing, which leaves the derived binding read only). Undefined while the source
+ * is not read.
+ */
+export function baseWrites(base: Binding, baseSource?: TableDoc): boolean | undefined {
+  if (base.write === "none") return false;
+  if (typeof base.write === "object") return true;
+  return baseSource ? baseSource.kind === undefined || baseSource.kind === "table" : undefined;
+}
+
+/**
+ * The bound bases whose tables an entity's rows also live in (table per type), nearest first, as the engine reads them: the base a base
+ * foreign key reaches, then its own levels; a binding without a key that keeps its rows in its bound base's table shares the base's levels.
+ */
+export function upperLevels(entityId: string, binding: Binding, docs: ReadonlyMap<string, Json>, depth = 0): BoundBase[] {
+  const base = boundBaseOf(entityId, binding.database, docs);
+  if (!base || depth > 16) return [];
+  const levels: BoundBase[] = binding.baseForeignKey ? [base] : [];
+  if (levels.length || hostOf(binding) === hostOf(base.binding))
+    for (const l of upperLevels(base.entityId, base.binding, docs, depth + 1)) if (!levels.some((x) => x.entityId === l.entityId)) levels.push(l);
+  return levels;
+}
 
 /**
  * The foreign keys of the binding's table the editor offers for `baseForeignKey`: those that reference the base binding's table and
@@ -81,7 +102,7 @@ export function baseStoredRefs(base: BoundBase | undefined, docs: ReadonlyMap<st
  * and MQ4131 (the binding writes while the base writes nothing). `table` is the binding's table document, undefined while unknown (then
  * nothing is said about the keys).
  */
-export function baseProblems(binding: Binding, base: BoundBase | undefined, table: TableDoc | undefined): MapProblem[] {
+export function baseProblems(binding: Binding, base: BoundBase | undefined, table: TableDoc | undefined, baseSource?: TableDoc): MapProblem[] {
   const key = binding.baseForeignKey;
   if (!key) return [];
   const out: MapProblem[] = [];
@@ -105,8 +126,10 @@ export function baseProblems(binding: Binding, base: BoundBase | undefined, tabl
     });
     return out;
   }
+  const writes = baseWrites(base.binding, baseSource);
   const fk = table?.foreignKeys?.find((k) => k.id === key);
-  if (table && (!fk || fk.referencesTable !== plainTable(baseHost)))
+  // A base read from a view or query has no table for the key to reference: the engine pairs the columns by name there.
+  if (writes !== false && table && (!fk || fk.referencesTable !== plainTable(baseHost)))
     out.push({
       rule: "MQ4128",
       severity: "error",
@@ -115,14 +138,14 @@ export function baseProblems(binding: Binding, base: BoundBase | undefined, tabl
         : `The base foreign key does not reference the table of ${base.name}'s binding.`,
       pointer: at,
     });
-  else if (table && fk && !isWholePrimaryKey(table, columnIds(table, fk.columns)))
+  else if (writes !== false && table && fk && !isWholePrimaryKey(table, columnIds(table, fk.columns)))
     out.push({
       rule: "MQ4129",
       severity: "error",
       message: `The columns of the base foreign key are not the whole primary key of ${table.name ?? "the table"}.`,
       pointer: at,
     });
-  if (binding.write !== "none" && !baseWrites(base.binding))
+  if (binding.write !== "none" && writes === false)
     out.push({
       rule: "MQ4131",
       severity: "error",

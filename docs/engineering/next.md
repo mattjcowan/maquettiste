@@ -285,7 +285,8 @@ Built since:
   per type and with one table per hierarchy; a copy carries the rows as the attribute's `onCopy` says. Field paths walk
   nested value objects to any depth, and a path that ends at a nested value object or a list maps a JSON column. MQ4137 to
   MQ4144; MQ4058 counts nested members. `csharp-dapper` loads and writes the rows in one unit, its bases' too, and its delete
-  checks the row first. No editor screen yet (part 3). [The design](retire-projection-design.md), section 5.
+  checks the row first. The Storage tab has a Child tables section and a Base table section, the field map walks nested
+  paths, and the SQL preview shows every level and child table. [The design](retire-projection-design.md), section 5.
 - **Queries stop naming entities: removal (0.28.0).** `entity`, `collections` and a select field's `attribute` are gone
   from the query format, the resolved model, the SQL renderer (`query_collection_sql` too), `csharp-dapper` and the
   editor. A file that still has one does not load: MQ4127 is now an error at load that no setting changes, naming the
@@ -312,7 +313,7 @@ design questions on 2026-11-26; their answers are folded in below.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
-- **Retiring projection (tables made from entities).** Being built (pull request 1 of 3), design: [retire-projection-design.md](retire-projection-design.md).
+- **Retiring projection (tables made from entities).** Pull request 1 of 3 built (the binding shapes), design: [retire-projection-design.md](retire-projection-design.md).
   Asked for by the owner on 2026-11-26 (not requested by a team). One release (0.29.0), three pull requests: bindings
   learn every shape projection makes (table per type with `baseForeignKey`; an attribute in a child table, as a list or
   a single value, with `childTables`; field paths of any depth; relation attributes on a foreign key; entity seeds

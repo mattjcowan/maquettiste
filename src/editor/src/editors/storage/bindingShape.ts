@@ -1,6 +1,6 @@
 // What a binding's shape beyond one table changes for its field map, free of React so the Storage tab and the mock backend agree: the
 // bound base (table per type), what the base's binding stores, what its child tables store, and the key columns the base foreign key joins.
-import { boundBaseOf, joinedKeyColumns, type BoundBase, type JoinedKeyColumn } from "./baseTable";
+import { boundBaseOf, joinedKeyColumns, upperLevels, type BoundBase, type JoinedKeyColumn } from "./baseTable";
 import { storageAttributes, type Binding, type ProblemExtras, type StorageAttribute } from "./fieldMap";
 import { plainTable, type TableDoc } from "./tableDoc";
 import { hostOf } from "./typeColumn";
@@ -14,7 +14,7 @@ export interface BindingShape {
   baseHost: TableDoc | undefined;
   baseAttributes: StorageAttribute[];
   joined: JoinedKeyColumn[];
-  /** What the field map and the checks leave out: `baseStored` is empty without a base foreign key. */
+  /** What the field map and the checks leave out. */
   extras: ProblemExtras;
 }
 
@@ -26,7 +26,9 @@ export function bindingShape(entityId: string, binding: Binding, docs: ReadonlyM
   const host = hostKey ? tableOf(hostKey) : undefined;
   const baseHost = baseHostKey ? tableOf(baseHostKey) : undefined;
   const baseAttributes = base ? storageAttributes(base.entityId, docs) : [];
-  const baseStored = new Set(binding.baseForeignKey ? baseAttributes.map((a) => a.ref) : []);
+  // What the tables above store, as the engine reads it: the nearest upper level, which a subtype sharing a table-per-type table has too.
+  const above = upperLevels(entityId, binding, docs)[0] ?? (binding.baseForeignKey ? base : undefined);
+  const baseStored = new Set(above ? storageAttributes(above.entityId, docs).map((a) => a.ref) : []);
   const childStored = new Set((binding.childTables ?? []).map((c) => c.attribute));
   const fk = host?.foreignKeys?.find((k) => k.id === binding.baseForeignKey);
   const joined = fk ? joinedKeyColumns(fk, host, baseHost, base?.binding, baseAttributes) : [];
@@ -36,6 +38,11 @@ export function bindingShape(entityId: string, binding: Binding, docs: ReadonlyM
     baseHost,
     baseAttributes,
     joined,
-    extras: { baseStored, childStored, baseKeyColumns: new Map(joined.map((j) => [j.column, j.attribute ?? j.referenced])) },
+    extras: {
+      baseStored,
+      childStored,
+      baseFieldsRefused: !!binding.baseForeignKey,
+      baseKeyColumns: new Map(joined.map((j) => [j.column, j.attribute ?? j.referenced])),
+    },
   };
 }
