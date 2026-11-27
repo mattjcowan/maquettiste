@@ -296,6 +296,16 @@ design questions on 2026-11-26; their answers are folded in below.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
+- **Retiring projection (tables made from entities).** Being built (pull request 1 of 3), design: [retire-projection-design.md](retire-projection-design.md).
+  Asked for by the owner on 2026-11-26 (not requested by a team). One release (0.29.0), three pull requests: bindings
+  learn every shape projection makes (table per type with `baseForeignKey`; an attribute in a child table, as a list or
+  a single value, with `childTables`; field paths of any depth; relation attributes on a foreign key; entity seeds
+  through bindings); "Create tables…" proposes every shape and converts our sample, fixtures and bench model with no DDL
+  change and no migration; then conventions that lay out tables, overlays, the entity half of mapping elements and the
+  promoted shape are removed, with guards for old database files and baselines. Relation mappings stay. Revision 3
+  folds in a Fable review; about 14 to 17 days. The requesting team answered on 2026-11-26 that they use none of what is
+  removed. The team's two follow-up answers (section 10) clear the guards for them. The owner confirmed D1 to D4 on 2026-11-26.
+
 ### Model service: persistence providers, snapshots, a model library (snapshots built in 0.8.0)
 
 The model stops being only "the JSON files in this checkout" and becomes something an instance serves; generation stays
