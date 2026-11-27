@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.28.0 (not released yet)
+## 0.28.0 (2026-11-26)
 
 - **Editor screens for subtypes in one table and for what a copy carries over.** On an entity's Storage tab, each binding of an
   entity in a hierarchy has a Type column section: a base picks the column and its code, a derived entity sees the column read only,
