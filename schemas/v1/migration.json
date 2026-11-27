@@ -28,6 +28,7 @@
     "to",
     "via",
     "keys",
+    "adopted",
     "conversion",
     "dataCheck",
     "acknowledge",
@@ -155,6 +156,14 @@
     },
     "keys": {
       "description": "Every key a rekey moved; a column, index, unique, foreign-key or check entry's table is its table's key before the fact.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rekey"
+      },
+      "default": []
+    },
+    "adopted": {
+      "description": "For a rekey that Create tables wrote: the objects the database already holds as the model now declares them (a table, a constraint by its table, a column's default by its table), each by its key after the fact. The next schema diff reads them as already there, once.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/rekey"

@@ -1421,6 +1421,12 @@ public sealed class RMigration : RAnnotated
     /// <summary>The keys a <c>rekey</c> moved, as recorded.</summary>
     public IReadOnlyList<RMigrationRekey> Keys { get; internal set; } = [];
 
+    /// <summary>
+    /// For a <c>rekey</c> "Create tables…" wrote: the objects the database already holds as the model now declares them (a table, a
+    /// constraint by its table and name, a column's default by its table), which the next schema diff reads as already there, once.
+    /// </summary>
+    public IReadOnlyList<RMigrationRekey> Adopted { get; internal set; } = [];
+
     /// <summary>How a <c>change-type</c> converts stored values.</summary>
     public RConversion? Conversion { get; internal set; }
 

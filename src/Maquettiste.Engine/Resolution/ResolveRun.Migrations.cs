@@ -93,6 +93,7 @@ internal sealed partial class ResolveRun
             To = MakeState(fact.To),
             Via = [.. fact.Via],
             Keys = [.. fact.Keys.Select(k => new RMigrationRekey { Kind = k.Kind, Table = k.Table, From = k.From, To = k.To, Name = k.Name })],
+            Adopted = [.. fact.Adopted.Select(k => new RMigrationRekey { Kind = k.Kind, Table = k.Table, From = k.From, To = k.To, Name = k.Name })],
             Conversion = MakeConversion(fact, dialect),
             DataCheck = fact.DataCheck is { } check ? new RMigrationDataCheck { Query = ForDialect(check.Query, dialect), Accept = check.Accept } : null,
             Acknowledge = fact.Acknowledge,

@@ -43,6 +43,25 @@ The Storage tab now shows a **binding card** for `main`:
 To do this for many entities at once, select them (or a whole domain) in the explorer and use **Create tables…** from the
 row menu.
 
+When the selection holds a hierarchy, say a billing `Payment` with `CardPayment` and `BankTransfer` derived from it, select
+all three. The dialog asks once how to store them:
+
+- **One table for the hierarchy**: one `payments` table with a type column. `Payment`'s binding names the column; each
+  binding writes its own type code.
+- **A table per concrete entity**: a table for each entity that has rows, each holding every attribute.
+- **A table per type**: `payments`, plus `card_payments` and `bank_transfers` keyed by the payment's id. Each derived binding
+  names its base foreign key (section 10).
+
+It also asks once per list attribute, such as a customer's `phoneNumbers`: **In a table of its own** writes
+`customers_phone_numbers` with the customer's key, a `position` column and the value, and a child table entry on the binding
+(section 11); **In a JSON column** writes one `phone_numbers` column. A many-to-many relationship between two selected
+entities, such as payments settling invoices, gets a junction table, and the relationship's mapping names it. The defaults
+keep the shape the older format gave the same entities, so the schema does not change.
+
+Undo it before the next generation run and nothing changes in the database. Once a run has recorded the change, undoing it is
+a real change: the next migration drops what the designed tables declared (the lookup tables, the list tables, the
+constraints), and seed.sql makes the older format's objects again.
+
 ## 3. Auto-map Rental to an existing table
 
 Say a teammate already made a `rentals` table in `main`, with the columns `id`, `member_id`, `started_at`,
@@ -300,6 +319,8 @@ The editor's actions have command-line twins, each with a dry run:
 
 ```sh
 maquettiste model materialize tables --database main Member --dry-run
+maquettiste model materialize tables --database main Payment CardPayment BankTransfer --hierarchy per-type
+maquettiste model materialize tables --database main Customer --list-storage Customer.phoneNumbers=json
 maquettiste model materialize attributes --database main Rental        # every unmapped column
 maquettiste model materialize columns --database main Rental           # a column per unmapped attribute
 maquettiste binding drift --database main --check                       # exit 2 when a binding drifts

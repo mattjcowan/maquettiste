@@ -440,7 +440,9 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   writes (`write`, `"none"` for a read-only entity) and how it deletes (`delete`: `key`, `soft` or `none`). A bound entity is
   never projected. To turn an entity the database projects into a table of its own, use materialize instead of relying on
   projection: `get_materialize_status`, `preview_materialize`, then `apply_batch` with `{"op":"materialize-tables",
-  "database":...,"entities":[...]}`; to make entities from existing tables, `{"op":"materialize-entities","database":...,
+  "database":...,"entities":[...]}` (name a hierarchy whole; `"hierarchy":"one-table|per-concrete|per-type"` and
+  `"listStorage":"table|json"`, or objects keyed by root entity id and attribute id, pick the shapes; the preview's `choices`
+  show the defaults); to make entities from existing tables, `{"op":"materialize-entities","database":...,
   "tables":[...],"package":...}`; to give a bound entity attributes for its table's unmapped columns,
   `{"op":"materialize-attributes","database":...,"entities":[...]}` (add `"columns":[...]` for some of one entity's); to give its
   table columns for its unmapped attributes, `{"op":"materialize-columns","database":...,"entities":[...]}` (`"attributes":[...]`

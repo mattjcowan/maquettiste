@@ -38,6 +38,13 @@ internal sealed record MaterializeResult(string? Refusal, IReadOnlyList<Material
     /// <summary>The rule a refusal is reported under when it is not the operation's own (MQ4055, MQ4089): an overlay check held as text
     /// that does not parse or type is refused under the expression rule it breaks.</summary>
     public string? RefusalRule { get; init; }
+
+    /// <summary>For <c>materialize-tables</c>: the hierarchies and lists the request could shape, with what it used and the defaults.</summary>
+    public MaterializeChoiceSet? Choices { get; init; }
+
+    /// <summary>For <c>materialize-tables</c>: the tables it stored that the database already holds though the committed snapshot does not
+    /// (a list of a reference type, whose table the sql-ddl pack created), which the snapshot takes in as they are.</summary>
+    public IReadOnlyList<MigrationRekey>? Adopted { get; init; }
 }
 
 /// <summary>
@@ -50,153 +57,15 @@ internal sealed record MaterializeResult(string? Refusal, IReadOnlyList<Material
 /// ids the committed snapshot's alias recorded for its projected key, whenever no file holds them now (<paramref name="aliases"/>):
 /// storing again then yields the same table, column and sequence ids, the alias stays as it is, and the next migration sees one table.
 /// </summary>
-internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolver resolver, IIdGenerator ids, int parallelism, IReadOnlyList<SnapshotAlias>? aliases = null)
+internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolver resolver, IIdGenerator ids, IReadOnlyList<SnapshotAlias>? aliases = null)
 {
     private readonly Dictionary<string, (string? Hash, JsonObject Node, BatchOp Op, string Because)> _work = new(StringComparer.Ordinal);
     private readonly List<string> _order = [];
     private readonly List<string> _notes = [];
+    private readonly List<MigrationRekey> _adopted = [];
     private readonly List<SchemaDiff.TableRekey> _rekeys = [];
     private readonly Dictionary<string, string> _sequenceKeys = new(StringComparer.Ordinal);
     private string? _databaseName;
-
-    /// <summary>Plans <c>materialize-tables</c>.</summary>
-    /// <param name="databaseId">The database.</param>
-    /// <param name="entityIds">The entities.</param>
-    /// <param name="schemaId">The schema of the database the tables go to, or <see langword="null"/> for the projected tables' own.</param>
-    /// <param name="ct">Cancellation.</param>
-    /// <returns>The plan.</returns>
-    public async Task<MaterializeResult> TablesAsync(string databaseId, IReadOnlyList<string> entityIds, string? schemaId, CancellationToken ct)
-    {
-        if (snapshot.Get<Database>(databaseId) is not { } db)
-            return Refused($"'{databaseId}' is not a database.");
-        if (schemaId is not null && !db.Schemas.Any(s => s.Id == schemaId))
-            return Refused($"Database '{db.Name}' has no schema '{schemaId}'.");
-        var entities = new List<Entity>();
-        foreach (var id in entityIds.Distinct(StringComparer.Ordinal))
-        {
-            if (snapshot.Get<Entity>(id) is not { } entity)
-                return Refused($"'{id}' is not an entity.");
-            if (entity.Bindings.FirstOrDefault(b => b.Database == db.Id) is { } existing)
-                return Refused($"Entity '{entity.Name}' is already bound to database '{db.Name}' (binding {existing.Id}): it reads from what its binding names; edit the binding instead of materializing the entity again.");
-            if (entity.Abstract)
-                return Refused($"Entity '{entity.Name}' is abstract: it has no rows of its own to store.");
-            if (entity.Base is not null || snapshot.All<Entity>().Any(e => e.Base == entity.Id))
-                return Refused($"Entity '{entity.Name}' is part of an inheritance hierarchy, whose tables materialize does not write yet: bind its entities by hand.");
-            entities.Add(entity);
-        }
-
-        if (entities.Count == 0)
-            return Refused("Name at least one entity to materialize.");
-        _databaseName = db.Name;
-
-        // The shapes come from a resolution where every selected entity is projected into the database, mapped or not.
-        var resolved = await resolver.ResolveAsync(Projected(db, entities), null, ct).ConfigureAwait(false);
-        var rdb = resolved.Databases.First(d => d.Id == db.Id);
-        var tables = new Dictionary<string, (Entity Entity, RTable Table, Table? Overlay, string Id, Dictionary<string, string> Columns)>(StringComparer.Ordinal);
-        foreach (var entity in entities)
-        {
-            var table = rdb.Tables.FirstOrDefault(t => t.Origin == "synthesized" && t.Entity?.Id == entity.Id && t.Attribute is null && !t.IsJunction);
-            if (table is null)
-                return Refused($"Entity '{entity.Name}' has no table of its own in database '{db.Name}'.");
-            var overlay = snapshot.All<Table>().FirstOrDefault(t => t.Database == db.Id && t.Origin == TableOrigin.Synthesized && t.Entity == entity.Id && t.Attribute is null);
-            if (overlay is not null)
-            {
-                (overlay, var unparsed) = WithTrees(entity, overlay);
-                if (unparsed is not null)
-                    return unparsed;
-            }
-
-            var tableId = overlay?.Id ?? Reused(table.Key, "table") ?? ids.NewId();
-            var known = AliasOf(table.Key, "table") is { } alias && alias.Alias == tableId ? alias.Columns : null;
-            var columns = new Dictionary<string, string>(StringComparer.Ordinal);
-            var taken = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var column in table.Columns)
-            {
-                // An inherited column stays inherited: its key moves with the table key (next-phase-2-design.md section 3.1, decision 15).
-                if (column.MemberOrigin.MemberId is { } memberId)
-                {
-                    columns[column.Key] = ContributedMembers.KeyOf(tableId, memberId);
-                    continue;
-                }
-
-                var id = overlay?.Columns.FirstOrDefault(c => c.Attribute == column.Key || (c.Attribute is null && c.Id == column.Key))?.Id;
-                if (id is null && known?.GetValueOrDefault(column.Key) is { } was && !taken.Contains(was)
-                    && overlay?.Columns.Any(c => c.Id == was) != true)
-                    id = was;
-                id ??= ids.NewId();
-                taken.Add(id);
-                columns[column.Key] = id;
-            }
-
-            if (overlay is not null && UnstoredRead(entity, table, overlay, columns) is { } unstored)
-                return Refused(unstored);
-            tables[table.Key] = (entity, table, overlay, tableId, columns);
-            if (overlay is not null)
-                tables[overlay.Id] = tables[table.Key];
-            foreach (var child in rdb.Tables.Where(t => t.Entity?.Id == entity.Id && t.Attribute is not null))
-                _notes.Add($"Attribute '{child.Attribute!.Name}' of entity '{entity.Name}' is stored in table '{child.Name}' of its own, which a bound entity does not have: it is left out of the binding.");
-        }
-
-        var conventions = EffectiveConventions.For(snapshot.Settings, db.Name);
-        var typeMap = DialectTypeMaps.Effective(db.Dialect, snapshot.Settings);
-        var relationKeys = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        foreach (var (entity, table, overlay, tableId, columns) in tables.Values.DistinctBy(t => t.Id).OrderBy(t => t.Entity.Name, StringComparer.Ordinal).ThenBy(t => t.Entity.Id, StringComparer.Ordinal))
-        {
-            var node = TableNode(db, schemaId, entity, table, overlay, tableId, columns, tables, conventions, typeMap, relationKeys);
-            _rekeys.Add(new SchemaDiff.TableRekey(table.Key, tableId, columns));
-            if (overlay is not null)
-                Put(overlay.Id, snapshot.GetDocument(overlay.Id)!.Hash, node, BatchOp.Update, $"the projected table of entity {entity.Name}, with its overlay folded in, becomes a designed table");
-            else
-                Put(tableId, null, node, BatchOp.Create, $"the projected table of entity {entity.Name} as a designed table");
-
-            var entityNode = Node(entity.Id, BatchOp.Update, $"binds entity {entity.Name} to table {table.Name}");
-            var bindings = entityNode["bindings"] as JsonArray ?? [];
-            entityNode["bindings"] = bindings;
-            var binding = BindingFor(db, entity, table, tableId, columns, resolved);
-            // The binding records every column of the table it creates, hashed from the entries this operation writes (decision 4).
-            if (ShapesOf(node) is { } shapes)
-                RecordProvenance(binding, shapes, written: null);
-            bindings.Add(binding);
-
-            foreach (var mapping in snapshot.All<Mapping>().Where(m => m.Database == db.Id && m.Entity == entity.Id))
-                Put(mapping.Id, snapshot.GetDocument(mapping.Id)!.Hash, null, BatchOp.Delete, $"entity {entity.Name} is bound now, so its mapping to database {db.Name} is no longer used");
-        }
-
-        foreach (var (relationId, fkId) in relationKeys)
-            SetRelationForeignKey(db, relationId, fkId);
-        RewriteReferences(db, rdb, tables);
-        return Result();
-    }
-
-    /// <summary>
-    /// Why an overlay's check in the expression language cannot move into the designed table: a path reads an attribute of the entity,
-    /// or a value object member, or an override entry of one, that the projected table stores in no column (MQ4008 at the check), so the
-    /// designed table would have no column for it. <see langword="null"/> when every such path reads a column. The check is never
-    /// dropped: materialize refuses until it reads stored members only.
-    /// </summary>
-    private string? UnstoredRead(Entity entity, RTable table, Table overlay, Dictionary<string, string> columns)
-    {
-        HashSet<string>? attributes = null;
-        foreach (var check in overlay.Checks)
-        {
-            if (check.Condition is not { } condition || check.Expression.Count > 0)
-                continue;
-            foreach (var id in ExprSites.PathIds(condition))
-            {
-                var key = overlay.Columns.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.Ordinal))?.Attribute ?? id;
-                attributes ??= ExprSites.AttributesOf(snapshot, entity).Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
-                if (columns.ContainsKey(key) || !attributes.Contains(key.Split('.')[0]))
-                    continue;
-                var site = ExprSites.Of(snapshot, overlay).First(s => string.Equals(s.SubId, check.Id, StringComparison.Ordinal));
-                var member = ExprText.Print(new Expr { Path = [id] }, ExprSites.Scope(snapshot, overlay, snapshot.GetDocument(overlay.Id), site, text: false));
-                return $"Check '{check.Name ?? check.Id}' of the overlay of entity '{entity.Name}' reads '{member}', which table '{table.Name}' stores in no column "
-                    + $"of its own (MQ4008 at {site.Pointer} of the overlay), so the designed table would have no column for it. Store '{member}' in the table, or "
-                    + "change or remove the check, then materialize again.";
-            }
-        }
-
-        return null;
-    }
 
     /// <summary>
     /// The overlay with each check in the expression language that holds text (a hand-edited file may, MQ3108), at its root or inside
@@ -239,197 +108,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         return (overlay with { Checks = checks }, null);
     }
 
-    /// <summary>
-    /// The snapshot with every selected entity placed in the database by a mapping element (an ignoring one stops ignoring); with
-    /// <paramref name="unbind"/>, without their bindings to the database too, so they are projected there as if never bound.
-    /// </summary>
-    private ModelSnapshot Projected(Database db, List<Entity> entities, bool unbind = false)
-    {
-        var documents = new List<ElementDocument>(snapshot.Documents.Count + entities.Count);
-        var selected = entities.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
-        var mapped = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var document in snapshot.Documents)
-        {
-            if (unbind && document.Element is Entity bound && selected.Contains(bound.Id))
-            {
-                documents.Add(document with { Element = bound with { Bindings = [.. bound.Bindings.Where(b => b.Database != db.Id)] } });
-                continue;
-            }
-
-            if (document.Element is Mapping { Entity: { } entityId } mapping && mapping.Database == db.Id && selected.Contains(entityId))
-            {
-                mapped.Add(entityId);
-                documents.Add(document with { Element = mapping with { Ignore = false } });
-                continue;
-            }
-
-            documents.Add(document);
-        }
-
-        using var empty = JsonDocument.Parse("{}");
-        foreach (var entity in entities.Where(e => !mapped.Contains(e.Id)))
-        {
-            var id = ids.NewId();
-            documents.Add(new ElementDocument(new Mapping { Id = id, Database = db.Id, Entity = entity.Id }, "model/mappings/.materialize-" + id.ToLowerInvariant() + ".json",
-                "", "", empty.RootElement.Clone(), null));
-        }
-
-        documents.Sort((a, b) => string.CompareOrdinal(a.Path, b.Path));
-        return ModelSnapshot.CreateAfter(null, documents, snapshot.Settings, snapshot.SettingsHash, snapshot.Extensions, snapshot.RuleScripts, snapshot.Version,
-            null, parallelism, CancellationToken.None, seedScripts: snapshot.SeedScripts, customKinds: snapshot.CustomKinds,
-            calculationScripts: snapshot.CalculationScripts, declaredRules: snapshot.DeclaredRules);
-    }
-
-    /// <summary>
-    /// The designed table a projected table becomes: its own members with the projection's shape, the overlay's annotations, and the
-    /// members its stereotypes contribute left inherited (next-phase-2-design.md section 3.1, decision 15). The table file holds no
-    /// inherited column, key, index or check; the overlay's <c>redefines</c>, <c>excludes</c> and <c>excludeStereotypes</c> move in with
-    /// it (a redefinition's column list follows the column ids), and a stereotype the projected table realized through attributes, which
-    /// now reaches a designed table that holds those columns as its own, gets an <c>excludes</c> entry for each of its members.
-    /// </summary>
-    private JsonObject TableNode(Database db, string? schemaId, Entity entity, RTable table, Table? overlay, string tableId, Dictionary<string, string> columns,
-        Dictionary<string, (Entity Entity, RTable Table, Table? Overlay, string Id, Dictionary<string, string> Columns)> tables,
-        EffectiveConventions conventions, IReadOnlyDictionary<string, string> typeMap, SortedDictionary<string, string> relationKeys)
-    {
-        var node = new JsonObject { ["kind"] = "table", ["id"] = tableId, ["name"] = table.Name, ["database"] = db.Id };
-        var schema = schemaId ?? overlay?.Schema ?? db.Schemas.FirstOrDefault(s => s.Name == table.Schema)?.Id;
-        if (schema is not null)
-            node["schema"] = schema;
-        // The designed table keeps the package whose defaults reach the projected table: the overlay's own, else its entity's when that
-        // package's chain gives tables a default, since a designed table no longer falls back to its entity's package.
-        var package = overlay?.Package ?? (entity.Package is { } entityPackage
-            && snapshot.EffectiveStereotypes(new StereotypeHolder(ElementKind.Table, [], [], entityPackage, null)).Count > 0 ? entityPackage : null);
-        if (package is not null)
-            node["package"] = package;
-        var raw = overlay is null ? null : Raw(overlay.Id);
-        if (overlay is not null)
-            CopyAnnotations(raw, node);
-        if (table.Comment is { Length: > 0 } comment)
-            node["comment"] = comment;
-        CarryMemberLinks(db, table, overlay, raw, schema, package, columns, node);
-
-        var columnArray = new JsonArray();
-        foreach (var column in table.Columns.Where(c => c.MemberOrigin.MemberId is null))
-        {
-            var entry = overlay?.Columns.FirstOrDefault(c => c.Attribute == column.Key || (c.Attribute is null && c.Id == column.Key));
-            var c = ColumnNode(db, schema, column, columns[column.Key], entry, conventions, typeMap);
-            if (entry is not null && raw?["columns"] is JsonArray rawColumns
-                && rawColumns.OfType<JsonObject>().FirstOrDefault(x => x["id"]?.GetValue<string>() == entry.Id) is { } rawEntry)
-                CopyAnnotations(rawEntry, c);
-            columnArray.Add(c);
-        }
-
-        node["columns"] = columnArray;
-        string Col(RColumn column) => columns[column.Key];
-        if (table.PrimaryKey is { MemberOrigin.MemberId: null } pk)
-        {
-            var key = new JsonObject { ["name"] = pk.Name, ["columns"] = new JsonArray([.. pk.Columns.Select(c => (JsonNode)Col(c))]) };
-            if (pk.Clustered is { } clustered)
-                key["clustered"] = clustered;
-            node["primaryKey"] = key;
-        }
-
-        node["uniques"] = new JsonArray([.. table.Uniques.Where(u => u.MemberOrigin.MemberId is null).Select(u =>
-        {
-            var x = new JsonObject { ["id"] = u.Id ?? ids.NewId(), ["name"] = u.Name, ["columns"] = new JsonArray([.. u.Columns.Select(c => (JsonNode)Col(c))]) };
-            if (u.NullsNotDistinct)
-                x["nullsNotDistinct"] = true;
-            return (JsonNode)x;
-        })]);
-
-        var foreignKeys = new JsonArray();
-        foreach (var fk in table.ForeignKeys.Where(f => f.MemberOrigin.MemberId is null))
-        {
-            var target = fk.ReferencedTable;
-            var materialized = tables.TryGetValue(target.Key, out var other) ? other : default;
-            var fkId = fk.Id ?? ids.NewId();
-            var fkNode = new JsonObject
-            {
-                ["id"] = fkId,
-                ["name"] = fk.Name,
-                ["columns"] = new JsonArray([.. fk.Columns.Select(c => (JsonNode)Col(c))]),
-                ["referencesTable"] = materialized.Id ?? target.Key,
-                ["referencesColumns"] = new JsonArray([.. fk.ReferencedColumns.Select(c => (JsonNode)(materialized.Columns is { } map ? map[c.Key] : c.Key))]),
-                ["onDelete"] = fk.OnDelete,
-                ["onUpdate"] = fk.OnUpdate,
-            };
-            if (fk.OnDeleteColumns.Count > 0)
-                fkNode["onDeleteColumns"] = new JsonArray([.. fk.OnDeleteColumns.Select(c => (JsonNode)Col(c))]);
-            if (fk.Deferrable != "not-deferrable")
-                fkNode["deferrable"] = fk.Deferrable;
-            foreignKeys.Add(fkNode);
-            if (fk.Relation is { } relation && snapshot.Get<Relation>(relation.Id) is not null)
-                relationKeys[relation.Id] = fkId;
-            if (target.Origin == "synthesized" && materialized.Id is null)
-                _notes.Add($"Foreign key '{fk.Name}' of table '{table.Name}' references table '{target.Name}', which entity '{target.Entity?.Name}' still projects: it names that table by its key until the entity is materialized too.");
-        }
-
-        node["foreignKeys"] = foreignKeys;
-        // The overlay's checks move in as its file defines them, each one whether the DDL holds it or not (a tree check on a dialect
-        // other than PostgreSQL is MQ4056 and left out, as is a SQL text check without a text for the dialect), so the model loses none;
-        // a check in the expression language keeps its tree (one held as text became its tree first, WithTrees), each path's column key
-        // turned into the designed table's column id (a contributed column's keyed id moves with the table key). A check an entity's
-        // binding writes stays with the binding.
-        var checks = new JsonArray();
-        string Remap(string key) => columns.GetValueOrDefault(key, key);
-        bool Own(RCheck c) => c.MemberOrigin.MemberId is null && c.MemberOrigin.Source != "binding";
-        foreach (var file in overlay?.Checks ?? [])
-        {
-            var resolved = table.Checks.FirstOrDefault(c => Own(c) && c.Id == file.Id);
-            var checkNode = new JsonObject { ["id"] = file.Id };
-            if ((resolved?.Name ?? file.Name) is { } name)
-                checkNode["name"] = name;
-            if (file.Condition is { } condition && file.Expression.Count == 0)
-                checkNode["condition"] = RemapPaths(JsonSerializer.SerializeToNode(condition, EngineJson.Options)!, Remap);
-            else
-                checkNode["expression"] = JsonSerializer.SerializeToNode(file.Expression);
-            if (resolved?.Column is { } checkColumn)
-                checkNode["column"] = Col(checkColumn);
-            else if (file.Column is { } fileColumn)
-                checkNode["column"] = Remap(fileColumn);
-            if (file.Properties.Count > 0)
-                checkNode["properties"] = JsonSerializer.SerializeToNode(file.Properties, EngineJson.Options);
-            checks.Add(checkNode);
-        }
-
-        foreach (var check in table.Checks.Where(c => Own(c) && overlay?.Checks.Any(x => x.Id == c.Id) != true))
-        {
-            var checkNode = new JsonObject { ["id"] = check.Id ?? ids.NewId(), ["name"] = check.Name, ["expression"] = new JsonObject { ["*"] = check.Expression } };
-            if (check.Column is { } checkColumn)
-                checkNode["column"] = Col(checkColumn);
-            checks.Add(checkNode);
-        }
-
-        node["checks"] = checks;
-        JsonNode IndexColumnNode(RIndexColumn c)
-        {
-            var x = c.Column is { } column
-                ? new JsonObject { ["column"] = Col(column) }
-                : new JsonObject { ["expression"] = new JsonObject { [table.Database.Dialect] = c.Expression } };
-            x["descending"] = c.Descending;
-            if (c.Length is { } length)
-                x["length"] = length;
-            return x;
-        }
-
-        node["indexes"] = new JsonArray([.. table.Indexes.Where(i => i.MemberOrigin.MemberId is null).Select(index =>
-        {
-            var x = new JsonObject
-            {
-                ["id"] = index.Id ?? ids.NewId(),
-                ["name"] = index.Name,
-                ["columns"] = new JsonArray([.. index.Columns.Select(IndexColumnNode)]),
-                ["include"] = new JsonArray([.. index.Include.Select(c => (JsonNode)Col(c))]),
-                ["unique"] = index.Unique,
-                ["method"] = index.Method,
-            };
-            if (index.Where is { } where)
-                x["where"] = where;
-            return (JsonNode)x;
-        })]);
-        return node;
-    }
-
     /// <summary>A condition as JSON with each segment of each path turned by <paramref name="remap"/> (a column key into a column id).</summary>
     private static JsonNode RemapPaths(JsonNode node, Func<string, string> remap)
     {
@@ -466,74 +144,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         return node;
     }
 
-    /// <summary>
-    /// Moves the overlay's member links into the designed table (<c>excludeStereotypes</c>, <c>redefines</c> with their column lists
-    /// following the column ids, <c>excludes</c>), and excludes every member of a stereotype the projected table skipped because it
-    /// stores the stereotype's attributes as columns (decision 1) when that stereotype reaches the designed table: the table now holds
-    /// those columns as its own, so the database sees nothing, and a later fold adopts the members.
-    /// </summary>
-    private void CarryMemberLinks(Database db, RTable table, Table? overlay, JsonObject? raw, string? schema, string? package,
-        Dictionary<string, string> columns, JsonObject node)
-    {
-        if (raw?["excludeStereotypes"] is JsonArray excludeStereotypes)
-            node["excludeStereotypes"] = excludeStereotypes.DeepClone();
-
-        var skipped = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var column in table.Columns)
-        {
-            if (column.Attribute?.FromStereotype is { } from)
-                skipped.Add(from.Key);
-        }
-
-        var excludes = new SortedSet<string>(overlay?.Excludes ?? [], StringComparer.Ordinal);
-        var excluded = new HashSet<string>(StringComparer.Ordinal);
-        if (skipped.Count > 0)
-        {
-            var holder = new StereotypeHolder(ElementKind.Table, overlay?.Stereotypes ?? [], overlay?.ExcludeStereotypes ?? [], package,
-                snapshot.StereotypeDefaults.SchemaOf(db.Id, schema));
-            foreach (var applied in snapshot.EffectiveStereotypes(holder))
-            {
-                if (!skipped.Contains(applied.Stereotype.Key))
-                    continue;
-                foreach (var id in MemberIds(applied.Stereotype))
-                {
-                    excludes.Add(id);
-                    excluded.Add(id);
-                }
-            }
-        }
-
-        if (raw?["redefines"] is JsonArray redefines)
-        {
-            var kept = new JsonArray();
-            foreach (var entry in redefines.OfType<JsonObject>())
-            {
-                // A redefinition of a member the designed table now excludes would be MQ2028; it goes with the member.
-                if (entry["member"]?.GetValue<string>() is { } member && excluded.Contains(member))
-                    continue;
-                var copy = (JsonObject)entry.DeepClone();
-                foreach (var list in new[] { "columns", "onDeleteColumns" })
-                {
-                    if (copy[list] is not JsonArray keys)
-                        continue;
-                    for (var i = 0; i < keys.Count; i++)
-                    {
-                        if (keys[i]?.GetValue<string>() is { } key && columns.TryGetValue(key, out var id))
-                            keys[i] = id;
-                    }
-                }
-
-                kept.Add(copy);
-            }
-
-            if (kept.Count > 0)
-                node["redefines"] = kept;
-        }
-
-        if (excludes.Count > 0)
-            node["excludes"] = new JsonArray([.. excludes.Select(e => (JsonNode)e)]);
-    }
-
     /// <summary>The ids of a stereotype's members, in member-kind then file order.</summary>
     private static IEnumerable<string> MemberIds(Stereotype stereotype)
     {
@@ -548,97 +158,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         return ids.OfType<string>().Where(id => id.Length > 0);
     }
 
-    /// <summary>
-    /// A designed table's column with the shape a projected column has (materialize-tables, materialize-columns): its type and facets,
-    /// the native type when it is not the one the dialect map renders (a scalar type's native type included: a table states its own
-    /// shape, and the entity's binding says which attribute the column stores), nullability, defaults,
-    /// identity or a key sequence (written as a sequence file when it is synthesized), computed, collation, comment and the overlay
-    /// entry's own sensitivity; an overlay entry's native type and SQL defaults win. The attribute's sensitivity is not written: the
-    /// attribute keeps saying it, and the bound column shows it (next-phase-2-design.md section 3.2, decision 12).
-    /// </summary>
-    private JsonObject ColumnNode(Database db, string? schema, RColumn column, string columnId, Column? entry, EffectiveConventions conventions,
-        IReadOnlyDictionary<string, string> typeMap)
-    {
-        var dialect = DialectTypeMaps.Name(db.Dialect);
-        var c = new JsonObject { ["id"] = columnId, ["name"] = column.Name };
-        var type = column.Type == "reference" ? column.CodeType ?? "string" : column.Type;
-        c["type"] = type;
-        if (column.Length is { } length)
-            c["length"] = length;
-        if (column.Precision is { } precision)
-            c["precision"] = precision;
-        if (column.Scale is { } scale)
-            c["scale"] = scale;
-        var rendered = column.NativeType is null ? null
-            : DialectTypeMaps.Render(typeMap, DialectTypeMaps.VariantKey(typeMap, type, column.FixedLength, column.Unicode), column.Length, column.Precision, column.Scale, conventions);
-        if (column.Unicode is { } unicode)
-            c["unicode"] = unicode;
-        if (column.FixedLength)
-            c["fixedLength"] = true;
-        if (entry?.NativeType is { } native)
-            c["nativeType"] = native;
-        else if (column.NativeType is { } computedNative && !string.Equals(computedNative, rendered, StringComparison.Ordinal))
-            c["nativeType"] = computedNative;
-        if (!column.Nullable)
-            c["nullable"] = false;
-        if (column.Default is { } value)
-            c["default"] = JsonSerializer.SerializeToNode(value);
-        if (entry is { DefaultSql.Count: > 0 })
-            c["defaultSql"] = JsonSerializer.SerializeToNode(entry.DefaultSql);
-        else if (column.DefaultSql is { } sql)
-            c["defaultSql"] = new JsonObject { [dialect] = sql };
-        if (column.DefaultName is { } defaultName)
-            c["defaultName"] = defaultName;
-        if (column.Identity)
-        {
-            c["generated"] = "identity";
-            if (column.IdentitySeed is not null || column.IdentityIncrement is not null || column.IdentityAlways)
-            {
-                var identity = new JsonObject();
-                if (column.IdentitySeed is { } seed)
-                    identity["seed"] = seed;
-                if (column.IdentityIncrement is { } increment)
-                    identity["increment"] = increment;
-                if (column.IdentityAlways)
-                    identity["always"] = true;
-                c["identity"] = identity;
-            }
-        }
-        else if (column.Sequence is { } sequence)
-        {
-            c["generated"] = "sequence";
-            c["sequence"] = snapshot.Get<Sequence>(sequence.Id) is not null ? sequence.Id : CreateSequence(db, sequence, schema);
-        }
-
-        if (column.Computed is { } computed)
-        {
-            c["computed"] = computed;
-            if (column.ComputedStored)
-                c["computedStored"] = true;
-        }
-
-        if (column.StableId)
-            c["stableId"] = true; // an overlay entry's stable id stays (next-phase-2-design.md section 3.4)
-        if (column.Collation is { } collation)
-            c["collation"] = collation;
-        if (column.Comment is { Length: > 0 } columnComment)
-            c["comment"] = columnComment;
-        if (entry?.Sensitive is { } sensitive)
-            c["sensitive"] = JsonSerializer.SerializeToNode(sensitive);
-        return c;
-    }
-
-    /// <summary>A sequence file for a key sequence the projection synthesized, which a bound entity no longer gets.</summary>
-    private string CreateSequence(Database db, RSequence sequence, string? schema)
-    {
-        var id = Reused(sequence.Id, "sequence") ?? ids.NewId();
-        _sequenceKeys[sequence.Id] = id;
-        var node = new JsonObject { ["kind"] = "sequence", ["id"] = id, ["name"] = sequence.Name, ["database"] = db.Id, ["type"] = sequence.Type };
-        if (schema is not null)
-            node["schema"] = schema;
-        Put(id, null, node, BatchOp.Create, $"the key sequence {sequence.Name} the projection synthesized, as a sequence of its own");
-        return id;
-    }
 
     private static readonly string[] AnnotationNames = ["displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation", "source"];
 
@@ -655,153 +174,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
     private JsonObject? Raw(string id) =>
         snapshot.GetDocument(id) is { } document ? JsonNode.Parse(document.Json.GetRawText()) as JsonObject : null;
-
-    /// <summary>The binding of a materialized entity: every column of its table accounted for, write and delete by default.</summary>
-    private JsonObject BindingFor(Database db, Entity entity, RTable table, string tableId, Dictionary<string, string> columns, ResolvedModel resolved)
-    {
-        var fields = new JsonArray();
-        var listed = new JsonArray();
-        var rentity = resolved.Entities.First(e => e.Id == entity.Id);
-        foreach (var column in table.Columns)
-        {
-            var target = FieldTarget(rentity, column.AttributePath ?? column.Key, resolved);
-            if (target is not null)
-            {
-                fields.Add(new JsonObject { ["attribute"] = target, ["column"] = columns[column.Key] });
-                continue;
-            }
-
-            if (column.Identity || column.Computed is not null || column.Default is not null || column.DefaultSql is not null)
-                continue;
-            listed.Add(new JsonObject { ["column"] = columns[column.Key], ["status"] = "ignored" });
-            _notes.Add($"Column '{column.Name}' of table '{table.Name}' maps to no attribute of entity '{entity.Name}' a binding can hold: it is listed as ignored.");
-        }
-
-        var binding = new JsonObject { ["id"] = ids.NewId(), ["database"] = db.Id, ["source"] = tableId, ["fields"] = fields };
-        if (listed.Count > 0)
-            binding["columns"] = listed;
-        return binding;
-    }
-
-    /// <summary>What a binding field names for a projected column: an attribute, a member to any depth, or a to-one end; null when none fits.</summary>
-    private static string? FieldTarget(REntity entity, string path, ResolvedModel resolved)
-    {
-        var segments = path.Split('.');
-        if (entity.Attributes.FirstOrDefault(a => a.Id == segments[0]) is { } attribute)
-        {
-            if (segments.Length == 1 || attribute.Collection)
-                return attribute.Collection ? null : path;
-            // A member of an embedded value object, to any depth; one that is itself a value object or a list is a JSON column
-            // (retire-projection-design.md section 6).
-            var current = attribute;
-            for (var i = 1; i < segments.Length; i++)
-            {
-                if (current.Collection || current.Type.ValueObject is not { } vo || vo.Attributes.FirstOrDefault(m => m.Id == segments[i]) is not { } member)
-                    return null;
-                current = member;
-            }
-
-            return path;
-        }
-
-        if (segments.Length == 2)
-        {
-            var end = resolved.Relations.SelectMany(r => r.Ends).FirstOrDefault(e => e.Id == segments[0]);
-            if (end is { IsMany: false, Opposite.Entity: { } opposite, Entity.Key: { Attributes.Count: 1 } key } && opposite.Id == entity.Id && key.Attributes[0].Id == segments[1])
-                return end.Id;
-        }
-
-        return null;
-    }
-
-    private void SetRelationForeignKey(Database db, string relationId, string fkId)
-    {
-        var relation = snapshot.Get<Relation>(relationId)!;
-        if (snapshot.All<Mapping>().FirstOrDefault(m => m.Database == db.Id && m.Relation == relationId) is { } mapping)
-        {
-            var node = Node(mapping.Id, BatchOp.Update, $"relation {relation.Name} keeps its foreign key in the designed table");
-            node["foreignKey"] = fkId;
-            node.Remove("shape");
-            return;
-        }
-
-        var id = ids.NewId();
-        Put(id, null, new JsonObject
-        {
-            ["kind"] = "mapping", ["id"] = id, ["name"] = relation.Name + " in " + db.Name, ["database"] = db.Id, ["relation"] = relationId, ["foreignKey"] = fkId,
-        }, BatchOp.Create, $"relation {relation.Name} names its foreign key in the designed table");
-    }
-
-    /// <summary>
-    /// Points what named the projected tables by their keys at the designed tables: the sources and column references of the
-    /// database's queries, the foreign keys of other tables, and other entities' bindings. A table that keeps its overlay's id keeps
-    /// every reference by that id.
-    /// </summary>
-    private void RewriteReferences(Database db, RDatabase rdb,
-        Dictionary<string, (Entity Entity, RTable Table, Table? Overlay, string Id, Dictionary<string, string> Columns)> tables)
-    {
-        var byKey = tables.Values.DistinctBy(t => t.Id).ToDictionary(t => t.Table.Key, StringComparer.Ordinal);
-        foreach (var query in rdb.Queries)
-        {
-            var replace = QueryColumnRewrite.Replacements(query, t => byKey.TryGetValue(t.Key, out var hit) ? hit.Id : null,
-                (t, column) => byKey.TryGetValue(t.Key, out var hit) && hit.Columns.TryGetValue(column.Key, out var newId) ? newId : null);
-            if (replace.Count > 0 && Raw(query.Id) is { } raw && QueryColumnRewrite.Apply(raw, replace))
-                PutRewrite(query.Id, raw, $"query {query.Name} reads the designed table by its id");
-        }
-
-        foreach (var table in snapshot.All<Table>().Where(t => t.Database == db.Id && !tables.ContainsKey(t.Id)))
-        {
-            if (Raw(table.Id) is not { } raw || raw["foreignKeys"] is not JsonArray fks)
-                continue;
-            var changed = false;
-            foreach (var fk in fks.OfType<JsonObject>())
-            {
-                if (fk["referencesTable"]?.GetValue<string>() is not { } referenced || !byKey.TryGetValue(referenced, out var hit) && !tables.TryGetValue(referenced, out hit))
-                    continue;
-                if (referenced != hit.Id)
-                {
-                    fk["referencesTable"] = hit.Id;
-                    changed = true;
-                }
-
-                if (fk["referencesColumns"] is JsonArray columns)
-                {
-                    for (var i = 0; i < columns.Count; i++)
-                    {
-                        if (columns[i]?.GetValue<string>() is { } key && hit.Columns.TryGetValue(key, out var newId) && key != newId)
-                        {
-                            columns[i] = newId;
-                            changed = true;
-                        }
-                    }
-                }
-            }
-
-            if (changed)
-                PutRewrite(table.Id, raw, $"table {ChangePlanner.ReadableName(snapshot, table)} references the designed table by its id");
-        }
-
-        foreach (var entity in snapshot.All<Entity>())
-        {
-            if (entity.Bindings.Count == 0)
-                continue;
-            var raw = _work.TryGetValue(entity.Id, out var working) ? working.Node : Raw(entity.Id);
-            if (raw?["bindings"] is not JsonArray bindings)
-                continue;
-            var changed = false;
-            foreach (var binding in bindings.OfType<JsonObject>())
-            {
-                var key = binding["source"]?.GetValue<string>();
-                if (key is null || !byKey.TryGetValue(key, out var hit))
-                    continue;
-                var map = new Dictionary<string, string>(hit.Columns, StringComparer.Ordinal) { [key] = hit.Id };
-                changed |= QueryColumnRewrite.ReplaceStrings(binding, map, ["source", "table", "column"]);
-            }
-
-            if (changed && !_work.ContainsKey(entity.Id))
-                PutRewrite(entity.Id, raw, $"entity {entity.Name} binds to the designed table by its id");
-        }
-    }
 
     // ---- materialize-entities ---------------------------------------------------------------------------------------------------
 
@@ -991,13 +363,18 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             entities.Add((entity, index, table));
         }
 
-        var projected = await resolver.ResolveAsync(Projected(db, [.. entities.Select(e => e.Entity)], unbind: true), null, ct).ConfigureAwait(false);
+        var projected = await resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
         var rdb = projected.Databases.First(d => d.Id == db.Id);
+        var mappings = snapshot.All<Mapping>().Where(m => m.Database == db.Id).ToList();
         var conventions = EffectiveConventions.For(snapshot.Settings, db.Name);
         var typeMap = DialectTypeMaps.Effective(db.Dialect, snapshot.Settings);
         foreach (var (entity, index, table) in entities)
         {
-            var shape = rdb.Tables.FirstOrDefault(t => t.Origin == "synthesized" && t.Entity?.Id == entity.Id && t.Attribute is null && !t.IsJunction);
+            // The shape the entity's own table would have: the designer proposes it alone, outside any hierarchy.
+            var designer = new TableDesigner(snapshot, projected, db, _ => null, _ => null, _ => null, _ => DesignHierarchy.OneTable, _ => null,
+                id => Outside(db, rdb, mappings, id)) { ColumnsOnly = true };
+            var proposal = designer.Design(new HashSet<string>(StringComparer.Ordinal) { entity.Id });
+            var shape = proposal.Tables.FirstOrDefault(t => t.Kind == DesignedTableKind.Entity);
             if (shape is null)
                 return Refused($"Entity '{entity.Name}' has no table of its own in database '{db.Name}' to take the columns' shapes from.");
             var rentity = projected.Entities.First(e => e.Id == entity.Id);
@@ -1016,7 +393,7 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
                     inherited.TryAdd(member.Member.Name, member.Key);
             }
 
-            var chosen = new List<(RColumn Column, string Target)>();
+            var chosen = new List<(DesignedColumn Column, string Target)>();
             var toInherited = new List<(string Name, string Column, string Target)>();
             if (attributes is { Count: > 0 })
             {
@@ -1071,7 +448,7 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
                 columns.Add(ColumnNode(db, table.Schema, column, columnId, null, conventions, typeMap));
                 fields.Add(new JsonObject { ["attribute"] = target, ["column"] = columnId });
                 written.Add(columnId);
-                if (shape.ForeignKeys.Any(fk => fk.Columns.Any(c => c.Key == column.Key)))
+                if (shape.ForeignKeys.Any(fk => fk.Columns.Contains(column.Key)))
                     _notes.Add($"Column '{column.Name}' of table '{table.Name}' holds a foreign key in the projection: add the foreign key in the table if you want one.");
             }
 
@@ -1442,6 +819,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             ops.Add(new MaterializeOp(op, id, hash, op == BatchOp.Delete ? null : node, kind, name, because));
         }
 
-        return new MaterializeResult(null, ops, [.. _notes], _databaseName, [.. _rekeys], _sequenceKeys);
+        return new MaterializeResult(null, ops, [.. _notes], _databaseName, [.. _rekeys], _sequenceKeys) { Choices = _choices, Adopted = _adopted };
     }
 }

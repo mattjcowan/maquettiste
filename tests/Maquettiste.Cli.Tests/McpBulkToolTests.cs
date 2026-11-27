@@ -99,6 +99,9 @@ public sealed class McpBulkToolTests
 
         var preview = await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice } });
         Assert.True((bool)preview["valid"]!);
+        // hierarchy and listStorage are a string or an object; anything else is a bad request, never ignored.
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice }, hierarchy = 5 })).Code);
+        Assert.True((bool)(await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice }, hierarchy = "per-type" }))["valid"]!);
         Assert.Contains(preview["updates"]!.AsArray(), u => (string)u!["kind"]! == "table" && (string)u["name"]! == "invoices");
         var applied = await session.OkAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { Invoice } } } });
         Assert.Equal("saved", (string)applied["outcome"]!);

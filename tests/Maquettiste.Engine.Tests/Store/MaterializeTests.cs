@@ -662,6 +662,30 @@ public sealed class MaterializeTests
         string.Join("; ", report.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.Rule + " " + d.Message));
 
     [Fact]
+    public async Task Materialize_tables_writes_no_index_an_inherited_index_replaces()
+    {
+        // An inherited index covers only its stereotype's own columns (an index redefinition cannot change them, MQ2027), so it meets an
+        // indexed attribute's index only when the attribute's column takes a stereotype column's name, which validation already reports
+        // (MQ4003). The projection then let the inherited index stand for both (it counts as a declared one); the designed table writes
+        // no index of its own for the column either, so no second index of the same name appears.
+        await using var r = EditorRepo.Create(packs: false);
+        AuditedMembers(r, schemaDefault: true);
+        EditOnDisk(r, ".maquettiste/model/entities/product.json", e => e["attributes"]!.AsArray().Add(JsonNode.Parse("""
+            { "id": "01K9MATER00000000000000080", "name": "createdAt", "type": "datetimeoffset", "indexed": true }
+            """)));
+        async Task<IReadOnlyList<string>> IndexNames() => [.. (await r.Store.Services.Resolver.ResolveAsync(await r.Store.GetSnapshotAsync(Ct), null, Ct))
+            .Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).Tables.Single(t => t.Name == "products").Indexes.Select(i => i.Name)];
+        Assert.Single(await IndexNames(), n => n == "ix_products_created_at");
+
+        // The model already has MQ4003, so the change cannot be saved; the plan shows the table it would write.
+        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [ProductId]), Ct);
+        var products = JsonNode.Parse(plan.Creates.Single(u => u.Kind == "table" && u.Name == "products").Element!.Value.GetRawText())!;
+        var created = products["columns"]!.AsArray().Single(c => (string?)c!["name"] == "created_at")!["id"]!.GetValue<string>();
+        Assert.DoesNotContain(products["indexes"]!.AsArray(), i => i!["columns"]!.AsArray().Any(c => (string?)c!["column"] == created));
+        Assert.Single(await IndexNames(), n => n == "ix_products_created_at");
+    }
+
+    [Fact]
     public async Task Materialize_tables_keeps_inherited_members_and_moves_their_keys()
     {
         // products inherits audited's columns and index from schema billing's default; its designed table leaves them inherited, keyed by
@@ -1081,6 +1105,12 @@ public sealed class MaterializeTests
         // attribute, so the column's bound type keeps the type, and the stored table keeps its storage objects.
         await using var r = EditorRepo.Create(packs: false);
         TypedBilling(r);
+        // "Create tables…" never guesses how a pack stores a reference type: the project says it (here a CHECK, which the table states).
+        EditOnDisk(r, ".maquettiste/maquettiste.json", s =>
+        {
+            s["conventions"] = new JsonObject { ["referenceStorage"] = new JsonObject { ["strategy"] = "check" } };
+            s["referenceData"] = new JsonObject { ["strategies"] = new JsonObject { ["check"] = new JsonObject() } };
+        });
         var before = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
 
         var result = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));

@@ -75,7 +75,9 @@ An end cell names a row of the other entity's seed: Enter opens a picker over th
 which other seeds use to point at it.
 
 An entity's seed reaches the table its binding writes: the field map gives the columns, and the binding's constants are
-added to every row.
+added to every row. A subtype with a table of its own (a base foreign key) writes its base's row first, and each child table
+gets a row per list item. A relationship's seed writes its junction table, or, stored on a foreign key, sets the key on the
+rows the entity seeds wrote.
 
 ## 6. Seed a table directly
 
@@ -200,6 +202,20 @@ What else follows:
 - A check of `bike_events` reads only the column's physical type, so it cannot compare `bike_type` with a `BikeType` code.
 - A column may state `sensitive` (`pii` or `secret`). Say it once, on the column or on the attribute a binding maps to
   it, and both show it. Two different values are a warning (MQ4085).
+
+**After "Create tables…".** When an entity's table is made from the entity (`materialize-tables`), a column that holds a
+reference type's codes keeps the constraint the database already has, now declared by the table itself:
+
+- Under the `lookup-table` strategy, the lookup table becomes a designed table, the type gets a binding to it (section 10),
+  and the column declares a foreign key into its `code` column, named `fk_<table>_<column>_ref`. Validation is satisfied
+  (MQ4084), and a code refactor keeps rewriting the stored rows. The type's rows are then written as a bound type's rows:
+  inserted when missing. Give the seed `apply: converge` (and `delete: true`) to keep labels and retired codes in step as before.
+- When the type already has a binding in the database, the column declares the foreign key into that table.
+- Under the `check` strategy, the table declares the CHECK, named `ck_<table>_<column>_ref`, with today's codes. The table
+  owns it from then on: adding or retiring a code no longer edits it, so change the CHECK by hand, or store the type in a
+  lookup table instead (recommended for codes that change).
+- Under `native` on PostgreSQL, the column keeps the enum type when a database type of that name (`<type>_t`) exists;
+  otherwise materialize refuses and says so.
 
 Until 0.28.0 a column could name its type itself with `typeRef`. That key is gone: a file that still has it fails to
 load with MQ4082. Remove it and bind the column as above.

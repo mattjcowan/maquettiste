@@ -1161,12 +1161,12 @@ public sealed class FactRecordingTests
     }
 
     [Fact]
-    public async Task Materializing_a_projected_reference_column_records_its_conversion()
+    public async Task Materializing_a_projected_reference_column_declares_its_foreign_key_and_records_only_the_rekey()
     {
-        // 0.28.0: the stored table carries its own definition, a plain string column. The entity's binding maps it to the reference typed
-        // attribute, which gives the column its bound type but no reference state (binding never changes storage), so the column loses
-        // the reference state its projection had (the bound table invoice_states): the write records its rekey and a change-type that asks
-        // how values that are not codes convert.
+        // The stored table carries its own definition, a plain string column (0.28.0), and states the constraint the database has today:
+        // its projection held the codes of a type bound to invoice_states, so the table declares a foreign key into that table's code
+        // column under the pack's name (retire-projection-design.md section 7). Nothing changes in the database: the write records only
+        // its rekey, and no change-type asks how values convert.
         await using var repo = E2ERepo.Create(demo: false);
         var (typeId, _) = await AddStateColumnAndBoundTypeAsync(repo);
         var added = await repo.EditAsync(E2ERepo.CustomerId, e => e["attributes"]!.AsArray().Add(new JsonObject
@@ -1177,9 +1177,11 @@ public sealed class FactRecordingTests
 
         var result = await ApplyAsync(repo, Materialize(E2ERepo.CustomerId));
 
-        Assert.Equal([("rekey", "complete"), ("change-type", "pending")], result.Facts!.Select(f => (f.Fact, f.State)));
+        Assert.Equal([("rekey", "complete")], result.Facts!.Select(f => (f.Fact, f.State)));
         var stored = (await repo.Store.GetSnapshotAsync(Ct)).All<Table>().Single(t => t.Database == E2ERepo.MainDatabaseId && t.Name == "customers");
-        Assert.Contains(stored.Columns, c => c.Name == "state");
+        var state = stored.Columns.Single(c => c.Name == "state");
+        var key = Assert.Single(stored.ForeignKeys, f => f.Name == "fk_customers_state_ref");
+        Assert.Equal((state.Id, "01K9X3B0000000000000000001", "01K9X3B0000000000000000002"), (key.Columns.Single(), key.ReferencesTable, key.ReferencesColumns.Single()));
         var resolved = await repo.Store.Services.Resolver.ResolveAsync(await repo.Store.GetSnapshotAsync(Ct), null, Ct);
         Assert.Equal(typeId, resolved.Databases.Single(d => d.Id == E2ERepo.MainDatabaseId).Tables.Single(t => t.Name == "customers").Columns
             .Single(c => c.Name == "state").BoundType?.ReferenceType?.Id);

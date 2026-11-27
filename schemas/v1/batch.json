@@ -10,7 +10,7 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "verb", "to", "codes", "entity", "stereotype", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames", "triggerPoints"],
+        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "verb", "to", "codes", "entity", "stereotype", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames", "hierarchy", "listStorage", "triggerPoints"],
         "properties": {
           "op": {
             "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "sync-codes", "set-lifecycle", "set-initial", "refresh-scenario", "use-subjects", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees", "rename-verb", "remove-verb", "upsert"]
@@ -203,6 +203,20 @@
             "description": "resync-binding: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name.",
             "type": "boolean",
             "default": false
+          },
+          "hierarchy": {
+            "description": "materialize-tables: how each inheritance hierarchy in the request is stored: one-table (one table with a type column), per-concrete (a table per concrete entity holding every attribute) or per-type (a table per entity, each derived table keyed by its base's). A string for every hierarchy, or an object from a hierarchy's root entity id to a shape. A hierarchy it does not name takes its default: the shape an older entity mapping's inheritance gives, else one-table.",
+            "oneOf": [
+              { "enum": ["one-table", "per-concrete", "per-type"] },
+              { "type": "object", "additionalProperties": { "enum": ["one-table", "per-concrete", "per-type"] } }
+            ]
+          },
+          "listStorage": {
+            "description": "materialize-tables: where each list attribute of the requested entities goes: table (a table of its own, one row per item) or json (a JSON column). A string for every list, or an object from an attribute id to a storage. A list it does not name takes its default: what an older mapping or the conventions say, else table.",
+            "oneOf": [
+              { "enum": ["table", "json"] },
+              { "type": "object", "additionalProperties": { "enum": ["table", "json"] } }
+            ]
           },
           "triggerPoints": {
             "description": "refresh-scenario: also write each step's expect.triggerPoints, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them.",

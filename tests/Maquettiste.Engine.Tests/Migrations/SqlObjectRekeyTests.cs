@@ -69,4 +69,63 @@ public sealed class SqlObjectRekeyTests
         Assert.Equal(("sql-object", First, Third, "invoice_audit"), (key.Kind, key.From, key.To, key.Name));
         Assert.Equal([a.Id], plan.Deleted);
     }
+
+    /// <summary>
+    /// Fold takes the open facts a baseline lacks, so a materialize's rekey fact can be folded before any run renders it: what each
+    /// fact adopted stays on the kept fact.
+    /// </summary>
+    [Fact]
+    public void Folding_two_open_rekey_facts_keeps_what_each_adopted()
+    {
+        var table = new MigrationRekey { Kind = "table", From = "01JFCT0000000000000000T001", To = "01JFCT0000000000000000T001", Name = "payment_methods" };
+        var check = new MigrationRekey { Kind = "check", Table = "01JFCT0000000000000000T002", From = "01JFCT0000000000000000C001", To = "01JFCT0000000000000000C001", Name = "ck_payments_method_ref" };
+        var a = Rekey("01JFCT00000000000000000031", First, Second) with { Adopted = [table] };
+        var b = Rekey("01JFCT00000000000000000032", Second, Third, a.Id) with { Adopted = [check] };
+
+        var plan = FactFolder.Fold([a, b], _ => true, Capture(Third), Dialect.PostgreSql);
+
+        var kept = Assert.Single(plan.Changed, f => f.Id == b.Id);
+        Assert.Equal([table, check], kept.Adopted);
+    }
+
+    /// <summary>
+    /// <c>validate --against</c> a baseline taken before a materialize reads what the materialize adopted as already there, as the next
+    /// schema diff does, so the comparison reports no change for it.
+    /// </summary>
+    [Fact]
+    public void A_baseline_check_reads_what_a_materialize_adopted_as_already_there()
+    {
+        const string projected = "01JFCT0000000000000000P001@01SE0000000000000000000001", stored = "01JFCT0000000000000000T002";
+        var check = new SnapshotCheck { Key = "ck:x", Name = "ck_payments_method_ref", Expression = "method IN ('card')" };
+        var baseline = new PhysicalSnapshot
+        {
+            Database = Database, Name = "billing", Dialect = Dialect.PostgreSql,
+            Tables = [new SnapshotTable
+            {
+                Key = projected, Name = "payments",
+                Columns = [new SnapshotColumn { Key = "a1", Name = "method", Type = "reference", Length = 8, NativeType = "varchar(8)", ReferenceType = "rt", Strategy = "check" }],
+            }],
+        };
+        var working = baseline with
+        {
+            Tables = [new SnapshotTable
+            {
+                Key = stored, Name = "payments", Checks = [check],
+                Columns = [new SnapshotColumn { Key = "c1", Name = "method", Type = "string", Length = 8, NativeType = "varchar(8)" }],
+            }],
+        };
+        var rekey = new Migration
+        {
+            Id = "01JFCT00000000000000000033", Name = "", Database = Database, Fact = MigrationFact.Rekey,
+            Keys = [new MigrationRekey { Kind = "table", From = projected, To = stored }, new MigrationRekey { Kind = "column", Table = projected, From = "a1", To = "c1" }],
+            Adopted = [new MigrationRekey { Kind = "check", Table = stored, From = "x", To = "x", Name = "ck_payments_method_ref" }],
+        };
+
+        // The materialize's rekey fact is one the baseline lacks: its stored reference column and adopted check need no fact.
+        var today = BaselineCheck.ToTodayKeys(baseline, [rekey], _ => true);
+        Assert.Empty(BaselineCheck.Check(today, working, [rekey], _ => true, Dialect.PostgreSql, Database));
+        // Without the materialize, the same column is a change of type that needs its fact.
+        var other = rekey with { Fact = MigrationFact.Rename, Keys = [], Adopted = [] };
+        Assert.NotEmpty(BaselineCheck.Check(BaselineCheck.ToTodayKeys(baseline, [rekey], _ => true), working, [other], _ => true, Dialect.PostgreSql, Database));
+    }
 }

@@ -318,6 +318,9 @@ public sealed partial class ModelStore
                 SequenceRekeys = materialized.SelectMany(m => m.Sequences ?? FrozenDictionary<string, string>.Empty)
                     .GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Value, StringComparer.Ordinal),
                 MemberRekeys = [.. materialized.SelectMany(m => m.MemberRekeys ?? [])],
+                Adopted = [.. materialized.SelectMany(m => m.Adopted ?? [])],
+                RenderedFacts = (await _services.Snapshots.LoadAsync(database.Name, ct).ConfigureAwait(false))?.Facts is { Count: > 0 } rendered
+                    ? rendered.ToFrozenSet(StringComparer.Ordinal) : FrozenSet<string>.Empty,
                 ConstraintsBefore = constraintsBefore,
                 ConstraintsAfter = constraintsAfter,
                 CodeMaps = codeMaps,

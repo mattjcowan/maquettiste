@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using Maquettiste.Engine.Planning;
 
 namespace Maquettiste.Engine.Resolution;
@@ -6,9 +7,12 @@ namespace Maquettiste.Engine.Resolution;
 /// <summary>
 /// The rows a database receives (2026-10-07, table seeds; <see cref="RDatabase.SeedTables"/>): the rows of the reference types bound to
 /// its table files (2026-10-11, source <c>list</c>, first), the seeds of its table files, and the
-/// entity and relation seeds that reach one of its tables, through the entity's binding (the field map, the binding's constants, the
-/// write table) or, for an entity the database projects, through its mapping (the attribute columns, the foreign keys of its to-one
-/// ends, the discriminator), and a relation seed through its junction table. Cells are in database terms: an enum member by the
+/// entity and relation seeds that reach one of its tables, through the entity's binding (the field map, value object members at any
+/// depth, the binding's constants and type code, the write table; with table per type the bases' tables first, root first; and its child
+/// tables, a row per list item or for a single value object, retire-projection-design.md section 6) or, for an entity the database
+/// projects, through its mapping (the attribute columns, the foreign keys of its to-one ends, the discriminator), and a relation seed
+/// through its junction table, or, when an end's entity is bound to the database, through the foreign key its mapping names (an update
+/// of the dependent's row: its key, the principal's key and the relation's attribute columns). Cells are in database terms: an enum member by the
 /// column's storage (its code or name in a text column, else its value), a to-one end as the referenced row's key, a stable id column
 /// as the id derived from the table and the row key (next-phase-2-design.md section 3.4) unless the row's source writes it, and the
 /// columns of a table seed's foreign-key entry as the values of the row its natural key names (section 3.4, decisions 1 to 3), which
@@ -48,18 +52,26 @@ internal sealed partial class ResolveRun
     private sealed class DataBuild(RDatabase database, IReadOnlyList<RSeed> seeds, Dictionary<string, RSeedRow> seedRowsById, SeedOrdering ordering)
     {
         private readonly HashSet<RTable> _tables = new(database.Tables, ReferenceEqualityComparer.Instance);
-        private readonly Dictionary<RSeed, Source?> _sources = new(ReferenceEqualityComparer.Instance);
-        private readonly Dictionary<RSeedRow, Work?> _works = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<RSeed, IReadOnlyList<Source>> _sources = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<Source, Dictionary<RSeedRow, IReadOnlyList<Work>>> _works = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<RDataRow, Work> _byRow = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<RTable, Facts> _facts = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<RSeed, IReadOnlyList<string>> _lookupKeys = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>
         /// How a seed's rows reach a table of the database: the table, the source kind, the rows in the order the table takes them, their
-        /// cells in database terms, a table seed's foreign-key entries, and the keys the rows depend on besides the seed's.
+        /// cells in database terms, a table seed's foreign-key entries, and the keys the rows depend on besides the seed's. A seed reaches
+        /// several tables through a binding with bases or child tables, one source each.
         /// </summary>
         private sealed record Source(RTable Table, string Kind, IReadOnlyList<RSeedRow> Rows, Func<RSeedRow, IReadOnlyDictionary<string, object?>> Cells,
-            IReadOnlyList<RSeedColumn> Entries, IReadOnlyList<string> Extra);
+            IReadOnlyList<RSeedColumn> Entries, IReadOnlyList<string> Extra)
+        {
+            /// <summary>
+            /// For a child table: the rows one seed row puts there, each an id suffix and its cells (<see cref="Cells"/> is unused);
+            /// <see langword="null"/> when each seed row is one row.
+            /// </summary>
+            public Func<RSeedRow, IReadOnlyList<(string Suffix, IReadOnlyDictionary<string, object?> Cells)>>? Many { get; init; }
+        }
 
         /// <summary>A table's row key, its stable id columns, and whether that key can derive their values.</summary>
         private sealed record Facts(IReadOnlyList<RColumn> Key, IReadOnlyList<RColumn> Stable, bool Derives);
@@ -84,23 +96,29 @@ internal sealed partial class ResolveRun
             var works = new List<Work>();
 
             // The rows of the reference types bound to a table of the database come first (2026-10-11), then the table seeds, in merge
-            // order (the seeds come in SeedOrder: package, name, id), then the entity and relation seeds that reach a table.
-            foreach (var kinds in (string[][])[["list"], ["table"], ["entity", "relation"]])
+            // order (the seeds come in SeedOrder: package, name, id), then the entity seeds that reach a table, then the relation seeds: a
+            // link stored on a foreign key updates a row an entity seed inserts in the same table.
+            foreach (var kinds in (string[][])[["list"], ["table"], ["entity"], ["relation"]])
             {
                 foreach (var seed in seeds)
                 {
-                    if (SourceOf(seed) is not { } source || !kinds.Contains(source.Kind, StringComparer.Ordinal))
-                        continue;
-                    if (!pending.TryGetValue(source.Table, out var p))
-                        pending[source.Table] = p = new Pending(source.Table);
-                    if (!p.Seeds.Contains(seed))
-                        p.Seeds.Add(seed);
-                    p.Dependencies.UnionWith(source.Extra);
-                    foreach (var row in source.Rows)
+                    foreach (var source in SourcesOf(seed))
                     {
-                        var work = WorkOf(row)!;
-                        p.Rows.Add(work.Row);
-                        works.Add(work);
+                        if (!kinds.Contains(source.Kind, StringComparer.Ordinal))
+                            continue;
+                        if (!pending.TryGetValue(source.Table, out var p))
+                            pending[source.Table] = p = new Pending(source.Table);
+                        if (!p.Seeds.Contains(seed))
+                            p.Seeds.Add(seed);
+                        p.Dependencies.UnionWith(source.Extra);
+                        foreach (var row in source.Rows)
+                        {
+                            foreach (var work in WorksOf(row, source))
+                            {
+                                p.Rows.Add(work.Row);
+                                works.Add(work);
+                            }
+                        }
                     }
                 }
             }
@@ -114,6 +132,7 @@ internal sealed partial class ResolveRun
             {
                 OrderBySelfReferences(p);
                 var used = new HashSet<string>(p.Rows.SelectMany(r => r.Values.Keys), StringComparer.Ordinal);
+                var key = RowKeyOf(p, used);
                 p.Dependencies.UnionWith(p.Table.Dependencies);
                 foreach (var seed in p.Seeds)
                     p.Dependencies.UnionWith(LookupKeys(seed));
@@ -121,7 +140,7 @@ internal sealed partial class ResolveRun
                 {
                     Id = p.Table.Key,
                     Table = p.Table,
-                    KeyColumns = FactsOf(p.Table).Key,
+                    KeyColumns = key,
                     Columns = [.. p.Table.Columns.Where(c => used.Contains(c.Name))],
                     Seeds = p.Seeds,
                     Rows = p.Rows,
@@ -133,62 +152,191 @@ internal sealed partial class ResolveRun
             return new RList<RSeedTable>(result, ["k:seed", "k:table", "k:entity"]);
         }
 
-        /// <summary>One seed's rows in this database, in the seed's own order; empty when they reach none of its tables.</summary>
+        /// <summary>
+        /// One seed's rows in this database, in the seed's own order (through a binding with bases or child tables, table by table: the
+        /// bases' rows, the entity's own, then each child table's); empty when they reach none of its tables.
+        /// </summary>
         public IReadOnlyList<RDataRow> RowsOf(RSeed seed)
         {
-            if (SourceOf(seed) is not { } source)
-                return [];
-            var works = source.Rows.Select(row => WorkOf(row)!).ToList();
+            var works = SourcesOf(seed).SelectMany(source => source.Rows.SelectMany(row => WorksOf(row, source))).ToList();
             foreach (var work in works)
                 Complete(work);
             return [.. works.Select(w => w.Row)];
         }
 
-        private Source? SourceOf(RSeed seed)
+        private IReadOnlyList<Source> SourcesOf(RSeed seed)
         {
             if (_sources.TryGetValue(seed, out var known))
                 return known;
-            Source? source = null;
+            IReadOnlyList<Source> sources = [];
             switch (seed.Target)
             {
                 case RReferenceType type when type.Bindings.TryGetValue(database.Name, out var binding) && _tables.Contains(binding.Table):
-                    source = new Source(binding.Table, "list", seed.OrderedRows, row => ThroughReferenceBinding(seed, row, binding), [], []);
+                    sources = [new Source(binding.Table, "list", seed.OrderedRows, row => ThroughReferenceBinding(seed, row, binding), [], [])];
                     break;
                 case RTable table when _tables.Contains(table):
-                    source = new Source(table, "table", seed.Rows,
+                    sources = [new Source(table, "table", seed.Rows,
                         row => Cells(seed.Columns.Where(c => c.Column is not null).Select(c => (c.Column!, row.Values.GetValueOrDefault(c.Name)))),
-                        [.. seed.Columns.Where(c => c.ForeignKey is not null)], []);
+                        [.. seed.Columns.Where(c => c.ForeignKey is not null)], [])];
                     break;
                 case REntity entity when entity.Bindings.TryGetValue(database.Name, out var binding):
-                    if (binding.Writes && (binding.WriteTable ?? binding.SourceTable) is { } written && _tables.Contains(written))
-                        source = new Source(written, "entity", seed.OrderedRows, row => ThroughBinding(seed, row, binding, seedRowsById), [], entity.Dependencies);
+                    sources = BindingSources(seed, entity, binding);
                     break;
                 case REntity entity when entity.Mappings.TryGetValue(database.Name, out var mapping) && _tables.Contains(mapping.Table):
-                    source = new Source(mapping.Table, "entity", seed.OrderedRows, row => ThroughMapping(seed, row, mapping, seedRowsById), [], []);
+                    sources = [new Source(mapping.Table, "entity", seed.OrderedRows, row => ThroughMapping(seed, row, mapping, seedRowsById), [], [])];
                     break;
                 case RRelation relation when relation.Mappings.TryGetValue(database.Name, out var link) && link.JunctionTable is { } junction
                     && _tables.Contains(junction):
-                    source = new Source(junction, "relation", seed.OrderedRows, row => ThroughJunction(seed, row, link, junction, seedRowsById), [], []);
+                    sources = [new Source(junction, "relation", seed.OrderedRows, row => ThroughJunction(seed, row, link, junction, seedRowsById, database.Name), [],
+                        BoundHere(relation) ? RelationKeys(relation) : [])];
+                    break;
+                case RRelation relation when relation.Mappings.TryGetValue(database.Name, out var link) && link is { Shape: "foreign-key", ForeignKey: { Columns: [var held, ..] } fk }
+                    && _tables.Contains(held.Table) && BoundHere(relation):
+                    sources = ForeignKeySources(seed, relation, link, fk, held.Table);
                     break;
             }
 
-            return _sources[seed] = source;
+            return _sources[seed] = sources;
         }
 
-        /// <summary>The data row of a seed row in this database, created on first use; <see langword="null"/> when it reaches none of its tables.</summary>
-        private Work? WorkOf(RSeedRow seedRow)
+        /// <summary>
+        /// The tables an entity seed reaches through the entity's binding, when it writes a table of the database: with table per type the
+        /// bases' tables first, root first, each row with its base's fields and constants and the entity's own type code in the base's type
+        /// column; then the write table, with the entity's fields, constants and type code, and the base foreign key's columns holding the
+        /// key; then each child table the binding or a base's binding writes (retire-projection-design.md sections 4 to 6).
+        /// </summary>
+        private IReadOnlyList<Source> BindingSources(RSeed seed, REntity entity, REntityBinding binding)
         {
-            if (_works.TryGetValue(seedRow, out var known))
-                return known;
-            Work? work = null;
-            if (SourceOf(seedRow.Seed) is { } source)
+            if (!binding.Writes || (binding.WriteTable ?? binding.SourceTable) is not { } written || !_tables.Contains(written))
+                return [];
+            var sources = new List<Source>();
+            for (var i = binding.Bases.Count - 1; i >= 0; i--)
             {
-                var row = new RDataRow { Id = seedRow.Id, Seed = seedRow.Seed, Source = source.Kind, Dependencies = LookupKeys(seedRow.Seed) };
-                work = new Work(seedRow, row, source, source.Cells(seedRow));
-                _byRow[row] = work;
+                var level = binding.Bases[i];
+                if (level.Binding is { Writes: true } b && (b.WriteTable ?? b.SourceTable) is { } table && _tables.Contains(table))
+                {
+                    sources.Add(new Source(table, "entity", seed.OrderedRows, row => ThroughBinding(seed, row, b, level.DiscriminatorColumn, seedRowsById), [],
+                        [.. entity.Dependencies.Concat(b.Entity.Dependencies).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]));
+                }
             }
 
-            return _works[seedRow] = work;
+            sources.Add(new Source(written, "entity", seed.OrderedRows, row => ThroughBinding(seed, row, binding, binding.DiscriminatorColumn, seedRowsById), [],
+                entity.Dependencies));
+            var children = binding.ChildTables.Select(c => (Entry: c, Owner: entity))
+                .Concat(binding.Bases.SelectMany(l => l.ChildTables.Select(c => (Entry: c.ChildTable, Owner: l.Binding.Entity))));
+            foreach (var (child, owner) in children)
+            {
+                if (!child.Writes || child.Table is not { } table || !_tables.Contains(table) || child.Attribute is null || child.Owner.Count == 0
+                    || child.Owner.Any(o => o.Field is null))
+                    continue;
+                sources.Add(new Source(table, "entity", seed.OrderedRows, _ => ImmutableSortedDictionary<string, object?>.Empty, [],
+                    [.. entity.Dependencies.Concat(owner.Dependencies).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)])
+                {
+                    Many = row => ThroughChildTable(seed, row, child, seedRowsById),
+                });
+            }
+
+            return sources;
+        }
+
+        /// <summary>Whether an end of a relation is an entity bound to the database: its seed rows then go through the relation's mapping here.</summary>
+        private bool BoundHere(RRelation relation) => relation.Ends.Any(e => e.Entity is { } entity && entity.Bindings.ContainsKey(database.Name));
+
+        /// <summary>The keys a relation's rows read besides its seed's: the relation and the entities at its ends (their bindings name the key columns).</summary>
+        private static IReadOnlyList<string> RelationKeys(RRelation relation) =>
+            [.. relation.Dependencies.Concat(relation.Ends.SelectMany(e => e.Entity?.Dependencies ?? [])).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+
+        /// <summary>
+        /// A relation seed whose links its mapping stores on a foreign key, when an end's entity is bound to the database: one row per link in
+        /// the foreign key's table, which updates the dependent's row (an entity seed inserts it) found by the table's row key, setting the
+        /// foreign key's columns to the principal's key and the relation's attribute columns the seed gives. A link whose dependent's key the
+        /// dependent's binding does not map onto that row key is left out.
+        /// </summary>
+        private IReadOnlyList<Source> ForeignKeySources(RSeed seed, RRelation relation, RRelationMapping link, RForeignKey fk, RTable table)
+        {
+            if (fk.End is not { } dependent || relation.Ends.FirstOrDefault(e => e.Id != dependent.Id) is not { } principal
+                || seed.Columns.FirstOrDefault(c => c.Kind == "end" && c.End?.Id == dependent.Id) is not { } dependentCell
+                || seed.Columns.FirstOrDefault(c => c.Kind == "end" && c.End?.Id == principal.Id) is not { } principalCell)
+                return [];
+            var key = FactsOf(table).Key;
+            if (key.Count == 0)
+                return [];
+            var attributes = new List<(RColumn Column, string Cell)>();
+            foreach (var stored in link.Attributes)
+            {
+                if (seed.Columns.FirstOrDefault(c => c.Kind == "attribute" && c.Attribute?.Id == stored.Attribute.Id) is { } cell)
+                    attributes.Add((stored.Column, cell.Name));
+            }
+
+            List<(RColumn, object?)>? DependentKey(RSeedRow row)
+            {
+                if (row.Values.GetValueOrDefault(dependentCell.Name) is not string id || !seedRowsById.TryGetValue(id, out var target)
+                    || target.Seed.Target is not REntity entity)
+                    return null;
+                var cells = new List<(RColumn, object?)>();
+                foreach (var column in key)
+                {
+                    if (BoundKeyAttribute(entity, table, column, database.Name) is not { } name || target.Values.GetValueOrDefault(name) is not object value)
+                        return null;
+                    cells.Add((column, value));
+                }
+
+                return cells;
+            }
+
+            var rows = seed.OrderedRows.Where(r => DependentKey(r) is not null).ToList();
+            return [new Source(table, "relation", rows, row =>
+            {
+                var cells = DependentKey(row)!;
+                for (var i = 0; i < fk.Columns.Count; i++)
+                    cells.Add((fk.Columns[i], EndKey(row, principalCell.Name, principal, i < fk.ReferencedColumns.Count ? fk.ReferencedColumns[i] : null, i, seedRowsById, database.Name)));
+                foreach (var (column, cell) in attributes)
+                    cells.Add((column, row.Values.GetValueOrDefault(cell)));
+                return Cells(cells);
+            }, [], RelationKeys(relation))];
+        }
+
+        /// <summary>The data row of a table or list seed's row in this database, created on first use; <see langword="null"/> when it reaches none of its tables.</summary>
+        private Work? WorkOf(RSeedRow seedRow) => SourcesOf(seedRow.Seed) is [var source, ..] ? WorksOf(seedRow, source).FirstOrDefault() : null;
+
+        /// <summary>
+        /// The data rows a seed row puts in one source's table, created on first use: one, with the seed row's id, or a child table's rows,
+        /// each with the seed row's id, the entry's id and the item's position as its id.
+        /// </summary>
+        private IReadOnlyList<Work> WorksOf(RSeedRow seedRow, Source source)
+        {
+            if (!_works.TryGetValue(source, out var bySource))
+                _works[source] = bySource = new Dictionary<RSeedRow, IReadOnlyList<Work>>(ReferenceEqualityComparer.Instance);
+            if (bySource.TryGetValue(seedRow, out var known))
+                return known;
+            var parts = source.Many is { } many ? many(seedRow) : [("", source.Cells(seedRow))];
+            var works = new List<Work>(parts.Count);
+            foreach (var (suffix, cells) in parts)
+            {
+                var row = new RDataRow { Id = seedRow.Id + suffix, Seed = seedRow.Seed, Source = source.Kind, Dependencies = LookupKeys(seedRow.Seed) };
+                var work = new Work(seedRow, row, source, cells);
+                _byRow[row] = work;
+                works.Add(work);
+            }
+
+            return bySource[seedRow] = works;
+        }
+
+        /// <summary>
+        /// The columns that find a table's rows again (<see cref="RSeedTable.KeyColumns"/>): its natural key (<see cref="FactsOf"/>); for a
+        /// table only entity and relation seeds fill whose rows do not give every column of it (a key the database fills, such as a child
+        /// table's own id), its primary key or first unique constraint whose columns the rows give, else none. The rows' keys follow it.
+        /// </summary>
+        private IReadOnlyList<RColumn> RowKeyOf(Pending p, HashSet<string> used)
+        {
+            var key = FactsOf(p.Table).Key;
+            if (key.All(c => used.Contains(c.Name)) || !p.Rows.All(r => r.Source is "entity" or "relation"))
+                return key;
+            IEnumerable<IReadOnlyList<RColumn>> candidates = p.Table.PrimaryKey is { } pk ? [pk.Columns] : [];
+            key = candidates.Concat(p.Table.Uniques.Select(u => u.Columns)).FirstOrDefault(k => k.Count > 0 && k.All(c => used.Contains(c.Name))) ?? [];
+            foreach (var row in p.Rows)
+                row.Key = [.. key.Select(c => row.Values.GetValueOrDefault(c.Name))];
+            return key;
         }
 
         private Facts FactsOf(RTable table)
@@ -571,38 +719,22 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
-    /// An entity row through its binding: the entity's type code in its type column (first, as the insert writes it whatever a field on
-    /// the column holds), each field the seed gives a value for, then the binding's constants.
+    /// An entity row through one binding into its write table (the entity's own binding, or a base's binding for the base's table under
+    /// table per type): the type code in the type column (first, as the insert writes it whatever a field on the column holds), the key
+    /// fields a base foreign key gives (its columns hold the key), each field the seed gives a value for, then the binding's constants.
     /// </summary>
-    private static IReadOnlyDictionary<string, object?> ThroughBinding(RSeed seed, RSeedRow row, REntityBinding binding, Dictionary<string, RSeedRow> seedRowsById)
+    private static IReadOnlyDictionary<string, object?> ThroughBinding(RSeed seed, RSeedRow row, REntityBinding binding, RBindingDiscriminator? type,
+        Dictionary<string, RSeedRow> seedRowsById)
     {
         var given = new HashSet<string>(seed.Columns.Select(c => c.Name), StringComparer.Ordinal);
         var cells = new List<(RColumn, object?)>();
-        if (binding.DiscriminatorColumn is { WriteColumn: { } typeColumn } discriminator)
-            cells.Add((typeColumn, discriminator.Value));
-        foreach (var field in binding.Fields)
+        if (type is { WriteColumn: { } typeColumn })
+            cells.Add((typeColumn, type.Value));
+        foreach (var field in binding.Key.Where(k => !binding.Fields.Contains(k)).Concat(binding.Fields))
         {
-            if (field.WriteColumn is not { } column)
+            if (field.WriteColumn is not { } column || !Given(field, given))
                 continue;
-            object? value;
-            if (field.End is { } end)
-            {
-                if (!given.Contains(end.Role))
-                    continue;
-                value = KeyOfReferenced(row, end.Role, end, 0, seedRowsById);
-            }
-            else if (field.Attribute is { } attribute)
-            {
-                if (!given.Contains(attribute.Name))
-                    continue;
-                var cell = row.Values.GetValueOrDefault(attribute.Name);
-                value = field.Member is { } member ? (cell as IReadOnlyDictionary<string, object?>)?.GetValueOrDefault(member.Name) : cell;
-            }
-            else
-            {
-                continue;
-            }
-
+            var value = FieldValue(row, field, column, seedRowsById);
             if (value is null && field.IsGenerated)
                 continue;
             cells.Add((column, value));
@@ -615,6 +747,180 @@ internal sealed partial class ResolveRun
         }
 
         return Cells(cells);
+    }
+
+    /// <summary>Whether the seed gives a value for a binding field: a column for its relation end (by role) or its attribute (by name).</summary>
+    private static bool Given(RBindingField field, HashSet<string> given) =>
+        field.End is { } end ? given.Contains(end.Role) : field.Attribute is { } attribute && given.Contains(attribute.Name);
+
+    /// <summary>
+    /// A binding field's value in a seed row: for a to-one end, the referenced row's key; for an attribute, its cell, walked down the field's
+    /// value object members (<see cref="Walk"/>).
+    /// </summary>
+    private static object? FieldValue(RSeedRow row, RBindingField field, RColumn column, Dictionary<string, RSeedRow> seedRowsById)
+    {
+        if (field.End is { } end)
+            return KeyOfReferenced(row, end.Role, end, 0, seedRowsById);
+        return field.Attribute is { } attribute ? Walk(row.Values.GetValueOrDefault(attribute.Name), field.Members, column) : null;
+    }
+
+    /// <summary>
+    /// A value walked down value object members (outermost first; a value object cell holds its members by name), any depth: a member of
+    /// an enum named by its name or code becomes the member; a value object or a list left at the end of the walk, in a JSON column, is
+    /// its JSON text.
+    /// </summary>
+    private static object? Walk(object? value, IReadOnlyList<RAttribute> members, RColumn column)
+    {
+        foreach (var member in members)
+            value = (value as IReadOnlyDictionary<string, object?>)?.GetValueOrDefault(member.Name);
+        if (members.Count > 0 && members[^1].Type.Enum is { } e)
+            value = EnumOf(e, value);
+        return column.Type == "json" && value is IReadOnlyDictionary<string, object?> or ImmutableArray<object?> ? JsonText(value) : value;
+
+        static object? EnumOf(REnum e, object? value) => value switch
+        {
+            string text => e.Members.FirstOrDefault(m => string.Equals(m.Name, text, StringComparison.Ordinal))
+                ?? e.Members.FirstOrDefault(m => string.Equals(m.Code, text, StringComparison.Ordinal)) ?? (object)text,
+            ImmutableArray<object?> items => items.Select(v => EnumOf(e, v)).ToImmutableArray(),
+            _ => value,
+        };
+    }
+
+    /// <summary>A value object or list as compact JSON text, members in name order (as the seed cell holds them), enum members by code or name.</summary>
+    private static string JsonText(object? value)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(stream, new System.Text.Json.JsonWriterOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))
+            Write(writer, value);
+        return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+
+        static void Write(System.Text.Json.Utf8JsonWriter writer, object? value)
+        {
+            switch (value)
+            {
+                case null:
+                    writer.WriteNullValue();
+                    break;
+                case IReadOnlyDictionary<string, object?> members:
+                    writer.WriteStartObject();
+                    foreach (var (name, member) in members.OrderBy(p => p.Key, StringComparer.Ordinal))
+                    {
+                        writer.WritePropertyName(name);
+                        Write(writer, member);
+                    }
+
+                    writer.WriteEndObject();
+                    break;
+                case ImmutableArray<object?> items:
+                    writer.WriteStartArray();
+                    foreach (var item in items)
+                        Write(writer, item);
+                    writer.WriteEndArray();
+                    break;
+                case REnumMember member:
+                    writer.WriteStringValue(member.Code ?? member.Name);
+                    break;
+                case bool b:
+                    writer.WriteBooleanValue(b);
+                    break;
+                case long l:
+                    writer.WriteNumberValue(l);
+                    break;
+                case decimal m:
+                    writer.WriteNumberValue(m);
+                    break;
+                case double d:
+                    writer.WriteNumberValue(d);
+                    break;
+                default:
+                    writer.WriteStringValue(Convert.ToString(value, CultureInfo.InvariantCulture));
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The rows an entity row puts in a child table (retire-projection-design.md section 5), when the seed gives the attribute: one per
+    /// list item (none for an empty list), or one for a single value object that is not null. Each row holds the owner's key in the owner
+    /// foreign key's columns, the item's position from 0 in the order column, each field's value (a list of single values: the item;
+    /// else the item's members down the field's path), then the entry's constants. Its id suffix is the entry's id and the position.
+    /// </summary>
+    private static IReadOnlyList<(string Suffix, IReadOnlyDictionary<string, object?> Cells)> ThroughChildTable(RSeed seed, RSeedRow row, RBindingChildTable child,
+        Dictionary<string, RSeedRow> seedRowsById)
+    {
+        var given = new HashSet<string>(seed.Columns.Select(c => c.Name), StringComparer.Ordinal);
+        var attribute = child.Attribute!;
+        if (!given.Contains(attribute.Name))
+            return [];
+        var owner = new List<(RColumn, object?)>(child.Owner.Count);
+        foreach (var column in child.Owner)
+        {
+            if (!Given(column.Field!, given) || FieldValue(row, column.Field!, column.ReferencedColumn, seedRowsById) is not { } value)
+                return [];
+            owner.Add((column.Column, value));
+        }
+
+        var cell = row.Values.GetValueOrDefault(attribute.Name);
+        IReadOnlyList<object?> items = child.IsList ? cell is ImmutableArray<object?> list ? list : [] : cell is null ? [] : [cell];
+        var result = new List<(string, IReadOnlyDictionary<string, object?>)>(items.Count);
+        for (var i = 0; i < items.Count; i++)
+        {
+            var cells = new List<(RColumn, object?)>(owner);
+            if (child is { IsList: true, OrderColumn: { } order })
+                cells.Add((order, (long)i));
+            foreach (var field in child.Fields)
+            {
+                if (!field.InInsert || field.WriteColumn is not { } column)
+                    continue;
+                var value = Walk(items[i], field.Members, column);
+                if (value is null && field.IsGenerated)
+                    continue;
+                cells.Add((column, value));
+            }
+
+            foreach (var constant in child.Constants)
+            {
+                if (constant.WriteColumn is { } column)
+                    cells.Add((column, constant.Value));
+            }
+
+            result.Add(("/" + child.Id + "/" + i.ToString(CultureInfo.InvariantCulture), Cells(cells)));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// The attribute of an entity whose binding to a database writes a column of a table as the entity's key: a key field or an unnested
+    /// attribute field of the entity's binding, or of a base's binding above it under table per type, whose write table is the table.
+    /// </summary>
+    private static string? BoundKeyAttribute(REntity entity, RTable table, RColumn column, string database)
+    {
+        if (!entity.Bindings.TryGetValue(database, out var binding))
+            return null;
+        foreach (var candidate in binding.Bases.Select(l => l.Binding).Prepend(binding))
+        {
+            if (!ReferenceEquals(candidate.WriteTable ?? candidate.SourceTable, table))
+                continue;
+            if (candidate.Key.Concat(candidate.Fields).FirstOrDefault(f => ReferenceEquals(f.WriteColumn ?? f.SourceColumn, column)
+                && f is { Attribute: not null, End: null, Members.Count: 0 }) is { } field)
+                return field.Attribute!.Name;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The key value an end cell names for one column of a link's pointer: when the named row's entity is bound to the database, the
+    /// attribute its binding writes to the referenced column (<see cref="BoundKeyAttribute"/>); else the referenced row's key attribute at
+    /// <paramref name="index"/> (<see cref="KeyOfReferenced"/>).
+    /// </summary>
+    private static object? EndKey(RSeedRow row, string cellName, REnd end, RColumn? referenced, int index, Dictionary<string, RSeedRow> seedRowsById, string database)
+    {
+        if (referenced is not null && row.Values.GetValueOrDefault(cellName) is string id && seedRowsById.TryGetValue(id, out var target)
+            && target.Seed.Target is REntity entity && entity.Bindings.ContainsKey(database))
+            return BoundKeyAttribute(entity, referenced.Table, referenced, database) is { } name ? target.Values.GetValueOrDefault(name) : null;
+        return KeyOfReferenced(row, cellName, end, index, seedRowsById);
     }
 
     /// <summary>An entity row through the mapping of a database that projects the entity: its attribute columns, its to-one keys, the discriminator.</summary>
@@ -656,21 +962,24 @@ internal sealed partial class ResolveRun
     /// A relation row into its junction table: each end's key columns, the relation's attribute columns, then the mapping's constants
     /// (several-types-design.md decision 44 and answer 9), so the row is one of this relation's links and its key holds the constants' columns.
     /// When the mapping has its link (a designed link table with constants or attribute columns), each end's key comes from it: a table several
-    /// relations share has one key per end for all of them, and that key's <see cref="RForeignKey.End"/> names only one relation's end.
+    /// relations share has one key per end for all of them, and that key's <see cref="RForeignKey.End"/> names only one relation's end. An
+    /// end's key value is the one the named row's binding writes to the referenced column when its entity is bound to the database
+    /// (<see cref="EndKey"/>); a relation attribute's column is the one the mapping's <c>attributes</c> names, else the projected column.
     /// </summary>
     private static IReadOnlyDictionary<string, object?> ThroughJunction(RSeed seed, RSeedRow row, RRelationMapping mapping, RTable junction,
-        Dictionary<string, RSeedRow> seedRowsById)
+        Dictionary<string, RSeedRow> seedRowsById, string database)
     {
         var link = mapping.Links.Count == 1 && ReferenceEquals(mapping.Links[0].Table, junction) ? mapping.Links[0] : null;
         var cells = new List<(RColumn, object?)>();
         foreach (var sc in seed.Columns)
         {
-            if (sc.Kind == "end" && sc.End is { } end && KeyColumnsOf(end) is { } columns)
+            if (sc.Kind == "end" && sc.End is { } end && KeyColumnsOf(end) is var (columns, referenced) && columns is not null)
             {
                 for (var i = 0; i < columns.Count; i++)
-                    cells.Add((columns[i], KeyOfReferenced(row, sc.Name, end, i, seedRowsById)));
+                    cells.Add((columns[i], EndKey(row, sc.Name, end, i < referenced.Count ? referenced[i] : null, i, seedRowsById, database)));
             }
-            else if (sc.Kind == "attribute" && sc.Attribute is { } attribute && junction.Columns.FirstOrDefault(c => c.AttributePath == attribute.Id) is { } column)
+            else if (sc.Kind == "attribute" && sc.Attribute is { } attribute
+                && (mapping.Attributes.FirstOrDefault(a => a.Attribute.Id == attribute.Id)?.Column ?? junction.Columns.FirstOrDefault(c => c.AttributePath == attribute.Id)) is { } column)
             {
                 cells.Add((column, row.Values.GetValueOrDefault(sc.Name)));
             }
@@ -680,9 +989,12 @@ internal sealed partial class ResolveRun
             cells.Add((constant.Column, constant.Values.Count > 0 ? constant.Values[0] : null));
         return Cells(cells);
 
-        IReadOnlyList<RColumn>? KeyColumnsOf(REnd end) => link is not null
-            ? link.Ends.FirstOrDefault(e => e.End.Id == end.Id)?.Columns
-            : junction.ForeignKeys.FirstOrDefault(f => f.End?.Id == end.Id)?.Columns;
+        (IReadOnlyList<RColumn>? Columns, IReadOnlyList<RColumn> Referenced) KeyColumnsOf(REnd end)
+        {
+            if (link is not null)
+                return link.Ends.FirstOrDefault(e => e.End.Id == end.Id) is { } pointer ? (pointer.Columns, pointer.ReferencedColumns) : (null, []);
+            return junction.ForeignKeys.FirstOrDefault(f => f.End?.Id == end.Id) is { } fk ? (fk.Columns, fk.ReferencedColumns) : (null, []);
+        }
     }
 
     /// <summary>The key value (part <paramref name="index"/>) of the row an end cell names: the referenced row's key attribute.</summary>

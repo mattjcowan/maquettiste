@@ -206,10 +206,13 @@ public static class DatabaseEndpoints
             return error;
         if (await store.GetElementAsync(id, ct).ConfigureAwait(false) is not { } document || document.Element.Id != id || document.Element.KindName != "database")
             return Api.NotFound("database", id, "not-a-database");
+        if (request?.Hierarchy is { ValueKind: not (System.Text.Json.JsonValueKind.String or System.Text.Json.JsonValueKind.Object or System.Text.Json.JsonValueKind.Null) }
+            || request?.ListStorage is { ValueKind: not (System.Text.Json.JsonValueKind.String or System.Text.Json.JsonValueKind.Object or System.Text.Json.JsonValueKind.Null) })
+            return Api.BadRequest("hierarchy and listStorage are a string, or an object from ids to strings.");
         var plan = request?.Op switch
         {
             "materialize-tables" when request.Entities is { Count: > 0 } entities =>
-                new MaterializeRequest("materialize-tables", id, entities, request.Schema),
+                new MaterializeRequest("materialize-tables", id, entities, request.Schema) { Hierarchy = Choice(request.Hierarchy), ListStorage = Choice(request.ListStorage) },
             "materialize-entities" when request.Tables is { Count: > 0 } tables && !string.IsNullOrEmpty(request.Package) =>
                 new MaterializeRequest("materialize-entities", id, tables, null, request.Package),
             "materialize-attributes" when request.Entities is { Count: > 0 } entities =>
@@ -226,6 +229,15 @@ public static class DatabaseEndpoints
             return Api.BadRequest("The body is { \"op\": \"materialize-tables\", \"entities\": [ids], \"schema\"?: id } { \"op\": \"materialize-entities\", \"tables\": [ids], \"package\": id } { \"op\": \"materialize-attributes\", \"entities\": [ids], \"columns\"?: [keys or names] } { \"op\": \"materialize-columns\", \"entities\": [ids], \"attributes\"?: [field references] } { \"op\": \"map-by-name\", \"entities\": [ids] } or { \"op\": \"resync-binding\", \"entities\": [ids], \"columns\"?: [keys or names], \"keepNames\"?: boolean }.");
         return Api.Json(await store.PlanMaterializeAsync(plan, ct).ConfigureAwait(false));
     });
+
+    /// <summary>A choice per id (an object of strings), or one for every id (a string, kept under <c>*</c>); <see langword="null"/> for none.</summary>
+    private static Dictionary<string, string>? Choice(System.Text.Json.JsonElement? value) => value switch
+    {
+        { ValueKind: System.Text.Json.JsonValueKind.String } v => new Dictionary<string, string>(StringComparer.Ordinal) { ["*"] = v.GetString()! },
+        { ValueKind: System.Text.Json.JsonValueKind.Object } v => v.EnumerateObject().Where(p => p.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+            .ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal),
+        _ => null,
+    };
 }
 
 /// <summary>
@@ -241,5 +253,8 @@ public static class DatabaseEndpoints
 /// binding names (materialize-attributes) or every column of the source (resync-binding).</param>
 /// <param name="Attributes">The binding field references (materialize-columns, one entity); absent means every unmapped attribute.</param>
 /// <param name="KeepNames">resync-binding: keep every attribute's name; absent means false.</param>
+/// <param name="Hierarchy">materialize-tables: one-table, per-concrete or per-type for every hierarchy, or an object from a root entity id to one.</param>
+/// <param name="ListStorage">materialize-tables: table or json for every list attribute, or an object from an attribute id to one.</param>
 public sealed record MaterializeBody(string? Op, IReadOnlyList<string>? Entities, IReadOnlyList<string>? Tables, string? Schema, string? Package,
-    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null, bool? KeepNames = null);
+    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null, bool? KeepNames = null, System.Text.Json.JsonElement? Hierarchy = null,
+    System.Text.Json.JsonElement? ListStorage = null);

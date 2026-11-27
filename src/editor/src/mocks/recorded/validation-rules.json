@@ -1219,7 +1219,7 @@
   {
     "id": "MQ4055",
     "defaultSeverity": "error",
-    "description": "A materialize operation is refused: an entity already bound to the database, a table an entity is already bound to, an entity in an inheritance hierarchy, a name already taken, or an id that is not what the operation takes.",
+    "description": "A materialize operation is refused: an entity already bound to the database, a table an entity is already bound to, part of an inheritance hierarchy (name it whole), an unknown hierarchy shape or list storage, a name already taken, or an id that is not what the operation takes.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true

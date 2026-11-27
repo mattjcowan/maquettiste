@@ -69,7 +69,10 @@ public sealed partial class ModelStore
 
     private static MaterializeRequest ToRequest(BatchOperation o) => o.Op switch
     {
-        BatchOp.MaterializeTables => new MaterializeRequest("materialize-tables", o.Database ?? o.Id ?? "", o.Entities ?? [], o.Schema),
+        BatchOp.MaterializeTables => new MaterializeRequest("materialize-tables", o.Database ?? o.Id ?? "", o.Entities ?? [], o.Schema)
+        {
+            Hierarchy = o.Hierarchy, ListStorage = o.ListStorage,
+        },
         BatchOp.MaterializeAttributes => new MaterializeRequest("materialize-attributes", o.Database ?? o.Id ?? "", o.Entities ?? [], Columns: o.Columns),
         BatchOp.MaterializeColumns => new MaterializeRequest("materialize-columns", o.Database ?? o.Id ?? "", o.Entities ?? [], Attributes: o.Attributes),
         BatchOp.MapByName => new MaterializeRequest("map-by-name", o.Database ?? o.Id ?? "", o.Entities ?? []),
@@ -86,10 +89,10 @@ public sealed partial class ModelStore
         IReadOnlyList<SnapshotAlias>? aliases = null;
         if (request.Operation == "materialize-tables" && snapshot.Get<Database>(request.Database) is { } database)
             aliases = (await _services.Snapshots.LoadAsync(database.Name, ct).ConfigureAwait(false))?.Aliases;
-        var materializer = new Materializer(snapshot, _services.Resolver, _options.EffectiveIdGenerator, _options.EffectiveParallelism, aliases);
+        var materializer = new Materializer(snapshot, _services.Resolver, _options.EffectiveIdGenerator, aliases);
         return request.Operation switch
         {
-            "materialize-tables" => await materializer.TablesAsync(request.Database, request.Ids, request.Schema, ct).ConfigureAwait(false),
+            "materialize-tables" => await materializer.TablesAsync(request.Database, request.Ids, request.Schema, request.Hierarchy, request.ListStorage, ct).ConfigureAwait(false),
             "materialize-entities" => await materializer.EntitiesAsync(request.Database, request.Ids, request.Package, ct).ConfigureAwait(false),
             "materialize-attributes" => await materializer.AttributesAsync(request.Database, request.Ids, request.Columns, ct).ConfigureAwait(false),
             "materialize-columns" => await materializer.ColumnsAsync(request.Database, request.Ids, request.Attributes, ct).ConfigureAwait(false),
@@ -129,7 +132,10 @@ public sealed partial class ModelStore
         if (result.Refusal is not null)
         {
             return new MaterializePlan(request.Operation, request.Database, false, [], [], [], [],
-                [RuleCatalog.Create(result.RefusalRule ?? (binding ? "MQ4089" : "MQ4055"), result.Refusal, null, null, null)]);
+                [RuleCatalog.Create(result.RefusalRule ?? (binding ? "MQ4089" : "MQ4055"), result.Refusal, null, null, null)])
+            {
+                Choices = result.Choices is { } refused ? new MaterializeChoices(refused.Hierarchies, refused.Lists) : null,
+            };
         }
 
         var plan = Plan(snapshot, [.. ToChanges(result)], ct);
@@ -159,7 +165,10 @@ public sealed partial class ModelStore
             [.. result.Ops.Where(o => o.Op == BatchOp.Update).Select(Change)],
             [.. result.Ops.Where(o => o.Op == BatchOp.Delete).Select(Change)],
             result.Notes,
-            [.. diagnostics.Distinct().Order(Diagnostic.Order)]);
+            [.. diagnostics.Distinct().Order(Diagnostic.Order)])
+        {
+            Choices = result.Choices is { } choices ? new MaterializeChoices(choices.Hierarchies, choices.Lists) : null,
+        };
     }
 
     /// <summary>
@@ -229,7 +238,22 @@ public sealed partial class ModelStore
 /// <param name="Attributes">For columns: the binding field references (one entity), or <see langword="null"/> for every unmapped attribute.</param>
 /// <param name="KeepNames">For re-sync: keep every attribute's name, even one that followed its column's name.</param>
 public sealed record MaterializeRequest(string Operation, string Database, IReadOnlyList<string> Ids, string? Schema = null, string? Package = null,
-    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null, bool KeepNames = false);
+    IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null, bool KeepNames = false)
+{
+    /// <summary>
+    /// For tables: the shape of each hierarchy in the request (<c>one-table</c>, <c>per-concrete</c> or <c>per-type</c>), by its root entity's
+    /// id, or under <c>*</c> for every hierarchy; <see langword="null"/>, or a hierarchy it does not name, takes the default (the shape an
+    /// older entity mapping's <c>inheritance</c> gives, else the conventions', one table by default).
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Hierarchy { get; init; }
+
+    /// <summary>
+    /// For tables: where each list attribute goes (<c>table</c> for a table of its own, <c>json</c> for a JSON column), by attribute id, or
+    /// under <c>*</c> for every list; <see langword="null"/>, or a list it does not name, takes the default (what an older mapping or the
+    /// conventions say, else a table).
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ListStorage { get; init; }
+}
 
 /// <summary>What a materialize operation would do.</summary>
 /// <param name="Operation">The operation.</param>
@@ -241,7 +265,34 @@ public sealed record MaterializeRequest(string Operation, string Database, IRead
 /// <param name="Notes">What it leaves as it is, in words.</param>
 /// <param name="Diagnostics">The refusal (MQ4055, or the expression rule an overlay check held as text breaks), the errors that would refuse the change, and the binding findings after it.</param>
 public sealed record MaterializePlan(string Operation, string Database, bool Valid, IReadOnlyList<MaterializeChange> Creates,
-    IReadOnlyList<MaterializeChange> Updates, IReadOnlyList<MaterializeChange> Deletes, IReadOnlyList<string> Notes, IReadOnlyList<Diagnostic> Diagnostics);
+    IReadOnlyList<MaterializeChange> Updates, IReadOnlyList<MaterializeChange> Deletes, IReadOnlyList<string> Notes, IReadOnlyList<Diagnostic> Diagnostics)
+{
+    /// <summary>For tables: the hierarchies and list attributes the request could shape, with what the plan used and the default.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MaterializeChoices? Choices { get; init; }
+}
+
+/// <summary>What a <c>materialize-tables</c> plan could shape differently.</summary>
+/// <param name="Hierarchies">One per inheritance hierarchy in the request.</param>
+/// <param name="Lists">One per list attribute of the requested entities.</param>
+public sealed record MaterializeChoices(IReadOnlyList<MaterializeHierarchyChoice> Hierarchies, IReadOnlyList<MaterializeListChoice> Lists);
+
+/// <summary>An inheritance hierarchy of a <c>materialize-tables</c> request.</summary>
+/// <param name="Root">The root entity's id (the key of the request's <c>hierarchy</c> map).</param>
+/// <param name="RootName">The root entity's name.</param>
+/// <param name="Entities">The names of the hierarchy's entities, root first.</param>
+/// <param name="Shape">The shape the plan used: <c>one-table</c>, <c>per-concrete</c> or <c>per-type</c>.</param>
+/// <param name="Default">The shape without a choice.</param>
+public sealed record MaterializeHierarchyChoice(string Root, string RootName, IReadOnlyList<string> Entities, string Shape, string Default);
+
+/// <summary>A list attribute of a <c>materialize-tables</c> request.</summary>
+/// <param name="Entity">The id of the entity that declares it.</param>
+/// <param name="EntityName">That entity's name.</param>
+/// <param name="Attribute">The attribute's id (the key of the request's <c>listStorage</c> map).</param>
+/// <param name="AttributeName">The attribute's name.</param>
+/// <param name="Storage">What the plan used: <c>table</c> or <c>json</c>.</param>
+/// <param name="Default">The storage without a choice.</param>
+public sealed record MaterializeListChoice(string Entity, string EntityName, string Attribute, string AttributeName, string Storage, string Default);
 
 /// <summary>One element a materialize operation creates, updates or deletes.</summary>
 /// <param name="Id">The element id.</param>

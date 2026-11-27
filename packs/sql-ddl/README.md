@@ -500,17 +500,27 @@ after a map, and the retire step deletes a former code's lookup row once no colu
 type changes without a value map gets the same drop and reconcile in its column step (and, of an enum type, is retyped
 to the new type's enum type through text) instead of a TODO line; outside PostgreSQL the change stays a TODO line.
 
-**Seed rows.** The rows of entity and relation seeds follow as inserts, targets of referenced rows first: `ON CONFLICT DO
-NOTHING` on PostgreSQL and SQLite, `WHERE NOT EXISTS` on the primary key on SQL Server, so a second run skips them. An end column
-fills the foreign key with the referenced row's key; collection cells become junction rows or an array. Value-object cells, and
-seeds of relations stored as a foreign key (set the end on the entity's seed instead), are left to the `seed-data` region.
+**Seed rows.** The rows of seeds of entities a database projects, and of relations between them, follow as inserts, targets of
+referenced rows first: `ON CONFLICT DO NOTHING` on PostgreSQL and SQLite, `WHERE NOT EXISTS` on the primary key on SQL Server, so a
+second run skips them. An end column fills the foreign key with the referenced row's key; collection cells become junction rows or
+an array. Value-object cells, and seeds of relations stored as a foreign key (set the end on the entity's seed instead), are left to
+the `seed-data` region.
 
 **Table seeds and bound entities' seeds** (2026-10-07) come before them, tables in foreign key order: the rows of a seed whose
-target is a table, in column terms, the rows of an entity's seed that reach the table its binding writes (the field map, with
-the binding's constants), and the rows of a reference type bound to the table (first in it, through the type's binding). A seed applied `once` (the default) inserts the rows whose row key is missing; a `converge` seed upserts
-on the row key (the primary key, or the unique constraint the seed names), and with `delete` also deletes the table's rows it does
-not hold. A seed whose `environments` are set goes to `seed.<environment>.sql` instead, for each environment the `environments`
-parameter names.
+target is a table, in column terms, the rows of an entity's seed that reach the tables its binding writes, and the rows of a
+reference type bound to the table (first in it, through the type's binding). An entity row goes through the binding's field map
+(value object members at any depth, a value object or list mapped whole as JSON text), its constants and its type code; with a
+table per type (`baseForeignKey`) the base's table gets its row first, with the base's fields and the entity's own type code, and the
+entity's table gets the key in the foreign key's columns; each child table (`childTables`) gets a row per list item, or one for a
+single value object, with the owner's key and the item's position from 0. A relation seed with an end whose entity is bound to the
+database goes through the relation's mapping: rows of its junction table (each end's key, the mapping's constants and attribute
+columns), or, stored on a foreign key, an `UPDATE` of each dependent's row (found by its key) that sets the key's columns and the
+attribute columns the mapping names; insert the dependent's row with its entity's seed, or link it on that seed's end column when
+the foreign key is not nullable. A seed applied `once` (the default) inserts the rows whose row key is missing; a `converge` seed
+upserts on the row key (the primary key, or the unique constraint the seed names; for a table only entity seeds fill, such as a
+child table whose own id the database fills, the primary key or first unique constraint the rows give), and with `delete` also
+deletes the table's rows it does not hold. A seed whose `environments` are set goes to `seed.<environment>.sql` instead, for each
+environment the `environments` parameter names.
 
 **Natural keys and stable ids.** A table seed may name a foreign key in its `columns` and give, in each row, the
 referenced row's key (an email, an invoice number; a list for a composite key) instead of the referenced value. The

@@ -450,6 +450,11 @@ public sealed class BulkReadTests
         Assert.Equal("MQ4055", refused.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
         Assert.Equal("bad-request", (await host.SendJsonAsync("POST", "/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize/preview",
             new JsonObject { ["op"] = "materialize-entities" })).ProblemCode);
+        // hierarchy and listStorage are a string or an object; anything else is a bad request, never ignored.
+        Assert.Equal("bad-request", (await host.SendJsonAsync("POST", "/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize/preview",
+            new JsonObject { ["op"] = "materialize-tables", ["entities"] = new JsonArray(EditorHost.InvoiceId), ["hierarchy"] = 5 })).ProblemCode);
+        Assert.Equal("bad-request", (await host.SendJsonAsync("POST", "/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize/preview",
+            new JsonObject { ["op"] = "materialize-tables", ["entities"] = new JsonArray(EditorHost.InvoiceId), ["listStorage"] = new JsonArray("json") })).ProblemCode);
     }
 
     [Fact]

@@ -66,7 +66,7 @@ internal static class ModelCommand
                     throw new UsageException(what == "entities" ? "'model materialize entities' needs at least one table or view." : $"'model materialize {what}' needs at least one entity.");
                 line.Expect("model materialize " + what, line.Positionals.Count, what switch
                 {
-                    "tables" => ["--database", "--schema", "--dry-run", "--format"],
+                    "tables" => ["--database", "--schema", "--hierarchy", "--list-storage", "--dry-run", "--format"],
                     "attributes" => ["--database", "--column", "--dry-run", "--format"],
                     "columns" => ["--database", "--attribute", "--dry-run", "--format"],
                     _ => ["--database", "--package", "--dry-run", "--format"],
@@ -362,7 +362,9 @@ internal static class ModelCommand
         }
 
         var operationName = tables ? "materialize-tables" : attributes ? "materialize-attributes" : newColumns ? "materialize-columns" : "materialize-entities";
-        var request = new MaterializeRequest(operationName, database, ids, schema, package, columns, refs);
+        var hierarchy = tables ? Choices(line.Values("--hierarchy"), key => One(snapshot, "entity", key, null)) : null;
+        var listStorage = tables ? Choices(line.Values("--list-storage"), key => ListAttribute(snapshot, key)) : null;
+        var request = new MaterializeRequest(operationName, database, ids, schema, package, columns, refs) { Hierarchy = hierarchy, ListStorage = listStorage };
         var plan = await store.PlanMaterializeAsync(request, ct).ConfigureAwait(false);
         BatchResult? result = null;
         if (!line.Has("--dry-run") && plan.Valid)
@@ -370,7 +372,7 @@ internal static class ModelCommand
             var op = tables ? BatchOp.MaterializeTables : attributes ? BatchOp.MaterializeAttributes : newColumns ? BatchOp.MaterializeColumns : BatchOp.MaterializeEntities;
             var byEntity = op != BatchOp.MaterializeEntities;
             var operation = new BatchOperation(op, null, null, null, Schema: schema, Database: database, Entities: byEntity ? ids : null, Tables: byEntity ? null : ids,
-                Package: package, Columns: columns, Attributes: refs);
+                Package: package, Columns: columns, Attributes: refs, Hierarchy: hierarchy, ListStorage: listStorage);
             result = await store.ApplyBatchAsync(new ModelBatch([operation]), ChangeSource.Cli, ct).ConfigureAwait(false);
         }
 
@@ -426,6 +428,37 @@ internal static class ModelCommand
         var matches = snapshot.Documents.Select(d => d.Element).Where(e => Fits(e) && string.Equals(e.Name, wanted, StringComparison.OrdinalIgnoreCase)).ToList();
         return matches.Count == 1 ? matches[0].Id
             : throw new UsageException(matches.Count == 0 ? $"no {kind} has the id or name '{wanted}'." : $"'{wanted}' names {matches.Count} elements of kind {kind}; pass one id.");
+    }
+
+    /// <summary>
+    /// The choices of <c>--hierarchy</c> or <c>--list-storage</c>: a bare value for every hierarchy or list (kept under <c>*</c>), or
+    /// <c>name=value</c> for one, the name resolved by <paramref name="resolve"/>; <see langword="null"/> when none is given.
+    /// </summary>
+    private static Dictionary<string, string>? Choices(IReadOnlyList<string> values, Func<string, string> resolve)
+    {
+        if (values.Count == 0)
+            return null;
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var value in values)
+        {
+            var equals = value.LastIndexOf('=');
+            if (equals < 0)
+                map["*"] = value;
+            else
+                map[resolve(value[..equals])] = value[(equals + 1)..];
+        }
+
+        return map;
+    }
+
+    /// <summary>A list attribute named as <c>Entity.attribute</c> (or an attribute id).</summary>
+    private static string ListAttribute(Engine.Model.ModelSnapshot snapshot, string name)
+    {
+        var dot = name.LastIndexOf('.');
+        if (dot < 0)
+            return name;
+        var entity = One(snapshot, "entity", name[..dot], null);
+        return AttributeOf(snapshot, entity, name[(dot + 1)..]);
     }
 
     /// <summary>A materialize plan as lines: what is created, changed and deleted, the notes, and what blocks it.</summary>

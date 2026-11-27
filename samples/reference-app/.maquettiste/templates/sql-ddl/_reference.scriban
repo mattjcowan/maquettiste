@@ -768,12 +768,24 @@ func insert_sql(t, cols, rows, db)
   ret "INSERT INTO " + qt(t) + " (" + $list + ") VALUES\n    " + $values + ($has_key ? "\nON CONFLICT DO NOTHING" : "") + ";"
 end
 
+# Whether an end of a relation is an entity bound to database db: its seed rows then go through the relation's mapping in database.seed_tables
+# (data_statements in _data.scriban), not through seed_sql.
+func relation_bound_here(rel, db)
+  for e in rel.ends
+    if e.entity && e.entity.bindings[db.name]
+      ret true
+    end
+  end
+  ret false
+end
+
 # The inserts of one entity or relation seed in a database (null when the target is not mapped there, or is a relation stored as
-# a foreign key, whose values the referencing table's rows carry): the target's table, then the junction rows of its reference
-# collections. Value-object cells are left to hand-written seed data. The script speaks of tables and rows only: the seed's and
-# its target's names are the model's, not the database's. A relation's rows also set its mapping's constants, and when the mapping
-# has its link (a designed link table with constants or attribute columns), each end's key comes from it: a link table several
-# relations share has one key per end for all of them, whose end names only one relation's end.
+# a foreign key, whose values the referencing table's rows carry, or a relation with an end bound there, relation_bound_here): the
+# target's table, then the junction rows of its reference collections. Value-object cells are left to hand-written seed data. The
+# script speaks of tables and rows only: the seed's and its target's names are the model's, not the database's. A relation's rows
+# also set its mapping's constants, and when the mapping has its link (a designed link table with constants or attribute columns),
+# each end's key comes from it: a link table several relations share has one key per end for all of them, whose end names only one
+# relation's end.
 func seed_sql(seed, db)
   $target = seed.target
   if !$target || (seed.target.kind != "entity" && seed.target.kind != "relation")
@@ -784,7 +796,7 @@ func seed_sql(seed, db)
     ret null
   end
   if $target.kind == "relation"
-    if !$m.junction_table
+    if !$m.junction_table || relation_bound_here($target, db)
       ret null
     end
     $t = $m.junction_table

@@ -1514,7 +1514,10 @@ database shows on the Database screen at once. The explorers remember which rows
     it the same way, and a save writes it back. Untick to bring the rows back into the seed file.
 
   An entity's seed reaches the table its binding writes: the field map gives the columns and the binding's constants are
-  added to every row (a read-only binding writes none). Validation checks a table seed's cells against their columns (type,
+  added to every row (a read-only binding writes none). With a table per type, the base's table gets the row first, with the
+  entity's type code; each child table gets a row per list item (or one for a single value object), with the owner's key and
+  the position from 0. A relationship's seed between bound entities writes the rows of its junction table, or, stored on a
+  foreign key, updates each row the entity seeds wrote with the key and the relationship's attribute columns. Validation checks a table seed's cells against their columns (type,
   length, precision, NOT NULL), its row keys, and its foreign keys against the referenced table's seeds (MQ7107 to MQ7116),
   and warns when a table receives rows both from its own seeds and from a bound entity's (MQ7113).
 
@@ -2021,14 +2024,54 @@ that lists nothing adds no check.
 ### Materialize, both ways
 
 **A table for each entity** (`materialize-tables`; in the editor, **Create a table for this entity…** and **Create
-tables…**). For an entity the database projects today (the older format), `materialize-tables` writes a designed table with
-exactly the shape the projection has (columns, keys, uniques, checks, indexes, foreign keys, comments) and binds the entity to
-it, every column mapped. The table's overlay, when there was one, becomes the designed table and keeps its id, so queries and
-keys naming it keep working; the entity's mapping element for the database is deleted; relations whose foreign key is now in the
-designed table name it in their relation mapping; and the committed schema snapshot follows, so the next generation writes no
-migration (the DDL is the same table). Undone and run again, it gives the table, its columns and its key sequences the ids they
-had the first time (the snapshot remembers them), so the snapshot still reads it as the same table. From then on the table is
-yours. An entity already bound to the database is refused (MQ4055), so running it twice is harmless.
+tables…**). `materialize-tables` writes designed tables shaped by the naming and type conventions (columns, keys, uniques,
+indexes, foreign keys, comments, key sequences) and binds each entity to them, every column mapped. It proposes the tables
+itself, only when you ask; it never makes the model follow storage. For an entity the database still projects (the older
+format), the tables have exactly the projection's shape, so the next generation writes the same DDL:
+
+- **A hierarchy** is named whole: a base with every entity derived from it. Part of a hierarchy is refused, and so is a
+  hierarchy with an entity already bound to the database. The
+  `hierarchy` parameter says how it is stored: `one-table` (one table with a type column; the base's binding names it in
+  `discriminatorColumn`), `per-concrete` (a table per concrete entity holding every attribute, inherited ones too; an
+  abstract base gets no table) or `per-type` (a table per entity; each derived table's key is also its foreign key to the
+  base's table, and the derived binding names it in `baseForeignKey`). Give one shape for every hierarchy, or one per
+  hierarchy by its base entity's id. Without one, a hierarchy takes the shape an older entity mapping's `inheritance` gives,
+  else the conventions' (one table by default). A mapping's `discriminatorValue` moves into the binding, so type codes stay.
+- **A list attribute** goes to a table of its own, one row per item, with the owner's key and a `position` column (the
+  `childTable` and `orderColumn` conventions name them), and the binding gets a `childTables` entry. With `listStorage`
+  `json` it goes to a JSON column instead. Give one storage for every list, or one per attribute id. Without one, a list
+  takes what an older mapping or the conventions say, else a table. A single value object stored as a table gets a child
+  table too, and a list of a reference type gets the table the sql-ddl pack used to make for it (one code column).
+- **Relationships.** A many-to-many relationship between entities in the request (or one in the request and one already
+  bound) gets a designed junction table, and its relation mapping names it, each end's foreign key and the columns of its
+  own attributes. A one-to-many relationship's mapping names its foreign key. An existing relation mapping is updated, never
+  duplicated.
+- **Defaults.** An attribute's default expression (`now`, `today`, `new-uuid`) becomes the column's SQL default for the
+  database's dialect, so the table states it.
+
+The table's overlay, when there was one, becomes the designed table and keeps its id, so queries and keys naming it keep
+working; the entity's mapping element for the database is deleted; and the committed schema snapshot follows, so the schema
+does not change. The next run writes one migration that holds only the write's `rekey` fact: its ledger rows, wrapped in a
+transaction, and no schema statement. That fact also adopts what the sql-ddl pack had created outside the snapshot (a lookup
+table, a list's table, a reference column's constraint, a default expression) so the run reads it as already there; an undo
+before that run gives it back to the pack. Undone and run again, it gives the tables, their columns and the key sequences the ids they
+had the first time (the snapshot remembers them), so the snapshot still reads them as the same tables. From then on the
+tables are yours. An entity already bound to the database is refused (MQ4055), so running it twice is harmless.
+
+The preview answers `choices` beside the plan: each hierarchy with the shape it used and its default, and each list
+attribute with its storage and default, so a tool can offer them.
+
+A column that holds a reference type's codes becomes a plain column of the code's type, and the table declares the
+constraint the database has today, under the name the sql-ddl pack gave it: a foreign key into the type's table (the table a
+type binding names, or its lookup table, which becomes a designed table bound to the type), or a CHECK listing today's codes.
+A PostgreSQL enum column keeps its type when a database type of that name exists; without one, materialize refuses. It never
+guesses a pack's setting: a reference type with no storage strategy (the pack falls back to its own parameter) or a strategy
+key of the project's own is refused, naming the type; set `conventions.referenceStorage` (or the type's own storage) to
+`lookup-table`, `check` or `native`. A list of a reference type the pack kept in an enum array, a list attribute of a
+relationship kept in a table, a table inside a child table, and a relationship to an abstract base stored as a table per
+concrete entity (it has no table; store the hierarchy as one table or a table per type) have no binding form yet:
+materialize refuses them, naming the attribute or relationship. The preview still answers its `choices`, so another shape
+or storage can be picked.
 
 **An entity for each table** (`materialize-entities`; in the editor, **New entities from tables…**). For designed or
 imported tables (or views), `materialize-entities` writes an entity per table in the package you name: the singular of
@@ -2189,7 +2232,7 @@ writes no description, so the text stays in one place.
 | MQ4052 | error | a write table other than the source has no column for a key field |
 | MQ4053 | error | a key delete from a table without a primary key, or a delete with no table to write |
 | MQ4054 | info | a mapping element maps an entity the database binds: the binding wins |
-| MQ4055 | error | a materialize operation is refused (something already bound, an entity in an inheritance hierarchy, a name taken) |
+| MQ4055 | error | a materialize operation is refused (something already bound, part of a hierarchy without the rest of it, an unknown hierarchy shape or list storage, a name taken) |
 | MQ4087 | warning | a column a binding maps was renamed or retyped since its provenance was recorded |
 | MQ4088 | warning | a binding's provenance does not describe its source: the source is not a table file, or none of the recorded columns belongs to it |
 | MQ4089 | error | a `map-by-name` or `resync-binding` operation is refused: an entity with no binding to the database, a source it cannot read, `columns` for more than one entity or naming a column the source lacks, or nothing to map or re-sync |
@@ -2269,9 +2312,13 @@ elements stay readable in their JSON and in the Domain explorer's References.
 **Create a table for this entity…** on the Storage tab, or **Create tables…** on one or several selected entities or on a
 domain (its entities and its sub-domains') in the Domain model explorer, asks for the database (and the schema, when the
 database has several), shows the plan (the tables it writes, the bindings, the older mapping elements it replaces, the
-relationships whose foreign key it names) and applies it as one batch and one undo step. Each entity gets a table of its own
-with the shape its conventions give it, every column mapped; from then on the table is yours. Entities already bound to that
-database are left as they are.
+relationships whose foreign key or junction table it names) and applies it as one batch and one undo step. Each entity gets a
+table of its own with the shape its conventions give it, every column mapped; from then on the table is yours. Entities
+already bound to that database are left as they are.
+
+Below the plan, the dialog asks once per hierarchy in the selection how to store it (**One table for the hierarchy**, **A
+table per concrete entity**, **A table per type**) and once per list attribute where it goes (**In a table of its own**, **In
+a JSON column**), each with its default picked. A change shows the new plan. Select a base with every entity derived from it.
 
 ### Auto-map to existing tables
 

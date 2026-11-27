@@ -287,6 +287,17 @@ Built since:
   MQ4144; MQ4058 counts nested members. `csharp-dapper` loads and writes the rows in one unit, its bases' too, and its delete
   checks the row first. The Storage tab has a Child tables section and a Base table section, the field map walks nested
   paths, and the SQL preview shows every level and child table. [The design](retire-projection-design.md), section 5.
+- **"Create tables…" proposes every shape (0.29.0, pull request 2 of "Retiring projection", step 2a, unreleased).**
+  `materialize-tables` proposes tables with its own designer, outside resolution, only when asked: a hierarchy, named whole,
+  as one table, a table per concrete entity or a table per type (`hierarchy`); a list in a child table with a `childTables`
+  entry, or a JSON column (`listStorage`); a junction table and relation mapping for a many-to-many relationship; a relation
+  mapping naming a one-to-many foreign key; an attribute's default expression as the column's SQL default; a list of a
+  reference type in a table of its own. The preview answers `choices`. The editor's dialog asks once per hierarchy and once
+  per list. Proved on the billing model (every dialect, each hierarchy shape), the reference sample and the bench's
+  synthetic model: the same table scripts but for the reference constraints and lookup tables the pack wrote in seed.sql, now
+  declared, and no schema change (one migration with the rekey fact's ledger rows). Entity seeds now write through bindings and
+  relation mappings in `sql-ddl` (a table per type, child tables, junction and foreign-key relations). Step 2b converts our
+  sample, fixtures and bench. [The design](retire-projection-design.md), sections 6 and 7.
 - **Queries stop naming entities: removal (0.28.0).** `entity`, `collections` and a select field's `attribute` are gone
   from the query format, the resolved model, the SQL renderer (`query_collection_sql` too), `csharp-dapper` and the
   editor. A file that still has one does not load: MQ4127 is now an error at load that no setting changes, naming the
@@ -313,7 +324,7 @@ design questions on 2026-11-26; their answers are folded in below.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
-- **Retiring projection (tables made from entities).** Pull request 1 of 3 built (the binding shapes), design: [retire-projection-design.md](retire-projection-design.md).
+- **Retiring projection (tables made from entities).** Pull request 1 of 3 built (the binding shapes); pull request 2 step 2a built ("Create tables…" proposes every shape, entity seeds through bindings), step 2b (converting our models) next. Design: [retire-projection-design.md](retire-projection-design.md).
   Asked for by the owner on 2026-11-26 (not requested by a team). One release (0.29.0), three pull requests: bindings
   learn every shape projection makes (table per type with `baseForeignKey`; an attribute in a child table, as a list or
   a single value, with `childTables`; field paths of any depth; relation attributes on a foreign key; entity seeds
