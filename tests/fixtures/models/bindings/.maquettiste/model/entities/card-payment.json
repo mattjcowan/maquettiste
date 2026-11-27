@@ -1,0 +1,33 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000070",
+  "name": "CardPayment",
+  "package": "01K6BFX0000000000000000001",
+  "base": "01K6BFX0000000000000000063",
+  "description": "A payment by card: a payments row with kind 'card', and a card_payments row joined to it by its base foreign key.",
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000071",
+      "name": "last4",
+      "type": "string",
+      "length": 4,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000072",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000055",
+      "baseForeignKey": "01K6BFX0000000000000000058",
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000071",
+          "column": "01K6BFX0000000000000000057"
+        }
+      ],
+      "discriminatorValue": "card"
+    }
+  ]
+}

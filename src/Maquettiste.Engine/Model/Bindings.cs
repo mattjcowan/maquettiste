@@ -26,6 +26,16 @@ public sealed record EntityBinding
     [ElementRef(Keyed = true)]
     public required string Source { get; init; }
 
+    /// <summary>
+    /// Table per type (retire-projection-design.md section 4): the id of a foreign key of the binding's write table (else its source) that
+    /// references the write table of the binding to the same database of the entity's nearest bound base. The base's binding then maps the
+    /// inherited attributes and to-one ends, its constants and its type column; this binding maps only the entity's own. Its key is the foreign
+    /// key's columns, in the order of the base's key fields, and a key the base's insert generates flows into this binding's insert. Reads join
+    /// the base's table, up the chain. <see langword="null"/> (absent): the binding reads and writes its own table alone.
+    /// </summary>
+    [ElementRef(IndexKinds = ["key"])]
+    public string? BaseForeignKey { get; init; }
+
     /// <summary>Columns with a fixed value: a filter on every read and a value on every insert (several allowed).</summary>
     public IReadOnlyList<BindingConstant> Constants { get; init; } = [];
 
@@ -34,6 +44,12 @@ public sealed record EntityBinding
 
     /// <summary>Source columns no field maps, each accounted for with its status.</summary>
     public IReadOnlyList<BindingColumn> Columns { get; init; } = [];
+
+    /// <summary>
+    /// The attributes stored in a table of their own (retire-projection-design.md section 5): a list, one row per item, or a single value object, at
+    /// most one row. Each entry names the attribute, the child table and the foreign key that ties each row to the owning row.
+    /// </summary>
+    public IReadOnlyList<BindingChildTable> ChildTables { get; init; } = [];
 
     /// <summary>
     /// Where the entity writes: a table, or none. <see langword="null"/> (absent) writes to the source when it is a table and
@@ -138,6 +154,52 @@ public sealed record ReferenceTypeBinding
     public Description? Description { get; init; }
 }
 
+/// <summary>
+/// An attribute stored in a table of its own (retire-projection-design.md section 5): a list (<c>collection: true</c>), one row per item, or a single
+/// value object, at most one row. Each row holds the owner's key (the columns of <see cref="OwnerForeignKey"/>), the value or the value object's
+/// members, and for a list optionally the item's position. Writes replace an attribute's rows: delete the owner's rows, then insert the items in
+/// order. A child table is not a part: <c>entity.parts</c> stays about composition.
+/// </summary>
+public sealed record BindingChildTable
+{
+    /// <summary>The entry's permanent ULID, unique across the whole model like every sub-element id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The id of an attribute of the entity (or an inherited one the base's binding does not store): a list, or a single value object.</summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    public required string Attribute { get; init; }
+
+    /// <summary>The child table: the id of a table of the binding's database.</summary>
+    [ElementRef(Keyed = true)]
+    public required string Table { get; init; }
+
+    /// <summary>
+    /// The id of a foreign key of <see cref="Table"/> that references the owning table (the binding's write table, else its source) on its primary
+    /// key or a unique key; with a unique key, the binding maps a field for each of that key's columns.
+    /// </summary>
+    [ElementRef(IndexKinds = ["key"])]
+    public required string OwnerForeignKey { get; init; }
+
+    /// <summary>
+    /// The field map, with paths as an entity binding's fields write them (<c>attributeId.memberId</c>, deeper for nested value objects): each
+    /// starts with <see cref="Attribute"/>. For a list of a scalar, an enum or a reference type, one field whose path is the attribute itself.
+    /// </summary>
+    public IReadOnlyList<BindingField> Fields { get; init; } = [];
+
+    /// <summary>
+    /// Lists only: an integer column of <see cref="Table"/> holding each item's position, from 0; reads are ordered by it. <see langword="null"/>
+    /// (absent): no order is kept.
+    /// </summary>
+    [ElementRef(Keyed = true)]
+    public string? OrderColumn { get; init; }
+
+    /// <summary>Columns of the child table with a fixed value: a filter on every read and a value on every insert, so several attributes can share one table.</summary>
+    public IReadOnlyList<BindingConstant> Constants { get; init; } = [];
+
+    /// <summary>The child table's other columns, each accounted for with its status; a child row's own generated id is <c>database</c>.</summary>
+    public IReadOnlyList<BindingColumn> Columns { get; init; } = [];
+}
+
 /// <summary>A column with a fixed value in a binding.</summary>
 public sealed record BindingConstant
 {
@@ -154,7 +216,8 @@ public sealed record BindingField
 {
     /// <summary>
     /// An attribute id of the entity (own or inherited), <c>attributeId.memberId</c> for a member of an embedded value object
-    /// attribute, or the id of the relation end a to-one navigation leads to, for its key. On an end with several types the entity holds
+    /// attribute (deeper, <c>attributeId.memberId.memberId</c>, for a member of a value object nested in it; a path that ends at a nested value
+    /// object or a list maps a JSON column), or the id of the relation end a to-one navigation leads to, for its key. On an end with several types the entity holds
     /// (several-types-design.md decision 46): <c>endId</c> maps its id column, <c>endId.type</c> the column that holds the linked object's
     /// type code, and <c>endId.entityId</c> the column that points at a linked object of that entity (a column per type).
     /// </summary>

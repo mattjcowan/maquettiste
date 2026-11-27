@@ -1,0 +1,62 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000120",
+  "name": "quotes",
+  "database": "01K6BFX0000000000000000002",
+  "description": "One row per quote, with its billing address in columns: the map point in two columns, the courier notes as JSON.",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000121",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity"
+    },
+    {
+      "id": "01K6BFX0000000000000000122",
+      "name": "number",
+      "type": "string",
+      "length": 20,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000123",
+      "name": "billing_street",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000124",
+      "name": "billing_city",
+      "type": "string",
+      "length": 80,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000125",
+      "name": "billing_delivery_notes",
+      "type": "json"
+    },
+    {
+      "id": "01K6BFX0000000000000000126",
+      "name": "billing_latitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6
+    },
+    {
+      "id": "01K6BFX0000000000000000127",
+      "name": "billing_longitude",
+      "type": "decimal",
+      "precision": 9,
+      "scale": 6
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000121"
+    ]
+  }
+}

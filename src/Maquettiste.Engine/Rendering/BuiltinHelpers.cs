@@ -645,8 +645,10 @@ internal static class BuiltinHelpers
 
     /// <summary>
     /// <c>binding_sql(binding, statement, dialect?, options?)</c>: one statement of an entity binding (<c>select</c>,
-    /// <c>select-by-key</c>, <c>insert</c>, <c>update</c>, <c>delete</c>) as <see cref="BindingSql"/> renders it for the binding's
-    /// database's dialect or the one named (a name or a database), empty when the binding does not have it; <c>options</c> takes
+    /// <c>select-by-key</c>, <c>insert</c>, <c>update</c>, <c>delete</c>, <c>exists</c>) as <see cref="BindingSql"/> renders it for the binding's
+    /// database's dialect or the one named (a name or a database), empty when the binding does not have it. Given one of a binding's
+    /// <c>bases</c> (table per type), the base's table's <c>insert</c>, <c>update</c> or <c>delete</c> for the derived entity; given one of its
+    /// <c>child_tables</c>, the entry's <c>select</c> (by owner), <c>insert</c> (one row) or <c>delete</c> (by owner). <c>options</c> takes
     /// <c>placeholder</c> (<c>@</c>, <c>:</c> or <c>$</c>). <c>binding_sql_parameters(binding, statement, dialect?, options?)</c> (the
     /// options may stand in the dialect's place) returns the statement's parameter names in placeholder order.
     /// </summary>
@@ -654,8 +656,13 @@ internal static class BuiltinHelpers
     {
         if (args.Count == 3 && args[2] is IDictionary<string, object?>)
             args = [args[0], args[1], null, args[2]];
-        if (args[0] is not REntityBinding binding)
-            throw new RenderHelperException("MQ6006", $"`{name}` takes a binding (entity.bindings[database name]), not a {TemplateValues.TypeName(args[0])}.");
+        var binding = args[0] switch
+        {
+            REntityBinding b => b,
+            RBindingBase level => level.Derived,
+            RBindingChildTable child => child.Binding,
+            _ => throw new RenderHelperException("MQ6006", $"`{name}` takes a binding (entity.bindings[database name]), one of its bases (binding.bases[i]) or one of its child tables (binding.child_tables[i]), not a {TemplateValues.TypeName(args[0])}."),
+        };
         var statement = AsText(args[1]);
         var dialect = args.Count > 2 ? args[2] switch
         {
@@ -672,7 +679,12 @@ internal static class BuiltinHelpers
         QuerySqlText result;
         try
         {
-            result = BindingSql.Render(binding, statement, dialect, options);
+            result = args[0] switch
+            {
+                RBindingBase level => BindingSql.Render(level, statement, dialect, options),
+                RBindingChildTable child => BindingSql.Render(child, statement, dialect, options),
+                _ => BindingSql.Render(binding, statement, dialect, options),
+            };
         }
         catch (ArgumentException ex)
         {

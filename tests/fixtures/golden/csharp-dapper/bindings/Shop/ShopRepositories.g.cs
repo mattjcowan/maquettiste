@@ -13,11 +13,16 @@ public static partial class ShopRepositories
     /// <summary>Every repository of the package: the interface to register and the class that implements it.</summary>
     public static IReadOnlyList<(Type Service, Type Implementation)> All { get; } =
     [
+        (typeof(IBankTransferRepository), typeof(BankTransferRepository)),
+        (typeof(ICardPaymentRepository), typeof(CardPaymentRepository)),
+        (typeof(ICorporateCardPaymentRepository), typeof(CorporateCardPaymentRepository)),
         (typeof(ICustomerRepository), typeof(CustomerRepository)),
         (typeof(ICustomerNoteRepository), typeof(CustomerNoteRepository)),
         (typeof(ICustomerSummaryRepository), typeof(CustomerSummaryRepository)),
+        (typeof(IPaymentRepository), typeof(PaymentRepository)),
         (typeof(IProductRepository), typeof(ProductRepository)),
         (typeof(IProductNoteRepository), typeof(ProductNoteRepository)),
+        (typeof(IQuoteRepository), typeof(QuoteRepository)),
     ];
 
     /// <summary>Calls <paramref name="register"/> once per repository.</summary>

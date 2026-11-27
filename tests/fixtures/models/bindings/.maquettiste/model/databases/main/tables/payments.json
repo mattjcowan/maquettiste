@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000050",
+  "name": "payments",
+  "database": "01K6BFX0000000000000000002",
+  "description": "Every payment, one row each, with its type code in kind; a card payment adds a row in card_payments.",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000051",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity"
+    },
+    {
+      "id": "01K6BFX0000000000000000052",
+      "name": "kind",
+      "type": "string",
+      "length": 32,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000053",
+      "name": "amount",
+      "type": "decimal",
+      "precision": 12,
+      "scale": 2,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000054",
+      "name": "reference",
+      "type": "string",
+      "length": 64
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000051"
+    ]
+  }
+}

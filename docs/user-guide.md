@@ -1639,8 +1639,9 @@ line follow.
 - `constants`: columns with a fixed value, as many as you need (an entity type, a tenant): every read filters on them and
   every insert sets them. A value is a string, a number or true/false; leaving it out means NULL.
 - `fields`: each field names an attribute of the entity (inherited and stereotype attributes included), a member of a value
-  object attribute as `attributeId.memberId`, or the relation end a to-one navigation leads to (for its key), and the source
-  column it reads, by the column's id or key or by its name.
+  object attribute as `attributeId.memberId` (deeper for a value object nested in it, `attributeId.memberId.memberId`; a path
+  that ends at a nested value object or a list maps a JSON column), or the relation end a to-one navigation leads to (for its
+  key), and the source column it reads, by the column's id or key or by its name.
 - `columns`: the source columns no field maps, each with why: `ignored` (the entity does not use it), `database` (the
   database fills it, by a default or a trigger, and it is never written) or `computed`. A field's column may be listed too:
   `database` or `computed` then means the field is read but never written, as `created_at` above.
@@ -1652,6 +1653,10 @@ line follow.
   derived from it share one table (see [A base and its subtypes in one table](#a-base-and-its-subtypes-in-one-table)).
 - `discriminatorValue`: the entity's type code in this database, a string or a whole number. Without it the code is the
   entity's name.
+- `baseForeignKey`: on a derived entity's binding to a table of its own, the foreign key of that table that references its
+  base's table (see [A table per type](#a-table-per-type)).
+- `childTables`: the list attributes and single value objects kept in a table of their own (see
+  [An attribute in a table of its own](#an-attribute-in-a-table-of-its-own)).
 - `provenance`: `{ "columns": { "<column id>": "<name part>:<type part>" } }`, what each column of a table file looked
   like when an operation last followed it (see [Provenance and drift](#provenance-and-drift)). The engine writes it; you
   never need to, and removing it stops the drift report for that binding.
@@ -1765,6 +1770,187 @@ entity in a hierarchy (one with a base, or with entities derived from it):
 - A numeric code is written as a number when the column holds integers, as text otherwise.
 
 Problems with the column or the codes (MQ4122 to MQ4126) appear in the Problems panel as for any binding.
+
+### A table per type
+
+A derived entity can keep its own attributes in a table of its own, joined to its base's table. Each row of that table is
+one row of the base's table: its primary key is also a foreign key to the base's key. The derived entity's binding names
+that foreign key in `baseForeignKey`.
+
+Say every payment is a row of `payments (id, kind, amount)`, with an identity `id`. A card payment adds a row to
+`card_payments (payment_id, last4)`, whose foreign key `fk_card_payments_payment` references `payments (id)`. `Payment`
+binds to `payments` and names its type column, as in the section above. `CardPayment` binds to `card_payments`:
+
+```json
+{
+  "kind": "entity",
+  "name": "CardPayment",
+  "base": "01K6BND0000000000000000040",
+  "bindings": [
+    {
+      "id": "01K6BND0000000000000000052",
+      "database": "01J92P0V1QRN2181XM2ZWE02W4",
+      "source": "01K6BND0000000000000000011",
+      "baseForeignKey": "01K6BND0000000000000000013",
+      "discriminatorValue": "card",
+      "fields": [{ "attribute": "01K6BND0000000000000000051", "column": "last4" }]
+    }
+  ]
+}
+```
+
+- The base's binding maps the inherited attributes and the to-one relation ends the base holds, with its constants and its
+  type column. The derived binding maps only what the entity adds. A field for an inherited attribute is MQ4132.
+- The key is the foreign key's columns, named after the base's key fields: `payment_id` is the field `id`. The binding maps
+  no field for it, and the column counts as mapped.
+- Reading a card payment joins the tables: `FROM card_payments t JOIN payments b1 ON b1.id = t.payment_id`, with the base's
+  fields first. When the base has a type column, the read keeps the card payment's code and those of the entities derived
+  from it: `WHERE b1.kind IN ('card', 'corporate-card')`.
+- Inserting writes the `payments` row first, with the card payment's own code (`'card'`) and the base's constants. The id the
+  database makes comes back (`RETURNING`, `OUTPUT INSERTED`, `LAST_INSERT_ID()` or `RETURNING … INTO`, by dialect), and the
+  `card_payments` insert takes it as `@id`.
+- An update writes each table. A delete removes the `card_payments` row first, then the `payments` row (or the foreign key's
+  `onDelete: cascade` does). A soft delete is the base's: it marks the `payments` row and leaves the other. Leave `delete`
+  out of the derived binding and it follows the base. Reads leave out the rows the base's soft delete marked, whatever the
+  derived binding deletes, a read-only one included.
+- Deleting through the base's binding removes only the `payments` row. When the base deletes by key, give the foreign key
+  `onDelete: cascade`, or that delete fails for a card payment (warning MQ4136).
+- Reading `Payment` returns every payment, card payments included, without joining `card_payments`. With a type column the
+  code says which kind each row is. Without one, the derived binding's `exists` statement tells whether a payment has a
+  `card_payments` row.
+- The chain can go on: `CorporateCardPayment` binds to `corporate_card_payments`, whose foreign key references
+  `card_payments`. Its reads join both tables above it, and its insert writes all three, root first.
+- A hierarchy can mix the two ways. A bank transfer can keep its rows in `payments` with its own code, while card payments
+  join a table of their own. Each binding says which it is.
+- A subtype can also share a table-per-type table: an entity derived from `CardPayment` bound to `card_payments`, with no
+  `baseForeignKey`, maps its key and the card columns there and shares `CardPayment`'s join to `payments`.
+
+Binding an entity this way changes no table. The tables, keys and DDL are what the table files say.
+
+Templates find the joins on the binding: `base_foreign_key`, and `bases`, the tables above its own, nearest first. Each base has
+`binding` (the base's binding), `foreign_key` and `discriminator_column` (the base's type column with this entity's code).
+`binding_sql(binding.bases[i], "insert")` renders that table's insert for the derived entity; `update` and `delete` work the
+same way. The binding's own `insert`, `update` and `delete` write its own table only, and `binding_sql(binding, "exists")` is
+the probe. The binding's SQL preview shows the probe and each base's statements, by level. In the resolved model the binding has `baseForeignKey`, `key` and `bases`.
+
+**The rules.** MQ4128: the foreign key is not one of the binding's table, or does not reference the base's table. MQ4129:
+its columns are not the table's whole primary key, or it does not reference the base's key. MQ4130: no base of the entity
+is bound to the database. MQ4131: the binding writes while the base's binding writes no table (a base read from a view or
+query leaves the derived binding read only). MQ4132: a field maps what the base's binding maps. MQ4133: the binding keeps its
+rows in its base's table. MQ4134: under a base that deletes softly, a binding that writes deletes by key or never; or it
+deletes softly under a base that does not. MQ4135: a check the binding lists reads an attribute a base's table stores, since a
+check goes into one table. MQ4136 (a warning): the foreign key does not cascade on delete while the base deletes by key.
+
+**In the editor.** Open the derived entity's Storage tab. When a base is bound to the same database, the binding card has a
+**Base table** section:
+
+- The list offers only the foreign keys of the binding's table that reference the table of the base's binding and whose
+  columns are the table's whole primary key. Pick one to set `baseForeignKey`; **None** removes it. A binding that keeps its
+  rows in the base's table says there is no join.
+- Under the pick, a table shows the joined key columns: the column, the base's column it references and the base's key
+  attribute it carries. The key comes from this foreign key, so the field map offers no field for it. Picking a key also drops
+  fields that map what the base's binding maps, which the engine refuses beside it (MQ4132).
+- The inherited attributes and to-one ends are "stored by the base's binding": the field map leaves them out and says so, and
+  the base's binding keeps mapping them.
+- MQ4128 to MQ4136 show under the section as you edit; MQ4131 shows with the binding's other problems. The editor checks
+  MQ4128 to MQ4131 and MQ4133 itself as far as the tables tell it; the engine's findings fill in the rest.
+
+### An attribute in a table of its own
+
+A list attribute, or a single value object, can live in a table of its own: a child table. A list has one row per item. A
+single value object has at most one row. Each row holds the owner's key and the item's value or members, and a list can keep
+each item's position.
+
+Say a quote's notes are rows of `quote_notes (quote_id, position, text, author)`. The foreign key `fk_quote_notes_quote`
+references `quotes (id)`. The binding of `Quote` names the child table in `childTables`:
+
+```json
+"childTables": [
+  {
+    "id": "01K6BFX0000000000000000161",
+    "attribute": "01K6BFX0000000000000000116",
+    "table": "01K6BFX0000000000000000140",
+    "ownerForeignKey": "01K6BFX0000000000000000145",
+    "orderColumn": "01K6BFX0000000000000000142",
+    "fields": [
+      { "attribute": "01K6BFX0000000000000000116.01K6BFX0000000000000000109", "column": "01K6BFX0000000000000000143" },
+      { "attribute": "01K6BFX0000000000000000116.01K6BFX0000000000000000110", "column": "01K6BFX0000000000000000144" }
+    ]
+  }
+]
+```
+
+- `attribute`: the entity's list or value object attribute. An inherited one is allowed when the base's binding does not
+  store it. A binding with `baseForeignKey` then owns the rows from its own table.
+- `table`: the child table. `ownerForeignKey`: a foreign key of the child table that references the binding's write table
+  (else its source), on its primary key or a unique key. With a unique key, the binding maps a field for each of its columns.
+- `fields`: each path starts with the attribute, then names members, as far down as the value objects go. A list of single
+  values (text, numbers, an enum, a reference type) has one field whose path is the attribute itself.
+- `orderColumn`: lists only. An integer column that holds each item's position, from 0.
+- `constants` and `columns`: as on the binding, for the child table. A child row's own generated id is `database`.
+
+The statements, per entry: `select` reads one owner's rows, ordered by the order column; `delete` removes one owner's rows;
+`insert` writes one row. The owner's values are parameters named `owner` plus the owner field (`@ownerId`), and the position
+is `@position`. A list of single values names its value `@value`; a member's field is named after its path below the
+attribute (`@text`, `@geoLatitude`).
+
+- Writes replace an attribute's rows: delete the owner's rows, then insert the items in order. A template that wants to
+  compare and change rows instead has the same columns.
+- Insert the owner first, then its child rows. Delete the child rows first, unless the foreign key cascades. A soft delete of
+  the owner leaves them.
+- A read-only binding reads its child tables and writes none.
+- A copy carries an attribute's rows with the copied owner. When the entity's `copy` block says `clear` or `reset` for the
+  attribute, the copy has none.
+- A child table is not a part: `entity.parts` stays about composition.
+- Entries that store different attributes in one table through one owner foreign key each need a constant on one column,
+  with different values (MQ4142). Entries of one attribute, in a hierarchy's bindings, share its rows.
+- With a table per type, a derived binding's `bases` carry each base's child tables (`child_tables`, each with `child_table`
+  and `on_copy`, the derived entity's own merged `onCopy`); the rows go with the derived entity's row.
+
+**Paths of any depth.** A field of a binding, or of a child table, can name a member of a value object nested in a value
+object: `<billingAddress>.<geo>.<latitude>` maps `billing_latitude`. A path that ends at a nested value object or a list maps
+a JSON column, such as `<billingAddress>.<deliveryNotes>`; another column type is MQ4045 (MQ4140 in a child table), and so
+is mapping a value object both whole and member by member. The field is named after the whole path
+(`billingAddressGeoLatitude`).
+
+Binding this way changes no table. Templates find the entries on the binding: `child_tables`, each with `attribute`, `is_list`,
+`table`, `owner_foreign_key`, `owner` (each column with `referenced_column`, `field` and `parameter`), `fields`,
+`order_column`, `constants`, `columns`, `writes` and `on_copy`. `binding_sql(binding.child_tables[i], "select")` renders the
+entry's select; `insert` and `delete` work the same way. A field's `members` lists the value object members its path walks.
+The binding's SQL preview shows each entry's statements, labelled by its attribute. In the resolved model the binding has
+`childTables`, and a field of a nested path has `memberPath`.
+
+**The rules.** MQ4137: the attribute is not the entity's, is neither a list nor a value object, is stored twice, is also a
+field, or the base's binding already stores it. MQ4138: the table is not one of the database's, or the owner foreign key is
+not the child table's, does not reference the owning table, or references neither its primary key nor a unique key. MQ4139:
+no field maps a column the owner foreign key references, or a field maps a column of the owner foreign key. MQ4140: a field
+path names no member, a path or column is mapped twice, a value object is mapped both whole and member by member, or a
+column is not the child table's, or a constant names a column the entry already uses. MQ4141: the order column is missing,
+is not an integer, belongs to the owner foreign key, or is set on a single value object. MQ4142: two entries share a table
+and owner key with no constant telling their rows apart. MQ4143 (a warning): the owner key references a unique key whose
+field the binding updates, without `onUpdate: cascade`. MQ4144 (a warning): a single value object's table has no primary key
+or unique constraint on exactly the owner columns. A child table column nothing accounts for is MQ4047, and a member no field
+maps is MQ4058.
+
+**In the editor.** The binding card has a **Child tables** section when the entity has a list or a value object to store, or a
+binding already stores one:
+
+- **Add child table** takes the attribute picked beside it (the entity's own and inherited lists and value objects that no entry
+  stores and the base's binding does not store). Each entry then shows, for that attribute:
+  - **Table**: the child table. Picking it starts the entry: the owner key when exactly one foreign key fits, the item's members
+    mapped to columns of the same name, and for a list an integer column named like a position as the order column.
+  - **Owner key**: the foreign keys of the child table that reference the owning table's primary or a unique key; no other is
+    offered.
+  - **Order column** (lists only): the integer columns not otherwise used. **None** keeps no position.
+  - **Members** (a list of single values shows the attribute itself): a column for each, to any depth (`geoLatitude` for a
+    value object nested in a value object), with its status. A nested value object or list can take one JSON column.
+  - **Constants**, as on the binding, so several attributes can share one table.
+  - **Columns**: every column of the child table with what accounts for it: mapped, constant, **owner key** or **item
+    position** (read only), ignored, filled by the database, computed, an identity, a default, or unaccounted.
+- The remove button takes the entry away and leaves the table; the attribute is then in the binding's field map again. Adding
+  an entry removes the binding's fields that mapped the attribute.
+- MQ4137 to MQ4144, MQ4047 and MQ4058 for an entry show inside it, where they point. The editor checks the table, the owner key,
+  the fields, the order column, unaccounted columns and unmapped members itself; the engine's findings fill in the rest.
 
 ### A read-only entity over a query
 
@@ -1976,6 +2162,23 @@ writes no description, so the text stays in one place.
 | MQ4124 | error | a constant or a soft delete is on the type column, which already holds the entity's type code |
 | MQ4125 | error | two entities that share the type column in one table have the same type code, or a type code does not fit the column |
 | MQ4126 | error | a derived entity's binding names `discriminatorColumn` while a base's binding in the same table already names one; remove the key, since the column is inherited |
+| MQ4128 | error | `baseForeignKey` is not a foreign key of the table the binding writes (else its source), or does not reference the table of the base's binding |
+| MQ4129 | error | the base foreign key's columns are not the binding's table's whole primary key, or the columns it references are not the key of the base's binding |
+| MQ4130 | error | a binding names `baseForeignKey`, but no base of the entity has a binding to the database |
+| MQ4131 | error | a binding with `baseForeignKey` writes, but the base's binding writes no table; the binding is read only |
+| MQ4132 | error | a field of a binding with `baseForeignKey` maps an attribute or a to-one end the base has; the base's binding maps it |
+| MQ4133 | error | a binding with `baseForeignKey` keeps its rows in its base's table; remove the key |
+| MQ4134 | error | the delete of a binding with `baseForeignKey` does not agree with its base's: under a soft-deleting base it deletes by key or never, it deletes softly under a base that does not, or its soft delete names another column |
+| MQ4135 | error | a binding with bases lists a check that reads an attribute a base's table stores |
+| MQ4136 | warning | the base foreign key does not cascade on delete while the base's binding deletes by key, so a delete through the base fails for that subtype |
+| MQ4137 | error | a child table stores an attribute that is not the entity's, is neither a list nor a value object, is stored twice, is also a field, or is stored by the base's binding |
+| MQ4138 | error | a child table is not a table of the database, or its owner foreign key is not the child table's, does not reference the owning table, or references neither its primary key nor a unique key |
+| MQ4139 | error | no field of the binding maps a column the owner foreign key references, or a child table field maps a column of the owner foreign key |
+| MQ4140 | error | a child table field names no member path of the attribute, a path or column is mapped twice, a value object is mapped whole and member by member, or a column is not the child table's |
+| MQ4141 | error | a child table's order column is missing, not an integer, part of the owner foreign key, or set on a single value object |
+| MQ4142 | error | two child table entries store different attributes in one table through one owner foreign key, with no constant telling their rows apart |
+| MQ4143 | warning | a child table's owner key references a unique key whose field the binding updates, and the key does not cascade on update |
+| MQ4144 | warning | a single value object's child table has no primary key or unique constraint on exactly the owner columns (and constants' columns) |
 | MQ4045 | error | a field names nothing of the entity, a column the source does not have, a listed column of no table the binding uses, or maps an attribute or a column twice |
 | MQ4046 | error | a binding that writes maps no field for a key attribute |
 | MQ4047 | warning | a column of the source or write table is accounted for by nothing |
@@ -2022,22 +2225,36 @@ Each binding is a card, one per database:
 - **Constants**: rows of a column and a value (several if you need them, such as an entity type and a tenant). Every read
   filters on them and every insert sets them. A value that reads as a number or true/false is stored as one; an empty value is
   NULL. **Add constant** takes the first free column.
+- **Base table** (a derived entity whose base is bound to the same database): the foreign key that joins the binding's table
+  to its base's table, for a table per type. See [A table per type](#a-table-per-type).
+- **Child tables**: one entry for each list or value object the binding stores in a table of its own. See
+  [An attribute in a table of its own](#an-attribute-in-a-table-of-its-own).
 - **Field map**: every attribute the binding can map, own, inherited, from a stereotype, each member of a value object
-  attribute (`totalAmount`, `totalCurrency`) and the key of each to-one relationship (`customerId`), with a column picker.
-  **Map by name…** lists the attributes without a field whose name matches a free column (case and underscores ignored, so
-  `customerId` reads `customer_id`); untick any you do not want, then **Map**.
+  attribute (`totalAmount`, `totalCurrency`; for value objects nested in value objects, every member at any depth, such as
+  `shipToGeoLatitude`) and the key of each to-one relationship (`customerId`), with a column picker. A value object, a nested
+  one and a list can each take one JSON column: their row says "as one JSON column", is optional, and Map by name leaves it
+  alone. Once a value object is held whole, its members read "held whole above", and mapping a member as well is MQ4045.
+  Attributes a child table stores are left out, and so is everything a base's binding stores once the binding names a base
+  foreign key; a line under the title names them. The unmapped warning (MQ4058) and this list agree: what is not offered is not
+  expected. **Map by name…** lists the attributes without a field whose name matches a free column (case and underscores
+  ignored, so `customerId` reads `customer_id`); untick any you do not want, then **Map**.
 - **Columns of the source**: every column with what accounts for it: mapped by a field, a constant, ignored, filled by the
-  database, computed, an identity, a column with a default, the soft-delete column, or **unaccounted** (in the warning color).
+  database, computed, an identity, a column with a default, the soft-delete column, **key from the base** (a column of the base
+  foreign key), **a relationship's attribute** (a column a relationship's mapping names for its attribute on this table's foreign
+  key), or **unaccounted** (in the warning color). The key and relationship statuses are read only.
   **Ignore** accounts for an unaccounted column at once; **Account for** sets ignored, filled by the database or computed,
   or takes the listing away.
 - **Write**: **The source table** (the default for a table source), **None (read-only)**, or another table. **Delete**: **By
   key**, **Soft delete** (a column and the value it is set to; reads then leave those rows out) or **None**; a read-only
   binding deletes nothing.
-- **SQL**: the binding's five statements (select, select by key, insert, update, delete) for the database's dialect or another.
+- **SQL**: the binding's five statements (select, select by key, insert, update, delete) for the database's dialect or another,
+  then **Exists** (the probe by key), each table above the binding's own with its insert, update and delete (labelled "Table
+  above, level 1" and up), and each child table's select, insert and delete (labelled by its attribute).
 - Problems: the binding's findings (MQ4044 to MQ4055) show on the card as you edit. A stored attribute no field maps is
-  warning MQ4058, with the names: own, inherited and stereotype attributes, each member of a value object attribute, on
-  a read-only binding too. A collection, a derived attribute that is not stored and the key of a to-one relationship are
-  not expected.
+  warning MQ4058, with the names: own, inherited and stereotype attributes, each member of a value object attribute (to any
+  depth; a field on the value object, or on a nested one, stores it whole), on a read-only binding too. A collection, a
+  derived attribute that is not stored, an attribute a child table stores and the key of a to-one relationship are not
+  expected; a child table's members no field maps are reported for that table.
 
 **Add binding…** picks a database without a binding and its source; the fields start empty, so **Map by name…** is the next
 step. The trash button removes a binding (the table, view or query stays). Every gesture on the tab is one save of the entity
@@ -2088,6 +2305,19 @@ table's foreign key for it. Two bound ends with nothing named is MQ4011, shown i
 bound, the section says "Bind both ends to a table to name the foreign key"; a shape an older mapping names (Foreign key,
 Junction table, Promoted to an entity) shows there read only, and no mapping of that older format is made from here. For a
 relationship with an end of several types, see [Storing a relationship with several types](#storing-a-relationship-with-several-types).
+
+**A relationship's own attributes on its foreign key.** A one-to-many relationship can carry attributes, stored as columns of
+the table that holds its foreign key. Say a customer has many invoices and the relationship has a `termsNote`, kept in
+`invoices.terms_note`. The mapping names the foreign key and the column:
+`"foreignKey": invoices.fk_invoices_customer, "attributes": [{ "attribute": termsNote, "column": invoices.terms_note }]`.
+Naming the foreign key makes the relationship a foreign key, attributes and all. The column must be one of that table's, not
+one of the key's own columns (MQ4009). The resolved mapping lists it in `attributes`, and the invoice's binding counts the
+column as the relationship's (status `relation`), so it needs no field.
+
+In the editor, open the relationship's Storage tab. Once a foreign key is picked, **Attribute columns, in the table that holds the
+key** lists one picker per attribute that one column can hold. Each lists the columns of that table except the key's own;
+**(none named)** removes the column. Each pick is one save of the mapping, and the entity's Storage tab then shows the column as
+"a relationship's attribute".
 
 ### Relationships with several types at an end
 

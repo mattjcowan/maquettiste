@@ -155,7 +155,8 @@ engine's statements cast range columns (a follow-up, as typed C# ranges are).
 
 Not covered, by design of an example pack: navigations and junction tables (write queries for them in the companion or in your
 own repository class, which is `partial`), collections stored in child tables (their property is left empty), and table-per-type
-hierarchies, whose rows span tables (no repository is generated for them).
+hierarchies, whose rows span tables (no repository is generated for them). This is about mapped entities; a bound entity's child
+tables and table per type are covered (see below).
 
 ### Repositories from bindings
 
@@ -172,6 +173,22 @@ share one table through an `entity_type` column), the columns the database fills
 | `InsertAsync(entity)` | the binding's `insert`: fields and constants, one database-generated key read back into the entity; `uuid-v7` and `ulid` keys filled as above |
 | `UpdateAsync(entity)` | the binding's `update`, by key with the constants in the where clause |
 | `DeleteAsync(key…)` | the binding's `delete`: by key, or the soft-delete update |
+
+A binding with bases (a table per type, `baseForeignKey`) reads its table joined to its bases' tables. `InsertAsync` runs each
+base's insert first, root first, and reads the generated key back from the root's; `UpdateAsync` updates every table and
+returns true only when every table had the row; `DeleteAsync` deletes its own row first, then up the chain (a soft delete marks
+the base's row only). The statements run as one unit: in the `IDbTransaction` given to the repository, else in one the
+repository opens (opening the connection if it is closed) and commits.
+
+A binding with child tables (`childTables`) loads each list, in its order, and each single value object from its one row,
+after the entity's own row; a required single value object with no row reads as an empty object. `GetAsync` and `ListAsync`
+alike run one query per entry and entity: `ListAsync` makes one round trip per entity per entry, as an example, not tuned.
+`InsertAsync` and `UpdateAsync` write the rows again in the same unit: each entry's rows are deleted, then its items inserted
+in order. `DeleteAsync` first reads the entity's row through the binding's own select (its constants, type codes and soft
+delete; it takes the source query's parameters too). Without the row it deletes nothing and returns false; with it, it deletes
+an entry's rows before the entity's own when the entry's foreign key does not cascade. A soft delete leaves them. With bases
+(table per type), the child tables of the bases' bindings are loaded, written and deleted with the entity's own. Value objects
+nested to any depth are built from, and written to, their own columns or JSON columns.
 
 A binding that does not write (a view or query source, or `write: "none"`) gets a read-only repository: no `InsertAsync`,
 `UpdateAsync` or `DeleteAsync`. The private `Row` class has one property per field, named exactly as the field, because the

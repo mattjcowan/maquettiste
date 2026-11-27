@@ -370,6 +370,8 @@ internal sealed partial class DatabaseRun
             mapping.ForeignKey = primary?.Result;
             if (phys.Relation is not { } relation)
                 continue;
+            if (primary is { FileId: not null } && _run.MappingOf(_db.Id, relation.Id) is { } file)
+                mapping.Attributes = ForeignKeyAttributeColumns(relation, file, primary);
             var deps = _run.DepsOf(relation);
             foreach (var spec in phys.Foreign.Where(s => s.Resolved))
             {
@@ -388,6 +390,30 @@ internal sealed partial class DatabaseRun
 
         FinishLinkTableLinks();
         FinishTypeStorage();
+    }
+
+    /// <summary>The columns of tables holding a relation's foreign key that its mapping stores a relation attribute in, with the mapping.</summary>
+    private readonly Dictionary<RColumn, (RRelation Relation, Mapping Mapping)> _relationAttributeColumns = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// A relation's attributes stored on its foreign key (retire-projection-design.md section 6): each <c>attributes[].column</c> of the mapping,
+    /// a column of the designed table that holds the named foreign key, in file order. A column the table lacks, or one of the key's own, is
+    /// left out (MQ4009 reports it from the file). The column stays the table's: nothing on it points at the relation.
+    /// </summary>
+    private List<RRelationAttributeColumn> ForeignKeyAttributeColumns(RRelation relation, Mapping file, ForeignKeySpec key)
+    {
+        var list = new List<RRelationAttributeColumn>();
+        foreach (var item in file.Attributes)
+        {
+            if (item.Column is not { } columnId || relation.Attributes.FirstOrDefault(a => string.Equals(a.Id, item.Attribute, StringComparison.Ordinal)) is not { } attribute)
+                continue;
+            if (key.Host.Resolve(columnId) is not { } column || key.Result.Columns.Contains(column))
+                continue;
+            list.Add(new RRelationAttributeColumn { Attribute = attribute, Column = column });
+            _relationAttributeColumns.TryAdd(column, (relation, file));
+        }
+
+        return list;
     }
 
     /// <summary>MQ4009: a table overlay that targets nothing this database synthesizes (for example a TPH-derived entity) is unused.</summary>

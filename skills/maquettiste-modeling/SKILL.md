@@ -118,6 +118,14 @@ clobber a concurrent edit or leave a dangling id.
    insert, update and delete statements; `validate` reports MQ4044 to MQ4054 and MQ4121 for bindings. When a base entity and its
    subtypes share one table, the base's binding names the type column once (`discriminatorColumn`); each subtype's
    `discriminatorValue` (else its name) then filters its statements and is what its insert writes (MQ4122 to MQ4126).
+   When a subtype keeps its own attributes in a table of its own, its binding names that table's foreign key to the base's
+   table in `baseForeignKey` and maps only the subtype's own attributes; the key is the foreign key's columns, reads join the
+   base's table, and the base's insert runs first (MQ4128 to MQ4136).
+   A list attribute, or a single value object, kept in a table of its own is a `childTables` entry on the binding: the
+   attribute, the child table, the child table's foreign key to the owning table (`ownerForeignKey`), fields whose paths start
+   with the attribute (a list of single values maps the attribute itself) and, for a list, an integer `orderColumn`. Writes
+   replace the rows; do not also map the attribute as a field (MQ4137 to MQ4144). A field path may walk nested value objects
+   (`attributeId.memberId.memberId`); a path that ends at a nested value object or a list maps a JSON column.
    Custom property schemas (`extensions/<name>.json`) and script rules (`extensions/rules/<name>.js`, findings `x/<id>`, run by `validate`) are files: `list_extension_files`, `read_extension_file`, `write_extension_file` (with `expectedHash`, `new` to create; a rule's syntax error comes back at once), `move_extension_file`, `delete_extension_file`.
    A check across the model (every reference type used, no two tables alike) is a whole-model rule: `scope: "model"`,
    `check(model, report)`, each `report` naming its `element` id; it runs once per whole-model `validate`, never on a

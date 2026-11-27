@@ -181,6 +181,7 @@ public sealed class EntityBuilder : ElementBuilder<EntityBuilder>
     private EntityKey? _key;
     private bool _abstract;
     private string? _base;
+    private EntityCopy? _copy;
 
     internal EntityBuilder(ModelBuilder model, string name, string? package)
         : base(model, name)
@@ -269,6 +270,15 @@ public sealed class EntityBuilder : ElementBuilder<EntityBuilder>
     /// <returns>The id.</returns>
     public string AttrId(string name) => _attributes.IdOf(name);
 
+    /// <summary>Sets the entity's copy block (parts-and-copy-design.md).</summary>
+    /// <param name="copy">The block.</param>
+    /// <returns>This builder.</returns>
+    public EntityBuilder Copy(EntityCopy copy)
+    {
+        _copy = copy;
+        return this;
+    }
+
     /// <summary>Adds a binding to a database (erratum E43); its id is assigned when it has none.</summary>
     /// <param name="binding">The binding.</param>
     /// <returns>This builder.</returns>
@@ -290,6 +300,7 @@ public sealed class EntityBuilder : ElementBuilder<EntityBuilder>
         Key = _key,
         AlternateKeys = [.. _alternateKeys],
         Attributes = _attributes.Build(),
+        Copy = _copy,
     };
 }
 
@@ -466,6 +477,11 @@ public sealed class RelationBuilder : ElementBuilder<RelationBuilder>
 
     /// <summary>The ids of the ends, in order.</summary>
     public IReadOnlyList<string> EndIds => [.. _ends.Select(e => e.Id)];
+
+    /// <summary>Returns the id of a relation attribute.</summary>
+    /// <param name="name">The attribute name.</param>
+    /// <returns>The id.</returns>
+    public string AttrId(string name) => _attributes.IdOf(name);
 
     /// <summary>Sets the relation kind.</summary>
     /// <param name="kind">The kind.</param>

@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/value-object.json",
+  "kind": "value-object",
+  "id": "01K6BFX0000000000000000108",
+  "name": "QuoteNote",
+  "package": "01K6BFX0000000000000000001",
+  "description": "A note on a quote.",
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000109",
+      "name": "text",
+      "type": "string",
+      "length": 500,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000110",
+      "name": "author",
+      "type": "string",
+      "length": 80
+    }
+  ]
+}

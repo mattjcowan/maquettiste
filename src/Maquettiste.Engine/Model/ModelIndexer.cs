@@ -137,7 +137,7 @@ internal static class ModelIndexer
         _ when type == typeof(OperationError) => "error",
         _ when type == typeof(OperationGuard) => "guard",
         _ when type == typeof(ConstraintParameter) => "parameter",
-        _ when type == typeof(EntityBinding) || type == typeof(ReferenceTypeBinding) => "binding",
+        _ when type == typeof(EntityBinding) || type == typeof(ReferenceTypeBinding) || type == typeof(BindingChildTable) => "binding",
         _ when type == typeof(AlternateKey) || type == typeof(PrimaryKey) || type == typeof(UniqueConstraint) || type == typeof(ForeignKey)
             || type == typeof(MemberForeignKey) || type == typeof(CheckConstraint) || type == typeof(TableIndex) || type == typeof(EntityCheck) => "key",
         _ => null,
@@ -1570,6 +1570,7 @@ internal static class ModelIndexer
             ReferenceLabel l => l.Id,
             IProcessNode n => n.Id,
             EntityBinding b => b.Id,
+            BindingChildTable c => c.Id,
             ReferenceTypeBinding b => b.Id,
             OwnVerb v => v.Id,
             _ => null,

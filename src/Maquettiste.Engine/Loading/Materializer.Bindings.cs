@@ -364,13 +364,26 @@ internal sealed partial class Materializer
             Name(constant.Column);
         if (BindingDrift.TypeColumnOf(snapshot, entity, binding) is { } typeColumn)
             Name(typeColumn);
+        foreach (var keyColumn in BindingDrift.BaseKeyColumnsOf(snapshot, binding))
+            Name(keyColumn);
+        if (BindingDrift.SourceOf(snapshot, binding, out var sourceTable) == DriftSource.TableFile)
+        {
+            foreach (var relationColumn in BindingDrift.RelationAttributeColumnsOf(snapshot, sourceTable!))
+                Name(relationColumn);
+            foreach (var childColumn in BindingDrift.ChildColumnsOf(binding, sourceTable!))
+                Name(childColumn);
+        }
         foreach (var listed in binding.Columns)
             Name(listed.Column);
         if (binding.Delete?.Soft is { } soft)
             Name(soft.Column);
 
         var mapped = binding.Fields.Select(f => f.Attribute).ToHashSet(StringComparer.Ordinal);
-        var open = Candidates(entity).Where(c => !mapped.Contains(c.Ref)).ToList();
+        // An attribute a child table stores has no column in the source (retire-projection-design.md section 5), nor do its members.
+        var stored = binding.ChildTables.Select(c => c.Attribute).ToHashSet(StringComparer.Ordinal);
+        // A binding with a base foreign key maps only what the entity adds below its bound base (table per type): the base's binding maps the rest.
+        var open = Candidates(entity, binding.BaseForeignKey is null ? null : BoundBase(entity, binding.Database))
+            .Where(c => !mapped.Contains(c.Ref) && !stored.Contains(c.Ref.Split('.')[0])).ToList();
         var matches = new List<(FieldCandidate, ShapeColumn)>();
         for (var i = 0; i < columns.Count && open.Count > 0; i++)
         {
@@ -395,9 +408,11 @@ internal sealed partial class Materializer
     /// What a binding of the entity can map, from files: root first, each level's own attributes then its stereotypes' ones (a value
     /// object attribute stands for its members, a collection has no column), then the to-one navigation keys, by relation id.
     /// </summary>
-    private List<FieldCandidate> Candidates(Entity entity)
+    private List<FieldCandidate> Candidates(Entity entity, Entity? below = null)
     {
         var chain = Chain(entity);
+        if (below is not null && chain.FindIndex(e => string.Equals(e.Id, below.Id, StringComparison.Ordinal)) is var cut and >= 0)
+            chain = chain[..cut];
         var result = new List<FieldCandidate>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         void Add(ModelAttribute attribute)
@@ -406,12 +421,27 @@ internal sealed partial class Materializer
                 return;
             if (attribute.Type.Ref is { } typeId && snapshot.Get<ValueObject>(typeId) is { } valueObject)
             {
-                foreach (var member in valueObject.Attributes.Where(m => !m.Collection && (m.Type.Ref is null || snapshot.Get<ValueObject>(m.Type.Ref) is null)))
-                    result.Add(new FieldCandidate(attribute.Id + "." + member.Id, attribute.Name + Casing.Pascal(member.Name), false));
+                Members(attribute.Id, attribute.Name, valueObject, 0);
                 return;
             }
 
             result.Add(new FieldCandidate(attribute.Id, attribute.Name, false));
+        }
+
+        // A value object stands for its members, to any depth (retire-projection-design.md section 6); a list member has no column of its own.
+        void Members(string path, string name, ValueObject valueObject, int depth)
+        {
+            foreach (var member in valueObject.Attributes.Where(m => !m.Collection))
+            {
+                if (member.Type.Ref is { } nestedId && snapshot.Get<ValueObject>(nestedId) is { } nested)
+                {
+                    if (depth < 16)
+                        Members(path + "." + member.Id, name + Casing.Pascal(member.Name), nested, depth + 1);
+                    continue;
+                }
+
+                result.Add(new FieldCandidate(path + "." + member.Id, name + Casing.Pascal(member.Name), false));
+            }
         }
 
         foreach (var level in chain.AsEnumerable().Reverse())
@@ -474,6 +504,10 @@ internal sealed partial class Materializer
     }
 
     /// <summary>The entity and its bases, the entity first, stopping at a loop.</summary>
+    /// <summary>The nearest base of an entity with a binding to the database, or <see langword="null"/>.</summary>
+    private Entity? BoundBase(Entity entity, string database) =>
+        Chain(entity).Skip(1).FirstOrDefault(e => e.Bindings.Any(b => string.Equals(b.Database, database, StringComparison.Ordinal)));
+
     private List<Entity> Chain(Entity entity)
     {
         var chain = new List<Entity>();

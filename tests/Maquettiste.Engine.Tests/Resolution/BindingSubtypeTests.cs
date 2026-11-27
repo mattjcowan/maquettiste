@@ -252,7 +252,7 @@ public sealed class BindingSubtypeTests
     {
         var model = new Notes().Resolve();
 
-        Editor.ContractCheck.Validate(model, "bindingDiscriminatorRecord", "bindingDiscriminatorView");
+        Editor.ContractCheck.Validate(model);
         var invoice = BindingViews.Record(BindingOf(model, "InvoiceNote"));
         Assert.Equal("invoice", invoice.DiscriminatorValue);
         var typeColumn = Assert.IsType<BindingDiscriminatorRecord>(invoice.DiscriminatorColumn);

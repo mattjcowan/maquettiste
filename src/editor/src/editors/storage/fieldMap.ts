@@ -24,10 +24,35 @@ export interface BindingColumnEntry {
 }
 export type BindingWrite = "none" | { table: string };
 export type BindingDelete = "key" | "none" | { soft: { column: string; value?: string | number | boolean | null } };
+/** An attribute a binding stores in a table of its own (a list, or a single value object): `childTables` on an entity binding. */
+export interface ChildTable {
+  id: string;
+  /** The entity's list or value object attribute. */
+  attribute: string;
+  /** The child table's id. */
+  table: string;
+  /** The id of a foreign key of the child table that references the owning table. */
+  ownerForeignKey: string;
+  /** Paths that start with the attribute: `attr.member`, deeper for nested value objects; a list of single values maps the attribute itself. */
+  fields?: BindingField[];
+  /** Lists only: an integer column holding each item's position. */
+  orderColumn?: string;
+  constants?: BindingConstant[];
+  columns?: BindingColumnEntry[];
+}
+/** What the field map edits read and write: a binding, or one child table entry. */
+export interface Mapped {
+  fields?: BindingField[];
+  constants?: BindingConstant[];
+  columns?: BindingColumnEntry[];
+}
 export interface Binding {
   id: string;
   database: string;
   source: string;
+  /** Table per type: the id of the foreign key of the binding's table that references the base's table. */
+  baseForeignKey?: string;
+  childTables?: ChildTable[];
   constants?: BindingConstant[];
   fields?: BindingField[];
   columns?: BindingColumnEntry[];
@@ -60,6 +85,8 @@ export interface StorageAttribute {
   readOnly: boolean;
   /** No field mapping it shows as unmapped: a stored attribute (MQ4058 warns), or the key of a many-to-one this entity is the many side of. */
   expected: boolean;
+  /** A value object (nested or not) or a list held whole in one JSON column; never expected, and left out of Map by name. */
+  json?: boolean;
 }
 
 interface AttributeJson {
@@ -89,6 +116,50 @@ export function hierarchyOf(entityId: string, docs: ReadonlyMap<string, Json>): 
 }
 
 /**
+ * The members of a value object below a path, to any depth: a scalar member is a row (`path.member`), a nested value object adds its
+ * members and a row for the whole of it (one JSON column), a list member is a JSON row. `flags` come from the attribute that holds it.
+ */
+export function valueObjectMembers(
+  docs: ReadonlyMap<string, Json>,
+  valueObject: Json,
+  prefixRef: string,
+  prefixName: string,
+  from: string,
+  flags: { required: boolean; readOnly: boolean; expected: boolean },
+  out: StorageAttribute[],
+  depth: number,
+): void {
+  for (const m of (valueObject.attributes as AttributeJson[] | undefined) ?? []) {
+    const ref = `${prefixRef}.${m.id}`;
+    const name = `${prefixName}${capital(m.name)}`;
+    const nested = typeof m.type === "object" && m.type ? docs.get(m.type.ref) : undefined;
+    const whole = () =>
+      out.push({ ref, name, origin: "member", from, type: "json", isKey: false, required: false, readOnly: false, expected: false, json: true });
+    if (m.collection) {
+      whole();
+      continue;
+    }
+    if (nested?.kind === "value-object") {
+      // A containment cycle is the engine's own rule; the depth stops a speculative walk of one.
+      if (depth < 16) valueObjectMembers(docs, nested, ref, name, `${from} ${m.name}`, flags, out, depth + 1);
+      whole();
+      continue;
+    }
+    out.push({
+      ref,
+      name,
+      origin: "member",
+      from,
+      type: typeof m.type === "string" ? m.type : null,
+      isKey: false,
+      required: flags.required && m.required === true,
+      readOnly: flags.readOnly,
+      expected: flags.expected,
+    });
+  }
+}
+
+/**
  * Every attribute a binding of the entity can map, from the documents at hand (`docs` by id: the entity, its bases, the value
  * objects its attributes use, the stereotypes and the relations; what is missing is left out). The order is the resolver's:
  * root first, each level's own attributes then its stereotypes' (virtual) ones, then the to-one relation keys. A value object
@@ -109,25 +180,28 @@ export function storageAttributes(entityId: string, docs: ReadonlyMap<string, Js
   const add = (a: AttributeJson, origin: AttributeOrigin, from?: string) => {
     if (!a || typeof a.id !== "string" || seen.has(a.id)) return;
     seen.add(a.id);
-    if (a.collection) return;
-    const stored = !a.derived || a.derived.stored === true;
     const type = a.type;
     const target = typeof type === "object" && type ? docs.get(type.ref) : undefined;
+    const stored = !a.derived || a.derived.stored === true;
+    // A list, or a value object, may also be held whole in one JSON column: an optional row.
+    const whole = (ref: string, name: string, of: string | undefined, org: AttributeOrigin) =>
+      out.push({ ref, name, origin: org, from: of, type: "json", isKey: false, required: false, readOnly: false, expected: false, json: true });
+    if (a.collection) {
+      whole(a.id, a.name, from, origin);
+      return;
+    }
     if (target?.kind === "value-object") {
-      for (const m of (target.attributes as AttributeJson[] | undefined) ?? []) {
-        if (m.collection) continue;
-        out.push({
-          ref: `${a.id}.${m.id}`,
-          name: `${a.name}${capital(m.name)}`,
-          origin: "member",
-          from: `${a.name} (${String(target.name ?? "")})`,
-          type: typeof m.type === "string" ? m.type : null,
-          isKey: false,
-          required: a.required === true && m.required === true,
-          readOnly: a.readOnly === true || a.immutable === true,
-          expected: stored,
-        });
-      }
+      valueObjectMembers(
+        docs,
+        target,
+        a.id,
+        a.name,
+        `${a.name} (${String(target.name ?? "")})`,
+        { required: a.required === true, readOnly: a.readOnly === true || a.immutable === true, expected: stored },
+        out,
+        0,
+      );
+      whole(a.id, a.name, from, origin);
       return;
     }
     out.push({
@@ -376,7 +450,20 @@ export function loose(name: string): string {
 // ------------------------------------------------------------------ statuses
 
 export type ColumnStatus =
-  "field" | "constant" | "discriminator" | "ignored" | "database" | "computed" | "identity" | "default" | "soft-delete" | "unaccounted";
+  | "field"
+  | "constant"
+  | "discriminator"
+  | "ignored"
+  | "database"
+  | "computed"
+  | "identity"
+  | "default"
+  | "soft-delete"
+  | "relation"
+  | "owner"
+  | "order"
+  | "base-key"
+  | "unaccounted";
 
 export interface ColumnRow {
   column: SourceColumn;
@@ -398,10 +485,14 @@ export const COLUMN_STATUS_LABELS: Record<ColumnStatus, string> = {
   identity: "identity",
   default: "has a default",
   "soft-delete": "soft delete",
+  relation: "a relationship's attribute",
+  owner: "owner key",
+  order: "item position",
+  "base-key": "key from the base",
   unaccounted: "unaccounted",
 };
 
-export type AttributeStatus = "mapped" | "missing-column" | "unmapped" | "optional";
+export type AttributeStatus = "mapped" | "missing-column" | "unmapped" | "optional" | "whole";
 
 export interface AttributeRow {
   attribute: StorageAttribute;
@@ -411,13 +502,31 @@ export interface AttributeRow {
 }
 
 /** Each attribute with the column its field reads: mapped, a field naming a column the source lacks, or no field. */
-export function attributeRows(binding: Binding, attributes: readonly StorageAttribute[], columns: readonly SourceColumn[]): AttributeRow[] {
+export function attributeRows(
+  binding: Mapped,
+  attributes: readonly StorageAttribute[],
+  columns: readonly SourceColumn[],
+  fields: readonly BindingField[] = binding.fields ?? [],
+): AttributeRow[] {
   return attributes.map((attribute) => {
-    const field = (binding.fields ?? []).find((f) => f.attribute === attribute.ref);
+    const field = fields.find((f) => f.attribute === attribute.ref);
+    // A value object held whole by a field on a path above the member stores it: nothing to map below it.
+    if (!field && attribute.origin === "member" && !attribute.json && wholeAbove(attribute.ref, fields)) return { attribute, status: "whole" };
     if (!field) return { attribute, status: attribute.expected ? "unmapped" : "optional" };
     const column = findColumn(columns, field.column);
     return { attribute, field, column, status: column ? "mapped" : "missing-column" };
   });
+}
+
+/** The field on a path above a member's (the member's value object or a nested one held whole in a JSON column), if any. */
+export function wholeAbove(ref: string, fields: readonly BindingField[]): BindingField | undefined {
+  const parts = ref.split(".");
+  for (let n = parts.length - 1; n >= 1; n--) {
+    const above = parts.slice(0, n).join(".");
+    const hit = fields.find((f) => f.attribute === above);
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 /**
@@ -439,11 +548,23 @@ export function typeColumnOf(entityId: string, binding: Binding, docs: ReadonlyM
  * Each source column with what accounts for it, as the engine's statuses say (field, constant, the type column, listed, then the
  * column's own). typeColumn is the type column the binding names or inherits (typeColumnOf).
  */
+export interface ColumnExtras {
+  /** Columns (by key) of relationships' attributes, stored on this table by a foreign key mapping (`relation`). */
+  relationColumns?: ReadonlySet<string>;
+  /** Columns (by key) that are the base foreign key's: the key attribute they carry, by name (`base-key`). */
+  baseKeyColumns?: ReadonlyMap<string, string>;
+  /** A child table entry's owner foreign key columns (by key): status `owner`. */
+  ownerColumns?: ReadonlySet<string>;
+  /** A child table entry's order column (by key): status `order`. */
+  orderColumn?: string;
+}
+
 export function columnRows(
-  binding: Binding,
+  binding: Mapped & { delete?: BindingDelete },
   attributes: readonly StorageAttribute[],
   columns: readonly SourceColumn[],
-  typeColumn: string | undefined = binding.discriminatorColumn,
+  typeColumn: string | undefined = (binding as { discriminatorColumn?: string }).discriminatorColumn,
+  extras: ColumnExtras = {},
 ): ColumnRow[] {
   const byRef = new Map(attributes.map((a) => [a.ref, a]));
   const soft = typeof binding.delete === "object" ? binding.delete.soft.column : null;
@@ -456,9 +577,14 @@ export function columnRows(
     const constant = (binding.constants ?? []).find((c) => findColumn(columns, c.column) === column);
     if (constant) return { column, status: "constant", constant };
     if (typeColumn && findColumn(columns, typeColumn) === column) return { column, status: "discriminator" };
+    if (extras.ownerColumns?.has(column.key)) return { column, status: "owner" };
+    if (extras.orderColumn && findColumn(columns, extras.orderColumn) === column) return { column, status: "order" };
     const listed = (binding.columns ?? []).find((c) => findColumn(columns, c.column) === column);
     if (listed) return { column, status: listed.status };
     if (soft && findColumn(columns, soft) === column) return { column, status: "soft-delete" };
+    const baseKey = extras.baseKeyColumns?.get(column.key);
+    if (baseKey !== undefined) return { column, status: "base-key", fieldRef: baseKey };
+    if (extras.relationColumns?.has(column.key)) return { column, status: "relation" };
     if (column.identity) return { column, status: "identity" };
     if (column.computed) return { column, status: "computed" };
     if (column.hasDefault) return { column, status: "default" };
@@ -489,12 +615,28 @@ export interface MapProblem {
  * (MQ4047, once with the names), a constant the source lacks (MQ4048), and the stored attributes no field maps (MQ4058, once
  * with the names; a to-one relation key is not an attribute and is left out, as the engine's rule leaves it).
  */
+export interface ProblemExtras extends ColumnExtras {
+  /** Refs the base's binding stores (table per type): not expected here, and a field naming one is MQ4132. */
+  baseStored?: ReadonlySet<string>;
+  /** Attribute ids stored by child tables: not expected here. */
+  childStored?: ReadonlySet<string>;
+  /** The binding names a base foreign key: a field for something the base maps is MQ4132, and the key comes from the foreign key. */
+  baseFieldsRefused?: boolean;
+  /** The relations were read only up to a limit: a column nothing accounts for may be a relationship's, so MQ4047 is left to the engine. */
+  relationColumnsIncomplete?: boolean;
+}
+
+/** Whether a ref is an attribute a child table stores, or a path below one. */
+export const storedByChild = (ref: string, childStored: ReadonlySet<string> | undefined): boolean =>
+  !!childStored && (childStored.has(ref) || childStored.has(ref.split(".")[0]));
+
 export function bindingProblems(
   binding: Binding,
   attributes: readonly StorageAttribute[],
   source: BindingSource | undefined,
   names: { entity: string; database: string } = { entity: "the entity", database: "the database" },
   typeColumn: string | undefined = binding.discriminatorColumn,
+  extras: ProblemExtras = {},
 ): MapProblem[] {
   const out: MapProblem[] = [];
   const subject = `The binding of entity '${names.entity}' to database '${names.database}'`;
@@ -528,7 +670,14 @@ export function bindingProblems(
   const usedColumns = new Map<string, number>();
   const seenAttributes = new Set<string>();
   (binding.fields ?? []).forEach((f, i) => {
-    if (!refs.has(f.attribute))
+    if (extras.baseFieldsRefused && extras.baseStored?.has(f.attribute))
+      out.push({
+        rule: "MQ4132",
+        severity: "error",
+        message: `The field '${nameOfRef(attributes, f.attribute)}' maps what the base's binding maps: the base's table stores it.`,
+        pointer: `/fields/${i}/attribute`,
+      });
+    else if (!refs.has(f.attribute))
       out.push({
         rule: "MQ4045",
         severity: "error",
@@ -540,6 +689,13 @@ export function bindingProblems(
         rule: "MQ4045",
         severity: "error",
         message: `The attribute ${nameOfRef(attributes, f.attribute)} is mapped twice.`,
+        pointer: `/fields/${i}/attribute`,
+      });
+    else if (wholeAbove(f.attribute, binding.fields ?? []))
+      out.push({
+        rule: "MQ4045",
+        severity: "error",
+        message: `${nameOfRef(attributes, f.attribute)} is mapped as well as the value object that holds it whole.`,
         pointer: `/fields/${i}/attribute`,
       });
     seenAttributes.add(f.attribute);
@@ -559,7 +715,9 @@ export function bindingProblems(
       });
   });
   if (writes(binding, source)) {
-    const missing = attributes.filter((a) => a.isKey && !(binding.fields ?? []).some((f) => f.attribute === a.ref));
+    const missing = attributes.filter(
+      (a) => a.isKey && !(extras.baseFieldsRefused && extras.baseStored?.has(a.ref)) && !(binding.fields ?? []).some((f) => f.attribute === a.ref),
+    );
     if (missing.length)
       out.push({
         rule: "MQ4046",
@@ -568,15 +726,21 @@ export function bindingProblems(
         pointer: "/fields",
       });
   }
-  const unaccounted = columnRows(binding, attributes, source.columns, typeColumn).filter((r) => r.status === "unaccounted");
-  if (unaccounted.length)
+  const unaccounted = columnRows(binding, attributes, source.columns, typeColumn, extras).filter((r) => r.status === "unaccounted");
+  if (unaccounted.length && !extras.relationColumnsIncomplete)
     out.push({
       rule: "MQ4047",
       severity: "warning",
       message: `Nothing accounts for ${unaccounted.map((r) => r.column.name).join(", ")} of ${source.name}: map a field, set a constant or ignore it.`,
       pointer: "/columns",
     });
-  const unmapped = attributeRows(binding, attributes, source.columns).filter((r) => r.status === "unmapped" && r.attribute.origin !== "relation");
+  const unmapped = attributeRows(binding, attributes, source.columns).filter(
+    (r) =>
+      r.status === "unmapped" &&
+      r.attribute.origin !== "relation" &&
+      !extras.baseStored?.has(r.attribute.ref) &&
+      !storedByChild(r.attribute.ref, extras.childStored),
+  );
   if (unmapped.length)
     out.push({
       rule: UNMAPPED_ATTRIBUTE_RULE,
@@ -605,7 +769,7 @@ export interface NameMatch {
  * once.
  */
 export function matchByName(
-  binding: Binding,
+  binding: Mapped & { discriminatorColumn?: string },
   attributes: readonly StorageAttribute[],
   columns: readonly SourceColumn[],
   typeColumn: string | undefined = binding.discriminatorColumn,
@@ -623,7 +787,8 @@ export function matchByName(
   }
   const out: NameMatch[] = [];
   for (const attribute of attributes) {
-    if ((binding.fields ?? []).some((f) => f.attribute === attribute.ref)) continue;
+    if (attribute.json || (binding.fields ?? []).some((f) => f.attribute === attribute.ref)) continue;
+    if (attribute.origin === "member" && wholeAbove(attribute.ref, binding.fields ?? [])) continue;
     const names = [loose(attribute.name), ...(attribute.origin === "relation" ? [loose(attribute.name.replace(/Id$/, ""))] : [])];
     const column = columns.find((c) => !taken.has(c.key) && names.includes(loose(c.name)));
     if (!column) continue;
@@ -635,13 +800,13 @@ export function matchByName(
 
 // ------------------------------------------------------------------ edits (each one gesture: one save, one undo step)
 
-const prune = (b: Binding) => {
+const prune = <B extends Mapped>(b: B): B => {
   for (const k of ["constants", "fields", "columns"] as const) if (b[k] && !b[k]!.length) delete b[k];
   return b;
 };
 
 /** Points an attribute at a column, or (null) removes its field. A column another field read moves to this one. */
-export function setField(b: Binding, ref: string, column: SourceColumn | null, columns: readonly SourceColumn[]): Binding {
+export function setField<B extends Mapped>(b: B, ref: string, column: SourceColumn | null, columns: readonly SourceColumn[]): B {
   let fields = (b.fields ?? []).filter((f) => f.attribute !== ref);
   if (column) {
     fields = fields.filter((f) => findColumn(columns, f.column) !== column);
@@ -654,20 +819,20 @@ export function setField(b: Binding, ref: string, column: SourceColumn | null, c
 }
 
 /** Adds the matches as fields. */
-export function applyMatches(b: Binding, matches: readonly NameMatch[], columns: readonly SourceColumn[]): Binding {
+export function applyMatches<B extends Mapped>(b: B, matches: readonly NameMatch[], columns: readonly SourceColumn[]): B {
   for (const m of matches) setField(b, m.attribute.ref, m.column, columns);
   return b;
 }
 
 /** Lists a column as ignored, filled by the database or computed, or (null) drops the listing. */
-export function setColumnStatus(b: Binding, column: SourceColumn, status: ListedStatus | null, columns: readonly SourceColumn[]): Binding {
+export function setColumnStatus<B extends Mapped>(b: B, column: SourceColumn, status: ListedStatus | null, columns: readonly SourceColumn[]): B {
   b.columns = (b.columns ?? []).filter((c) => findColumn(columns, c.column) !== column);
   if (status) b.columns.push({ column: column.key, status });
   return prune(b);
 }
 
 /** Replaces the constants (the grid's rows; a row without a column is kept out). */
-export function setConstants(b: Binding, constants: readonly BindingConstant[]): Binding {
+export function setConstants<B extends Mapped>(b: B, constants: readonly BindingConstant[]): B {
   b.constants = constants
     .filter((c) => c.column)
     .map((c) => (c.value === undefined || c.value === null || c.value === "" ? { column: c.column } : { column: c.column, value: c.value }));
@@ -768,7 +933,7 @@ export function autoMapRow(
   const tables = sources.filter((s) => (s.kind === "table" && !s.projected) || s.kind === "view");
   const source = options.picked ? (sources.find((s) => s.id === options.picked) ?? null) : (tableForEntity(entity.name, tables, options.pluralTables) ?? null);
   if (!source) return { entity: entity.id, entityName: entity.name, source: null, matches: [], missing: [], outcome: "miss" };
-  const matches = matchByName({ id: "", database: "", source: source.id }, attributes, source.columns);
+  const matches = matchByName({}, attributes, source.columns);
   const missing = attributes.filter((a) => a.expected && !matches.some((m) => m.attribute.ref === a.ref));
   return { entity: entity.id, entityName: entity.name, source, matches, missing, outcome: missing.length ? "partial" : "match" };
 }

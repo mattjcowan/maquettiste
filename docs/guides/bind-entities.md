@@ -178,6 +178,116 @@ code and write it. Switch the dialect to
 see another database's form. Generation uses the same statements (the `csharp-dapper` pack builds a bound entity's
 repository from them).
 
+## 10. Table per type
+
+Some teams keep a subtype's own columns in a table of its own. Take a billing model: every payment is a row of
+`payments (id, kind, amount)`, and a card payment adds a row to `card_payments (payment_id, last4)`. The primary key of
+`card_payments` is also its foreign key to `payments`, so each card row belongs to one payment row.
+
+1. Bind `Payment` to `payments`, and name `kind` as its type column (`discriminatorColumn`).
+2. Bind `CardPayment`, which derives from `Payment`, to `card_payments`. Map only `last4`: the base's binding maps `id` and
+   `amount`.
+3. In the binding's **Base table** section, pick the foreign key of `card_payments` that references `payments`. (It is
+   `baseForeignKey` on the JSON tab.) The section shows `payment_id` joining `payments.id`, and the field map stops offering
+   what `Payment`'s binding stores.
+
+```json
+"bindings": [{
+  "id": "…", "database": "…",
+  "source": "<card_payments>",
+  "baseForeignKey": "<fk_card_payments_payment>",
+  "discriminatorValue": "card",
+  "fields": [{ "attribute": "<last4>", "column": "<last4>" }]
+}]
+```
+
+Open the **SQL** section of `CardPayment`'s binding:
+
+- **select** joins the two tables and keeps the card codes:
+  `FROM card_payments t JOIN payments b1 ON b1.id = t.payment_id WHERE b1.kind IN ('card', ...)`.
+- **insert** writes `card_payments`, with the key as `@id`. The `payments` row comes first, written by the base's insert
+  for the card payment: its code is `'card'`, and the id the database makes comes back to fill `@id`.
+- **update** and **delete** work on `card_payments`; the base's table has its own for the card payment. A delete removes
+  the card row first, then the payment row. A soft delete is the base's and marks the payment row only.
+
+Reading `Payment` still returns every payment, card payments included. A `CorporateCardPayment` can go one level further,
+with a table whose foreign key references `card_payments`; its reads then join both tables above it. A `BankTransfer` can
+keep its rows in `payments` with its own code at the same time.
+
+Binding this way never changes a table. The `csharp-dapper` pack builds the card payment's repository from these statements:
+it inserts root first, carries the new id down, updates every table and deletes from the bottom up, all in one transaction.
+
+Give the foreign key of `card_payments` `onDelete: cascade` when `Payment`'s binding deletes by key. Deleting a payment
+through `Payment`'s repository removes only the `payments` row, and without the cascade the database refuses it for a card
+payment, whose card row still points at it. Warning MQ4136 says so. The rules MQ4128 to MQ4136 say what doesn't fit (see
+[A table per type](../user-guide.md#a-table-per-type)).
+
+## 11. Child tables and nested value objects
+
+An attribute can live in a table of its own. Take a quote with notes. Each note is a row of
+`quote_notes (quote_id, position, text, author)`. The foreign key `quote_id` points at the quote's row, and `position`
+keeps the notes in order.
+
+1. Give `Quote` a list attribute `notes`, typed by a value object `QuoteNote` with `text` and `author`.
+2. Bind `Quote` to `quotes` as usual. Do not map `notes` as a field.
+3. In the binding's **Child tables** section, pick `notes`, press **Add child table**, then pick `quote_notes` as its table:
+   the owner key, the order column and the members are filled from the names. The result, on the JSON tab, is a `childTables`
+   entry for `notes`:
+
+```json
+"childTables": [{
+  "id": "…",
+  "attribute": "<notes>",
+  "table": "<quote_notes>",
+  "ownerForeignKey": "<fk_quote_notes_quote>",
+  "orderColumn": "<position>",
+  "fields": [
+    { "attribute": "<notes>.<text>", "column": "<text>" },
+    { "attribute": "<notes>.<author>", "column": "<author>" }
+  ]
+}]
+```
+
+Each field path starts with the attribute, then names a member of its value object. Other shapes work the same way:
+
+- **A list of single values**, such as labels in `quote_labels (id, quote_id, label)`: one field whose path is the attribute
+  itself. The row's own `id` is filled by the database, so list it in `columns` as `database`.
+- **A single value object**, such as a shipping address in `quote_shipping_addresses`: at most one row per quote, so no
+  order column.
+- **Several attributes in one table**: give each entry a constant on one column, with different values, so their rows are
+  told apart (MQ4142 otherwise). Entities of one hierarchy that store the same attribute in one table share its rows.
+- **An owner key on a unique key**, such as `quote_terms (quote_number, …)` referencing `quotes (number)`: the binding maps a
+  field for the number. If the binding updates the number, give the foreign key `onUpdate: cascade`, or make the field read
+  only: otherwise a changed number leaves the terms behind, or the database refuses it (warning MQ4143).
+- **A single value object's table** needs a primary key or unique constraint on exactly the owner columns (and the
+  constants' columns), so a quote has at most one row (warning MQ4144).
+
+Open the **SQL** section of the binding. Below the binding's own statements, each child table has three, labelled by its
+attribute:
+
+- **select** reads one quote's rows, in order: `WHERE t.quote_id = @ownerId ORDER BY t.position`.
+- **delete** removes one quote's rows.
+- **insert** writes one row, with `@ownerId`, `@position` and the fields.
+
+Writes replace the rows: delete the quote's notes, then insert them again in order. Insert the quote first, so its new id
+can fill `@ownerId`. When you delete a quote, remove its child rows first, unless the foreign key cascades. A soft delete
+keeps them. A read-only binding reads its child tables and writes none.
+
+**Paths of any depth.** A field can walk value objects nested in value objects. With a billing address that holds a map
+point, `<billingAddress>.<geo>.<latitude>` maps the column `billing_latitude`. A path that ends at a nested value object or
+a list maps a JSON column: `<billingAddress>.<deliveryNotes>` holds the courier notes as JSON. Another column type is
+refused, and so is mapping a value object both whole and member by member. The same paths work inside a child table.
+
+**Copies.** A copy of a quote copies its notes too. If the entity's `copy` block says `clear` or `reset` for `notes`, the
+copy has none. A subtype bound by `baseForeignKey` follows its own merged `copy` block for its bases' child tables.
+
+Binding this way never changes a table. The `csharp-dapper` pack loads each list in order, and each single value object
+from its one row. An insert or update writes the child rows again in the same transaction, and a delete removes them
+first when the foreign key does not cascade. Its delete reads the quote's row first, through the binding's own filters, and
+deletes nothing when there is none. A subtype bound by `baseForeignKey` loads and writes its bases' child tables too. The
+rules MQ4137 to MQ4144 say what doesn't fit (see
+[An attribute in a table of its own](../user-guide.md#an-attribute-in-a-table-of-its-own)).
+
 ## Undoing and removing
 
 Every gesture on the Storage tab is one save of the entity and one undo step. The trash button on a binding card removes
@@ -205,8 +315,9 @@ maquettiste binding resync --database main Rental --keep-names          # catch 
   [Auto-map to existing tables](../user-guide.md#auto-map-to-existing-tables) and
   [Relationship storage](../user-guide.md#relationship-storage).
 - [Binding entities to tables, views and queries](../user-guide.md#binding-entities-to-tables-views-and-queries): the
-  file shape, several entities over one table, a base and its subtypes in one table, and a read-only entity over a query.
+  file shape, several entities over one table, a base and its subtypes in one table, a table per type, child tables, and a
+  read-only entity over a query.
 - [Materialize, both ways](../user-guide.md#materialize-both-ways),
   [Provenance and drift](../user-guide.md#provenance-and-drift),
   [Column comments as descriptions](../user-guide.md#column-comments-as-descriptions) and
-  [The rules for bindings](../user-guide.md#the-rules-for-bindings) (MQ4044 to MQ4055, MQ4087 to MQ4089).
+  [The rules for bindings](../user-guide.md#the-rules-for-bindings) (MQ4044 to MQ4055, MQ4087 to MQ4089, MQ4122 to MQ4144).

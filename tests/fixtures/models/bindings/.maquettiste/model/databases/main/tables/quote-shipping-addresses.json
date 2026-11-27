@@ -1,0 +1,59 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000130",
+  "name": "quote_shipping_addresses",
+  "database": "01K6BFX0000000000000000002",
+  "description": "A quote's shipping address, at most one row per quote; the map point is JSON.",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000131",
+      "name": "quote_id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000132",
+      "name": "street",
+      "type": "string",
+      "length": 120,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000133",
+      "name": "city",
+      "type": "string",
+      "length": 80,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000134",
+      "name": "delivery_notes",
+      "type": "json"
+    },
+    {
+      "id": "01K6BFX0000000000000000135",
+      "name": "geo",
+      "type": "json"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000131"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K6BFX0000000000000000136",
+      "name": "fk_quote_shipping_addresses_quote",
+      "columns": [
+        "01K6BFX0000000000000000131"
+      ],
+      "referencesTable": "01K6BFX0000000000000000120",
+      "referencesColumns": [
+        "01K6BFX0000000000000000121"
+      ],
+      "onDelete": "cascade"
+    }
+  ]
+}

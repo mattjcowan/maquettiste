@@ -29,7 +29,7 @@ import {
 } from "./relationStorage";
 import { databasesOf } from "./useStorage";
 import { docEndEntities, docEndHasSeveralTypes, docEndSingleEntity } from "@/model/endTypes";
-import { LinkTableExtras, SeveralTypesCard } from "./RelationStorageSeveral";
+import { AttributeColumns, LinkTableExtras, SeveralTypesCard } from "./RelationStorageSeveral";
 import { DatabaseRunLists } from "./RelationStorageRun";
 import { coveredTargets, type StorageEndSource, type StorageMapping, type TableDocWithKeys } from "./relationStorage";
 
@@ -123,6 +123,8 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
         };
         const dependent = dependentEnd(ends, mapping?.foreignKeyEnd ?? null);
         const [a, b] = bound[di] ?? [];
+        // The table that holds the named foreign key: a relationship's attributes can each name a column of it.
+        const holder = [tableOf(a), tableOf(b)].find((t) => !!mapping?.foreignKey && t?.foreignKeys?.some((k) => k.id === mapping.foreignKey));
         const bothBound = ends.length === 2 && !!a && !!b;
         // The relation mapping's own findings, and the relationship's storage rules (MQ4011: bound ends, no key named) in this database.
         const endIds = new Set(ends.map((e) => e.id));
@@ -172,21 +174,36 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
                 attributes={columnAttributes}
               />
             ) : bothBound && !manyToMany ? (
-              <ForeignKeyPicker
-                dom={`${id}-${d.id}`}
-                databaseName={d.name}
-                choices={foreignKeyChoices(tableOf(a), tableOf(b), dependent)}
-                reversed={reverseForeignKeys(tableOf(a), tableOf(b), dependent)}
-                dependentTable={dependent ? (tableOf(dependent.index === 0 ? a : b)?.name ?? null) : null}
-                value={mapping?.foreignKey ?? ""}
-                loading={tableDocs.pending || mappingsLoading}
-                onPick={(key) => {
-                  const choice = foreignKeyChoices(tableOf(a), tableOf(b), dependent).find((c) => c.key.id === key);
-                  // A one-to-one tie: the end whose table holds the picked key is the dependent one.
-                  const end = dependent?.tie && choice ? ends[choice.end].id : undefined;
-                  change((j) => setRelationForeignKey(j, key, end));
-                }}
-              />
+              <>
+                <ForeignKeyPicker
+                  dom={`${id}-${d.id}`}
+                  databaseName={d.name}
+                  choices={foreignKeyChoices(tableOf(a), tableOf(b), dependent)}
+                  reversed={reverseForeignKeys(tableOf(a), tableOf(b), dependent)}
+                  dependentTable={dependent ? (tableOf(dependent.index === 0 ? a : b)?.name ?? null) : null}
+                  value={mapping?.foreignKey ?? ""}
+                  loading={tableDocs.pending || mappingsLoading}
+                  onPick={(key) => {
+                    const choice = foreignKeyChoices(tableOf(a), tableOf(b), dependent).find((c) => c.key.id === key);
+                    // A one-to-one tie: the end whose table holds the picked key is the dependent one.
+                    const end = dependent?.tie && choice ? ends[choice.end].id : undefined;
+                    change((j) => setRelationForeignKey(j, key, end));
+                  }}
+                />
+                {holder && mapping && columnAttributes.length ? (
+                  <AttributeColumns
+                    dom={`${id}-${d.id}`}
+                    columns={(holder.columns ?? []).filter(
+                      (c) => !(holder.foreignKeys?.find((k) => k.id === mapping.foreignKey)?.columns ?? []).some((x) => x === c.id || x === c.name),
+                    )}
+                    mapping={mapping}
+                    attributes={columnAttributes}
+                    change={(mutate) => change((j) => mutate(j as unknown as StorageMapping))}
+                    loading={mappingsLoading}
+                    title={`Attribute columns, in ${holder.name ?? "the table that holds the key"}`}
+                  />
+                ) : null}
+              </>
             ) : bothBound && manyToMany ? (
               <JunctionPicker
                 dom={`${id}-${d.id}`}

@@ -270,6 +270,23 @@ Built since:
   through composition (`entity.parts`), each part with its own binding. `csharp-dapper` teaches the binding way and still
   renders a query that names an entity; the reference sample's `OpenSalesOrders` query lost its entity and its lines
   collection, and the new read-only entity `OpenSalesOrder` binds to it. Requested.
+- **A table per type (0.29.0, pull request 1 of "Retiring projection", unreleased).** A derived entity's binding names its
+  table's foreign key to the base's table (`baseForeignKey`) and maps only the entity's own attributes. The key is the
+  foreign key's columns; reads join up the chain; each base's table renders its insert, update and delete for the derived
+  entity (its type code, the base's constants), the root's insert returning the generated key; a soft delete is the base's;
+  `exists` probes a row. Type-column membership and several types read it. MQ4128 to MQ4136. A relation mapping's
+  `attributes[].column` also works on the foreign-key shape. `csharp-dapper` builds the repository. Child tables and
+  deeper field paths follow in the same pull request. [The design](retire-projection-design.md).
+- **Child tables and field paths of any depth (0.29.0, pull request 1 of "Retiring projection", unreleased).** A binding
+  keeps a list attribute, or a single value object, in a table of its own (`childTables`: the attribute, the table, the
+  owner foreign key on the owning table's primary or unique key, fields, an integer order column for a list, constants,
+  columns). Each entry renders its select by owner (ordered), delete by owner and insert of one row; writes replace the rows,
+  after the owner's insert, and a delete removes them first unless the key cascades. Inherited attributes work with a table
+  per type and with one table per hierarchy; a copy carries the rows as the attribute's `onCopy` says. Field paths walk
+  nested value objects to any depth, and a path that ends at a nested value object or a list maps a JSON column. MQ4137 to
+  MQ4144; MQ4058 counts nested members. `csharp-dapper` loads and writes the rows in one unit, its bases' too, and its delete
+  checks the row first. The Storage tab has a Child tables section and a Base table section, the field map walks nested
+  paths, and the SQL preview shows every level and child table. [The design](retire-projection-design.md), section 5.
 - **Queries stop naming entities: removal (0.28.0).** `entity`, `collections` and a select field's `attribute` are gone
   from the query format, the resolved model, the SQL renderer (`query_collection_sql` too), `csharp-dapper` and the
   editor. A file that still has one does not load: MQ4127 is now an error at load that no setting changes, naming the
@@ -295,6 +312,16 @@ design questions on 2026-11-26; their answers are folded in below.
   them like written ones; a script that writes them into the model with `upsert` works today.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
+
+- **Retiring projection (tables made from entities).** Pull request 1 of 3 built (the binding shapes), design: [retire-projection-design.md](retire-projection-design.md).
+  Asked for by the owner on 2026-11-26 (not requested by a team). One release (0.29.0), three pull requests: bindings
+  learn every shape projection makes (table per type with `baseForeignKey`; an attribute in a child table, as a list or
+  a single value, with `childTables`; field paths of any depth; relation attributes on a foreign key; entity seeds
+  through bindings); "Create tables…" proposes every shape and converts our sample, fixtures and bench model with no DDL
+  change and no migration; then conventions that lay out tables, overlays, the entity half of mapping elements and the
+  promoted shape are removed, with guards for old database files and baselines. Relation mappings stay. Revision 3
+  folds in a Fable review; about 14 to 17 days. The requesting team answered on 2026-11-26 that they use none of what is
+  removed. The team's two follow-up answers (section 10) clear the guards for them. The owner confirmed D1 to D4 on 2026-11-26.
 
 ### Model service: persistence providers, snapshots, a model library (snapshots built in 0.8.0)
 

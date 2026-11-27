@@ -682,7 +682,11 @@ export interface paths {
          *     `selectByKey`, `insert` (the written fields and the constants, without the columns the database fills; generated keys
          *     come back through `RETURNING`, `OUTPUT INSERTED` or `SELECT LAST_INSERT_ID()`), `update` (by key, the constants in the
          *     where clause) and `delete` (by key, or the soft-delete update). A statement the binding does not have is null (a
-         *     read-only binding has no insert, update or delete). Parameters are named after the fields. A model with errors returns
+         *     read-only binding has no insert, update or delete). `exists` is the probe on the binding's own source by key. A binding
+         *     with bases (table per type) also has `bases`, nearest first, each with its `level` and that table's `insert`, `update`
+         *     and `delete` for the entity. A binding with child tables also has `childTables`, in file order, each labelled by its
+         *     attribute with its `select` (the rows of one owner, ordered by the order column), `insert` (one row) and `delete` (the
+         *     rows of one owner). Parameters are named after the fields. A model with errors returns
          *     `preview: null` and the diagnostics. The MCP tool `preview_binding_sql` answers the same.
          */
         get: operations["getBindingSql"];
@@ -6205,6 +6209,74 @@ export interface components {
             /** @description The entity's type code the binding sets (several-types-design.md decision 42); left out when unset. */
             discriminatorValue?: string | number;
             discriminatorColumn?: components["schemas"]["BindingDiscriminatorRecord"];
+            /** @description Table per type (retire-projection-design.md section 4), the id of the foreign key the binding's `baseForeignKey` names; left out without one, or when it does not resolve. */
+            baseForeignKey?: string;
+            /** @description With `baseForeignKey`, the key it gives, one field per key field of the base's binding on the foreign key's column, which `fields` does not hold; left out otherwise. */
+            key?: components["schemas"]["BindingFieldRecord"][];
+            /** @description The tables above the binding's own that its entity's rows also live in, nearest first; left out when there are none. */
+            bases?: components["schemas"]["BindingBaseRecord"][];
+            /** @description The attributes stored in a table of their own (retire-projection-design.md section 5), in file order; left out when there are none. */
+            childTables?: components["schemas"]["BindingChildTableRecord"][];
+        };
+        /** @description An attribute a binding stores in a table of its own, a list (one row per item) or a single value object (at most one row). Writes replace its rows, delete the owner's rows, then insert the items in order. */
+        BindingChildTableRecord: {
+            id: components["schemas"]["Ulid"];
+            /** @description The attribute's id, as the file writes it. */
+            attribute: string;
+            isList: boolean;
+            /** @description The child table's key. */
+            table: string;
+            /** @description The id of the foreign key that ties a row to its owner; null when it does not fit. */
+            ownerForeignKey: string | null;
+            owner: components["schemas"]["BindingOwnerColumnRecord"][];
+            /** @description The key of the column holding a list item's position. */
+            orderColumn: string | null;
+            constants: components["schemas"]["BindingConstantView"][];
+            fields: components["schemas"]["BindingFieldRecord"][];
+            columns: components["schemas"]["BindingColumnRecord"][];
+            writes: boolean;
+            /**
+             * @description What a copy of the owner does with the rows; copy copies them, clear and reset leave none.
+             * @enum {string}
+             */
+            onCopy: "copy" | "clear" | "reset";
+        };
+        /** @description One column of a child table's owner foreign key. */
+        BindingOwnerColumnRecord: {
+            /** @description The child table column's key. */
+            column: string;
+            /** @description The key of the owning table's column it references. */
+            referencedColumn: string;
+            /** @description The name of the binding's field on the referenced column. */
+            field: string | null;
+            /** @description The statements' parameter for the owner's value (ownerId). */
+            parameter: string;
+        };
+        /** @description One table above a binding's own (table per type), the base's binding that reads and writes it, and how the table below joins it. */
+        BindingBaseRecord: {
+            binding: components["schemas"]["Ulid"];
+            entity: components["schemas"]["Ulid"];
+            /** @description The key of the table the base's binding writes, else its source's key. */
+            table: string;
+            /** @description The id of the foreign key that joins the table below to this one. */
+            foreignKey: string;
+            /** @description The foreign key's columns, in the table below, by key. */
+            columns: string[];
+            /** @description The columns of this table they reference, in the order of columns. */
+            referencedColumns: string[];
+            discriminatorColumn?: components["schemas"]["BindingDiscriminatorRecord"];
+            /** @description The base's binding's child tables as the derived entity uses them, each with the derived entity's merged onCopy; left out when the base's binding has none. */
+            childTables?: components["schemas"]["BindingBaseChildRecord"][];
+        };
+        /** @description A child table of a base's binding, as a derived entity (table per type) uses it. */
+        BindingBaseChildRecord: {
+            id: components["schemas"]["Ulid"];
+            attribute: string;
+            /**
+             * @description What a copy of the derived entity does with the rows, its own merged onCopy for the attribute.
+             * @enum {string}
+             */
+            onCopy: "copy" | "clear" | "reset";
         };
         /** @description The type column a base entity and the entities derived from it share in one table, named by the binding's `discriminatorColumn` or inherited from its nearest base's binding to the database; left out of the binding when there is none. */
         BindingDiscriminatorRecord: {
@@ -6241,12 +6313,14 @@ export interface components {
             holds?: "id" | "type" | "key";
             /** @description The entity of an `endId.entityId` field (`holds` is `key`); left out otherwise. */
             keyOf?: string;
+            /** @description The ids of the value object members the path walks below the attribute, for a member of a nested value object; left out for a path of one member or none. */
+            memberPath?: string[];
         };
         BindingColumnRecord: {
             name: string;
             key: string | null;
             /** @enum {string} */
-            status: "field" | "constant" | "discriminator" | "ignored" | "database" | "computed" | "identity" | "default" | "soft-delete" | "unaccounted";
+            status: "field" | "constant" | "discriminator" | "ignored" | "database" | "computed" | "identity" | "default" | "soft-delete" | "relation" | "owner" | "order" | "unaccounted";
             field: string | null;
         };
         BindingSqlResult: {
@@ -6261,6 +6335,31 @@ export interface components {
             dialect: "postgresql" | "sqlserver" | "mysql" | "sqlite" | "oracle";
             select: components["schemas"]["BindingStatement"] | null;
             selectByKey: components["schemas"]["BindingStatement"] | null;
+            insert: components["schemas"]["BindingStatement"] | null;
+            update: components["schemas"]["BindingStatement"] | null;
+            delete: components["schemas"]["BindingStatement"] | null;
+            /** @description The probe, a count of the rows of the binding's own source with the key, joining no base; left out without key fields. */
+            exists?: components["schemas"]["BindingStatement"];
+            /** @description With bases (table per type), each base's table's statements for this entity, nearest first; left out without bases. */
+            bases?: components["schemas"]["BindingBaseSqlPreview"][];
+            /** @description With child tables, each entry's statements, in file order, labelled by its attribute; left out without child tables. */
+            childTables?: components["schemas"]["BindingChildSqlPreview"][];
+        };
+        /** @description The statements of one child table entry. */
+        BindingChildSqlPreview: {
+            id: components["schemas"]["Ulid"];
+            attributeId: string;
+            attributeName: string;
+            select: components["schemas"]["BindingStatement"] | null;
+            insert: components["schemas"]["BindingStatement"] | null;
+            delete: components["schemas"]["BindingStatement"] | null;
+        };
+        /** @description The statements one base's table renders for a derived entity (table per type). */
+        BindingBaseSqlPreview: {
+            /** @description From 1 for the nearest base up to the root. */
+            level: number;
+            entityId: components["schemas"]["Ulid"];
+            bindingId: components["schemas"]["Ulid"];
             insert: components["schemas"]["BindingStatement"] | null;
             update: components["schemas"]["BindingStatement"] | null;
             delete: components["schemas"]["BindingStatement"] | null;
@@ -9271,6 +9370,8 @@ export interface components {
                 database: components["schemas"]["id"];
                 /** @description What the entity reads: the id of a table (or a synthesized table key), a view or a query of the database. */
                 source: string;
+                /** @description Table per type: the id of a foreign key of the binding's write table (else its source) that references the write table of the binding to the same database of the entity's nearest bound base. Its columns are the table's whole primary key. The base's binding maps the inherited attributes and to-one ends, its constants and its type column; this binding maps only the entity's own, and no field for the key: the key is the foreign key's columns. Inserts write the base's row first (a key the base generates flows in), reads join the base's table, up the chain (MQ4128 to MQ4136). */
+                baseForeignKey?: components["schemas"]["id"];
                 /**
                  * @description Columns with a fixed value: a filter on every read and a value on every insert.
                  * @default []
@@ -9282,11 +9383,11 @@ export interface components {
                     value?: string | number | boolean | null;
                 }[];
                 /**
-                 * @description The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key or, on an end with several types, its id; endId.type for that end's type code and endId.entityId for its key per type) and the source column it reads.
+                 * @description The field map: an attribute of the entity (attributeId.memberId for a value object member, attributeId.memberId.memberId and deeper for a member of a nested value object, a path ending at a nested value object or list for a JSON column, a relation end id for a to-one navigation's key or, on an end with several types, its id; endId.type for that end's type code and endId.entityId for its key per type) and the source column it reads.
                  * @default []
                  */
                 fields?: {
-                    /** @description An attribute id of the entity, attributeId.memberId, or the id of a relation end the entity holds, which a to-one navigation leads to: endId maps its key column, or on an end with several types its id column; endId.type maps the column that holds the linked object's type code, and endId.entityId the column that points at a linked object of that entity (a column per type). */
+                    /** @description An attribute id of the entity, attributeId.memberId (deeper for a member of a value object nested in it: attributeId.memberId.memberId; a path that ends at a nested value object or list maps a JSON column), or the id of a relation end the entity holds, which a to-one navigation leads to: endId maps its key column, or on an end with several types its id column; endId.type maps the column that holds the linked object's type code, and endId.entityId the column that points at a linked object of that entity (a column per type). */
                     attribute: string;
                     /** @description A column of the source: its key or physical name. */
                     column: string;
@@ -9300,6 +9401,51 @@ export interface components {
                     column: string;
                     /** @enum {unknown} */
                     status: "ignored" | "database" | "computed";
+                }[];
+                /**
+                 * @description The attributes stored in a table of their own: a list (collection), one row per item, or a single value object, at most one row. Writes replace an attribute's rows: delete the owner's rows, then insert the items in order. An insert writes the owner first; a delete removes the child rows first (or relies on the foreign key's cascade); a soft delete leaves them. A binding that writes none reads its child tables and writes none (MQ4137 to MQ4141).
+                 * @default []
+                 */
+                childTables?: {
+                    id: components["schemas"]["id"];
+                    /** @description The id of an attribute of the entity: a list, or a single value object. An inherited one only when the base's binding does not store it. */
+                    attribute: components["schemas"]["id"];
+                    /** @description The id of the child table, a table of the binding's database. */
+                    table: string;
+                    /** @description The id of a foreign key of the child table that references the owning table (the binding's write table, else its source) on its primary key or a unique key; with a unique key, the binding maps a field for each of that key's columns. Its columns are not mapped as fields. */
+                    ownerForeignKey: components["schemas"]["id"];
+                    /**
+                     * @description The field map, with paths as the binding's fields write them, each starting with the attribute: attributeId.memberId, deeper for a nested value object, a path ending at a nested value object or list for a JSON column. For a list of a scalar, an enum or a reference type, one field whose path is the attribute itself, naming the value column.
+                     * @default []
+                     */
+                    fields?: {
+                        /** @description The path: the attribute's id, then member ids separated by dots. */
+                        attribute: string;
+                        /** @description A column of the child table: its key or physical name. */
+                        column: string;
+                    }[];
+                    /** @description Lists only: an integer column of the child table holding each item's position, from 0; reads are ordered by it. */
+                    orderColumn?: string;
+                    /**
+                     * @description Columns of the child table with a fixed value: a filter on every read and a value on every insert, so several attributes can share one table.
+                     * @default []
+                     */
+                    constants?: {
+                        /** @description A column of the child table: its key or physical name. */
+                        column: string;
+                        /** @description The value; absent or null is SQL NULL. */
+                        value?: string | number | boolean | null;
+                    }[];
+                    /**
+                     * @description The child table's other columns, each accounted for: ignored, filled by the database (a child row's own generated id) or computed.
+                     * @default []
+                     */
+                    columns?: {
+                        /** @description A column of the child table: its key or physical name. */
+                        column: string;
+                        /** @enum {unknown} */
+                        status: "ignored" | "database" | "computed";
+                    }[];
                 }[];
                 /** @description Where the entity writes: { "table": id } or "none". Absent: the source when it is a table, none when it is a view or a query. */
                 write?: "none" | {
@@ -10928,7 +11074,7 @@ export interface components {
             /** @default [] */
             attributes?: {
                 attribute: components["schemas"]["id"];
-                /** @description The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). */
+                /** @description The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). On a relation mapping of the foreign-key shape: a column of the table that holds the foreign key, not one of the key's own columns (MQ4009). */
                 column?: components["schemas"]["id"];
                 /** @enum {unknown} */
                 storage?: "int" | "string" | "embedded" | "table" | "json";

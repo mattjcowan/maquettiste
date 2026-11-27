@@ -87,8 +87,10 @@ internal static class BindingDrift
     private static readonly IReadOnlyList<ShapeColumn> NoColumns = [];
 
     /// <summary>
-    /// The type column a binding names or inherits, read from files as the database run reads it: the binding's own
-    /// <c>discriminatorColumn</c>, else that of the binding to the same database of the entity's nearest base that names one.
+    /// The type column a binding names or inherits, read from files as the database run reads it (<c>TypeColumnOwner</c>): the binding's own
+    /// <c>discriminatorColumn</c>, unless a base's binding in the same table names one (then that one, MQ4126), else that of the binding to the
+    /// same database of the entity's nearest base that names one. The walk stops at a binding joined to its base's table by a base foreign
+    /// key (table per type): a base's type column above it is in the base's table.
     /// </summary>
     /// <param name="model">The snapshot.</param>
     /// <param name="entity">The entity that holds the binding.</param>
@@ -99,16 +101,137 @@ internal static class BindingDrift
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(entity);
         ArgumentNullException.ThrowIfNull(binding);
-        if (binding.DiscriminatorColumn is { } own)
-            return own;
-        var seen = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
-        for (var id = entity.Base; id is not null && seen.Add(id) && model.Get<Entity>(id) is { } e; id = e.Base)
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (Entity? e = entity; e is not null && seen.Add(e.Id); e = e.Base is { } next ? model.Get<Entity>(next) : null)
         {
-            if (e.Bindings.FirstOrDefault(b => string.Equals(b.Database, binding.Database, StringComparison.Ordinal)) is { DiscriminatorColumn: { } inherited })
-                return inherited;
+            var bound = ReferenceEquals(e, entity) ? binding : e.Bindings.FirstOrDefault(b => string.Equals(b.Database, binding.Database, StringComparison.Ordinal));
+            if (bound is null)
+                continue;
+            if (bound.DiscriminatorColumn is { } column && !NamesInheritedTypeColumn(model, e, bound))
+                return column;
+            if (IsPerType(model, e, bound))
+                return null;
         }
 
         return null;
+    }
+
+    /// <summary>MQ4126 from files: a binding names a type column while the binding of a base in the same table names one too.</summary>
+    private static bool NamesInheritedTypeColumn(ModelSnapshot model, Entity entity, EntityBinding binding)
+    {
+        var host = HostOf(binding);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
+        for (var e = entity.Base is { } first ? model.Get<Entity>(first) : null; e is not null && seen.Add(e.Id); e = e.Base is { } next ? model.Get<Entity>(next) : null)
+        {
+            if (e.Bindings.FirstOrDefault(b => string.Equals(b.Database, binding.Database, StringComparison.Ordinal)) is { DiscriminatorColumn: not null } bound
+                && string.Equals(HostOf(bound), host, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>What holds a binding's rows, as its file names it: the table it writes, else (writing nowhere) its source.</summary>
+    internal static string HostOf(EntityBinding binding) => binding.Write is { None: true } ? binding.Source : binding.Write?.Table ?? binding.Source;
+
+    /// <summary>The nearest base of an entity with a binding to a database, with that binding, or <see langword="null"/>.</summary>
+    internal static (Entity Entity, EntityBinding Binding)? BoundBase(ModelSnapshot model, Entity entity, string database)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
+        for (var e = entity.Base is { } first ? model.Get<Entity>(first) : null; e is not null && seen.Add(e.Id); e = e.Base is { } next ? model.Get<Entity>(next) : null)
+        {
+            if (e.Bindings.FirstOrDefault(b => string.Equals(b.Database, database, StringComparison.Ordinal)) is { } bound)
+                return (e, bound);
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether a binding joins its bound base's table by a base foreign key (table per type): it names one and keeps its rows elsewhere.</summary>
+    internal static bool IsPerType(ModelSnapshot model, Entity entity, EntityBinding binding) =>
+        binding.BaseForeignKey is not null && BoundBase(model, entity, binding.Database) is { } b
+        && !string.Equals(HostOf(binding), HostOf(b.Binding), StringComparison.Ordinal);
+
+    /// <summary>
+    /// The nearest base whose table a binding's rows also live in (table per type), read from the files as the database run reads it: the bound
+    /// base a base foreign key joins, or for a binding in its bound base's table, that base's; <see langword="null"/> for every other binding.
+    /// What that base has (its own and its bases' attributes) the tables above the binding store.
+    /// </summary>
+    internal static Entity? UpperBase(ModelSnapshot model, Entity entity, EntityBinding binding)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
+        for (var (e, b) = (entity, binding); BoundBase(model, e, b.Database) is { } found && seen.Add(found.Entity.Id); (e, b) = found)
+        {
+            var same = string.Equals(HostOf(b), HostOf(found.Binding), StringComparison.Ordinal);
+            if (!same)
+                return b.BaseForeignKey is not null ? found.Entity : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The columns of a table that relation mappings store relation attributes in (<c>attributes[].column</c> on the foreign-key shape): those
+    /// of a mapping whose <c>foreignKey</c> is one of the table's. A binding of the table counts them as the relation's.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="table">The table file.</param>
+    /// <returns>The column ids, in mapping order.</returns>
+    public static IReadOnlyList<string> RelationAttributeColumnsOf(ModelSnapshot model, Table table)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(table);
+        if (table.ForeignKeys.Count == 0)
+            return [];
+        return [.. model.All<Mapping>()
+            .Where(m => m.Relation is not null && m.JunctionTable is null && m.ForeignKey is { } key && table.ForeignKeys.Any(f => string.Equals(f.Id, key, StringComparison.Ordinal)))
+            .OrderBy(m => m.Id, StringComparer.Ordinal)
+            .SelectMany(m => m.Attributes.Select(a => a.Column).OfType<string>())];
+    }
+
+    /// <summary>
+    /// The columns of the foreign key a binding's <c>baseForeignKey</c> names (table per type), read from the table file that declares it: the
+    /// binding's key, which no field maps. Empty without one, or when the key is not a table file's.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="binding">The binding.</param>
+    /// <returns>The column ids.</returns>
+    public static IReadOnlyList<string> BaseKeyColumnsOf(ModelSnapshot model, EntityBinding binding)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(binding);
+        return binding.BaseForeignKey is { } id && model.GetDocument(id)?.Element is Table table
+            && table.ForeignKeys.FirstOrDefault(f => string.Equals(f.Id, id, StringComparison.Ordinal)) is { } key
+            ? key.Columns
+            : [];
+    }
+
+    /// <summary>
+    /// The columns of a table that a binding's child table entries on it name (retire-projection-design.md section 5): their fields', constants',
+    /// listed and order columns, and the columns of their owner foreign keys. The entries' own columns, not ones the binding's fields left out.
+    /// </summary>
+    /// <param name="binding">The binding.</param>
+    /// <param name="table">The table file.</param>
+    /// <returns>The column references, as the entries write them (an owner key's by id).</returns>
+    public static IReadOnlyList<string> ChildColumnsOf(EntityBinding binding, Table table)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
+        ArgumentNullException.ThrowIfNull(table);
+        if (binding.ChildTables.Count == 0)
+            return [];
+        var references = new List<string>();
+        foreach (var child in binding.ChildTables.Where(c => string.Equals(c.Table, table.Id, StringComparison.Ordinal)))
+        {
+            references.AddRange(child.Fields.Select(f => f.Column));
+            references.AddRange(child.Constants.Select(c => c.Column));
+            references.AddRange(child.Columns.Select(c => c.Column));
+            if (child.OrderColumn is { } order)
+                references.Add(order);
+            if (table.ForeignKeys.FirstOrDefault(f => string.Equals(f.Id, child.OwnerForeignKey, StringComparison.Ordinal)) is { } key)
+                references.AddRange(key.Columns);
+        }
+
+        return references;
     }
 
     /// <summary>One binding's drift.</summary>
@@ -149,6 +272,12 @@ internal static class BindingDrift
             Name(named, columns, constant.Column);
         if (TypeColumnOf(model, entity, binding) is { } typeColumn)
             Name(named, columns, typeColumn);
+        foreach (var keyColumn in BaseKeyColumnsOf(model, binding))
+            Name(named, columns, keyColumn);
+        foreach (var relationColumn in RelationAttributeColumnsOf(model, table!))
+            Name(named, columns, relationColumn);
+        foreach (var childColumn in ChildColumnsOf(binding, table!))
+            Name(named, columns, childColumn);
         foreach (var listed in binding.Columns)
             Name(named, columns, listed.Column);
         if (binding.Delete?.Soft is { } soft && WritesSource(binding, table!))
@@ -292,9 +421,8 @@ internal static class BindingDrift
         if (AttributeOf(model, entity, reference) is { } attribute)
             return attribute.Name;
         var dot = reference.IndexOf('.', StringComparison.Ordinal);
-        if (dot > 0 && AttributeOf(model, entity, reference[..dot]) is { Type.Ref: { } typeId } owner
-            && model.Get<ValueObject>(typeId)?.Attributes.FirstOrDefault(m => string.Equals(m.Id, reference[(dot + 1)..], StringComparison.Ordinal)) is { } member)
-            return owner.Name + Casing.Pascal(member.Name);
+        if (dot > 0 && AttributeOf(model, entity, reference[..dot]) is { Type.Ref: not null } owner && MemberName(model, owner, reference[(dot + 1)..]) is { } member)
+            return owner.Name + member;
         if (EndOf(model, reference) is { } end)
             return end.Navigation.Length > 0 ? end.Navigation + "Id" : Casing.Camel(end.Role + "Id");
         // The field forms of a relation end (several-types-design.md decision 46): <endId>.type names the type column (attachedToType),
@@ -309,6 +437,25 @@ internal static class BindingDrift
         }
 
         return reference;
+    }
+
+    /// <summary>
+    /// The members a path of member ids walks below a value object attribute, each name in Pascal case and joined (<c>GeoLatitude</c>), to any
+    /// depth; <see langword="null"/> when a segment names no member of the value object before it.
+    /// </summary>
+    private static string? MemberName(ModelSnapshot model, ModelAttribute owner, string path)
+    {
+        var name = "";
+        var current = owner;
+        foreach (var id in path.Split('.'))
+        {
+            if (current.Type.Ref is not { } typeId || model.Get<ValueObject>(typeId)?.Attributes.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.Ordinal)) is not { } member)
+                return null;
+            name += Casing.Pascal(member.Name);
+            current = member;
+        }
+
+        return name;
     }
 
     /// <summary>The relation end with an id, or <see langword="null"/>.</summary>

@@ -1,0 +1,48 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000150",
+  "name": "quote_labels",
+  "database": "01K6BFX0000000000000000002",
+  "description": "A quote's labels, one row each with an id of its own; the foreign key does not cascade, so a delete removes the labels first.",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000151",
+      "name": "id",
+      "type": "int64",
+      "nullable": false,
+      "generated": "identity"
+    },
+    {
+      "id": "01K6BFX0000000000000000152",
+      "name": "quote_id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000153",
+      "name": "label",
+      "type": "string",
+      "length": 40,
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000151"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K6BFX0000000000000000154",
+      "name": "fk_quote_labels_quote",
+      "columns": [
+        "01K6BFX0000000000000000152"
+      ],
+      "referencesTable": "01K6BFX0000000000000000120",
+      "referencesColumns": [
+        "01K6BFX0000000000000000121"
+      ]
+    }
+  ]
+}

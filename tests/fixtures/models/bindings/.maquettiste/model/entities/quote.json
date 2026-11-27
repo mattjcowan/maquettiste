@@ -1,0 +1,157 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000111",
+  "name": "Quote",
+  "package": "01K6BFX0000000000000000001",
+  "description": "A quote for a customer. Its billing address is embedded in its row, the map point nested two levels down and the courier notes in a JSON column; its shipping address, notes and labels each live in a child table.",
+  "key": {
+    "attributes": [
+      "01K6BFX0000000000000000112"
+    ],
+    "strategy": "database-identity"
+  },
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000112",
+      "name": "id",
+      "type": "int64",
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000113",
+      "name": "number",
+      "type": "string",
+      "length": 20,
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000114",
+      "name": "billingAddress",
+      "type": {
+        "ref": "01K6BFX0000000000000000103"
+      },
+      "required": true
+    },
+    {
+      "id": "01K6BFX0000000000000000115",
+      "name": "shippingAddress",
+      "type": {
+        "ref": "01K6BFX0000000000000000103"
+      }
+    },
+    {
+      "id": "01K6BFX0000000000000000116",
+      "name": "notes",
+      "type": {
+        "ref": "01K6BFX0000000000000000108"
+      },
+      "collection": true
+    },
+    {
+      "id": "01K6BFX0000000000000000117",
+      "name": "labels",
+      "type": "string",
+      "length": 40,
+      "collection": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000118",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000120",
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000112",
+          "column": "01K6BFX0000000000000000121"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000113",
+          "column": "01K6BFX0000000000000000122"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000114.01K6BFX0000000000000000104",
+          "column": "01K6BFX0000000000000000123"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000114.01K6BFX0000000000000000105",
+          "column": "01K6BFX0000000000000000124"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000114.01K6BFX0000000000000000106",
+          "column": "01K6BFX0000000000000000125"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000114.01K6BFX0000000000000000107.01K6BFX0000000000000000101",
+          "column": "01K6BFX0000000000000000126"
+        },
+        {
+          "attribute": "01K6BFX0000000000000000114.01K6BFX0000000000000000107.01K6BFX0000000000000000102",
+          "column": "01K6BFX0000000000000000127"
+        }
+      ],
+      "childTables": [
+        {
+          "id": "01K6BFX0000000000000000160",
+          "attribute": "01K6BFX0000000000000000115",
+          "table": "01K6BFX0000000000000000130",
+          "ownerForeignKey": "01K6BFX0000000000000000136",
+          "fields": [
+            {
+              "attribute": "01K6BFX0000000000000000115.01K6BFX0000000000000000104",
+              "column": "01K6BFX0000000000000000132"
+            },
+            {
+              "attribute": "01K6BFX0000000000000000115.01K6BFX0000000000000000105",
+              "column": "01K6BFX0000000000000000133"
+            },
+            {
+              "attribute": "01K6BFX0000000000000000115.01K6BFX0000000000000000106",
+              "column": "01K6BFX0000000000000000134"
+            },
+            {
+              "attribute": "01K6BFX0000000000000000115.01K6BFX0000000000000000107",
+              "column": "01K6BFX0000000000000000135"
+            }
+          ]
+        },
+        {
+          "id": "01K6BFX0000000000000000161",
+          "attribute": "01K6BFX0000000000000000116",
+          "table": "01K6BFX0000000000000000140",
+          "ownerForeignKey": "01K6BFX0000000000000000145",
+          "fields": [
+            {
+              "attribute": "01K6BFX0000000000000000116.01K6BFX0000000000000000109",
+              "column": "01K6BFX0000000000000000143"
+            },
+            {
+              "attribute": "01K6BFX0000000000000000116.01K6BFX0000000000000000110",
+              "column": "01K6BFX0000000000000000144"
+            }
+          ],
+          "orderColumn": "01K6BFX0000000000000000142"
+        },
+        {
+          "id": "01K6BFX0000000000000000162",
+          "attribute": "01K6BFX0000000000000000117",
+          "table": "01K6BFX0000000000000000150",
+          "ownerForeignKey": "01K6BFX0000000000000000154",
+          "fields": [
+            {
+              "attribute": "01K6BFX0000000000000000117",
+              "column": "01K6BFX0000000000000000153"
+            }
+          ],
+          "columns": [
+            {
+              "column": "01K6BFX0000000000000000151",
+              "status": "database"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

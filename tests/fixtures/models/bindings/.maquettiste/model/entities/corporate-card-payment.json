@@ -1,0 +1,33 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01K6BFX0000000000000000073",
+  "name": "CorporateCardPayment",
+  "package": "01K6BFX0000000000000000001",
+  "base": "01K6BFX0000000000000000070",
+  "description": "A card payment charged to a cost center: rows in payments, card_payments and corporate_card_payments, joined up the chain.",
+  "attributes": [
+    {
+      "id": "01K6BFX0000000000000000074",
+      "name": "costCenter",
+      "type": "string",
+      "length": 32,
+      "required": true
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01K6BFX0000000000000000075",
+      "database": "01K6BFX0000000000000000002",
+      "source": "01K6BFX0000000000000000059",
+      "baseForeignKey": "01K6BFX0000000000000000062",
+      "fields": [
+        {
+          "attribute": "01K6BFX0000000000000000074",
+          "column": "01K6BFX0000000000000000061"
+        }
+      ],
+      "discriminatorValue": "corporate-card"
+    }
+  ]
+}

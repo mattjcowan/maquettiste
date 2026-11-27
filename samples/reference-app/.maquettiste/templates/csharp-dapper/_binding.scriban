@@ -2,7 +2,13 @@
 # The repository of an entity with a binding (erratum E43), included by repository.scriban: reads through the binding's select
 # statements (its constants applied, so several entities share one table), writes through its insert and update (constants set,
 # the columns the database fills left out), and deletes through its delete (by key, or the soft-delete update). A binding that
-# does not write gets a read-only repository: no Insert, Update or Delete. Needs _csharp.scriban and _dapper.scriban.
+# does not write gets a read-only repository: no Insert, Update or Delete. A binding with bases (table per type: baseForeignKey)
+# reads its table joined to its bases' tables, inserts each base's row first, root first (the root's insert returns the generated
+# key), updates every table, and deletes its own row first, then up the chain, in the caller's transaction or one it opens. A binding
+# with child tables (childTables) loads each list, in order, and each single value object after the owner's row; an insert or update
+# writes them again in the same unit (the owner's rows deleted, the items inserted in order); a delete by key removes them first unless
+# the foreign key cascades. Value objects nested to any depth are built from, and written to, their own columns.
+# Needs _csharp.scriban and _dapper.scriban.
 b = dapper_binding(entity)
 name = type_name(entity)
 db = b.database
@@ -12,6 +18,63 @@ insert_sql = binding_sql b "insert"
 update_sql = binding_sql b "update"
 delete_sql = binding_sql b "delete"
 writes = insert_sql != ""
+# Table per type: each base's table, root first, with its statements for this entity; the row holds every level's fields.
+levels = []
+for lv in b.bases | array.reverse
+  levels[levels.size] = { name: type_name(lv.binding.entity), insert: (binding_sql lv "insert"), update: (binding_sql lv "update"), delete: (binding_sql lv "delete") }
+end
+row_fields = b.fields
+if levels.size > 0
+  $own = b.fields | array.map "name"
+  $seen = []
+  row_fields = []
+  for lv in b.bases | array.reverse
+    for f in lv.binding.fields
+      if !($own | array.contains f.name) && !($seen | array.contains f.name)
+        row_fields[row_fields.size] = f
+        $seen[$seen.size] = f.name
+      end
+    end
+  end
+  row_fields = row_fields | array.concat b.fields
+end
+deletes = delete_sql != ""
+for lv in levels
+  if lv.delete != ""
+    deletes = true
+  end
+end
+# Child tables (childTables): each entry that resolves, the bases' first (table per type: the rows of an attribute a base stores go with
+# the entity too), root first, then the binding's own, with its statements. Reads load the rows after the owner's; an insert or update
+# writes them again (delete the owner's rows, insert the items in order) in the same unit; a delete by key removes them first unless
+# the foreign key cascades, after reading the entity's row through the binding's own filters (no row, nothing is deleted); a soft
+# delete leaves them.
+children = []
+writes_children = false
+child_deletes = []
+child_entries = []
+for lv in b.bases | array.reverse
+  for bc in lv.child_tables
+    child_entries[child_entries.size] = bc.child_table
+  end
+end
+child_entries = child_entries | array.concat b.child_tables
+for c in child_entries
+  if c.table && c.owner_foreign_key && c.attribute
+    $select = binding_sql c "select"
+    if $select != ""
+      $ch = { c: c, name: (pascal c.attribute.name), var: (camel c.attribute.name), select: $select, insert: (insert_sql != "" ? (binding_sql c "insert") : ""), delete: (insert_sql != "" ? (binding_sql c "delete") : "") }
+      children[children.size] = $ch
+      if $ch.insert != ""
+        writes_children = true
+      end
+      if $ch.delete != "" && b.delete == "key" && c.owner_foreign_key.on_delete != "cascade"
+        child_deletes[child_deletes.size] = $ch
+      end
+    end
+  end
+end
+units = levels.size > 0 || writes_children
 
 # C# expression reading a field's attribute (not a value object member) from its row property; a number of another type is cast.
 func bind_read(a, f)
@@ -39,21 +102,56 @@ func bind_assignments(e, fields)
     end
   end
   for vo in $objects
-    $parts = []
-    $tests = []
+    $own = []
     for f in fields
       if f.member && f.attribute == vo
-        $parts[$parts.size] = (prop_name(f.member, type_name(vo.type.value_object)) + " = " + read_value(f.member, "row." + (cs_ident f.name), f.type, bind_nullable(f)))
-        $tests[$tests.size] = ("row." + (cs_ident f.name) + " is null")
+        $own[$own.size] = f
       end
     end
-    $created = "new " + (type_of vo.type "csharp") + " { " + ($parts | array.join ", ") + " }"
-    if !vo.required
-      $created = "(" + ($tests | array.join " && ") + " ? null : " + $created + ")"
-    end
-    $result[$result.size] = (prop_name(vo, type_name(e)) + " = " + $created)
+    $result[$result.size] = (prop_name(vo, type_name(e)) + " = " + bind_object(vo, 0, "", $own, false).expr)
   end
   ret $result
+end
+
+# The ids of the first `depth` members on a field's path, joined by "." ("" at depth 0).
+func bind_prefix(f, depth)
+  $p = ""
+  $k = 0
+  while $k < depth
+    $p = $k == 0 ? f.members[$k].id : $p + "." + f.members[$k].id
+    $k = $k + 1
+  end
+  ret $p
+end
+
+# { expr, tests }: "new ValueObject { ... }" for the value object `holder` holds, built from the fields whose path below the attribute
+# starts with `path` (member ids at `depth`), each member in the order its first field comes: a member a field ends at is read from its
+# row property, a nested value object is built the same way, to any depth. An optional one is null when every property it reads is;
+# a child table's item (`child`, depth 0) always exists.
+func bind_object(holder, depth, path, fields, child)
+  $vo = holder.type.value_object
+  $parts = []
+  $tests = []
+  $done = []
+  for f in fields
+    if f.members.size > depth && bind_prefix(f, depth) == path
+      $m = f.members[depth]
+      if f.members.size == depth + 1
+        $parts[$parts.size] = (prop_name($m, type_name($vo)) + " = " + read_value($m, "row." + (cs_ident f.name), f.type, child ? child_nullable(f) : bind_nullable(f)))
+        $tests[$tests.size] = ("row." + (cs_ident f.name) + " is null")
+      else if !($done | array.contains $m.id)
+        $done[$done.size] = $m.id
+        $inner = bind_object($m, depth + 1, (depth == 0 ? $m.id : path + "." + $m.id), fields, child)
+        $parts[$parts.size] = (prop_name($m, type_name($vo)) + " = " + $inner.expr)
+        $tests = $tests | array.concat $inner.tests
+      end
+    end
+  end
+  $created = "new " + (type_of holder.type "csharp") + " { " + ($parts | array.join ", ") + " }"
+  if !holder.required && !(child && depth == 0)
+    $created = "(" + ($tests | array.join " && ") + " ? null : " + $created + ")"
+  end
+  ret { expr: $created, tests: $tests }
 end
 
 # C# expression writing a field's row property from the entity.
@@ -66,12 +164,16 @@ func bind_write(e, f)
   $optional = !$a.required
   $owner = $a
   if f.member
-    $access = $access + ($optional ? "?." : ".") + prop_name(f.member, type_name($a.type.value_object))
-    $optional = $optional || !f.member.required
+    $holder = $a
+    for m in f.members
+      $access = $access + ($optional ? "?." : ".") + prop_name(m, type_name($holder.type.value_object))
+      $optional = $optional || !m.required
+      $holder = m
+    end
     $owner = f.member
   end
   if f.type == "json"
-    if $optional || $a.collection
+    if $optional || $a.collection || $owner.collection
       ret $access + " is null ? null : JsonSerializer.Serialize(" + $access + ")"
     end
     ret "JsonSerializer.Serialize(" + $access + ")"
@@ -83,6 +185,46 @@ func bind_write(e, f)
     ret "(" + bind_row_type(f) + ")" + $access
   end
   ret $access
+end
+
+# C# expression writing a child table field's row property from `item`, one item of the attribute (retire-projection-design.md
+# section 5): the item itself for a list of single values, else the member its path ends at.
+func child_write(f)
+  $access = "item"
+  $optional = false
+  $required = true
+  if f.member
+    $holder = f.attribute
+    for m in f.members
+      $access = $access + ($optional ? "?." : ".") + prop_name(m, type_name($holder.type.value_object))
+      $optional = $optional || !m.required
+      $holder = m
+    end
+    $required = f.member.required
+    if f.type == "json"
+      if $optional || f.member.collection
+        ret $access + " is null ? null : JsonSerializer.Serialize(" + $access + ")"
+      end
+      ret "JsonSerializer.Serialize(" + $access + ")"
+    end
+  end
+  $type = f.member ? f.member.type : f.attribute.type
+  if $type.kind == "enum"
+    if f.type == "string" || f.type == "text"
+      ret $access + ($optional && !$required ? "?" : "") + ".ToCode()"
+    end
+    ret "(" + row_type_of(f.type, child_nullable(f)) + ")" + $access
+  end
+  ret $access
+end
+
+# The anonymous object's members that name a child table's owner: each owner parameter from the entity's field.
+func owner_args(e, c)
+  $args = []
+  for o in c.owner
+    $args[$args.size] = (cs_ident o.parameter) + " = " + bind_write(e, o.field)
+  end
+  ret $args | array.join ", "
 end
 
 # Method parameters and the anonymous object's members: the source query's parameters, then the key fields.
@@ -106,8 +248,10 @@ end
 paging = d == "sqlserver" ? "OFFSET @mq_skip ROWS FETCH NEXT @mq_take ROWS ONLY" : "LIMIT @mq_take OFFSET @mq_skip"
 get_params = (query_params | array.concat key_params | array.add "CancellationToken cancellationToken = default") | array.join ", "
 list_params = (query_params | array.add "int mq_skip = 0" | array.add "int mq_take = 100" | array.add "CancellationToken cancellationToken = default") | array.join ", "
-delete_params = (key_params | array.add "CancellationToken cancellationToken = default") | array.join ", "
-generated = b.generated.size == 1 ? b.generated[0] : null
+# A delete that removes child rows first reads the entity's row through the binding's select, which takes the source query's parameters.
+delete_params = ((child_deletes.size > 0 ? query_params : []) | array.concat key_params | array.add "CancellationToken cancellationToken = default") | array.join ", "
+gen_b = b.bases.size > 0 ? (b.bases | array.last).binding : b
+generated = gen_b.generated.size == 1 ? gen_b.generated[0] : null
 key_strategy = entity.key ? entity.key.strategy : ""
 key_attr = (b.key.size == 1 && !b.key[0].is_generated) ? b.key[0].attribute : null
 uses = []
@@ -151,7 +295,7 @@ public partial interface I{{ name }}Repository
     /// <summary>Updates the entity; returns false when no row has its key.</summary>
     Task<bool> UpdateAsync({{ name }} entity, CancellationToken cancellationToken = default);
 {{- end }}
-{{- if delete_sql != "" }}
+{{- if deletes }}
 
     /// <summary>{{ if b.delete == "soft" }}Marks the entity with the given key deleted{{ else }}Deletes the entity with the given key{{ end }}; returns false when there was none.</summary>
     Task<bool> DeleteAsync({{ delete_params }});
@@ -189,19 +333,70 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
 {{ indent delete_sql 8 }}
         """;
 {{- end }}
+{{- for lv in levels }}
+{{- if lv.insert != "" }}
+
+    private const string {{ lv.name }}InsertSql = """
+{{ indent lv.insert 8 }}
+        """;
+{{- end }}
+{{- if lv.update != "" }}
+
+    private const string {{ lv.name }}UpdateSql = """
+{{ indent lv.update 8 }}
+        """;
+{{- end }}
+{{- if lv.delete != "" }}
+
+    private const string {{ lv.name }}DeleteSql = """
+{{ indent lv.delete 8 }}
+        """;
+{{- end }}
+{{- end }}
+{{- for ch in children }}
+
+    private const string {{ ch.name }}SelectRowsSql = """
+{{ indent ch.select 8 }}
+        """;
+{{- if ch.insert != "" }}
+
+    private const string {{ ch.name }}DeleteRowsSql = """
+{{ indent ch.delete 8 }}
+        """;
+
+    private const string {{ ch.name }}InsertRowSql = """
+{{ indent ch.insert 8 }}
+        """;
+{{- end }}
+{{- end }}
 
     /// <inheritdoc/>
     public async Task<{{ name }}?> GetAsync({{ get_params }})
     {
         var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { {{ query_args | array.concat key_args | array.join ", " }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- if children.size > 0 }}
+        if (row is null)
+            return null;
+        var entity = Row.ToEntity(row);
+        await LoadChildrenAsync(entity, cancellationToken).ConfigureAwait(false);
+        return entity;
+{{- else }}
         return row is null ? null : Row.ToEntity(row);
+{{- end }}
     }
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<{{ name }}>> ListAsync({{ list_params }})
     {
         var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { {{ query_args | array.add "mq_skip" | array.add "mq_take" | array.join ", " }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- if children.size > 0 }}
+        var entities = rows.Select(Row.ToEntity).ToList();
+        foreach (var entity in entities)
+            await LoadChildrenAsync(entity, cancellationToken).ConfigureAwait(false);
+        return entities;
+{{- else }}
         return rows.Select(Row.ToEntity).ToList();
+{{- end }}
     }
 {{- if writes }}
 
@@ -216,7 +411,27 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
         if (string.IsNullOrEmpty(entity.{{ prop_name(key_attr, name) }}))
             entity.{{ prop_name(key_attr, name) }} = UlidGenerator.NewUlid();
 {{- end }}
-{{- if generated && generated.attribute }}
+{{- if units }}
+        await InUnitAsync(async unit =>
+        {
+{{- for lv in levels }}
+{{- if for.first && generated && generated.attribute }}
+            entity.{{ prop_name(generated.attribute, name) }} = await connection.ExecuteScalarAsync<{{ type_of generated.attribute "csharp" }}>(new CommandDefinition({{ lv.name }}InsertSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- else }}
+            await connection.ExecuteAsync(new CommandDefinition({{ lv.name }}InsertSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- end }}
+{{- end }}
+{{- if levels.size == 0 && generated && generated.attribute }}
+            entity.{{ prop_name(generated.attribute, name) }} = await connection.ExecuteScalarAsync<{{ type_of generated.attribute "csharp" }}>(new CommandDefinition(InsertSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- else }}
+            await connection.ExecuteAsync(new CommandDefinition(InsertSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- end }}
+{{- if writes_children }}
+            await SaveChildrenAsync(entity, unit, cancellationToken).ConfigureAwait(false);
+{{- end }}
+            return true;
+        }).ConfigureAwait(false);
+{{- else if generated && generated.attribute }}
         entity.{{ prop_name(generated.attribute, name) }} = await connection.ExecuteScalarAsync<{{ type_of generated.attribute "csharp" }}>(new CommandDefinition(InsertSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
 {{- else }}
         await connection.ExecuteAsync(new CommandDefinition(InsertSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
@@ -229,14 +444,65 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
     public async Task<bool> UpdateAsync({{ name }} entity, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entity);
-{{- if update_sql | string.starts_with "SELECT" }}
+{{- if units }}
+{{- if levels.size > 0 }}
+        // True only when every table has the entity's row.
+{{- end }}
+        return await InUnitAsync(async unit =>
+        {
+            var found = true;
+{{- for lv in levels }}
+{{- if lv.update != "" }}
+            found &= await connection.{{ (lv.update | string.starts_with "SELECT") ? "ExecuteScalarAsync<long>" : "ExecuteAsync" }}(new CommandDefinition({{ lv.name }}UpdateSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- end }}
+{{- end }}
+            found &= await connection.{{ (update_sql | string.starts_with "SELECT") ? "ExecuteScalarAsync<long>" : "ExecuteAsync" }}(new CommandDefinition(UpdateSql, Row.From(entity), unit, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- if writes_children }}
+            if (found)
+                await SaveChildrenAsync(entity, unit, cancellationToken).ConfigureAwait(false);
+{{- end }}
+            return found;
+        }).ConfigureAwait(false);
+{{- else if update_sql | string.starts_with "SELECT" }}
         return await connection.ExecuteScalarAsync<long>(new CommandDefinition(UpdateSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
 {{- else }}
         return await connection.ExecuteAsync(new CommandDefinition(UpdateSql, Row.From(entity), transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
 {{- end }}
     }
 {{- end }}
+{{- if (levels.size > 0 || child_deletes.size > 0) && deletes }}
+
+    /// <inheritdoc/>
+    public async Task<bool> DeleteAsync({{ delete_params }})
+    {
+        return await InUnitAsync(async unit =>
+        {
+{{- if child_deletes.size > 0 }}
+            // The entity's row through the binding's own filters first: without it, no child row is deleted.
+            var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { {{ query_args | array.concat key_args | array.join ", " }} }, unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            if (row is null)
+                return false;
+{{- end }}
+{{- for ch in child_deletes }}
+{{- del_args = [] }}
+{{- for o in ch.c.owner }}
+{{- del_args[del_args.size] = (cs_ident o.parameter) + " = " + (o.field.is_key ? (cs_ident o.field.name) : "row." + (cs_ident o.field.name)) }}
+{{- end }}
+            await connection.ExecuteAsync(new CommandDefinition({{ ch.name }}DeleteRowsSql, new { {{ del_args | array.join ", " }} }, unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- end }}
+            var deleted = false;
 {{- if delete_sql != "" }}
+            deleted |= await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { {{ key_args | array.join ", " }} }, unit, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- end }}
+{{- for lv in levels | array.reverse }}
+{{- if lv.delete != "" }}
+            deleted |= await connection.ExecuteAsync(new CommandDefinition({{ lv.name }}DeleteSql, new { {{ key_args | array.join ", " }} }, unit, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+{{- end }}
+{{- end }}
+            return deleted;
+        }).ConfigureAwait(false);
+    }
+{{- else if delete_sql != "" }}
 
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync({{ delete_params }})
@@ -245,16 +511,121 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
     }
 {{- end }}
 
+{{- if children.size > 0 }}
+
+    /// <summary>Loads what the entity keeps in child tables: each list in its order, each single value object from its one row, if any.</summary>
+    private async Task LoadChildrenAsync({{ name }} entity, CancellationToken cancellationToken)
+    {
+{{- for ch in children }}
+        var {{ cs_ident (ch.var + "Rows") }} = await connection.QueryAsync<{{ ch.name }}Row>(new CommandDefinition({{ ch.name }}SelectRowsSql, new { {{ owner_args(entity, ch.c) }} }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        entity.{{ prop_name(ch.c.attribute, name) }} = {{ cs_ident (ch.var + "Rows") }}.Select({{ ch.name }}Row.ToItem).{{ ch.c.is_list ? "ToList()" : (ch.c.attribute.required ? "FirstOrDefault() ?? new " + (type_of ch.c.attribute.type "csharp") + "()" : "FirstOrDefault()") }};
+{{- end }}
+    }
+{{- end }}
+{{- if writes_children }}
+
+    /// <summary>Writes what the entity keeps in child tables again: each one's rows are deleted, then its items inserted in order.</summary>
+    private async Task SaveChildrenAsync({{ name }} entity, IDbTransaction unit, CancellationToken cancellationToken)
+    {
+{{- for ch in children }}
+{{- if ch.insert != "" }}
+        await connection.ExecuteAsync(new CommandDefinition({{ ch.name }}DeleteRowsSql, new { {{ owner_args(entity, ch.c) }} }, unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- if ch.c.is_list }}
+        var {{ cs_ident (ch.var + "Position") }} = 0;
+        foreach (var item in entity.{{ prop_name(ch.c.attribute, name) }})
+            await connection.ExecuteAsync(new CommandDefinition({{ ch.name }}InsertRowSql, {{ ch.name }}Row.From(entity, {{ cs_ident (ch.var + "Position") }}++, item), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- else }}
+        if (entity.{{ prop_name(ch.c.attribute, name) }} is { } {{ cs_ident ch.var }})
+            await connection.ExecuteAsync(new CommandDefinition({{ ch.name }}InsertRowSql, {{ ch.name }}Row.From(entity, 0, {{ cs_ident ch.var }}), unit, cancellationToken: cancellationToken)).ConfigureAwait(false);
+{{- end }}
+{{- end }}
+{{- end }}
+    }
+{{- end }}
+
+{{- if units && writes }}
+
+    /// <summary>Runs writes to several tables as one unit: in the caller's transaction, else in one this repository opens and commits.</summary>
+    private async Task<T> InUnitAsync<T>(Func<IDbTransaction, Task<T>> work)
+    {
+        if (transaction is not null)
+            return await work(transaction).ConfigureAwait(false);
+        var opened = connection.State != ConnectionState.Open;
+        if (opened)
+            connection.Open();
+        try
+        {
+            using var unit = connection.BeginTransaction();
+            var result = await work(unit).ConfigureAwait(false);
+            unit.Commit();
+            return result;
+        }
+        finally
+        {
+            if (opened)
+                connection.Close();
+        }
+    }
+{{- end }}
+
+{{- for ch in children }}
+{{- item_type = type_of ch.c.attribute.type "csharp" }}
+
+    /// <summary>One row of table {{ ch.c.table.name }}: {{ if ch.c.is_list }}an item of{{ else }}the value of{{ end }} {{ prop_name(ch.c.attribute, name) }}.</summary>
+    private sealed class {{ ch.name }}Row
+    {
+{{- if ch.insert != "" }}
+{{- for o in ch.c.owner }}
+        public {{ bind_row_type(o.field) }} {{ cs_ident o.parameter }} { get; set; }{{ if !bind_nullable(o.field) && !(cs_value_type bind_row_type(o.field)) }} = default!;{{ end }}
+{{- end }}
+{{- if ch.c.order_parameter }}
+        public {{ row_type_of(ch.c.order_column.type, false) }} {{ cs_ident ch.c.order_parameter }} { get; set; }
+{{- end }}
+{{- end }}
+{{- for f in ch.c.fields }}
+{{- if f.attribute }}
+        public {{ row_type_of(f.type, child_nullable(f)) }} {{ cs_ident f.name }} { get; set; }{{ if !child_nullable(f) && !(cs_value_type row_type_of(f.type, false)) }} = default!;{{ end }}
+{{- end }}
+{{- end }}
+
+{{- if ch.c.attribute.type.kind == "value-object" }}
+
+        public static {{ item_type }} ToItem({{ ch.name }}Row row) => {{ bind_object(ch.c.attribute, 0, "", ch.c.fields, true).expr }};
+{{- else }}
+{{- vf = ch.c.fields | array.first }}
+
+        public static {{ item_type }} ToItem({{ ch.name }}Row row) => {{ read_value(ch.c.attribute, "row." + (cs_ident vf.name), vf.type, child_nullable(vf)) }};
+{{- end }}
+{{- if ch.insert != "" }}
+
+        public static {{ ch.name }}Row From({{ name }} entity, int position, {{ item_type }} item) => new()
+        {
+{{- for o in ch.c.owner }}
+            {{ cs_ident o.parameter }} = {{ bind_write(entity, o.field) }},
+{{- end }}
+{{- if ch.c.order_parameter }}
+            {{ cs_ident ch.c.order_parameter }} = position,
+{{- end }}
+{{- for f in ch.c.fields }}
+{{- if f.attribute && f.in_insert }}
+            {{ cs_ident f.name }} = {{ child_write(f) }},
+{{- end }}
+{{- end }}
+        };
+{{- end }}
+    }
+{{- end }}
+
     /// <summary>One row of {{ source_text }} as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-{{- for f in b.fields }}
+{{- for f in row_fields }}
         public {{ bind_row_type(f) }} {{ cs_ident f.name }} { get; set; }{{ if !bind_nullable(f) && !(cs_value_type bind_row_type(f)) }} = default!;{{ end }}
 {{- end }}
 
         public static {{ name }} ToEntity(Row row) => new()
         {
-{{- for line in bind_assignments(entity, b.fields) }}
+{{- for line in bind_assignments(entity, row_fields) }}
             {{ line }},
 {{- end }}
         };
@@ -262,7 +633,7 @@ public partial class {{ name }}Repository(IDbConnection connection, IDbTransacti
 
         public static Row From({{ name }} entity) => new()
         {
-{{- for f in b.fields }}
+{{- for f in row_fields }}
             {{ cs_ident f.name }} = {{ bind_write(entity, f) }},
 {{- end }}
         };

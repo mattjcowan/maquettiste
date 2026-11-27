@@ -13,7 +13,8 @@ namespace Maquettiste.Engine.Model;
 /// <param name="OwnerId">The element that declares <paramref name="Attribute"/>: the entity, a base, a stereotype or a value object.</param>
 /// <param name="TypeId">The enum, reference type or scalar type the attribute is typed by; <see langword="null"/> for any other type and
 /// for a collection.</param>
-internal sealed record BoundColumnUse(string EntityId, int Binding, int Field, ModelAttribute Attribute, string OwnerId, string? TypeId);
+/// <param name="ChildTable">The index of the binding's child table entry whose field it is, or -1 for a field of the binding itself.</param>
+internal sealed record BoundColumnUse(string EntityId, int Binding, int Field, ModelAttribute Attribute, string OwnerId, string? TypeId, int ChildTable = -1);
 
 /// <summary>
 /// The type a column of a designed or imported table holds, worked out from the entity side (0.28.0): storage never names the model, so a
@@ -132,6 +133,26 @@ internal sealed class BoundColumnTypes
                     && (w.Find(field.Column) ?? (sourceColumn is null ? null : w.Find(sourceColumn.Name))) is { } writeColumn)
                     Add(w.Table.Id, writeColumn.Id, use);
             }
+
+            // A child table's columns (retire-projection-design.md section 5): a list of single values holds one item per row, so its value
+            // column holds the item's type.
+            for (var k = 0; k < binding.ChildTables.Count; k++)
+            {
+                var child = binding.ChildTables[k];
+                if (Lookup(model, child.Table, binding.Database) is not { } table)
+                    continue;
+                for (var j = 0; j < child.Fields.Count; j++)
+                {
+                    var field = child.Fields[j];
+                    if (AttributeOf(model, entity, field.Attribute, listHead: true) is not { } found)
+                        continue;
+                    var whole = string.Equals(field.Attribute, child.Attribute, StringComparison.Ordinal);
+                    var use = new BoundColumnUse(entity.Id, i, j, found.Attribute, found.OwnerId,
+                        found.Attribute.Collection && !whole ? null : TypeIdOf(model, found.Attribute.Type), k);
+                    if (table.Find(field.Column) is { } column)
+                        Add(table.Table.Id, column.Id, use);
+                }
+            }
         }
     }
 
@@ -193,9 +214,10 @@ internal sealed class BoundColumnTypes
 
     /// <summary>
     /// The attribute a binding field names: an own or inherited attribute, one a stereotype of the entity adds, or
-    /// <c>&lt;attributeId&gt;.&lt;memberId&gt;</c>, a member of a single value object attribute; with the element that declares it.
+    /// <c>&lt;attributeId&gt;.&lt;memberId&gt;</c>, a member of a single value object attribute (deeper for a nested value object, and with
+    /// <paramref name="listHead"/> a member of a list's item); with the element that declares it.
     /// </summary>
-    private static (ModelAttribute Attribute, string OwnerId)? AttributeOf(ModelSnapshot model, Entity entity, string reference)
+    private static (ModelAttribute Attribute, string OwnerId)? AttributeOf(ModelSnapshot model, Entity entity, string reference, bool listHead = false)
     {
         var dot = reference.IndexOf('.', StringComparison.Ordinal);
         var head = dot > 0 ? reference[..dot] : reference;
@@ -224,10 +246,18 @@ internal sealed class BoundColumnTypes
 
         if (owner is not { } found || dot <= 0)
             return owner;
-        if (found.Attribute.Collection || found.Attribute.Type.Ref is not { } voId || model.Get<ValueObject>(voId) is not { } valueObject)
-            return null;
-        var memberId = reference[(dot + 1)..];
-        return valueObject.Attributes.FirstOrDefault(m => string.Equals(m.Id, memberId, StringComparison.Ordinal)) is { } member ? (member, valueObject.Id) : null;
+        // A member of a value object, to any depth (retire-projection-design.md section 6); a child table's row is one item of a list.
+        (ModelAttribute Attribute, string OwnerId) current = found;
+        foreach (var memberId in reference[(dot + 1)..].Split('.'))
+        {
+            if ((current.Attribute.Collection && !(listHead && ReferenceEquals(current.Attribute, found.Attribute)))
+                || current.Attribute.Type.Ref is not { } voId || model.Get<ValueObject>(voId) is not { } valueObject
+                || valueObject.Attributes.FirstOrDefault(m => string.Equals(m.Id, memberId, StringComparison.Ordinal)) is not { } member)
+                return null;
+            current = (member, valueObject.Id);
+        }
+
+        return current;
     }
 
     /// <summary>The enum, reference type or scalar type a type reference names, or <see langword="null"/>.</summary>

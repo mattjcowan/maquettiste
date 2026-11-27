@@ -1,0 +1,55 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01K6BFX0000000000000000140",
+  "name": "quote_notes",
+  "database": "01K6BFX0000000000000000002",
+  "description": "A quote's notes, one row per note, in order.",
+  "columns": [
+    {
+      "id": "01K6BFX0000000000000000141",
+      "name": "quote_id",
+      "type": "int64",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000142",
+      "name": "position",
+      "type": "int32",
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000143",
+      "name": "text",
+      "type": "string",
+      "length": 500,
+      "nullable": false
+    },
+    {
+      "id": "01K6BFX0000000000000000144",
+      "name": "author",
+      "type": "string",
+      "length": 80
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01K6BFX0000000000000000141",
+      "01K6BFX0000000000000000142"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01K6BFX0000000000000000145",
+      "name": "fk_quote_notes_quote",
+      "columns": [
+        "01K6BFX0000000000000000141"
+      ],
+      "referencesTable": "01K6BFX0000000000000000120",
+      "referencesColumns": [
+        "01K6BFX0000000000000000121"
+      ],
+      "onDelete": "cascade"
+    }
+  ]
+}
