@@ -35,11 +35,26 @@ internal sealed class BoundColumnTypes
     private readonly Dictionary<(string Table, string Column), List<BoundColumnUse>> _uses = [];
     private readonly Dictionary<(string Table, string Column), string> _types = [];
     private readonly Dictionary<string, List<(string Table, string Column)>> _byType = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SortedSet<string>> _tablesByElement = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ColumnLookup?> _tables = new(StringComparer.Ordinal);
 
     private BoundColumnTypes(ModelSnapshot model)
     {
         foreach (var entity in model.All<Entity>().OrderBy(e => e.Id, StringComparer.Ordinal))
             Collect(model, entity);
+        foreach (var (key, uses) in _uses)
+        {
+            foreach (var use in uses)
+            {
+                foreach (var element in new[] { use.EntityId, use.OwnerId })
+                {
+                    if (!_tablesByElement.TryGetValue(element, out var tables))
+                        _tablesByElement[element] = tables = new SortedSet<string>(StringComparer.Ordinal);
+                    tables.Add(key.Table);
+                }
+            }
+        }
+
         foreach (var (key, uses) in _uses)
         {
             if (uses[0].TypeId is { } typeId && uses.TrueForAll(u => string.Equals(u.TypeId, typeId, StringComparison.Ordinal)))
@@ -77,6 +92,15 @@ internal sealed class BoundColumnTypes
     public IReadOnlyList<BoundColumnUse> UsesOf(string tableId, string columnId) =>
         _uses.TryGetValue((tableId, columnId), out var uses) ? uses : [];
 
+    /// <summary>
+    /// The table files with a column some binding field maps through an element: the bound entity, or the entity, base, stereotype or
+    /// value object that declares the mapped attribute; ordinal.
+    /// </summary>
+    /// <param name="elementId">The element's id.</param>
+    /// <returns>The table ids.</returns>
+    public IReadOnlyCollection<string> TablesThrough(string elementId) =>
+        _tablesByElement.TryGetValue(elementId, out var tables) ? tables : [];
+
     /// <summary>The columns a type is the bound type of, ordinal by table id then column id.</summary>
     /// <param name="typeId">The enum, reference type or scalar type.</param>
     /// <returns>The (table id, column id) pairs.</returns>
@@ -91,8 +115,8 @@ internal sealed class BoundColumnTypes
             var binding = entity.Bindings[i];
             if (!databases.Add(binding.Database))
                 continue;
-            var source = TableOf(model, binding.Source, binding.Database);
-            var write = binding.Write is { None: true } || binding.Write?.Table is not { } writeKey ? null : TableOf(model, writeKey, binding.Database);
+            var source = Lookup(model, binding.Source, binding.Database);
+            var write = binding.Write is { None: true } || binding.Write?.Table is not { } writeKey ? null : Lookup(model, writeKey, binding.Database);
             if (source is null && write is null)
                 continue;
             for (var j = 0; j < binding.Fields.Count; j++)
@@ -101,11 +125,11 @@ internal sealed class BoundColumnTypes
                 if (AttributeOf(model, entity, field.Attribute) is not { } found)
                     continue; // an end, or nothing of the entity (MQ4045)
                 var use = new BoundColumnUse(entity.Id, i, j, found.Attribute, found.OwnerId, found.Attribute.Collection ? null : TypeIdOf(model, found.Attribute.Type));
-                var sourceColumn = source is null ? null : Find(source.Value.Columns, field.Column);
+                var sourceColumn = source?.Find(field.Column);
                 if (sourceColumn is not null)
-                    Add(source!.Value.Table.Id, sourceColumn.Id, use);
-                if (write is { } w && !ReferenceEquals(w.Table, source?.Table)
-                    && (Find(w.Columns, field.Column) ?? (sourceColumn is null ? null : Find(w.Columns, sourceColumn.Name))) is { } writeColumn)
+                    Add(source!.Table.Id, sourceColumn.Id, use);
+                if (write is { } w && !ReferenceEquals(w, source)
+                    && (w.Find(field.Column) ?? (sourceColumn is null ? null : w.Find(sourceColumn.Name))) is { } writeColumn)
                     Add(w.Table.Id, writeColumn.Id, use);
             }
         }
@@ -118,38 +142,53 @@ internal sealed class BoundColumnTypes
         uses.Add(use);
     }
 
-    /// <summary>A designed or imported table file of the database, with its own and inherited columns.</summary>
-    private static (Table Table, IReadOnlyList<Column> Columns)? TableOf(ModelSnapshot model, string key, string database)
+    /// <summary>A designed or imported table file of the database, with its own and inherited columns indexed; built once per table.</summary>
+    private ColumnLookup? Lookup(ModelSnapshot model, string key, string database)
     {
-        if (model.Get<Table>(key) is not { Origin: not TableOrigin.Synthesized } table || !string.Equals(table.Database, database, StringComparison.Ordinal))
-            return null;
-        var members = TableMembers.Of(model, table);
-        return (table, members.Columns.Count == 0 ? table.Columns : [.. table.Columns, .. members.Columns.Select(m => m.Member)]);
+        if (!_tables.TryGetValue(key, out var lookup))
+        {
+            lookup = model.Get<Table>(key) is { Origin: not TableOrigin.Synthesized } table ? new ColumnLookup(model, table) : null;
+            _tables[key] = lookup;
+        }
+
+        return lookup is not null && string.Equals(lookup.Table.Database, database, StringComparison.Ordinal) ? lookup : null;
     }
 
-    /// <summary>A column by id, by name, then loosely by name (ignoring case, then also underscores) when only one matches.</summary>
-    private static Column? Find(IReadOnlyList<Column> columns, string reference)
+    /// <summary>
+    /// A table file's own and inherited columns, found as the resolver finds a binding's column: by id, by name, then by name ignoring
+    /// case, then ignoring case and underscores, when only one column matches.
+    /// </summary>
+    private sealed class ColumnLookup
     {
-        foreach (var column in columns)
+        private readonly Dictionary<string, Column> _byId = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Column> _byName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Column?> _byLowerName = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Column?> _byFoldedName = new(StringComparer.Ordinal);
+
+        public ColumnLookup(ModelSnapshot model, Table table)
         {
-            if (string.Equals(column.Id, reference, StringComparison.Ordinal))
-                return column;
+            Table = table;
+            var members = TableMembers.Of(model, table);
+            foreach (var column in members.Columns.Count == 0 ? table.Columns : [.. table.Columns, .. members.Columns.Select(m => m.Member)])
+            {
+                _byId.TryAdd(column.Id, column);
+                _byName.TryAdd(column.Name, column);
+                // A second column of the same loose name makes the loose match ambiguous: null.
+                _byLowerName[column.Name] = _byLowerName.ContainsKey(column.Name) ? null : column;
+                var folded = Fold(column.Name);
+                _byFoldedName[folded] = _byFoldedName.ContainsKey(folded) ? null : column;
+            }
         }
 
-        foreach (var column in columns)
-        {
-            if (string.Equals(column.Name, reference, StringComparison.Ordinal))
-                return column;
-        }
+        public Table Table { get; }
 
-        var ignoringCase = columns.Where(c => string.Equals(c.Name, reference, StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
-        if (ignoringCase.Count > 0)
-            return ignoringCase.Count == 1 ? ignoringCase[0] : null;
-        var folded = Fold(reference);
-        var matches = columns.Where(c => Fold(c.Name) == folded).Take(2).ToList();
-        return matches.Count == 1 ? matches[0] : null;
+        public Column? Find(string reference) =>
+            _byId.TryGetValue(reference, out var column) ? column
+            : _byName.TryGetValue(reference, out column) ? column
+            : _byLowerName.TryGetValue(reference, out var loose) ? loose
+            : _byFoldedName.GetValueOrDefault(Fold(reference));
 
-        static string Fold(string text) => text.Replace("_", "", StringComparison.Ordinal).ToUpperInvariant();
+        private static string Fold(string text) => text.Replace("_", "", StringComparison.Ordinal).ToUpperInvariant();
     }
 
     /// <summary>

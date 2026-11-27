@@ -194,8 +194,10 @@ What else follows:
 - **Used by** lists the column with the attributes, and so does `reference_type_usage`.
 - Templates read `column.bound_type` as information. A query row that reads the column keeps the code's type in
   `csharp-dapper`, and the row's summary names `BikeType`; a column bound to an attribute of an enum reads as the enum.
-- A code refactor (`rename-code`, say) rewrites the column's default and the table seed cells in the model. It records no
-  value map for the column: the database's DDL and migrations never depend on bindings.
+- A code refactor (`rename-code`, say) rewrites the column's default and the table seed cells in the model. It records a
+  value map for the column, which rewrites its stored rows, only when `bike_events` declares the foreign key above: the
+  database's DDL and migrations never depend on bindings. Without the key, stored rows keep the old codes.
+- A check of `bike_events` reads only the column's physical type, so it cannot compare `bike_type` with a `BikeType` code.
 - A column may state `sensitive` (`pii` or `secret`). Say it once, on the column or on the attribute a binding maps to
   it, and both show it. Two different values are a warning (MQ4085).
 

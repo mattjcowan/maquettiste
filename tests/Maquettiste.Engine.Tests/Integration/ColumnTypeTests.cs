@@ -235,6 +235,65 @@ public sealed class ColumnTypeTests
         Assert.Equal(255, Column(await ResolveAsync(repo), "invoice_events", "status").Length);
     }
 
+    private const string Legacy = "01K9X3G0000000000000000001", LegacyId = "01K9X3G0000000000000000002", LegacyStatus = "01K9X3G0000000000000000003";
+
+    /// <summary>
+    /// The first copy plus the designed table <c>legacy_events</c> (id, status string(1) defaulting to <c>XY</c>, two characters in a
+    /// column of one: an error of the table's own, MQ3019, that no binding causes).
+    /// </summary>
+    private static E2ERepo WithLegacyTable()
+    {
+        var repo = FirstCopy();
+        Write(repo, TablesFolder + "legacy-events.json", "table.json", $$"""
+            {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Legacy}}","name":"legacy_events","database":"{{Main}}",
+             "schema":"{{BillingSchema}}","columns":[
+              {"id":"{{LegacyId}}","name":"id","type":"uuid","nullable":false},
+              {"id":"{{LegacyStatus}}","name":"status","type":"string","length":1,"default":"XY"}],
+             "primaryKey":{"columns":["{{LegacyId}}"]} }
+            """);
+        return repo;
+    }
+
+    [Fact]
+    public async Task Binding_an_entity_to_a_table_with_an_error_of_its_own_is_not_refused()
+    {
+        // The save gate validates the tables a change binds on the model before it too, so the table's old error is no new one.
+        await using var repo = WithLegacyTable();
+        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3019" && d.FilePath == TablesFolder + "legacy-events.json");
+
+        var saved = await repo.EditAsync(InvoiceEvent, e =>
+        {
+            e["bindings"]![0]!["source"] = Legacy;
+            e["bindings"]![0]!["fields"] = JsonNode.Parse($$"""[{"attribute":"01K9X3E0000000000000000002","column":"{{LegacyId}}"}]""");
+        });
+
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+    }
+
+    [Fact]
+    public async Task Moving_a_binding_off_a_table_clears_the_findings_it_caused()
+    {
+        // InvoiceEvent's binding maps status to its attribute of InvoiceState, so invoice_events.status's default Z is no code (MQ7014).
+        // Moving the binding to legacy_events takes the type off invoice_events: the change reports the finding as removed, since the save
+        // judges the tables the entity bound before it.
+        await using var repo = WithLegacyTable();
+        EditOnDisk(repo, EventsPath, "table.json", t => t["columns"]![2]!["default"] = "Z");
+        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ7014" && d.FilePath == EventsPath);
+        var document = (await repo.Store.GetElementAsync(InvoiceEvent, Ct))!;
+        var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
+        node["bindings"]![0]!["source"] = Legacy;
+        node["bindings"]![0]!["fields"] = JsonNode.Parse($$"""[{"attribute":"01K9X3E0000000000000000002","column":"{{LegacyId}}"}]""");
+        var parsed = repo.Store.ParseBatch(Encoding.UTF8.GetBytes($$"""
+            { "operations": [ { "op": "update", "id": "{{InvoiceEvent}}", "expectedHash": "{{document.Hash}}", "element": {{node.ToJsonString()}} } ] }
+            """));
+        Assert.Empty(parsed.Diagnostics);
+
+        var preview = await repo.Store.PreviewBatchAsync(parsed.Batch!, Ct);
+
+        Assert.Contains(preview.DiagnosticsRemoved, d => d.Rule == "MQ7014" && d.FilePath == EventsPath);
+        Assert.DoesNotContain(preview.DiagnosticsAdded, d => d.Rule == "MQ3019");
+    }
+
     [Fact]
     public async Task Note_body_sensitivity_is_said_once_and_shown_on_both_sides()
     {

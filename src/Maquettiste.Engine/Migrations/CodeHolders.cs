@@ -23,8 +23,10 @@ internal sealed record HolderCollection(string Table, string? Schema, string Tab
 
 /// <summary>
 /// Where a resolved database stores reference-type codes (next-phase-2-design.md section 3.5, "Recording the value map"): per type, the
-/// columns whose <see cref="RColumn.ReferenceType"/> is the type (projected reference columns; a column of a table file holds none, since
-/// binding an entity never changes storage), and the template-defined collections typed by it (an entity mapping's, with
+/// columns whose <see cref="RColumn.ReferenceType"/> is the type (projected reference columns), the columns of a table file whose declared
+/// foreign key pairs them with the code column of the table the type is bound to in the database (the table declares that it holds the
+/// codes; a binding that maps a column to an attribute of the type does not, since binding never changes storage), and the
+/// template-defined collections typed by it (an entity mapping's, with
 /// its table; a junction-mapped relation's, with its junction table). Columns are sorted by (table key, column key), collections by
 /// (table key, attribute id), ordinal; a collection a TPH table lists for several entities is listed once.
 /// </summary>
@@ -71,6 +73,9 @@ internal sealed class CodeHolders
                 if (column.ReferenceType is { } type)
                     columns.Add((type.Id, new HolderColumn(table.Key, column.Key, table.Schema, table.Name, column.Name)));
             }
+
+            foreach (var (type, column) in DeclaredHolders(table))
+                columns.Add((type, new HolderColumn(table.Key, column.Key, table.Schema, table.Name, column.Name)));
         }
 
         var collections = new List<(string Type, HolderCollection Holder)>();
@@ -84,6 +89,32 @@ internal sealed class CodeHolders
         }
 
         return From(columns, collections);
+    }
+
+    /// <summary>
+    /// The columns of a designed or imported table that a declared foreign key pairs with the code column of a reference type's bound table
+    /// (<see cref="RTable.ReferenceBindings"/> of the referenced table), with the type's id; a column that is a projected reference column
+    /// already counts through its <see cref="RColumn.ReferenceType"/>.
+    /// </summary>
+    private static IEnumerable<(string Type, RColumn Column)> DeclaredHolders(RTable table)
+    {
+        if (table.Origin is not ("designed" or "imported"))
+            yield break;
+        foreach (var fk in table.ForeignKeys)
+        {
+            if (fk.Id is null)
+                continue;
+            foreach (var binding in fk.ReferencedTable.ReferenceBindings)
+            {
+                if (binding.CodeColumn is not { } code)
+                    continue;
+                for (var i = 0; i < fk.Columns.Count && i < fk.ReferencedColumns.Count; i++)
+                {
+                    if (ReferenceEquals(fk.ReferencedColumns[i], code) && fk.Columns[i].ReferenceType is null)
+                        yield return (binding.Type.Id, fk.Columns[i]);
+                }
+            }
+        }
     }
 
     /// <summary>Holders from lists (tests build them so).</summary>

@@ -94,7 +94,7 @@ internal static class ExprSites
                 AddChecks(sites, table.Checks, s => TableColumns(s, model, table));
                 break;
             case Stereotype stereotype:
-                AddChecks(sites, stereotype.Checks, s => Columns(s, model, null, stereotype.Columns));
+                AddChecks(sites, stereotype.Checks, s => Columns(s, model, stereotype.Columns));
                 break;
             case Entity entity:
                 for (var i = 0; i < entity.Checks.Count; i++)
@@ -314,7 +314,7 @@ internal static class ExprSites
     public static ExprSite? Free(ModelSnapshot model, Element element, ExprSiteKind kind) => (element, kind) switch
     {
         (Table table, ExprSiteKind.Check) => new ExprSite("", null, false, table.Id, kind, s => TableColumns(s, model, table)),
-        (Stereotype stereotype, ExprSiteKind.Check) => new ExprSite("", null, false, stereotype.Id, kind, s => Columns(s, model, null, stereotype.Columns)),
+        (Stereotype stereotype, ExprSiteKind.Check) => new ExprSite("", null, false, stereotype.Id, kind, s => Columns(s, model, stereotype.Columns)),
         (Entity entity, ExprSiteKind.Check or ExprSiteKind.Value) => new ExprSite("", null, false, entity.Id, kind, s => Attributes(s, model, entity)),
         (Operation operation, ExprSiteKind.Guard) => new ExprSite("", null, false, operation.Id, kind, s => Operation(s, model, operation))
         {
@@ -753,8 +753,8 @@ internal static class ExprSites
             }
         }
 
-        Columns(scope, model, table.Id, table.Columns);
-        Columns(scope, model, table.Id, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
+        Columns(scope, model, table.Columns);
+        Columns(scope, model, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
         if (entity is null)
             return;
         foreach (var column in table.Columns)
@@ -1222,17 +1222,14 @@ internal static class ExprSites
     }
 
     /// <summary>
-    /// A table's or stereotype's columns: a column of a table file whose bound type (the type of the attribute the bindings map to it,
-    /// <see cref="BoundColumnTypes"/>) is an enum, a reference type or a scalar type has that type, else its own; one that states no type
-    /// and whose attribute gives none is unknown (MQ3103 where read).
+    /// A table's or stereotype's columns, each of its physical type: a table carries its own definition, so a check never reads the type
+    /// a binding gives a column (0.28.0). One that states no type and whose attribute gives none is unknown (MQ3103 where read).
     /// </summary>
-    private static void Columns(ExprScope scope, ModelSnapshot model, string? tableId, IReadOnlyList<Column> columns)
+    private static void Columns(ExprScope scope, ModelSnapshot model, IReadOnlyList<Column> columns)
     {
-        var bound = tableId is null ? null : BoundColumnTypes.Of(model);
         foreach (var column in columns)
         {
-            var type = bound?.TypeOf(tableId!, column.Id) is { } typeId ? TypeOf(model, new TypeRef { Ref = typeId })
-                : column.Type is { } keyword ? ExprType.FromBuiltin(keyword)
+            var type = column.Type is { } keyword ? ExprType.FromBuiltin(keyword)
                 : column.Attribute is { } attribute && AttributeOf(model, attribute) is { } a ? TypeOf(model, a.Type)
                 : new ExprType("unknown", null);
             var fixedLength = column.FixedLength || (column.NativeType?.StartsWith("char(", StringComparison.OrdinalIgnoreCase) ?? false);

@@ -36,8 +36,12 @@ one.
   the type's bound table if the database should check the codes.
 - **The checks stay, on the bound type.** MQ4083 (the column's type or facets cannot hold the type's values), MQ4084 (a
   foreign key the table declares from the column does not point at the type's bound table), MQ7014 and MQ7019 (table seed
-  cells, the column's default and binding constants must be codes or stored values), table checks that read the column,
-  `reference_type_usage` and the model data code refactors rewrite (defaults and seed cells) all read the bound type.
+  cells, the column's default and binding constants must be codes or stored values), `reference_type_usage` and the model
+  data code refactors rewrite (defaults and seed cells) all read the bound type. A table's own checks read only the
+  columns' physical types, so a binding never makes one valid or invalid.
+- **Value maps follow the table.** A code refactor records a value map for a column whose table declares a foreign key into
+  the code column of the table that holds the type's rows, as before. A column that only a binding maps to an attribute of
+  the type, with no declared key, gets no value map: its stored rows keep the old codes.
 - **MQ4082 now means the removed key.** A table or stereotype file whose column still has `typeRef` fails to load with
   MQ4082, which says how to type the column instead. `materialize-tables` and `materialize-columns` write no `typeRef`
   (a scalar type's native type is written out as `nativeType`), and `materialize-entities` types each attribute by its
@@ -61,6 +65,10 @@ one.
   gave it, and the next migration drops it; declare a foreign key on the table if you want the database to keep checking
   the codes. A column that left a facet out and took it from its type now takes the conventions' default: state the
   length, precision or `nativeType` on the column if you relied on the type's.
+- A table check that compared a column typed by `typeRef` with an enum member or a code no longer types (MQ3103): a check
+  reads only the physical type. Compare with the stored value instead.
+- A binding whose provenance recorded a column that had `typeRef` shows MQ4087 once after the update, since the column's
+  shape changed. Re-sync the binding (`resync-binding`) to clear it.
 
 ## 0.27.0 (2026-11-26)
 

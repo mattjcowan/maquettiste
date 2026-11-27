@@ -1470,11 +1470,12 @@ runs after D6.
 > **Changed in 0.28.0 (owner's rule, 2026-11-26): storage never names the model.** A column's `typeRef` is removed; a file
 > that still has it fails to load with MQ4082. A column's type of values is now its bound type: the enum, reference type or
 > scalar type of the attribute the entities' bindings map to it, set only when every binding that maps it agrees
-> (`Model/BoundColumnTypes.cs`, `RColumn.BoundType`, `column.bound_type`). MQ4083, MQ4084, MQ7014 and MQ7019, table checks,
-> templates (as information), `reference_type_usage` and code refactors' model edits read it. Binding never changes storage:
-> it sets no `RColumn.ReferenceType`, so packs add no key or CHECK, snapshots and migration facts do not change, and no value
-> map lists the column; it fills no facet or native type, and materialize no longer reads or writes a column type. The
-> decisions below describe 0.12.0 to 0.27.0.
+> (`Model/BoundColumnTypes.cs`, `RColumn.BoundType`, `column.bound_type`). MQ4083, MQ4084, MQ7014 and MQ7019, templates (as
+> information), `reference_type_usage` and code refactors' model edits read it; a table's own checks read only physical types.
+> Binding never changes storage: it sets no `RColumn.ReferenceType`, so packs add no key or CHECK, and snapshots and migration
+> facts do not change. A value map lists a table file's column only when the table declares a foreign key into the code column
+> of the type's bound table (`CodeHolders`). The bound type fills no facet or native type, and materialize no longer reads or
+> writes a column type. The decisions below describe 0.12.0 to 0.27.0.
 
 **Why every team**
 

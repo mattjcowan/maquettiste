@@ -357,9 +357,9 @@ public sealed class ExpressionResolutionTests
     [Fact]
     public async Task A_code_its_column_cannot_store_leaves_the_check_out_and_the_model_resolves()
     {
-        // Unit's codes are text. The binding maps unit to an int32 column, and a table check meets an int32 column bound to an attribute
-        // of Unit: neither check can hold kg, so each is reported where validation reports it and left out, and the rest of the model
-        // resolves.
+        // Unit's codes are text. The binding maps unit to an int32 column, so the binding's check cannot hold kg; a table check reads its
+        // columns' physical types only, so comparing the int32 pack_unit with kg does not type (a binding never changes what a table's
+        // check means). Each is reported where validation reports it and left out, and the rest of the model resolves.
         using var repo = Repo();
         IntegerUnitColumn(repo);
         KgOnly(repo);
@@ -370,25 +370,9 @@ public sealed class ExpressionResolutionTests
 
         Assert.Empty(Products(model).Checks);
         Assert.Contains(model.Diagnostics, d => d.Rule == "MQ3110" && d.ElementId == ProductId && d.JsonPointer == "/bindings/0/checks/0");
-        Assert.Contains(model.Diagnostics, d => d.Rule == "MQ3103" && d.ElementId == ProductsId && d.JsonPointer == "/checks/0/condition");
+        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3103" && d.FilePath!.EndsWith("tables/products.json", StringComparison.Ordinal) && d.JsonPointer == "/checks/0/condition");
         // The entity's own check reads the API's form, the code's text.
         Assert.Contains("\"kg\"", Assert.Single(model.Entity("Product").Checks).Condition!.JavaScript, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task A_table_check_lowers_a_code_to_the_text_its_column_stores()
-    {
-        // The seed holds Unit's codes in its code column; a string column bound to an attribute of Unit stores them as they are.
-        using var repo = Repo();
-        IntegerUnitColumn(repo);
-        BoundColumn(repo, new JsonObject { ["id"] = "01K9EXR0000000000000000R09", ["name"] = "unit_code", ["type"] = "string", ["length"] = 8 },
-            "01K9EXR0000000000000000R11", "01K9EXR0000000000000000R01");
-        TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["01K9EXR0000000000000000R09"] }, { "ref": "{{KgId}}" }] }""");
-        Assert.DoesNotContain(await ValidateAsync(repo), d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal));
-        var check = Assert.Single(Products(await ResolveAsync(repo)).Checks);
-
-        Assert.Equal("unit_code COLLATE \"C\" = 'kg' COLLATE \"C\"", check.Expression);
-        Assert.Equal(("ref", "kg"), (check.Condition!.Args[1].Node, check.Condition.Args[1].Value));
     }
 
     [Fact]

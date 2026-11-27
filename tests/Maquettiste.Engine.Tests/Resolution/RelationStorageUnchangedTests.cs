@@ -19,9 +19,9 @@ public sealed class RelationStorageUnchangedTests
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
     [Theory]
-    [InlineData("billing", "4125593e21ae6285a26246ee67e89caf", "entity joins ")]
-    [InlineData("showcase", "60ccb79182f4f7fe4e1f0285fc83ba72", " junction conditions=0")]
-    [InlineData("bindings", "b28a93ed11a7beeae5733a263d8e06fb", "binding record ")]
+    [InlineData("billing", "9182ab5f07a01673e54dca7f852d7c88", "entity joins ")]
+    [InlineData("showcase", "2a2a635c00b30e3f8ade2f74365738a0", " junction conditions=0")]
+    [InlineData("bindings", "15ab1a5e8b885b66c75d411afbcebee0", "binding record ")]
     public async Task A_model_without_part_two_keeps_its_storage_records_joins_and_keys(string fixture, string hash, string covers)
     {
         var text = await Dump(fixture);

@@ -170,6 +170,42 @@ public sealed class ScopedValidationTests
     }
 
     [Fact]
+    public async Task A_value_object_or_a_stereotype_save_rejudges_the_columns_bound_through_its_attributes()
+    {
+        // 0.28.0: a binding maps total.currency (a member of the value object Money) and region (an attribute the stereotype Regional adds)
+        // to columns whose defaults are no stored codes of their enum: the value object's and the stereotype's saves bring the table, as
+        // the entity's, the enum's and the table's do.
+        var b = new ModelBuilder(seed: 3304);
+        var db = b.Database("main", Dialect.PostgreSql);
+        var currency = b.Enum("Currency").Member("Euro", 0, "EUR").Member("Dollar", 1, "USD");
+        var money = b.ValueObject("Money").Attr("amount", "decimal").Attr("currency", currency);
+        const string regional = "01K9X3S0000000000000000040";
+        b.Add(new Stereotype
+        {
+            Id = regional, Key = "regional", Name = "Regional", AppliesTo = ["entity"],
+            Attributes = [new ModelAttribute { Id = "01K9X3S0000000000000000041", Name = "region", Type = new TypeRef { Ref = currency.Id } }],
+        });
+        var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("total", money).Stereotype("regional");
+        var table = b.Table("invoices", db).Column("id", "uuid", nullable: false).Column("currency", "string", length: 3).Column("region", "string", length: 3)
+            .PrimaryKey("id")
+            .Edit(t => t with { Columns = [t.Columns[0], t.Columns[1] with { Default = Json("GBP") }, t.Columns[2] with { Default = Json("CHF") }] });
+        invoice.Bind(new EntityBinding
+        {
+            Id = "", Database = db.Id, Source = table.Id,
+            Fields =
+            [
+                new BindingField { Attribute = invoice.AttrId("id"), Column = "id" },
+                new BindingField { Attribute = invoice.AttrId("total") + "." + money.AttrId("currency"), Column = "currency" },
+                new BindingField { Attribute = "01K9X3S0000000000000000041", Column = "region" },
+            ],
+        });
+        var model = b.Build();
+
+        Assert.Equal(2, (await Validate(model)).Diagnostics.Count(d => d.Rule == "MQ7014"));
+        await AssertEveryParticipantSees(model, "MQ7014", money.Id, regional, invoice.Id, currency.Id, table.Id);
+    }
+
+    [Fact]
     public async Task Removing_a_code_from_a_seed_rejudges_a_typed_column_default()
     {
         // A column typed by a reference type defaults to the code I; no reference reaches the seed's row from the default

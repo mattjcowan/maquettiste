@@ -16,7 +16,8 @@ namespace Maquettiste.Engine.Validation;
 /// too, with findings where 3.1 places member findings (<see cref="MemberRules.PointerOf"/>). On an entity (<see cref="CheckEntity"/>):
 /// MQ4085 for a binding field whose attribute and column state different sensitivities, and MQ7014 for a binding constant written into a
 /// column with a bound type. Table seed cells (<see cref="TableSeedRules"/>) and a reference type binding's constants
-/// (<see cref="ReferenceBindingRules"/>) use <see cref="ValueProblem"/>. Pure functions of the context.
+/// (<see cref="ReferenceBindingRules"/>) use <see cref="ValueProblem"/>. A table's own checks never read the bound type
+/// (<see cref="ExprSites"/>). Pure functions of the context.
 /// </summary>
 internal static class ColumnTypeRules
 {

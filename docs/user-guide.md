@@ -765,8 +765,10 @@ database shows on the Database screen at once. The explorers remember which rows
     must hold the codes or values (MQ4083), a foreign key the table declares from the column must point at the code
     column of the type's bound table (MQ4084), and values written into the column (table seed cells, its literal
     default, binding constants) must be codes of the type, or an enum's stored values (MQ7014). `reference_type_usage`
-    lists the column, and templates read `column.bound_type` as information; `type_of` still maps the physical type. To
-    have the database check the codes, declare a foreign key into the type's bound table. The [reference data guide](guides/reference-data-and-seeds.md#11-codes-in-a-column-of-your-own-table) walks
+    lists the column, and templates read `column.bound_type` as information; `type_of` still maps the physical type. A
+    table's own checks read only the physical type. To have the database check the codes, declare a foreign key into the
+    type's bound table; that key also makes a code refactor record a value map for the column. Without it, the column
+    gets none and its stored rows keep the old codes. The [reference data guide](guides/reference-data-and-seeds.md#11-codes-in-a-column-of-your-own-table) walks
     through it.
   - **Removed in 0.28.0: a column's `typeRef`.** A table or stereotype file that still has it fails to load with MQ4082.
     Remove the key, and bind the column to an attribute typed by the enum, reference type or scalar type instead.

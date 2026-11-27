@@ -513,9 +513,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// members that fall back to its package); a database whose schema entries declare defaults brings the files those schemas reach;
     /// a stereotype brings the files that carry it, or a stereotype implying it, through a schema or package default. Bound column types
     /// (next-phase-2-design.md section 3.2, <see cref="TypedColumnPeers"/>): an enum, a reference type, a scalar type or a seed of a reference
-    /// type brings the tables with a column whose bound type is the type, and an entity the tables its bindings (and its derived entities')
-    /// read and write; with the table seeds of those tables and the entities and reference types whose bindings give those tables' columns
-    /// constants (MQ7014, MQ4083 and MQ4084 read the bound type, its values, codes and bindings, which no reference reaches).
+    /// type brings the tables with a column whose bound type is the type, an entity the tables its bindings (and its derived entities')
+    /// read and write, and a value object or a stereotype the tables a binding field maps through its attributes; with the table seeds of
+    /// those tables and the entities and reference types whose bindings give those tables' columns constants (MQ7014, MQ4083 and MQ4084
+    /// read the bound type, its values, codes and bindings, which no reference reaches). The save gate takes the same peers on the model
+    /// before the change too (<see cref="BoundColumnPeers"/>).
     /// Relations with an end of several types (several-types-design.md decision 12, <see cref="SeveralTypesPeers"/>): an entity, package or
     /// stereotype brings those whose ends name a stereotype (an entity also those with an <c>anyEntity</c> end or an end covering it), with
     /// their children's other compositions and the scenarios linking through them; a mapping or database brings all of them (MQ4115).
@@ -1022,15 +1024,32 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     }
 
     /// <summary>
-    /// The table files whose columns' bound types a document decides or reads (<see cref="BoundColumnTypes"/>, 0.28.0), their table seeds,
-    /// and the entities and reference types bound to them, whose constants fill their columns (next-phase-2-design.md section 3.2): for an
-    /// enum, a reference type, a scalar type or a seed of a reference type, the tables with a column whose bound type is the type; for an
-    /// entity, the table files its bindings, and those of the entities deriving from it, read and write (a binding's field decides its
-    /// column's bound type). A table the candidate model no longer binds is left to the next validate. Nothing for any other document.
+    /// The table files whose columns' bound types a document decides or reads (<see cref="BoundColumnPeers"/>), as documents.
     /// </summary>
     private static IEnumerable<ElementDocument> TypedColumnPeers(ValidationContext context, Element element)
     {
-        var model = context.Model;
+        foreach (var id in BoundColumnPeers(context.Model, element))
+        {
+            if (context.Model.GetDocument(id) is { } document)
+                yield return document;
+        }
+    }
+
+    /// <summary>
+    /// The documents whose findings depend on the bound types a document decides or reads (<see cref="BoundColumnTypes"/>, 0.28.0): the
+    /// table files involved, their table seeds, the reference types bound to them and the entities bound to them, whose constants fill
+    /// their columns (next-phase-2-design.md section 3.2). The tables are: for an enum, a reference type, a scalar type or a seed of a
+    /// reference type, those with a column whose bound type is the type; for an entity, those its bindings and the bindings of the entities
+    /// deriving from it read and write, and those a binding field maps through it; for a value object or a stereotype, those a binding
+    /// field maps through one of the attributes it declares. Worked out on <paramref name="model"/> alone, so the save gate can take them
+    /// on the model before a change (a table a change binds or unbinds) as well as after it. Ordinal, without duplicates.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="element">The document's element.</param>
+    /// <returns>The ids.</returns>
+    internal static IEnumerable<string> BoundColumnPeers(ModelSnapshot model, Element element)
+    {
+        var bound = BoundColumnTypes.Of(model);
         var tables = new SortedSet<string>(StringComparer.Ordinal);
         var typeId = element switch
         {
@@ -1040,7 +1059,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         };
         if (typeId is not null)
         {
-            foreach (var (tableId, _) in BoundColumnTypes.Of(model).ColumnsOf(typeId))
+            foreach (var (tableId, _) in bound.ColumnsOf(typeId))
                 tables.Add(tableId);
         }
         else if (element is Entity entity)
@@ -1050,9 +1069,10 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             while (pending.Count > 0)
             {
                 var id = pending.Pop();
-                if (!seen.Add(id) || model.Get<Entity>(id) is not { } bound)
+                if (!seen.Add(id) || model.Get<Entity>(id) is not { } current)
                     continue;
-                foreach (var binding in bound.Bindings)
+                tables.UnionWith(bound.TablesThrough(id));
+                foreach (var binding in current.Bindings)
                 {
                     foreach (var key in new[] { binding.Source, binding.Write?.Table })
                     {
@@ -1061,36 +1081,40 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     }
                 }
 
-                foreach (var derived in context.DerivedOf(id))
-                    pending.Push(derived);
+                foreach (var derived in model.All<Entity>())
+                {
+                    if (string.Equals(derived.Base, id, StringComparison.Ordinal))
+                        pending.Push(derived.Id);
+                }
             }
+        }
+        else if (element is ValueObject or Stereotype)
+        {
+            tables.UnionWith(bound.TablesThrough(element.Id));
         }
 
         if (tables.Count == 0)
-            yield break;
-        foreach (var tableId in tables)
+            return [];
+        var ids = new SortedSet<string>(tables, StringComparer.Ordinal);
+        foreach (var seed in model.All<Seed>())
         {
-            if (model.GetDocument(tableId) is { } tableDocument)
-                yield return tableDocument;
-            foreach (var seed in context.SeedsOf(tableId))
-            {
-                if (model.GetDocument(seed.Id) is { } seedDocument)
-                    yield return seedDocument;
-            }
-
-            foreach (var (type, _) in context.BoundTypesOf(tableId))
-            {
-                if (model.GetDocument(type.Id) is { } typeDocument)
-                    yield return typeDocument;
-            }
+            if (tables.Contains(seed.Target))
+                ids.Add(seed.Id);
         }
 
-        foreach (var entity in model.All<Entity>())
+        foreach (var type in model.All<ReferenceType>())
         {
-            if (entity.Bindings.Any(b => tables.Contains(b.Source) || (b.Write?.Table is { } written && tables.Contains(written)))
-                && model.GetDocument(entity.Id) is { } entityDocument)
-                yield return entityDocument;
+            if (type.Bindings.Any(b => tables.Contains(b.Table)))
+                ids.Add(type.Id);
         }
+
+        foreach (var other in model.All<Entity>())
+        {
+            if (other.Bindings.Any(b => tables.Contains(b.Source) || (b.Write?.Table is { } written && tables.Contains(written))))
+                ids.Add(other.Id);
+        }
+
+        return ids;
     }
 
     /// <summary>

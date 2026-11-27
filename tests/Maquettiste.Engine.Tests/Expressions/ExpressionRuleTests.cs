@@ -166,14 +166,15 @@ public sealed class ExpressionRuleTests
     }
 
     [Fact]
-    public async Task MQ3103_a_code_its_column_cannot_store()
+    public async Task MQ3103_a_code_against_a_column_of_another_physical_type()
     {
-        // Unit's codes are text; a column bound to an attribute of Unit but stored as int32 cannot hold kg, so the check cannot lower.
+        // A table's check reads its columns' physical types only (0.28.0): unit is an int32 column, whatever the binding maps to it, so
+        // comparing it with the code kg does not type.
         using var repo = Repo();
         IntegerUnitColumn(repo);
         TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["{{UnitColumnId}}"] }, { "ref": "{{KgId}}" }] }""");
-        await AssertRuleAsync(repo, "MQ3103", "/checks/0/condition/args/1");
-        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3103" && d.Message.Contains("the code's type does not match the column", StringComparison.Ordinal));
+        await AssertRuleAsync(repo, "MQ3103", "/checks/0/condition");
+        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3103" && d.Message.Contains("Cannot compare int32 with code", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -234,18 +235,10 @@ public sealed class ExpressionRuleTests
     }
 
     [Fact]
-    public async Task MQ3108_alone_for_text_that_names_an_enum_member_and_a_constraint()
+    public async Task MQ3108_alone_for_text_that_names_a_constraint()
     {
         // Text can name any enum, reference type or constraint, so its site looks up each name the text writes, as text-to-trees does.
         using var repo = Repo();
-        repo.WriteFile(".maquettiste/model/enums/product-status.json", """
-            {
-              "kind": "enum",
-              "id": "01K9EXR0000000000000000N01",
-              "name": "ProductStatus",
-              "members": [ { "id": "01K9EXR0000000000000000N02", "name": "Active" }, { "id": "01K9EXR0000000000000000N03", "name": "Retired" } ]
-            }
-            """);
         repo.WriteFile(".maquettiste/model/constraints/positive-amount.json", """
             {
               "kind": "constraint",
@@ -255,9 +248,7 @@ public sealed class ExpressionRuleTests
               "condition": { "op": "gt", "args": [{ "path": ["01K9EXR0000000000000000K02"] }, { "value": 0 }] }
             }
             """);
-        BoundColumn(repo, new JsonObject { ["id"] = "01K9EXR0000000000000000C03", ["name"] = "status", ["type"] = "string" }, "01K9EXR0000000000000000C04",
-            "01K9EXR0000000000000000N01");
-        TableCheck(repo, """{ "text": "status = ProductStatus.Active and satisfies PositiveAmount(amount: price)" }""");
+        TableCheck(repo, """{ "text": "price > 0 and satisfies PositiveAmount(amount: price)" }""");
         var diagnostics = await ValidateAsync(repo);
         Assert.Equal(["MQ3108"], diagnostics.Where(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)).Select(d => d.Rule));
     }

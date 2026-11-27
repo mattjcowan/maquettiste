@@ -1963,6 +1963,45 @@ public sealed class FactRecordingTests
     }
 
     [Fact]
+    public async Task Rename_code_maps_a_column_whose_declared_key_points_at_the_bound_code_column()
+    {
+        // 0.28.0: in bound, PaymentTerm's rows live in payment_terms, and orders declares a foreign key from its term into their code: the
+        // table says the column holds the codes, so the rename maps it there. A column a binding maps to an attribute of the type, with no
+        // declared key, would get no value map: binding never changes storage.
+        await using var repo = PaymentTerms.Create();
+        await PaymentTerms.AddAsync(repo);
+        const string Schema = "01KAPD00000000000000000022", Orders = "01KAPD00000000000000000027", OrdersTerm = "01KAPD00000000000000000029";
+        await repo.CreateElementAsync($$"""
+            { "kind": "database", "id": "{{BoundDatabaseId}}", "name": "bound", "dialect": "postgresql", "version": "16", "defaultSchema": "bound",
+              "schemas": [ { "id": "{{Schema}}", "name": "bound" } ], "byConvention": "none" }
+            """);
+        await repo.CreateElementAsync($$"""
+            { "kind": "table", "id": "{{BoundTermsId}}", "name": "payment_terms", "database": "{{BoundDatabaseId}}", "schema": "{{Schema}}",
+              "columns": [ { "id": "01KAPD00000000000000000024", "name": "code", "type": "string", "length": 8, "nullable": false },
+                           { "id": "01KAPD00000000000000000025", "name": "label", "type": "string", "length": 64, "nullable": false } ],
+              "primaryKey": { "columns": [ "01KAPD00000000000000000024" ] } }
+            """);
+        await repo.EditAsync(PaymentTerms.PaymentTerm, e => e["bindings"] = JsonNode.Parse($$"""
+            [ { "id": "01KAPD00000000000000000026", "database": "{{BoundDatabaseId}}", "table": "{{BoundTermsId}}",
+                "fields": [ { "attribute": "code", "column": "01KAPD00000000000000000024" }, { "attribute": "label", "column": "01KAPD00000000000000000025" } ] } ]
+            """));
+        await repo.CreateElementAsync($$"""
+            { "kind": "table", "id": "{{Orders}}", "name": "orders", "database": "{{BoundDatabaseId}}", "schema": "{{Schema}}",
+              "columns": [ { "id": "01KAPD00000000000000000028", "name": "id", "type": "uuid", "nullable": false },
+                           { "id": "{{OrdersTerm}}", "name": "term", "type": "string", "length": 8 } ],
+              "primaryKey": { "columns": [ "01KAPD00000000000000000028" ] },
+              "foreignKeys": [ { "id": "01KAPD00000000000000000030", "name": "fk_orders_term", "columns": [ "{{OrdersTerm}}" ], "referencesTable": "{{BoundTermsId}}" } ] }
+            """);
+        await repo.RestartAsync();
+
+        var result = await PaymentTerms.ApplyAsync(repo, RenameNet30);
+
+        var bound = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, BoundDatabaseId));
+        Assert.Equal((Orders, OrdersTerm, "orders"), (Assert.Single(bound.Objects).Table, bound.Objects[0].Key, bound.Objects[0].TableName));
+        Assert.Contains(result.Facts!, f => f.Database == BoundDatabaseId && f.Fact == "value-map");
+    }
+
+    [Fact]
     public async Task A_merge_records_its_value_map_before_the_strategy_change_type()
     {
         // CreditTerm is stored with check in main, PaymentTerm with the project's lookup-table: the merged columns change strategy.
