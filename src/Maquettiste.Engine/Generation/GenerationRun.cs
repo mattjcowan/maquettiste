@@ -178,7 +178,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             early = Observed(Task.Run(() => services.Resolver.ResolveAsync(snapshot, null, token), token));
             _ = early.ContinueWith(_ => speculative.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             // A preview or validate of the same snapshot while this resolves waits for it instead of resolving the model a second time.
-            store.ShareResolving(snapshot, early);
+            store.ShareResolving(snapshot, early, services);
         }
 
         var used = false;
@@ -244,14 +244,14 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             {
                 start = Clock.Now;
                 var resolving = services.Resolver.ResolveAsync(snapshot, progress, ct);
-                store.ShareResolving(snapshot, resolving);
+                store.ShareResolving(snapshot, resolving, services);
                 resolved = await resolving.ConfigureAwait(false);
                 Clock.Record(PipelineStage.Resolve, start, snapshot.Documents.Count);
             }
 
             // The validation passed, so a validate or a preview of this snapshot would resolve the same model: the store keeps this one.
             if (shared is null)
-                store.ShareModel(snapshot, resolved);
+                store.ShareModel(snapshot, resolved, services);
 
             Add(resolved.Diagnostics);
             if (resolved.Diagnostics.Any(Outcomes.IsInvalid))

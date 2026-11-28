@@ -89,16 +89,21 @@ public sealed partial class ModelStore
     /// <returns>The resolved model.</returns>
     internal async Task<Resolution.ResolvedModel> AwaitModelAsync(ModelSnapshot snapshot, Task<Resolution.ResolvedModel> shared, CancellationToken ct)
     {
-        try
+        // A loop, not one retry: another run may share its resolution of the snapshot before this reader asks again, and be cancelled too.
+        // Each pass replaces a run's resolution that ended, so it ends when one finishes or the store resolves (never cancelled).
+        while (true)
         {
-            return await shared.WaitAsync(ct).ConfigureAwait(false);
-        }
-        catch (Exception) when (!ct.IsCancellationRequested && (shared.IsCanceled || shared.IsFaulted) && _borrowed.TryGetValue(shared, out _))
-        {
-            // The run's resolution did not finish: resolved here instead.
-        }
+            try
+            {
+                return await shared.WaitAsync(ct).ConfigureAwait(false);
+            }
+            catch (Exception) when (!ct.IsCancellationRequested && (shared.IsCanceled || shared.IsFaulted) && _borrowed.TryGetValue(shared, out _))
+            {
+                // The run's resolution did not finish: resolved here instead.
+            }
 
-        return await ModelTask(snapshot, shared).WaitAsync(ct).ConfigureAwait(false);
+            shared = ModelTask(snapshot, shared);
+        }
     }
 
     /// <summary>
@@ -111,8 +116,11 @@ public sealed partial class ModelStore
     /// </summary>
     /// <param name="snapshot">The run's snapshot.</param>
     /// <param name="resolving">The run's resolution of it.</param>
-    internal void ShareResolving(ModelSnapshot snapshot, Task<Resolution.ResolvedModel> resolving)
+    /// <param name="services">The run's services: a run that does not resolve as the store would shares nothing (<see cref="ResolvesAsStore"/>).</param>
+    internal void ShareResolving(ModelSnapshot snapshot, Task<Resolution.ResolvedModel> resolving, Generation.EngineServices services)
     {
+        if (!ResolvesAsStore(services))
+            return;
         lock (_modelGate)
         {
             if (!IsCurrent(snapshot) || (_model is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled))
@@ -136,9 +144,11 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
-    /// The resolved model of a snapshot for a reader that does not need it validated (materialize and its status screen): the shared one
-    /// (<see cref="ResolvedAsync"/>) when the store serves this snapshot and it validates, else a resolution of its own, as before. A
-    /// candidate snapshot (a batch's working model) is never shared.
+    /// The resolved model of a snapshot for a reader that does not need it validated (materialize and its status screen): the one the
+    /// store holds or is resolving (a generation run's under way included, which may not validate: a resolve that does not validate is
+    /// still the same model), else the shared one (<see cref="ResolvedAsync"/>) when the snapshot validates, else a resolution of its own,
+    /// as before. When a run's resolution ends cancelled the store resolves without the caller's token (<see cref="AwaitModelAsync"/>);
+    /// the caller's token cancels only its wait. A candidate snapshot (a batch's working model) is never shared.
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="ct">Cancellation.</param>
@@ -169,14 +179,29 @@ public sealed partial class ModelStore
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="model">Its resolved model.</param>
-    internal void ShareModel(ModelSnapshot snapshot, Resolution.ResolvedModel model)
+    /// <param name="services">The run's services: a run that does not resolve as the store would shares nothing (<see cref="ResolvesAsStore"/>).</param>
+    internal void ShareModel(ModelSnapshot snapshot, Resolution.ResolvedModel model, Generation.EngineServices services)
     {
+        if (!ResolvesAsStore(services))
+            return;
         lock (_modelGate)
         {
             if (IsCurrent(snapshot) && (_model is not { } cached || !ReferenceEquals(cached.Snapshot, snapshot) || cached.Task.IsFaulted || cached.Task.IsCanceled))
                 _model = (snapshot, Task.FromResult(model));
         }
     }
+
+    /// <summary>
+    /// Whether a run's resolution would equal the store's (the condition for sharing it, as <see cref="ValidateForRunAsync"/> asks for
+    /// validation): the same services, or the same resolver instance, or the engine's own resolver on both sides over the same model root
+    /// with the same script sandbox. A substitute resolver in a test resolves with its own.
+    /// </summary>
+    /// <param name="services">The run's services.</param>
+    private bool ResolvesAsStore(Generation.EngineServices services) =>
+        ReferenceEquals(services, _services) || ReferenceEquals(services.Resolver, _services.Resolver)
+        || (services.Resolver is Resolution.ModelResolver && _services.Resolver is Resolution.ModelResolver
+            && services.Scripts.GetType() == _services.Scripts.GetType()
+            && string.Equals(Path.GetFullPath(services.Options.EffectiveModelRoot), Path.GetFullPath(_options.EffectiveModelRoot), StringComparison.Ordinal));
 
     /// <summary>
     /// Whether the store serves <paramref name="snapshot"/>: only its results are kept (call inside the cache's lock). A result of an

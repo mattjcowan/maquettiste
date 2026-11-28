@@ -173,7 +173,7 @@ public sealed class EditMemoryTests
         Assert.Null(store.SharedModel(old));
 
         // A generation run of the old snapshot finishing late shares nothing either.
-        store.ShareModel(old, (await inFlight).Model!);
+        store.ShareModel(old, (await inFlight).Model!, gated);
         Assert.Same(shared.Model, await store.SharedModel(current)!);
     }
 
@@ -229,6 +229,56 @@ public sealed class EditMemoryTests
         Assert.Equal(2, resolver.Calls);
         Assert.NotNull((await store.ResolvedAsync(store.Current!, Ct)).Model);
         Assert.Equal(2, resolver.Calls);
+    }
+
+    [Fact]
+    public async Task A_reader_outlives_two_runs_cancelled_one_after_the_other()
+    {
+        await using var repo = E2ERepo.Create();
+        var services = EngineServices.Create(repo.Options);
+        var resolver = new GatedResolver(services.Resolver);
+        var gated = services with { Resolver = resolver };
+        await using var store = new ModelStore(repo.Options, gated);
+        var snapshot = await store.GetSnapshotAsync(Ct);
+
+        // A first run's resolution is shared and cancelled; a second run shares its own before the reader asks the store again.
+        var first = new TaskCompletionSource<ResolvedModel>(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.ShareResolving(snapshot, first.Task, gated);
+        first.SetCanceled(Ct);
+        var second = new TaskCompletionSource<ResolvedModel>(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.ShareResolving(snapshot, second.Task, gated);
+        Assert.Same(second.Task, store.SharedModel(snapshot));
+
+        // The reader moves to the second run's resolution, then, when that is cancelled too, resolves with the store's resolver.
+        var reader = store.AwaitModelAsync(snapshot, first.Task, Ct);
+        Assert.False(reader.IsCompleted);
+        Assert.Equal(0, resolver.Calls);
+        second.SetCanceled(Ct);
+
+        Assert.NotNull(await reader);
+        Assert.Equal(1, resolver.Calls);
+    }
+
+    [Fact]
+    public async Task A_run_that_resolves_with_other_services_shares_nothing()
+    {
+        await using var repo = E2ERepo.Create();
+        var services = EngineServices.Create(repo.Options);
+        await using var store = new ModelStore(repo.Options, services);
+        var snapshot = await store.GetSnapshotAsync(Ct);
+
+        // A substitute resolver (a test's, a host's) may not resolve as the store's would: its work is not the store's answer.
+        var other = services with { Resolver = new GatedResolver(services.Resolver) };
+        var resolving = new TaskCompletionSource<ResolvedModel>();
+        store.ShareResolving(snapshot, resolving.Task, other);
+        Assert.Null(store.SharedModel(snapshot));
+        var model = await services.Resolver.ResolveAsync(snapshot, null, Ct);
+        store.ShareModel(snapshot, model, other);
+        Assert.Null(store.SharedModel(snapshot));
+
+        // The engine's own resolver from another services instance over the same model resolves the same: shared.
+        store.ShareModel(snapshot, model, EngineServices.Create(repo.Options));
+        Assert.Same(model, await store.SharedModel(snapshot)!);
     }
 
     /// <summary>Waits until the store holds the run's resolution of its current snapshot (the run registers it as it starts it).</summary>
