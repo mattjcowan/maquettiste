@@ -1,6 +1,6 @@
 # Retiring projection: tables made from entities
 
-Status: design, 2026-11-26, revision 3; decisions D1 to D4 confirmed by the owner the same day. All three pull requests are built (pending release as 0.29.0). The owner asked for it on 2026-11-26, after the question "why would
+Status: design, 2026-11-26, revision 3; decisions D1 to D4 confirmed by the owner the same day. All three pull requests are built and released in 0.29.0 (2026-11-28). The owner asked for it on 2026-11-26, after the question "why would
 we not retire the old projection path's overlay files?". Revision 2 followed the team's answers (section 10) and the
 owner's ruling that table per type and lists in a child table are common ways to map entities onto tables and must stay
 possible. Revision 3 folds in a Fable review of revision 2 (section 13). Nothing here changes the product until the
