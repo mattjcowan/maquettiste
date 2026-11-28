@@ -413,6 +413,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             nameIndexes?[s] = labelIndexes;
             namePositions?[s] = positions;
             WriteExports(body, state, exportsJson[s]);
+            exportsJson[s] = null; // written: let the string go now, not at the end of the save
 
             if (ranges is not null)
                 ranges[s] = (start, body.Length - start);
@@ -422,7 +423,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         var headSize = (long)Magic.Length + 4 + StringSize(EngineVersion.Value) + 4;
         foreach (var value in strings)
             headSize += StringSize(value);
-        var head = new ByteWriter(checked((int)headSize));
+        var head = new ByteWriter(checked((int)headSize + ReserveSlack));
         head.WriteBytes(Magic);
         head.WriteInt32(Format);
         head.WriteString(EngineVersion.Value);
@@ -639,8 +640,13 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             }
         }
 
-        return (int)Math.Min(size, Array.MaxLength);
+        // Writes reserve up to five bytes for a varint and one more than a short string's length, so a few spare bytes keep the
+        // last write from growing a buffer the count sized exactly.
+        return (int)Math.Min(size + ReserveSlack, Array.MaxLength);
     }
+
+    /// <summary>Spare bytes past an exact size: the most a single reservation can ask for beyond what it writes.</summary>
+    private const int ReserveSlack = 8;
 
     /// <summary>The bytes a length-prefixed UTF-8 string takes (what <see cref="ByteWriter.WriteString"/> writes).</summary>
     private static long StringSize(string value)
