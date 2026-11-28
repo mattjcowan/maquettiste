@@ -20,7 +20,15 @@ internal sealed class EngineFiles(IOutputPathPolicy paths, WriteTarget target, E
     /// <param name="bytes">The content.</param>
     /// <param name="ct">Cancellation, observed before the rename.</param>
     /// <returns>A task.</returns>
-    public async Task WriteAsync(string fullPath, ReadOnlyMemory<byte> bytes, CancellationToken ct)
+    public Task WriteAsync(string fullPath, ReadOnlyMemory<byte> bytes, CancellationToken ct) => WriteAsync(fullPath, bytes, default, ct);
+
+    /// <summary>Writes a file atomically from two parts, one after the other (the content is never copied into one buffer).</summary>
+    /// <param name="fullPath">The absolute target path.</param>
+    /// <param name="first">The first part.</param>
+    /// <param name="second">The second part.</param>
+    /// <param name="ct">Cancellation, observed before the rename.</param>
+    /// <returns>A task.</returns>
+    public async Task WriteAsync(string fullPath, ReadOnlyMemory<byte> first, ReadOnlyMemory<byte> second, CancellationToken ct)
     {
         Check(fullPath);
         var folder = Path.GetDirectoryName(fullPath)!;
@@ -35,7 +43,9 @@ internal sealed class EngineFiles(IOutputPathPolicy paths, WriteTarget target, E
         {
             await using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous))
             {
-                await stream.WriteAsync(bytes, CancellationToken.None).ConfigureAwait(false);
+                await stream.WriteAsync(first, CancellationToken.None).ConfigureAwait(false);
+                if (!second.IsEmpty)
+                    await stream.WriteAsync(second, CancellationToken.None).ConfigureAwait(false);
                 await stream.FlushAsync(CancellationToken.None).ConfigureAwait(false);
             }
 

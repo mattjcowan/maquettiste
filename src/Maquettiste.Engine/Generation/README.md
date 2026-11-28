@@ -323,7 +323,12 @@ and before the path reaches the store, so a manifest write under the real prefix
   model), with the pack loaded by name, the path policy, schema diffs computed per database on first read (`LazySchemaDiffs`,
   `PreviewInputs.cs`; `RenderRun` gives the template a `schema_diff` map whose values are computed when read) and a hasher that
   hashes nothing (`PreviewHasher`). The session is single-flight and lives until its key changes (model version, settings hash,
-  write epoch, the pack folder's stamps and the committed schema snapshots' stamps); the former 2 s limit is gone.
+  write epoch, the pack folder's stamps and the committed schema snapshots' stamps); the former 2 s limit is gone. When the store
+  publishes a new snapshot it drops the sessions of older ones (`ModelStore.OnSnapshotPublished`), and the store drops its own
+  per-snapshot results (`ReleaseResultsOfOtherSnapshots`), so an edit does not keep the previous resolved model alive while the
+  next one is built (change-driven edits, step 1). The database view and the query and binding SQL previews read the same shared
+  resolution instead of validating and resolving on every call; the materializer and its status screen read it for the current
+  snapshot (a batch's candidate snapshot is still resolved on its own).
 - `PathsAsync` plans the one unit (kept with the session for a saved unit) and renders only `elementIds` (at most 20).
 
 ## Exports (next-phase-2-design.md section 5.3)

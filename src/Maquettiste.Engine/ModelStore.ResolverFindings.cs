@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 
@@ -38,7 +39,8 @@ public sealed partial class ModelStore
             else
             {
                 task = Task.Run(() => ResolveSnapshotAsync(snapshot), CancellationToken.None);
-                _resolved = (snapshot, task);
+                if (IsCurrent(snapshot))
+                    _resolved = (snapshot, task);
             }
         }
 
@@ -60,7 +62,8 @@ public sealed partial class ModelStore
             else
             {
                 resolving = _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None);
-                _model = (snapshot, resolving);
+                if (IsCurrent(snapshot))
+                    _model = (snapshot, resolving);
             }
         }
 
@@ -80,16 +83,114 @@ public sealed partial class ModelStore
             return _model is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled ? cached.Task : null;
     }
 
-    /// <summary>Keeps a generation run's resolved model of a snapshot whose validation has no error, unless the store holds one of it.</summary>
+    /// <summary>
+    /// The resolved model of a snapshot for a reader that does not need it validated (materialize and its status screen): the shared one
+    /// (<see cref="ResolvedAsync"/>) when the store serves this snapshot and it validates, else a resolution of its own, as before. A
+    /// candidate snapshot (a batch's working model) is never shared.
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The resolved model.</returns>
+    internal async Task<Resolution.ResolvedModel> ResolvedOrOwnAsync(ModelSnapshot snapshot, CancellationToken ct)
+    {
+        if (ReferenceEquals(snapshot, _current))
+        {
+            if (SharedModel(snapshot) is { } held)
+                return await held.WaitAsync(ct).ConfigureAwait(false);
+            if ((await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Model is { } shared)
+                return shared;
+        }
+
+        return await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>A resolver that answers with <see cref="ResolvedOrOwnAsync"/> (the materializer's).</summary>
+    private sealed class SharingResolver(ModelStore store) : Pipeline.IModelResolver
+    {
+        public Task<Resolution.ResolvedModel> ResolveAsync(ModelSnapshot model, IProgress<Pipeline.ProgressUpdate>? progress, CancellationToken ct) =>
+            store.ResolvedOrOwnAsync(model, ct);
+    }
+
+    /// <summary>
+    /// Keeps a generation run's resolved model of a snapshot whose validation has no error, unless the store holds one of it. A snapshot
+    /// the store no longer serves is not kept: nothing asks for it again, and keeping it would hold a whole old model.
+    /// </summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="model">Its resolved model.</param>
     internal void ShareModel(ModelSnapshot snapshot, Resolution.ResolvedModel model)
     {
         lock (_modelGate)
         {
-            if (_model is not { } cached || !ReferenceEquals(cached.Snapshot, snapshot) || cached.Task.IsFaulted || cached.Task.IsCanceled)
+            if (IsCurrent(snapshot) && (_model is not { } cached || !ReferenceEquals(cached.Snapshot, snapshot) || cached.Task.IsFaulted || cached.Task.IsCanceled))
                 _model = (snapshot, Task.FromResult(model));
         }
+    }
+
+    /// <summary>
+    /// Whether the store serves <paramref name="snapshot"/>: only its results are kept (call inside the cache's lock). A result of an
+    /// older snapshot that finishes, or is asked for, after a publish is handed to its callers but never stored: it would evict the
+    /// current snapshot's entry and keep an old model alive. The publish sets the current snapshot before it clears the caches under
+    /// the same locks, so an entry stored just before it is cleared by it.
+    /// </summary>
+    private bool IsCurrent(ModelSnapshot snapshot) => ReferenceEquals(snapshot, _current);
+
+    /// <summary>
+    /// Drops the results kept for any snapshot other than <paramref name="current"/> (called when the store publishes a new snapshot,
+    /// under its write gate): an entry of an older snapshot is never asked for again, but would keep that snapshot, its resolved model
+    /// and its reports alive while the next ones are built, so a large model would need the memory of two. Work still running for an
+    /// older snapshot finishes for whoever waits on it; only the store stops holding it.
+    /// </summary>
+    /// <param name="current">The snapshot just published.</param>
+    private void ReleaseResultsOfOtherSnapshots(ModelSnapshot current)
+    {
+        lock (_findingsGate)
+        {
+            if (_findings is { } findings && !ReferenceEquals(findings.Snapshot, current))
+                _findings = null;
+        }
+
+        lock (_resolvedGate)
+        {
+            if (_resolved is { } resolved && !ReferenceEquals(resolved.Snapshot, current))
+                _resolved = null;
+        }
+
+        lock (_wholeGate)
+        {
+            if (_whole is { } whole && !ReferenceEquals(whole.Snapshot, current))
+                _whole = null;
+        }
+
+        lock (_modelGate)
+        {
+            if (_model is { } model && !ReferenceEquals(model.Snapshot, current))
+                _model = null;
+        }
+
+        var gone = false;
+        foreach (var handler in _published)
+            gone |= !handler(current);
+        if (gone)
+        {
+            lock (_handlersLock)
+                _published = [.. _published.Where(h => h(current))];
+        }
+    }
+
+    private ImmutableArray<Func<ModelSnapshot, bool>> _published = [];
+
+    /// <summary>
+    /// Registers a callback the store calls, under its write gate, each time it publishes a new snapshot, so a service that keeps
+    /// results per snapshot (the generation service's preview sessions) can drop those of older ones. The callback must be quick, must
+    /// not call back into the store, and answers <see langword="false"/> once its subscriber is gone (it is then removed), so the store
+    /// keeps no service alive.
+    /// </summary>
+    /// <param name="handler">The callback.</param>
+    internal void OnSnapshotPublished(Func<ModelSnapshot, bool> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        lock (_handlersLock)
+            _published = _published.Add(handler);
     }
 
     /// <summary>
@@ -114,7 +215,8 @@ public sealed partial class ModelStore
             else
             {
                 task = Task.Run(() => _services.Validator.ValidateAsync(snapshot, ValidationScope.All, null, CancellationToken.None), CancellationToken.None);
-                _whole = (snapshot, task);
+                if (IsCurrent(snapshot))
+                    _whole = (snapshot, task);
             }
         }
 
@@ -144,7 +246,8 @@ public sealed partial class ModelStore
             else
             {
                 task = Task.Run(() => FindAsync(snapshot), CancellationToken.None);
-                _findings = (snapshot, task);
+                if (IsCurrent(snapshot))
+                    _findings = (snapshot, task);
             }
         }
 

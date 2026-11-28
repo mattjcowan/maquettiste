@@ -168,6 +168,21 @@ Tests: `tests/Maquettiste.Engine.Tests/Planning/`; fixture packs in `tests/fixtu
 - `UnitStateStore.Remembered(pack)`: the states the store last read or wrote for a pack, without reading the file (the last-run
   record reads the states the writer just saved).
 
+## Performance notes (change-driven edits, step 1, 2026-11-28)
+
+- **Unit states are read once, by stat.** The store keeps, with the bytes and states it last read or wrote, the file's length and
+  last write time; a load while the file keeps them returns the kept states without reading it. A run loads each pack's states
+  twice (beside resolve and in the skip check), so an editor or `watch` run over a 100,000-unit model read about two state files'
+  worth of bytes for nothing. A changed stat reads the file again, and a touched file with the same bytes is not decoded again.
+  The loader trusts model files' stats the same way. A save skips its write only when the kept stat is a real one (the file
+  existed and did not move while it was read) and still matches the file.
+- Known limit (stat-only trust): a write by another process that keeps the state file's length and lands in the same time stamp
+  tick as the store's own read or write is not seen until the stat next changes; the contents are not re-checked.
+- **A save is not concatenated.** `EncodeParts` gives the head (key table) and the body (records) as two buffers; the file is
+  written from both, and the remembered states point into the body. The bytes are those of `Encode` (`UnitStateFastPathTests`).
+  Records whose keys keep their indexes were already copied as bytes; the whole body is still written when one unit changes,
+  since the format is one sorted file per pack.
+
 ## Exports (next-phase-2-design.md section 5.3)
 
 `UnitPlanner` plans the exporting units of used packs into `UnitPlan.ExportOnly`, never rendered or written.

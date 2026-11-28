@@ -133,6 +133,7 @@ public static class BenchmarkHarness
         Settle();
         GenerationResult pipelinedRun, incremental, check;
         TimeSpan coldTotal, incrementalTotal, checkTotal, incrementalPause;
+        long incrementalAllocated, incrementalLiveHeap, nextEditLiveHeap;
         bool outputsMatch;
         await using (var live = new Session(policy, pipelined, options.Jobs))
         {
@@ -141,8 +142,17 @@ public static class BenchmarkHarness
             outputsMatch = stagedManifests is not null && string.Equals(stagedManifests, pipelinedManifests, StringComparison.Ordinal);
 
             await SyntheticModelGenerator.EditOneEntityAsync(RepoOf(pipelined), model, ct).ConfigureAwait(false);
+            var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
             (incremental, incrementalTotal, incrementalPause) = await live.RunAsync(GenerationMode.Apply, barriers: false, progress, ct).ConfigureAwait(false);
+            incrementalAllocated = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
+            incrementalLiveHeap = LiveHeapBytes();
             (check, checkTotal, _) = await live.RunAsync(GenerationMode.Check, barriers: false, progress, ct, requireSuccess: false).ConfigureAwait(false);
+
+            // The next edit (the first one reverted), rescanned by the same store but not generated: what the store still holds when
+            // the next run's resolve starts (reported, not a budget).
+            await SyntheticModelGenerator.RevertEditAsync(RepoOf(pipelined), model, ct).ConfigureAwait(false);
+            await live.Store.GetSnapshotAsync(ct).ConfigureAwait(false);
+            nextEditLiveHeap = LiveHeapBytes();
         }
 
         // 5. The edit reverted, run by a new store and service over the same repo and cache (a new host process's first run, JIT warm).
@@ -198,6 +208,9 @@ public static class BenchmarkHarness
             IncrementalUnitsSkipped = incremental.UnitsSkipped,
             IncrementalFilesWritten = incremental.FilesWritten,
             IncrementalGcPause = incrementalPause,
+            IncrementalAllocatedBytes = incrementalAllocated,
+            IncrementalLiveHeapBytes = incrementalLiveHeap,
+            NextEditLiveHeapBytes = nextEditLiveHeap,
             IncrementalFreshStore = freshTotal,
             IncrementalFreshStoreGcPause = freshPause,
             IncrementalFreshStoreStages = fresh.Timings,
@@ -220,6 +233,18 @@ public static class BenchmarkHarness
         };
 
         return options.BaselinePath is { } baseline ? await CompareAsync(report, baseline, options.MaxRegressionPercent, ct).ConfigureAwait(false) : report;
+    }
+
+    /// <summary>
+    /// The live managed heap after a forced, compacting, blocking full collection: what the process still holds (the model store's
+    /// snapshot, resolved model and caches), not what it allocated.
+    /// </summary>
+    private static long LiveHeapBytes()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        return GC.GetGCMemoryInfo(GCKind.FullBlocking).HeapSizeBytes;
     }
 
     /// <summary>Compares a report with a baseline report file (the JSON of <see cref="BenchmarkReportJson"/>).</summary>
@@ -558,6 +583,8 @@ public static class BenchmarkHarness
 
             return (result, total, paused);
         }
+
+        public ModelStore Store => _store;
 
         public ValueTask DisposeAsync() => _store.DisposeAsync();
     }

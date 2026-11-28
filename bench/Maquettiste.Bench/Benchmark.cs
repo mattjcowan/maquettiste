@@ -218,6 +218,25 @@ public sealed record BenchmarkReport(
     /// <summary>The garbage collector's pauses during the incremental run (<see cref="GC.GetTotalPauseDuration"/>): its main noise.</summary>
     public TimeSpan IncrementalGcPause { get; init; }
 
+    /// <summary>
+    /// Bytes the whole process allocated during the incremental run (<see cref="GC.GetTotalAllocatedBytes(bool)"/>, precise, before
+    /// and after). Reported, not a budget.
+    /// </summary>
+    public long IncrementalAllocatedBytes { get; init; }
+
+    /// <summary>
+    /// The live managed heap after the incremental run, measured after a forced full compacting collection (the heap size of that
+    /// collection, from <see cref="GC.GetGCMemoryInfo(GCKind)"/>), with the model store still open. Reported, not a budget.
+    /// </summary>
+    public long IncrementalLiveHeapBytes { get; init; }
+
+    /// <summary>
+    /// The live managed heap after the next edit (the first one reverted) is rescanned by the same store, before any run resolves it
+    /// (a forced full compacting collection, as <see cref="IncrementalLiveHeapBytes"/>): what a run's resolve starts from. Reported,
+    /// not a budget.
+    /// </summary>
+    public long NextEditLiveHeapBytes { get; init; }
+
     /// <summary>The garbage collector's pauses during the <see cref="IncrementalFreshStore"/> run.</summary>
     public TimeSpan IncrementalFreshStoreGcPause { get; init; }
 

@@ -143,6 +143,19 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
   difference and falls back to runes only when a surrogate is there; printable ASCII other than `"` and `\` is written without a
   JSON writer (the relaxed encoder writes it unchanged); a loaded pack's entries are gathered in a hash map and turned into the
   sorted map in one step. The file bytes are unchanged (`ManifestStoreTests`).
+- Manifests in memory (change-driven edits, step 1, 2026-11-28): the store keeps per pack the entries it last read or wrote, with
+  the manifest's and the cache copy's stats and whether the manifest is known to be the canonical form of those entries. A load
+  while both stats hold returns the kept entries (and the same `ManifestSet` when no pack changed) without reading or parsing; a
+  changed stat reads the file again. A save compares the writer's entries with the kept ones: equal entries over a canonical file
+  mean equal bytes, so nothing is formatted or written; otherwise the kept map is patched with the added, changed and removed paths
+  and the file is formatted and written without reading it back. Only a save without a trusted kept state reads the file to
+  compare, as before (a hand edit that is not canonical is still rewritten). `Format` writes straight into one UTF-8 array of
+  the exact size (no text builder, no string per line or value); the bytes are unchanged (`ManifestStoreTests`). While a cache
+  copy of an earlier release exists, a load always reads and merges both files and a save never trusts what it kept. Duplicate
+  paths are refused before the patch (it counts on distinct paths).
+- Known limit (stat-only trust): a kept manifest is trusted while its length and last write time are unchanged, as the loader
+  trusts model files. A write by another process that keeps the length and lands in the same time stamp tick as the store's own
+  read or write is not seen until the stat next changes; the contents are not re-checked.
 
 ## Deviations and notes
 

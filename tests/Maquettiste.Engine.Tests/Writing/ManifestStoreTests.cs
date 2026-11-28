@@ -167,6 +167,57 @@ public sealed class ManifestStoreTests
     }
 
     [Fact]
+    public async Task Loads_reuse_what_the_store_read_or_wrote_until_the_file_changes_behind_it()
+    {
+        using var f = new WritingFixture();
+        var store = f.Manifests;
+        ManifestEntry a = new("db/a.sql", H1, "u:a"), b = new("db/b.sql", H2, "u:b"), c = new("db/c.sql", H3, "u:c");
+        await store.SavePackAsync("p", [a, b], Ct);
+
+        // What the store wrote is what it loads: no file is read, and an unchanged load is the same set.
+        var first = await store.LoadAsync([], Ct);
+        Assert.Same(first, await store.LoadAsync([], Ct));
+        Assert.Equal([a, b], first.Entries("p"));
+        Assert.Equal(0, store.FileReads);
+
+        // A save of changed entries patches what the store keeps and writes exactly the canonical bytes; the next load reads nothing.
+        var changed = b with { Hash = H3 };
+        await store.SavePackAsync("p", [a, changed, c], Ct);
+        Assert.Equal(store.Format("p", [a, changed, c]), File.ReadAllBytes(store.FileOf("p")));
+        Assert.Equal([a, changed, c], (await store.LoadAsync([], Ct)).Entries("p"));
+        await store.SavePackAsync("p", [a, c], Ct);
+        Assert.Equal(store.Format("p", [a, c]), File.ReadAllBytes(store.FileOf("p")));
+        Assert.Equal([a, c], (await store.LoadAsync(["p"], Ct)).Entries("p"));
+        Assert.Equal(0, store.FileReads);
+
+        // An unchanged save neither formats nor writes: the file keeps its time stamp.
+        var file = store.FileOf("p");
+        var past = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(file, past);
+        await store.LoadAsync([], Ct); // the stat moved: read once
+        Assert.Equal(1, store.FileReads);
+        await store.SavePackAsync("p", [a, c], Ct);
+        await store.SavePackAsync("p", [a, c], Ct);
+        Assert.Equal(past, File.GetLastWriteTimeUtc(file));
+
+        // Another process rewrites the manifest (a new stat): the next load reads it.
+        File.WriteAllBytes(file, store.Format("p", [b]));
+        File.SetLastWriteTimeUtc(file, past.AddHours(1));
+        Assert.Equal([b], (await store.LoadAsync([], Ct)).Entries("p"));
+        Assert.Equal(2, store.FileReads);
+        Assert.Equal([b], (await store.LoadAsync([], Ct)).Entries("p"));
+        Assert.Equal(2, store.FileReads);
+
+        // A hand edit that is not canonical is rewritten by the next save of the same entries, as before.
+        var text = Encoding.UTF8.GetString(store.Format("p", [b])).Replace("\n  ]", ",\n  ]", StringComparison.Ordinal);
+        File.WriteAllText(file, text.Replace("    [", "    [ ", StringComparison.Ordinal));
+        File.SetLastWriteTimeUtc(file, past.AddHours(2));
+        Assert.Equal([b], (await store.LoadAsync([], Ct)).Entries("p"));
+        await store.SavePackAsync("p", [b], Ct);
+        Assert.Equal(store.Format("p", [b]), File.ReadAllBytes(file));
+    }
+
+    [Fact]
     public async Task Load_salvages_a_manifest_with_merge_conflict_markers()
     {
         using var f = new WritingFixture();

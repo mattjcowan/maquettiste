@@ -206,7 +206,7 @@ public sealed partial class GenerationService
     /// with no time limit: the stamps see what a command-line run in the same repository writes that a preview reads. Concurrent
     /// requests with the same key wait for one preparation (single flight), which runs without any caller's token.
     /// </summary>
-    private readonly ConcurrentDictionary<string, (string Key, Task<PreviewSession> Session)> _sessions = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (string Key, ModelSnapshot Snapshot, Task<PreviewSession> Session)> _sessions = new(StringComparer.Ordinal);
 
     private readonly Lock _sessionGate = new();
     private const int MaxSessions = 8;
@@ -319,11 +319,32 @@ public sealed partial class GenerationService
                 if (_sessions.Count >= MaxSessions && !_sessions.ContainsKey(pack))
                     _sessions.Clear();
                 task = Task.Run(() => BuildSessionAsync(pack, snapshot), CancellationToken.None);
-                _sessions[pack] = (key, task);
+                // Kept only for the snapshot the store serves: a session prepared for an older one (the store published meanwhile)
+                // serves its callers but is not stored, so it neither evicts the current one nor keeps an old model alive.
+                if (ReferenceEquals(snapshot, _store.Current))
+                    _sessions[pack] = (key, snapshot, task);
             }
         }
 
         return await task.WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Drops the prepared preview sessions of snapshots other than <paramref name="current"/> (the store published a new one): their key
+    /// can no longer match, and each holds a whole resolved model. A preview already holding one, or waiting on one still being
+    /// prepared, keeps it; only the cache lets go.
+    /// </summary>
+    /// <param name="current">The snapshot the store now serves.</param>
+    private void DropSessionsOfOtherSnapshots(ModelSnapshot current)
+    {
+        lock (_sessionGate)
+        {
+            foreach (var (pack, cached) in _sessions)
+            {
+                if (!ReferenceEquals(cached.Snapshot, current))
+                    _sessions.TryRemove(new KeyValuePair<string, (string, ModelSnapshot, Task<PreviewSession>)>(pack, cached));
+            }
+        }
     }
 
     /// <summary>How many sessions have been prepared (tests: concurrent requests share one).</summary>

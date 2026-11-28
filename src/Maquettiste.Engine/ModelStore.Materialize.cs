@@ -86,7 +86,7 @@ public sealed partial class ModelStore
         IReadOnlyList<SnapshotAlias>? aliases = null;
         if (request.Operation == "materialize-tables" && snapshot.Get<Database>(request.Database) is { } database)
             aliases = (await _services.Snapshots.LoadAsync(database.Name, ct).ConfigureAwait(false))?.Aliases;
-        var materializer = new Materializer(snapshot, _services.Resolver, _options.EffectiveIdGenerator, aliases);
+        var materializer = new Materializer(snapshot, new SharingResolver(this), _options.EffectiveIdGenerator, aliases);
         return request.Operation switch
         {
             "materialize-tables" => await materializer.TablesAsync(request.Database, request.Ids, request.Schema, request.Hierarchy, request.ListStorage, ct).ConfigureAwait(false),
@@ -199,7 +199,7 @@ public sealed partial class ModelStore
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         if (snapshot.Get<Database>(databaseId) is not { } db)
             return null;
-        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
+        var resolved = await ResolvedOrOwnAsync(snapshot, ct).ConfigureAwait(false);
         var rdb = resolved.Databases.FirstOrDefault(d => d.Id == db.Id);
         var entities = new List<MaterializeEntityStatus>();
         foreach (var entity in snapshot.All<Entity>().OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Id, StringComparer.Ordinal))

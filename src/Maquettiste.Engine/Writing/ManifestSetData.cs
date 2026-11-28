@@ -57,6 +57,9 @@ internal sealed class ManifestSetData
     /// <summary>Packs with any entry, ordinal.</summary>
     public IReadOnlyCollection<string> Packs => _packNames;
 
+    /// <summary>Every pack's data as loaded (the manifest store compares a new load with it).</summary>
+    public ImmutableSortedDictionary<string, PackManifestData> PackData => _packs;
+
     /// <summary>Finds a path's entry.</summary>
     /// <param name="path">The repo-relative path.</param>
     /// <param name="entry">The entry.</param>
