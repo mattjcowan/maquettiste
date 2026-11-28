@@ -834,7 +834,10 @@ public sealed partial class ModelStore : IAsyncDisposable
     private async Task<ChangeSet> ReloadAsync(IReadOnlyCollection<string>? paths, bool verify, ChangeSource source, CancellationToken ct)
     {
         var result = await _services.Loader.LoadAsync(new LoadRequest(_current, paths, verify), null, ct).ConfigureAwait(false);
+        var previous = _current;
         _current = result.Snapshot;
+        if (!ReferenceEquals(previous, result.Snapshot))
+            ReleaseResultsOfOtherSnapshots(result.Snapshot);
         return result.Changes with { Source = source };
     }
 

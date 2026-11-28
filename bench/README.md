@@ -44,7 +44,12 @@ not keep the package-local shape. `maquettiste bench` accepts `--entities 1` and
 3. **Cold, pipelined** on `pipelined` (fresh repo and cache): the end-to-end total (`cold-total`).
 4. **Incremental**: `SyntheticModelGenerator.EditOneEntityAsync` rewrites one entity file (its first non-key attribute gets a
    description and flips `required`), then the same `GenerationService` and `ModelStore` run again (the editor and watch
-   scenario: the store rescans by stat).
+   scenario: the store rescans by stat). The report also records the bytes the process allocated during the run
+   (`incremental.allocatedMiB`, from `GC.GetTotalAllocatedBytes(true)` before and after) and the live heap after it
+   (`incremental.liveHeapMiB`, the heap size after a forced compacting full collection, the store still open), beside the time
+   on the text line "Incremental", and, after the check run, the live heap once the same store has rescanned the next edit (the
+   first one reverted) but before anything resolves it (`incremental.liveHeapAtNextEditMiB`): what the next run's resolve starts
+   from. All three are reported, not budgets; the regression gate reads only the budgets.
 5. **Check** (`GenerationMode.Check`): must report no drift.
 6. **Incremental, new store** (reported, not a budget): `SyntheticModelGenerator.RevertEditAsync` writes the entity back as
    generated, and a new `ModelStore` and `GenerationService` over the same repo and cache run once: a new host process's first

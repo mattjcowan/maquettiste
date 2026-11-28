@@ -42,6 +42,15 @@ public sealed partial class GenerationService
         _store = store;
         _options = options;
         _services = services;
+        // Weakly: the store must not keep a service (and its preview sessions) alive.
+        var self = new WeakReference<GenerationService>(this);
+        store.OnSnapshotPublished(snapshot =>
+        {
+            if (!self.TryGetTarget(out var service))
+                return false;
+            service.DropSessionsOfOtherSnapshots(snapshot);
+            return true;
+        });
     }
 
     /// <summary>The services (the job queue reaches the job store through them).</summary>
@@ -292,12 +301,8 @@ public sealed partial class GenerationService
     {
         ArgumentNullException.ThrowIfNull(databaseId);
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
-        if (report.HasErrors)
-            return new DatabaseViewResult(null, report.Diagnostics);
-        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
-        var diagnostics = Outcomes.Sort(report.Diagnostics.Concat(resolved.Diagnostics));
-        if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
+        var (resolved, diagnostics) = await PreviewModelAsync(snapshot, ct).ConfigureAwait(false);
+        if (resolved is null)
             return new DatabaseViewResult(null, diagnostics);
         var database = resolved.Databases.FirstOrDefault(d => string.Equals(d.Id, databaseId, StringComparison.Ordinal));
         if (database is null)
@@ -323,12 +328,8 @@ public sealed partial class GenerationService
         if (dialect is not null && !Rendering.SqlDialects.TryParse(dialect, out _))
             throw new ArgumentException($"'{dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
-        if (report.HasErrors)
-            return new QuerySqlResult(null, report.Diagnostics);
-        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
-        var diagnostics = Outcomes.Sort(report.Diagnostics.Concat(resolved.Diagnostics));
-        if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
+        var (resolved, diagnostics) = await PreviewModelAsync(snapshot, ct).ConfigureAwait(false);
+        if (resolved is null)
             return new QuerySqlResult(null, diagnostics);
         var query = resolved.Databases.SelectMany(d => d.Queries).FirstOrDefault(q => string.Equals(q.Id, queryId, StringComparison.Ordinal));
         if (query is null)
@@ -357,12 +358,8 @@ public sealed partial class GenerationService
         if (dialect is not null && !Rendering.SqlDialects.TryParse(dialect, out _))
             throw new ArgumentException($"'{dialect}' is not a dialect (postgresql, sqlserver, mysql, sqlite, oracle).", nameof(dialect));
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
-        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, ct).ConfigureAwait(false);
-        if (report.HasErrors)
-            return new BindingSqlResult(null, report.Diagnostics);
-        var resolved = await _services.Resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
-        var diagnostics = Outcomes.Sort(report.Diagnostics.Concat(resolved.Diagnostics));
-        if (resolved.Diagnostics.Any(Outcomes.IsInvalid))
+        var (resolved, diagnostics) = await PreviewModelAsync(snapshot, ct).ConfigureAwait(false);
+        if (resolved is null)
             return new BindingSqlResult(null, diagnostics);
         var binding = resolved.Entities.FirstOrDefault(e => string.Equals(e.Id, entityId, StringComparison.Ordinal))?.Bindings.Values
             .FirstOrDefault(b => string.Equals(b.Id, bindingId, StringComparison.Ordinal));
@@ -382,6 +379,21 @@ public sealed partial class GenerationService
     {
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         return await PackCatalog.ListAsync(_options, _services.Schemas, _services.Packs, snapshot, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The snapshot's resolved model for a read-only view (the database view, query and binding SQL), from the store's shared
+    /// validation and resolution (<see cref="ModelStore.ResolvedAsync"/>, once per snapshot, with <see cref="ValidationScope.Previews"/>):
+    /// with any validation error, no model and the validation's diagnostics; with a resolution error, no model and the validation's and
+    /// resolution's diagnostics, sorted; else the model and those diagnostics.
+    /// </summary>
+    private async Task<(Resolution.ResolvedModel? Model, IReadOnlyList<Diagnostic> Diagnostics)> PreviewModelAsync(ModelSnapshot snapshot, CancellationToken ct)
+    {
+        var shared = await _store.ResolvedAsync(snapshot, ct).ConfigureAwait(false);
+        if (shared.Report.HasErrors || shared.Model is not { } resolved)
+            return (null, shared.Report.Diagnostics);
+        var diagnostics = Outcomes.Sort(shared.Report.Diagnostics.Concat(resolved.Diagnostics));
+        return (resolved.Diagnostics.Any(Outcomes.IsInvalid) ? null : resolved, diagnostics);
     }
 
     private string RepoRoot => Path.GetFullPath(_options.RepoRoot);

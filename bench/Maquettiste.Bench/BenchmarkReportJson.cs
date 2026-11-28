@@ -76,6 +76,9 @@ public static class BenchmarkReportJson
             w.WriteNumber("unitsSkipped", report.IncrementalUnitsSkipped);
             w.WriteNumber("filesWritten", report.IncrementalFilesWritten);
             w.WriteNumber("gcPauseSeconds", Seconds(report.IncrementalGcPause));
+            w.WriteNumber("allocatedMiB", MiB(report.IncrementalAllocatedBytes));
+            w.WriteNumber("liveHeapMiB", MiB(report.IncrementalLiveHeapBytes));
+            w.WriteNumber("liveHeapAtNextEditMiB", MiB(report.NextEditLiveHeapBytes));
             WriteStages(w, "stages", report.IncrementalStages);
             w.WriteStartObject("freshStore");
             w.WriteNumber("totalSeconds", Seconds(report.IncrementalFreshStore));
@@ -194,7 +197,7 @@ public static class BenchmarkReportJson
         foreach (var b in report.Budgets)
             Line($"  {b.Name,-22} {(b.AtLeast ? ">=" : "<="),2} {b.Limit,9:0.###} {b.Unit,-5}  actual {b.Actual,10:0.###}  {(b.Pass ? "pass" : "FAIL")}");
         Line($"");
-        Line($"Incremental: {report.Incremental.TotalSeconds:F3} s, {report.IncrementalUnitsRendered:N0} units rendered, {report.IncrementalUnitsSkipped:N0} skipped, {report.IncrementalFilesWritten:N0} files written; GC pauses {report.IncrementalGcPause.TotalSeconds:F3} s");
+        Line($"Incremental: {report.Incremental.TotalSeconds:F3} s, {report.IncrementalUnitsRendered:N0} units rendered, {report.IncrementalUnitsSkipped:N0} skipped, {report.IncrementalFilesWritten:N0} files written; GC pauses {report.IncrementalGcPause.TotalSeconds:F3} s; allocated {MiB(report.IncrementalAllocatedBytes):F1} MiB, live heap after {MiB(report.IncrementalLiveHeapBytes):F1} MiB, at the next edit's rescan {MiB(report.NextEditLiveHeapBytes):F1} MiB");
         Line($"Incremental, new store (not a budget): {report.IncrementalFreshStore.TotalSeconds:F3} s, {report.IncrementalFreshStoreUnitsRendered:N0} units rendered; GC pauses {report.IncrementalFreshStoreGcPause.TotalSeconds:F3} s");
         if (report.OneShotCommand is not null)
             Line($"One-shot process (not a budget): {report.OneShotEdit.TotalSeconds:F3} s after the edit, {report.OneShotNoOp.TotalSeconds:F3} s with nothing changed ({report.OneShotCommand})");
@@ -229,6 +232,8 @@ public static class BenchmarkReportJson
     };
 
     private static double Seconds(TimeSpan span) => Math.Round(span.TotalSeconds, 3);
+
+    private static double MiB(long bytes) => Math.Round(bytes / 1048576.0, 1);
 
     private static void WriteStrings(Utf8JsonWriter w, string name, IReadOnlyList<string> values)
     {

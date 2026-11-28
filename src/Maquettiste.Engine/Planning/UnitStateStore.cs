@@ -23,9 +23,13 @@ namespace Maquettiste.Engine.Planning;
 /// keeps the file small and the decoded states share one string per distinct key.
 /// </summary>
 /// <remarks>
-/// The store remembers, per pack, the bytes it last read or wrote with their states: a load that reads the same bytes again returns
-/// those states without decoding (a watch or editor host runs one store for many runs). Only byte-identical content is reused, so an
-/// edited, replaced or foreign file is always decoded. The states handed out are read-only and shared between loads.
+/// The store remembers, per pack, the bytes it last read or wrote with their states and the file's stat then (length and last write
+/// time): a load while the file keeps that stat returns those states without reading the file (a watch or editor host runs one store
+/// for many runs, and each run loads the states twice, beside resolve and in the skip check). A file whose stat changed is read again,
+/// and decoded unless it holds the same bytes; so an edited, replaced or foreign file is always decoded. The loader trusts model files'
+/// stats the same way. The states handed out are read-only and shared between loads. A save writes the file as two parts, the key
+/// table and the records, and keeps both as they are: records whose keys keep their indexes are copied as bytes (see
+/// <see cref="Encode(IReadOnlyCollection{UnitState}, List{UnitState}, int)"/>), and nothing is concatenated or read back.
 /// </remarks>
 /// <param name="options">The engine options.</param>
 /// <param name="paths">The engine-write guard (<see cref="WriteTarget.Cache"/>).</param>
@@ -37,6 +41,10 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     private readonly EngineFiles _files = new(paths, WriteTarget.Cache, options);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Decoded> _last = new(StringComparer.Ordinal);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _reset = new(StringComparer.Ordinal);
+    private int _fileReads;
+
+    /// <summary>How many state files this store has read from disk (tests: an unchanged file is not read again).</summary>
+    internal int FileReads => Volatile.Read(ref _fileReads);
 
     /// <inheritdoc/>
     public bool WasReset(string pack) => _reset.TryGetValue(pack, out var reset) && reset;
@@ -50,16 +58,25 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         ArgumentNullException.ThrowIfNull(pack);
         var file = FileOf(pack);
         byte[] bytes;
+        Stamp stamp;
         try
         {
-            if (!File.Exists(file))
+            stamp = Stamp.Of(file);
+            if (!stamp.Exists)
             {
                 // A state file of the previous format and no file of this one: every unit renders, and says why.
                 _reset[pack] = LegacyFilesOf(pack).Any(File.Exists);
                 return FrozenDictionary<string, UnitState>.Empty;
             }
 
+            // The file this store last read or wrote, with the stat it had then: nothing to read.
+            if (_last.TryGetValue(file, out var kept) && kept.Stamp == stamp)
+                return kept.States;
             bytes = await File.ReadAllBytesAsync(file, ct).ConfigureAwait(false);
+            Interlocked.Increment(ref _fileReads);
+            // Kept with its stat only when the stat did not move during the read.
+            if (Stamp.Of(file) != stamp)
+                stamp = default;
         }
         catch (IOException)
         {
@@ -70,8 +87,12 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             return FrozenDictionary<string, UnitState>.Empty;
         }
 
-        if (_last.TryGetValue(file, out var last) && last.Bytes.AsSpan().SequenceEqual(bytes))
+        if (_last.TryGetValue(file, out var last) && last.SameBytes(bytes, default))
+        {
+            _last[file] = last with { Stamp = stamp };
             return last.States;
+        }
+
         var states = Decode(bytes);
         _reset[pack] = states is null;
         if (states is null)
@@ -81,7 +102,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         }
 
         var shared = new System.Collections.ObjectModel.ReadOnlyDictionary<string, UnitState>(states);
-        _last[file] = new Decoded(bytes, shared);
+        _last[file] = new Decoded(bytes, default, shared, stamp);
         return shared;
     }
 
@@ -105,20 +126,21 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         }
 
         var indexed = new List<UnitState>(states.Count);
-        var bytes = Encode(states, indexed, previous?.Bytes.Length ?? 0);
+        var (head, body) = EncodeParts(states, indexed, previous?.Length ?? 0);
 
-        // The same bytes as the file this store last read or wrote, still of that length on disk (a run that skipped every unit of
+        // The same bytes as the file this store last read or wrote, still with the stat it had then (a run that skipped every unit of
         // the pack): the file is left alone, as the manifest store leaves an unchanged manifest, so its time stamp keeps saying
         // "unchanged" (the last-run record compares it).
-        if (previous is null || !previous.Bytes.AsSpan().SequenceEqual(bytes) || !SameLength(file, bytes.Length))
-            await _files.WriteAsync(file, bytes, ct).ConfigureAwait(false);
+        // An empty kept stat (the file moved while it was read) never counts as unchanged, nor does a file that is gone.
+        if (previous is null || !previous.Stamp.Exists || !previous.SameBytes(head.Span, body.Span) || previous.Stamp != Stamp.Of(file))
+            await _files.WriteAsync(file, head, body, ct).ConfigureAwait(false);
 
         // Remembered as a load of these bytes decodes them (read keys as indexes into the written key table), so the next run
-        // neither decodes the file nor hashes every key again when it saves the states of the units it skipped.
+        // neither reads nor decodes the file, nor hashes every key again when it saves the states of the units it skipped.
         var byKey = new Dictionary<string, UnitState>(indexed.Count, StringComparer.Ordinal);
         foreach (var state in indexed)
             byKey[state.Key] = state;
-        _last[file] = new Decoded(bytes, new System.Collections.ObjectModel.ReadOnlyDictionary<string, UnitState>(byKey));
+        _last[file] = new Decoded(head, body, new System.Collections.ObjectModel.ReadOnlyDictionary<string, UnitState>(byKey), Stamp.Of(file));
     }
 
     /// <summary>
@@ -130,10 +152,14 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     internal IReadOnlyDictionary<string, UnitState>? Remembered(string pack) =>
         _last.TryGetValue(FileOf(pack), out var last) ? last.States : null;
 
-    private static bool SameLength(string file, int length)
+    /// <summary>A file's stat: whether it exists, its length and its last write time.</summary>
+    private readonly record struct Stamp(bool Exists, long Length, long Ticks)
     {
-        var info = new FileInfo(file);
-        return info.Exists && info.Length == length;
+        public static Stamp Of(string file)
+        {
+            var info = new FileInfo(file);
+            return info.Exists ? new Stamp(true, info.Length, info.LastWriteTimeUtc.Ticks) : default;
+        }
     }
 
     /// <summary>The state file of a pack. Pack names are kebab keys; any other name is replaced by a hash so it cannot form a path.</summary>
@@ -167,15 +193,36 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     /// <returns>The bytes.</returns>
     internal static byte[] Encode(IReadOnlyCollection<UnitState> states) => Encode(states, null);
 
-    /// <summary>Encodes states; with <paramref name="indexed"/>, also gives them back as a load of the bytes would (key order, indexed read keys).</summary>
+    /// <summary>
+    /// Encodes states (<see cref="EncodeParts"/>) into one array: the file's bytes.
+    /// </summary>
+    /// <param name="states">The states.</param>
+    /// <param name="indexed">Receives the states as a load of the bytes would give them, or <see langword="null"/>.</param>
+    /// <param name="sizeHint">The size of the pack's previous file, or 0.</param>
+    /// <returns>The bytes.</returns>
+    internal static byte[] Encode(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed, int sizeHint = 0)
+    {
+        var (head, body) = EncodeParts(states, indexed, sizeHint);
+        var bytes = new byte[head.Length + body.Length];
+        head.Span.CopyTo(bytes);
+        body.Span.CopyTo(bytes.AsSpan(head.Length));
+        return bytes;
+    }
+
+    /// <summary>
+    /// Encodes states as the file's two parts, the head (magic, format, engine version and key table) and the body (the records), which
+    /// the file holds one after the other; with <paramref name="indexed"/>, also gives them back as a load of the bytes would (key order,
+    /// indexed read keys), their records and key hashes pointing into the body, which is never copied.
+    /// </summary>
     /// <param name="states">The states.</param>
     /// <param name="indexed">Receives the states with <see cref="TableKeys"/> read keys, or <see langword="null"/>.</param>
     /// <param name="sizeHint">
     /// The size of the pack's previous file, or 0: the body starts that large, so a run that saves about what it read grows no buffer (each
     /// doubling copied the whole body, about 150 MB a run over a 100,000-unit model's packs).
     /// </param>
-    /// <returns>The bytes.</returns>
-    internal static byte[] Encode(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed, int sizeHint = 0)
+    /// <returns>The head and the body.</returns>
+    internal static (ReadOnlyMemory<byte> Head, ReadOnlyMemory<byte> Body) EncodeParts(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed,
+        int sizeHint = 0)
     {
         var ordered = SortedByKey(states);
         var table = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -360,9 +407,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         head.WriteInt32(strings.Count);
         foreach (var value in strings)
             head.WriteString(value);
-        var bytes = new byte[head.Length + body.Length];
-        head.Written.CopyTo(bytes);
-        body.Written.CopyTo(bytes.AsSpan(head.Length));
+        var records = body.Buffer;
         if (indexed is not null)
         {
             var keyTable = strings.ToArray();
@@ -370,12 +415,12 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             {
                 var state = ordered[s];
                 var (start, length) = ranges![s];
-                var keys = new TableKeys(keyTable, stateIndexes![s], bytes, head.Length + start, length, partIndexes![s]) { NameIndexes = nameIndexes![s] };
+                var keys = new TableKeys(keyTable, stateIndexes![s], records, start, length, partIndexes![s]) { NameIndexes = nameIndexes![s] };
                 var copy = new UnitState(state.Key, state.InputHash, keys, state.Outputs)
                 {
                     Names = state.Names,
                     Exports = state.Exports,
-                    KeyHashes = hashStarts![s] < 0 ? default : new ReadOnlyMemory<byte>(bytes, head.Length + hashStarts[s], keys.Count * KeyHashes.Size),
+                    KeyHashes = hashStarts![s] < 0 ? default : new ReadOnlyMemory<byte>(records, hashStarts[s], keys.Count * KeyHashes.Size),
                     StaticParts = partIndexes[s] < 0 ? null : keyTable[partIndexes[s]],
                 };
                 keys.Owner = copy;
@@ -383,7 +428,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             }
         }
 
-        return bytes;
+        return (new ReadOnlyMemory<byte>(head.Buffer, 0, head.Length), new ReadOnlyMemory<byte>(records, 0, body.Length));
     }
 
     /// <summary>Decodes states, or returns <see langword="null"/> for anything but a complete file of this format and engine version.</summary>
@@ -553,6 +598,9 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
 
         public ReadOnlySpan<byte> Written => _buffer.AsSpan(0, Length);
 
+        /// <summary>The buffer itself (its first <see cref="Length"/> bytes are written); the writer must not be used after.</summary>
+        public byte[] Buffer => _buffer;
+
         public void WriteBytes(ReadOnlySpan<byte> bytes)
         {
             bytes.CopyTo(Reserve(bytes.Length));
@@ -612,8 +660,40 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         }
     }
 
-    /// <summary>A file's bytes and what they decode to.</summary>
-    private sealed record Decoded(byte[] Bytes, IReadOnlyDictionary<string, UnitState> States);
+    /// <summary>A file's bytes (as two parts, one after the other; the second is empty for a file read whole), what they decode to, and the file's stat then.</summary>
+    /// <param name="Head">The first part.</param>
+    /// <param name="Body">The second part.</param>
+    /// <param name="States">The states.</param>
+    /// <param name="Stamp">The file's stat when it was read or written, or the default when it moved meanwhile (the file is then read again).</param>
+    private sealed record Decoded(ReadOnlyMemory<byte> Head, ReadOnlyMemory<byte> Body, IReadOnlyDictionary<string, UnitState> States, Stamp Stamp)
+    {
+        /// <summary>The file's length.</summary>
+        public int Length => Head.Length + Body.Length;
+
+        /// <summary>Whether these bytes equal <paramref name="first"/> followed by <paramref name="second"/>.</summary>
+        public bool SameBytes(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second)
+        {
+            if (first.Length + second.Length != Length)
+                return false;
+            var head = Head.Span;
+            var body = Body.Span;
+
+            // Compare the two concatenations piece by piece, without joining either.
+            int i = 0, j = 0;
+            while (i < Length)
+            {
+                var mine = i < head.Length ? head[i..] : body[(i - head.Length)..];
+                var theirs = j < first.Length ? first[j..] : second[(j - first.Length)..];
+                var n = Math.Min(mine.Length, theirs.Length);
+                if (!mine[..n].SequenceEqual(theirs[..n]))
+                    return false;
+                i += n;
+                j += n;
+            }
+
+            return true;
+        }
+    }
 
     /// <summary>
     /// The read keys of a decoded state: indexes into the file's key table, which the decoded states share (smaller than one string

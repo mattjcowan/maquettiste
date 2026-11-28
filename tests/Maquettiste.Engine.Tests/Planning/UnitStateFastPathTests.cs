@@ -114,6 +114,48 @@ public sealed class UnitStateFastPathTests
         Assert.True(hasher.InputHashEquals("static", repeated, hasher.InputHash("static", ["e:a"])));
     }
 
+    [Fact]
+    public async Task Loads_reuse_the_kept_states_until_the_file_changes_behind_the_store()
+    {
+        using var repo = new TempRepo();
+        var store = new UnitStateStore(repo.Options, new Maquettiste.Engine.Writing.OutputPathPolicy(repo.Options, null));
+        var random = new Random(7);
+        var keys = Enumerable.Range(0, 20).Select(i => "e:K" + i.ToString("D2", System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        var states = Enumerable.Range(0, 30).Select(i => State(random, keys, "u" + i.ToString("D2", System.Globalization.CultureInfo.InvariantCulture))).ToList();
+        await store.SaveAsync("p", states, Ct);
+        var file = store.FileOf("p");
+        Assert.Equal(UnitStateStore.Encode(states), await File.ReadAllBytesAsync(file, Ct));
+
+        // A run loads the states twice (beside resolve and in the skip check): neither reads the file the store wrote.
+        var loaded = await store.LoadAsync("p", Ct);
+        Assert.Same(loaded, await store.LoadAsync("p", Ct));
+        Assert.Equal(0, store.FileReads);
+
+        // A save with one changed unit writes a fresh encoding's bytes, and the next load still reads nothing.
+        var next = loaded.Values.OrderBy(s => s.Key, StringComparer.Ordinal).ToList();
+        next[3] = State(random, [.. keys, "e:NEW"], next[3].Key);
+        await store.SaveAsync("p", next, Ct);
+        var expected = UnitStateStore.Encode([.. next.Select(s => s with { ReadKeys = [.. s.ReadKeys] })]);
+        Assert.Equal(expected, await File.ReadAllBytesAsync(file, Ct));
+        Assert.Equal(next[3].InputHash, (await store.LoadAsync("p", Ct))[next[3].Key].InputHash);
+        Assert.Equal(0, store.FileReads);
+
+        // Another writer replaces the file (a new stat): the store reads and decodes it.
+        UnitState[] other = [new UnitState("p/a", "h2", ["e:1"], [new UnitOutput("out/a.txt", "abc", 3, 42)])];
+        await File.WriteAllBytesAsync(file, UnitStateStore.Encode(other), Ct);
+        File.SetLastWriteTimeUtc(file, new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        Assert.Equal("h2", Assert.Single(await store.LoadAsync("p", Ct)).Value.InputHash);
+        Assert.Equal(1, store.FileReads);
+        await store.LoadAsync("p", Ct);
+        Assert.Equal(1, store.FileReads);
+
+        // Touched without a change of bytes: read once, not decoded again (the same states come back).
+        var before = await store.LoadAsync("p", Ct);
+        File.SetLastWriteTimeUtc(file, new DateTime(2021, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        Assert.Same(before, await store.LoadAsync("p", Ct));
+        Assert.Equal(2, store.FileReads);
+    }
+
     private static UnitState State(Random random, IReadOnlyList<string> keys, string key)
     {
         var count = 1 + random.Next(12);
