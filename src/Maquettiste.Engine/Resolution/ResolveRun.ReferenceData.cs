@@ -161,7 +161,7 @@ internal sealed partial class ResolveRun
 
         ResolveReferenceBindings(tablesByKey);
 
-        var endOwners = new Dictionary<string, (REnd End, RRelation Relation)>(StringComparer.Ordinal);
+        var endOwners = new Dictionary<string, (REnd End, RRelation Relation)>(_relations.Count * 2, StringComparer.Ordinal);
         foreach (var relation in _relations.Values)
         {
             foreach (var end in relation.Ends)

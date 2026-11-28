@@ -223,18 +223,18 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// Points a column at the database type its file's <c>nativeType</c> names and takes the type's native name, unless the type has
-    /// none for the dialect (a composite on SQLite), when the column keeps <paramref name="computed"/>.
+    /// none for the dialect (a composite on SQLite), when the column keeps the native type its type maps to (<see cref="ColumnNativeType"/>).
     /// </summary>
-    private void ApplyNativeType(TableBuild t, RColumn c, string? nativeType, Func<string> computed)
+    private void ApplyNativeType(TableBuild t, RColumn c, string? nativeType)
     {
         if (DbTypeOf(nativeType, t) is { } type)
         {
             c.DbType = type;
-            c.NativeType = type.NativeName ?? computed();
+            c.NativeType = type.NativeName ?? ColumnNativeType(c);
             return;
         }
 
-        c.NativeType = nativeType ?? computed();
+        c.NativeType = nativeType ?? ColumnNativeType(c);
     }
 
     /// <summary>Fills each routine's and SQL object's <c>dependsOn</c> once every object of the database exists, and freezes their dependencies.</summary>

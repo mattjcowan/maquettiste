@@ -77,6 +77,25 @@ internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSand
 
     private sealed record InflectorEntry(Model.InflectionSettings? Settings, Inflector Inflector);
 
+    /// <summary>What the last whole-model resolution leaves the next: its key strings and how many objects it registered.</summary>
+    private RunCarry? _carry;
+
+    /// <summary>
+    /// The key cache and size hint for the next whole-model run. The <c>e:</c> and <c>r:</c> strings are pure functions of ids, so a run reuses
+    /// the previous run's (an edit run resolves the same ids again); like the inflector's memo, the cache is carried over only while it holds
+    /// at most <see cref="MaxCarriedWords"/> keys for the model. The registry is sized for the previous run's objects plus an eighth.
+    /// </summary>
+    private (DependencyKeyCache Keys, int? Expected) CarryFor(int documents)
+    {
+        var last = Volatile.Read(ref _carry);
+        if (last is null)
+            return (new DependencyKeyCache(), null);
+        var keys = last.Keys.Count <= MaxCarriedWords(documents) ? last.Keys : new DependencyKeyCache();
+        return (keys, Math.Max(1024, last.Registered + (last.Registered / 8)));
+    }
+
+    private sealed record RunCarry(DependencyKeyCache Keys, int Registered);
+
     /// <inheritdoc/>
     public Task<ResolvedModel> ResolveAsync(ModelSnapshot model, IProgress<ProgressUpdate>? progress, CancellationToken ct)
     {
@@ -84,10 +103,16 @@ internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSand
         ct.ThrowIfCancellationRequested();
         var host = Calculations.CreateHost(model);
         return Task.Run(() => CalculationHost.Build(host, () =>
-            new ResolveRun(model, progress, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count))
+        {
+            var (keys, expected) = CarryFor(model.Documents.Count);
+            var run = new ResolveRun(model, progress, ct, Options.EffectiveParallelism, InflectorFor(model.Settings.Inflection, model.Documents.Count), expected)
             {
-                Scripts = Scripts, SeedRows = SeedRows, Calculations = host,
-            }.Run()), ct);
+                Scripts = Scripts, SeedRows = SeedRows, Calculations = host, Keys = keys,
+            };
+            var resolved = run.Run();
+            Volatile.Write(ref _carry, new RunCarry(keys, run.Registered));
+            return resolved;
+        }), ct);
     }
 
     /// <summary>Resolves the conceptual layer and one database only (<see cref="ResolveRun.RunOneDatabase"/>).</summary>

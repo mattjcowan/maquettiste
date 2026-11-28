@@ -52,9 +52,9 @@ internal sealed partial class ResolveRun
                     if (borrowsDescription)
                         (described ??= new Dictionary<RAttribute, RColumn?>(ReferenceEqualityComparer.Instance)).TryGetValue(attribute, out commented);
                     var deps = DepsOf(attribute);
-                    foreach (var column in new[] { field.SourceColumn, field.WriteColumn })
+                    for (var side = 0; side < 2; side++)
                     {
-                        if (column is null)
+                        if ((side == 0 ? field.SourceColumn : field.WriteColumn) is not { } column)
                             continue;
                         deps.AddRange(column.Table.EntryKeys ?? column.Table.Dependencies);
                         if (borrowsSensitivity)

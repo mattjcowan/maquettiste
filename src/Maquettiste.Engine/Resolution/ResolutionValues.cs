@@ -69,14 +69,25 @@ internal static class ResolutionValues
 /// </remarks>
 internal sealed class DependencySet(DependencyKeyCache? cache = null)
 {
-    private List<string>? _loose;
+    /// <summary>The ordinal comparison as one shared delegate (a method group would allocate a delegate per sort).</summary>
+    private static readonly Comparison<string> OrdinalOrder = string.CompareOrdinal;
+
+    // Loose keys in a plain array (most sets hold a handful; sorted in place, the array becomes the run when it is full). The first
+    // run is held on its own: most sets copy one other set's keys, and a list of runs is made only for the second.
+    private string[]? _loose;
+    private int _looseCount;
+    private string[]? _firstRun;
     private List<string[]>? _runs;
     private FrozenKeys? _frozen;
 
     /// <summary>Adds a key.</summary>
     public DependencySet Add(string key)
     {
-        (_loose ??= new List<string>(8)).Add(key);
+        if (_loose is null)
+            _loose = new string[4];
+        else if (_looseCount == _loose.Length)
+            Array.Resize(ref _loose, _loose.Length * 2);
+        _loose[_looseCount++] = key;
         _frozen = null;
         return this;
     }
@@ -88,22 +99,44 @@ internal sealed class DependencySet(DependencyKeyCache? cache = null)
         {
             case FrozenKeys frozen:
                 if (frozen.Items.Length > 0)
-                    (_runs ??= new List<string[]>(4)).Add(frozen.Items);
+                    AddRun(frozen.Items);
                 break;
             case IReadOnlyList<string> list:
                 if (list.Count == 0)
                     return this;
-                var loose = _loose ??= new List<string>(Math.Max(8, list.Count));
+                var needed = _looseCount + list.Count;
+                if (_loose is null)
+                    _loose = new string[Math.Max(4, list.Count)];
+                else if (needed > _loose.Length)
+                    Array.Resize(ref _loose, Math.Max(needed, _loose.Length * 2));
                 for (var i = 0; i < list.Count; i++)
-                    loose.Add(list[i]);
+                    _loose[_looseCount++] = list[i];
                 break;
             default:
-                (_loose ??= new List<string>(8)).AddRange(keys);
+                foreach (var key in keys)
+                    Add(key);
                 break;
         }
 
         _frozen = null;
         return this;
+    }
+
+    private void AddRun(string[] run)
+    {
+        if (_firstRun is null && _runs is null)
+        {
+            _firstRun = run;
+            return;
+        }
+
+        if (_runs is null)
+        {
+            _runs = new List<string[]>(4) { _firstRun! };
+            _firstRun = null;
+        }
+
+        _runs.Add(run);
     }
 
     /// <summary>Adds <c>e:&lt;id&gt;</c>.</summary>
@@ -118,7 +151,37 @@ internal sealed class DependencySet(DependencyKeyCache? cache = null)
         if (_frozen is not null)
             return _frozen;
 
-        var runs = _runs ??= new List<string[]>(4);
+        string[]? looseRun = null;
+        if (_looseCount > 0)
+        {
+            // The loose keys, sorted and distinct in place; a full array becomes the run itself.
+            var loose = _loose.AsSpan(0, _looseCount);
+            loose.Sort(OrdinalOrder);
+            var write = 0;
+            for (var read = 0; read < loose.Length; read++)
+            {
+                if (write == 0 || !string.Equals(loose[write - 1], loose[read], StringComparison.Ordinal))
+                    loose[write++] = loose[read];
+            }
+
+            looseRun = write == _loose!.Length ? _loose : loose[..write].ToArray();
+            _loose = null;
+            _looseCount = 0;
+        }
+
+        if (_runs is null)
+        {
+            // At most two runs: the loose keys and one copied set.
+            var single = _firstRun is null ? looseRun ?? [] : looseRun is null ? _firstRun : Merge(_firstRun, looseRun);
+            _firstRun = single.Length > 0 ? single : null;
+            _frozen = new FrozenKeys(single);
+            return _frozen;
+        }
+
+        var runs = _runs;
+        if (looseRun is not null)
+            runs.Add(looseRun);
+        string[] merged;
         if (runs.Count > 32)
         {
             // Very many runs (a database's membership gathers every table's keys): the largest run stays as it is, sorted, and only the
@@ -144,46 +207,13 @@ internal sealed class DependencySet(DependencyKeyCache? cache = null)
                 }
             }
 
-            if (_loose is not null)
-            {
-                foreach (var key in _loose)
-                {
-                    if (!inLargest.Contains(key))
-                        extra.Add(key);
-                }
-
-                _loose.Clear();
-            }
-
             var extras = extra.ToArray();
-            Array.Sort(extras, StringComparer.Ordinal);
-            var all = Merge(largest, extras);
-            runs.Clear();
-            if (all.Length > 0)
-                runs.Add(all);
-            _frozen = new FrozenKeys(all);
-            return _frozen;
+            Array.Sort(extras, OrdinalOrder);
+            merged = Merge(largest, extras);
         }
-
-        if (_loose is { Count: > 0 } loose)
+        else
         {
-            loose.Sort(StringComparer.Ordinal);
-            var write = 0;
-            for (var read = 0; read < loose.Count; read++)
-            {
-                if (write == 0 || !string.Equals(loose[write - 1], loose[read], StringComparison.Ordinal))
-                    loose[write++] = loose[read];
-            }
-
-            loose.RemoveRange(write, loose.Count - write);
-            runs.Add([.. loose]);
-            loose.Clear();
-        }
-
-        // Merge the sorted runs pairwise, level by level (a set can gather dozens: a table with many foreign keys takes each relation's
-        // keys), so each key is compared about log2(runs) times; the same run added twice is merged once.
-        if (runs.Count > 2)
-        {
+            // The same run added twice is merged once.
             var kept = 0;
             for (var i = 0; i < runs.Count; i++)
             {
@@ -195,31 +225,50 @@ internal sealed class DependencySet(DependencyKeyCache? cache = null)
             }
 
             runs.RemoveRange(kept, runs.Count - kept);
-        }
-
-        while (runs.Count > 1)
-        {
-            var next = 0;
-            for (var i = 0; i < runs.Count; i += 2)
-                runs[next++] = i + 1 < runs.Count ? Merge(runs[i], runs[i + 1]) : runs[i];
-            runs.RemoveRange(next, runs.Count - next);
+            merged = runs.Count switch
+            {
+                0 => [],
+                1 => runs[0],
+                2 => Merge(runs[0], runs[1]),
+                _ => MergeAll(runs),
+            };
         }
 
         // Later additions merge onto the result, which stays as the only run.
-        var merged = runs.Count == 1 ? runs[0] : [];
+        _runs = null;
+        _firstRun = merged.Length > 0 ? merged : null;
         _frozen = new FrozenKeys(merged);
         return _frozen;
     }
 
-    /// <summary>Merges two sorted, distinct arrays into one; returns an input unchanged when the other adds nothing.</summary>
+    /// <summary>
+    /// Merges two sorted, distinct arrays into one; returns an input unchanged when the other adds nothing. The union is counted first, so
+    /// the result is allocated once at its size, and not at all when one input holds the other.
+    /// </summary>
     private static string[] Merge(string[] a, string[] b)
     {
         if (ReferenceEquals(a, b) || b.Length == 0)
             return a;
         if (a.Length == 0)
             return b;
-        var result = new string[a.Length + b.Length];
         int i = 0, j = 0, n = 0;
+        while (i < a.Length && j < b.Length)
+        {
+            var c = string.CompareOrdinal(a[i], b[j]);
+            if (c <= 0)
+                i++;
+            if (c >= 0)
+                j++;
+            n++;
+        }
+
+        n += a.Length - i + (b.Length - j);
+        if (n == a.Length)
+            return a; // b was a subset of a
+        if (n == b.Length)
+            return b;
+        var result = new string[n];
+        i = j = n = 0;
         while (i < a.Length && j < b.Length)
         {
             var c = string.CompareOrdinal(a[i], b[j]);
@@ -238,11 +287,54 @@ internal sealed class DependencySet(DependencyKeyCache? cache = null)
             result[n++] = a[i++];
         while (j < b.Length)
             result[n++] = b[j++];
-        if (n == a.Length)
-            return a; // b was a subset of a
-        if (n == b.Length)
-            return b;
-        Array.Resize(ref result, n);
+        return result;
+    }
+
+    /// <summary>
+    /// Merges three to 32 sorted, distinct, different arrays into one, all at once (merging pairwise made an array per pair and level).
+    /// The union is gathered in a pooled buffer; when it is as long as one of the inputs, it is that input, which is returned.
+    /// </summary>
+    private static string[] MergeAll(List<string[]> runs)
+    {
+        var total = 0;
+        foreach (var run in runs)
+            total += run.Length;
+        var buffer = System.Buffers.ArrayPool<string>.Shared.Rent(total);
+        Span<int> heads = stackalloc int[runs.Count];
+        var n = 0;
+        while (true)
+        {
+            string? min = null;
+            for (var k = 0; k < runs.Count; k++)
+            {
+                var run = runs[k];
+                if (heads[k] < run.Length && (min is null || string.CompareOrdinal(run[heads[k]], min) < 0))
+                    min = run[heads[k]];
+            }
+
+            if (min is null)
+                break;
+            buffer[n++] = min;
+            for (var k = 0; k < runs.Count; k++)
+            {
+                var run = runs[k];
+                if (heads[k] < run.Length && string.Equals(run[heads[k]], min, StringComparison.Ordinal))
+                    heads[k]++;
+            }
+        }
+
+        string[]? result = null;
+        foreach (var run in runs)
+        {
+            if (run.Length == n)
+            {
+                result = run;
+                break;
+            }
+        }
+
+        result ??= buffer.AsSpan(0, n).ToArray();
+        System.Buffers.ArrayPool<string>.Shared.Return(buffer, clearArray: true);
         return result;
     }
 }
@@ -275,4 +367,7 @@ internal sealed class DependencyKeyCache
 
     /// <summary><c>r:&lt;id&gt;</c>.</summary>
     public string Referrers(string id) => _referrers.TryGetValue(id, out var key) ? key : _referrers.GetOrAdd(id, static id => "r:" + id);
+
+    /// <summary>The number of keys held.</summary>
+    public int Count => _elements.Count + _referrers.Count;
 }

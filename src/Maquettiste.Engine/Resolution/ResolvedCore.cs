@@ -92,6 +92,9 @@ public sealed class RList<T> : IReadOnlyList<T> where T : IResolvedObject
     /// <summary>The dependency keys that decide which items the list holds.</summary>
     public IReadOnlyList<string> MembershipKeys { get; }
 
+    /// <summary>The items, for the resolver's own loops: enumerating them allocates no enumerator.</summary>
+    internal ImmutableArray<T> Items => _items;
+
     /// <inheritdoc/>
     public int Count => _items.Length;
 

@@ -156,8 +156,12 @@ internal sealed partial class DatabaseRun
             return;
         }
 
-        if (rel.Ends.Any(e => !_placements.ContainsKey(e.OneEntity.Id)))
-            return;
+        foreach (var e in rel.Ends.Items)
+        {
+            if (!_placements.ContainsKey(e.OneEntity.Id))
+                return;
+        }
+
         var m = _run.MappingOf(_db.Id, rel.Id);
         if (ShapeOf(rel, src, m) == RelationShape.ForeignKey)
             ResolveForeignKeyShape(rel, m);

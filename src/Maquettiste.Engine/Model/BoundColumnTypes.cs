@@ -114,6 +114,7 @@ internal sealed class BoundColumnTypes
     private void Collect(ModelSnapshot model, Entity entity)
     {
         var databases = new HashSet<string>(StringComparer.Ordinal);
+        List<Entity>? chain = null; // the entity and its bases, worked out once for every field
         for (var i = 0; i < entity.Bindings.Count; i++)
         {
             var binding = entity.Bindings[i];
@@ -126,7 +127,7 @@ internal sealed class BoundColumnTypes
             for (var j = 0; j < binding.Fields.Count; j++)
             {
                 var field = binding.Fields[j];
-                if (AttributeOf(model, entity, field.Attribute) is not { } found)
+                if (AttributeOf(model, entity, chain ??= Chain(model, entity), field.Attribute) is not { } found)
                     continue; // an end, or nothing of the entity (MQ4045)
                 var use = new BoundColumnUse(entity.Id, i, j, found.Attribute, found.OwnerId, found.Attribute.Collection ? null : TypeIdOf(model, found.Attribute.Type));
                 var sourceColumn = source?.Find(field.Column);
@@ -147,7 +148,7 @@ internal sealed class BoundColumnTypes
                 for (var j = 0; j < child.Fields.Count; j++)
                 {
                     var field = child.Fields[j];
-                    if (AttributeOf(model, entity, field.Attribute, listHead: true) is not { } found)
+                    if (AttributeOf(model, entity, chain ??= Chain(model, entity), field.Attribute, listHead: true) is not { } found)
                         continue;
                     var whole = string.Equals(field.Attribute, child.Attribute, StringComparison.Ordinal);
                     var use = new BoundColumnUse(entity.Id, i, j, found.Attribute, found.OwnerId,
@@ -238,15 +239,15 @@ internal sealed class BoundColumnTypes
     /// <c>&lt;attributeId&gt;.&lt;memberId&gt;</c>, a member of a single value object attribute (deeper for a nested value object, and with
     /// <paramref name="listHead"/> a member of a list's item); with the element that declares it.
     /// </summary>
-    private static (ModelAttribute Attribute, string OwnerId)? AttributeOf(ModelSnapshot model, Entity entity, string reference, bool listHead = false)
+    private static (ModelAttribute Attribute, string OwnerId)? AttributeOf(ModelSnapshot model, Entity entity, List<Entity> chain, string reference,
+        bool listHead = false)
     {
         var dot = reference.IndexOf('.', StringComparison.Ordinal);
         var head = dot > 0 ? reference[..dot] : reference;
         (ModelAttribute Attribute, string OwnerId)? owner = null;
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var e = entity; e is not null && seen.Add(e.Id); e = e.Base is { } b ? model.Get<Entity>(b) : null)
+        foreach (var e in chain)
         {
-            if (e.Attributes.FirstOrDefault(a => string.Equals(a.Id, head, StringComparison.Ordinal)) is { } attribute)
+            if (Named(e.Attributes, head) is { } attribute)
             {
                 owner = (attribute, e.Id);
                 break;
@@ -257,7 +258,7 @@ internal sealed class BoundColumnTypes
         {
             foreach (var applied in model.EffectiveStereotypes(entity))
             {
-                if (applied.Stereotype.Attributes.FirstOrDefault(a => string.Equals(a.Id, head, StringComparison.Ordinal)) is { } attribute)
+                if (Named(applied.Stereotype.Attributes, head) is { } attribute)
                 {
                     owner = (attribute, applied.Stereotype.Id);
                     break;
@@ -279,6 +280,27 @@ internal sealed class BoundColumnTypes
         }
 
         return current;
+
+        static ModelAttribute? Named(IReadOnlyList<ModelAttribute> attributes, string id)
+        {
+            for (var i = 0; i < attributes.Count; i++)
+            {
+                if (string.Equals(attributes[i].Id, id, StringComparison.Ordinal))
+                    return attributes[i];
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>An entity and its bases, nearest first (an inheritance cycle stops at its first repeat).</summary>
+    private static List<Entity> Chain(ModelSnapshot model, Entity entity)
+    {
+        var chain = new List<Entity>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var e = entity; e is not null && seen.Add(e.Id); e = e.Base is { } b ? model.Get<Entity>(b) : null)
+            chain.Add(e);
+        return chain;
     }
 
     /// <summary>The enum, reference type or scalar type a type reference names, or <see langword="null"/>.</summary>

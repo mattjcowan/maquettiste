@@ -209,7 +209,7 @@ internal sealed partial class DatabaseRun
             ApplyColumnFile(t, c, column);
             TypeColumn(t, c);
             ApplyFacetDefaults(c);
-            ApplyNativeType(t, c, column.NativeType, () => ColumnNativeType(c));
+            ApplyNativeType(t, c, column.NativeType);
             t.Columns.Add(c);
             t.ByKey.TryAdd(column.Id, c);
             _run.Register(c);

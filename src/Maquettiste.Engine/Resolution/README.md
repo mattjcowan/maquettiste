@@ -330,6 +330,38 @@ reads, parses, schema-checks, canonical-checks and deserializes each, about 110 
 stages is garbage collection pauses (everything loaded and resolved survives); about 0.5 s of resolve is first-run compilation. At 2,500
 entities both pass (1.5 s, 0.8 s).
 
+## Working memory of a resolve (2026-11-28)
+
+A whole-model resolve of the benchmark model allocated about 1.16 GB for the edited model (1.23 GB cold) while the resolved model it
+keeps is about 0.28 GB. Measured with allocation-tick stacks (an EventPipe session around `ResolveAsync`) and
+`GC.GetTotalAllocatedBytes`, the throwaway part came from small per-object costs repeated about 330,000 times. What changed:
+
+- `DependencySet` keeps loose keys in a plain array sorted in place (a full array becomes the run itself), holds its first copied run
+  without a list, merges three or more runs at once into a pooled buffer, and counts a two-run merge before allocating it (no
+  `Array.Resize`, nothing allocated when one run holds the other). Sorting uses one shared `Comparison<string>`.
+- Delegates made per call: `ModelSnapshot.EffectiveStereotypes` passes one cached `GetStereotype` delegate; `Inflector` memo lookups use
+  static lambdas with state; `RelationsWithEnd` reads its index before passing a factory; `ApplyNativeType` computes the native type
+  itself instead of taking a closure; `StereotypeDefaults.Effective`, `BindingDrift.Find` and `FindSourceColumn` keep the code that needs a
+  closure in its own method (a closure over a parameter is made on entry, used or not).
+- LINQ in per-element code became plain loops: column and attribute lookups of every binding field (`FindTableColumn`, `Target`,
+  `Account`, `ResolveWriteFlags`, `ReportUnmapped`), `TableBuild.ResolveAll` instead of `Select(t.Resolve)` in `FinishTables`, attribute
+  flattening (`FlattenByOrder`: one pass when the orders already rise, else the same stable `OrderBy`), MQ4068's holders (no list per
+  holder; the pointer is built only for a finding), the entity chain once per entity in `BoundColumnTypes`, `RList.Items` (an
+  `ImmutableArray`) where the resolver enumerates its own lists.
+- Empty tags and stereotype lists share the empty array; `AddPackageChain` needs no set of visited ids (a chain is bounded by the
+  package count); binding drift for the resolver (`mappedOnly`) finds each field's column once and gathers a column's fields only when
+  its value changed; `TableBuild` sizes its column list and index; `ResolveFields` reuses its three indexes per thread.
+- `ModelResolver` hands the next whole-model run the previous run's `e:`/`r:` key strings (bounded like the inflector's memo) and sizes
+  the id registry from the previous run's count plus an eighth (it was 16 per document: three times the benchmark's 329,000 objects,
+  and it is kept on the resolved model).
+
+Every resolved object, member, dependency list and list membership of the billing fixture, the other model fixtures, the reference app,
+a 300-entity synthetic model and the benchmark model (cold and edited) is byte-identical before and after (a reflection dump of the
+whole resolved graph). Allocation on the benchmark model, `--jobs 8`: edited resolve 1,160 MB to about 728 MB, cold 1,230 MB to about
+864 MB, a repeated resolve of the same snapshot 1,029 MB to about 632 MB. Most of what is left is the kept model itself and the
+snapshot's caches that the first resolve of a snapshot builds (`BoundColumnTypes`, column shape hashes, stereotype holders, about
+80 MB together).
+
 ## Not built: reuse across an edit
 
 What a one-entity edit costs after the above is a full resolve of the new snapshot (about 1.2 s of the 2.2 s incremental run on the

@@ -320,9 +320,18 @@ internal static class BindingDrift
 
         var columns = ColumnsOf(model, table!);
         var recorded = binding.Provenance?.Columns ?? FrozenDictionary<string, string>.Empty;
-        var ids = columns.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
-        var stale = recorded.Count > 0 && !recorded.Keys.Any(ids.Contains);
+        // Stale when no recorded id is a column id, that is when no column id is recorded.
+        var stale = recorded.Count > 0;
+        for (var i = 0; i < columns.Count && stale; i++)
+            stale = !recorded.ContainsKey(columns[i].Id);
         var reads = hasProvenance && !stale;
+        if (mappedOnly)
+        {
+            var (mappedRenamed, mappedRetyped) = reads ? Changed(model, entity, binding, columns, recorded) : ([], []);
+            return new BindingDriftReport(DriftSource.TableFile, table, hasProvenance, stale, columns, [], mappedRenamed, mappedRetyped, []);
+        }
+
+        var ids = columns.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
 
         // What the binding names: its fields (by column), constants, type column, listed columns and soft delete.
         var mappedBy = new Dictionary<int, List<int>>();
@@ -334,12 +343,6 @@ internal static class BindingDrift
             if (!mappedBy.TryGetValue(at, out var fields))
                 mappedBy[at] = fields = [];
             fields.Add(i);
-        }
-
-        if (mappedOnly)
-        {
-            var (mappedRenamed, mappedRetyped) = reads ? Changed(model, entity, binding, columns, recorded, mappedBy) : ([], []);
-            return new BindingDriftReport(DriftSource.TableFile, table, hasProvenance, stale, columns, [], mappedRenamed, mappedRetyped, []);
         }
 
         var named = new HashSet<int>(mappedBy.Keys);
@@ -383,16 +386,36 @@ internal static class BindingDrift
         return new BindingDriftReport(DriftSource.TableFile, table, hasProvenance, stale, columns, added, renamed, retyped, removed);
     }
 
-    /// <summary>The renamed and retyped mapped columns, in column order then field order (a read provenance).</summary>
+    /// <summary>
+    /// The renamed and retyped mapped columns, in column order then field order (a read provenance). Each field's column is found once; the
+    /// fields of a column are gathered only for a column whose value changed (every binding of a large model asks, few have changes).
+    /// </summary>
     private static (List<DriftMappedColumn> Renamed, List<DriftMappedColumn> Retyped) Changed(ModelSnapshot model, Entity entity, EntityBinding binding,
-        IReadOnlyList<ShapeColumn> columns, IReadOnlyDictionary<string, string> recorded, Dictionary<int, List<int>> mappedBy)
+        IReadOnlyList<ShapeColumn> columns, IReadOnlyDictionary<string, string> recorded)
     {
         var renamed = new List<DriftMappedColumn>();
         var retyped = new List<DriftMappedColumn>();
+        var at = new int[binding.Fields.Count];
+        var mapped = new bool[columns.Count];
+        for (var f = 0; f < at.Length; f++)
+        {
+            at[f] = Find(columns, binding.Fields[f].Column);
+            if (at[f] >= 0)
+                mapped[at[f]] = true;
+        }
+
         for (var i = 0; i < columns.Count; i++)
         {
-            if (mappedBy.TryGetValue(i, out var mapping) && recorded.TryGetValue(columns[i].Id, out var was))
-                AddChange(model, entity, binding, columns[i], was, mapping, renamed, retyped);
+            if (!mapped[i] || !recorded.TryGetValue(columns[i].Id, out var was) || string.Equals(was, columns[i].Shape, StringComparison.Ordinal))
+                continue;
+            var mapping = new List<int>();
+            for (var f = 0; f < at.Length; f++)
+            {
+                if (at[f] == i)
+                    mapping.Add(f);
+            }
+
+            AddChange(model, entity, binding, columns[i], was, mapping, renamed, retyped);
         }
 
         return (renamed, retyped);
@@ -483,6 +506,12 @@ internal static class BindingDrift
                 return i;
         }
 
+        return FindLoosely(columns, reference);
+    }
+
+    /// <summary>The loose steps of <see cref="Find"/>: the name ignoring case, then with underscores dropped, each only when one column matches.</summary>
+    private static int FindLoosely(IReadOnlyList<ShapeColumn> columns, string reference)
+    {
         var found = Single(columns, c => string.Equals(c.Name, reference, StringComparison.OrdinalIgnoreCase), out var any);
         if (any)
             return found;

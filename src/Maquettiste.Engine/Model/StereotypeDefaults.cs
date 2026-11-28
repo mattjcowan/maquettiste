@@ -154,8 +154,12 @@ internal sealed class StereotypeDefaults
     public IReadOnlyList<AppliedStereotype> Effective(StereotypeHolder holder, Func<string, Stereotype?> stereotypeOf)
     {
         ArgumentNullException.ThrowIfNull(holder);
-        if (!HasDefaults)
-            return Layer(holder.Own, stereotypeOf);
+        return HasDefaults ? WithDefaults(holder, stereotypeOf) : Layer(holder.Own, stereotypeOf);
+    }
+
+    /// <summary><see cref="Effective"/> when the model declares defaults (apart, so a model without them makes no closure per call).</summary>
+    private IReadOnlyList<AppliedStereotype> WithDefaults(StereotypeHolder holder, Func<string, Stereotype?> stereotypeOf)
+    {
         var lookups = _lookups.Value;
         List<AppliedStereotype>? result = null;
         var kindName = KindInfo.Get(holder.Kind).Name;
