@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine;
+using Maquettiste.Engine.Pipeline;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Bench.Tests;
@@ -30,11 +31,11 @@ public sealed class SkipByKeyTests
         await SyntheticModelGenerator.WriteAsync(full.RepoRoot, model, Ct);
         await using var both = new SkipEquivalence(keyed, full);
 
-        async Task Step(string name, Func<string, Task> edit, bool byKey = true)
+        async Task Step(string name, Func<string, Task> edit, bool byKey = true, GenerationMode mode = GenerationMode.Apply, IReadOnlyList<string>? packs = null)
         {
             await edit(keyed.RepoRoot);
             await edit(full.RepoRoot);
-            var differences = await both.RunAsync(Ct);
+            var differences = await both.RunAsync(mode, packs, Ct);
             Assert.True(differences.Count == 0, name + ":\n" + string.Join('\n', differences));
             Assert.True(both.CrossCheckFailures.Count == 0, name + ": accepted by key but changed: " + string.Join(", ", both.CrossCheckFailures));
             if (byKey)
@@ -43,6 +44,8 @@ public sealed class SkipByKeyTests
 
         await Step("cold", _ => Task.CompletedTask, byKey: false);
         await Step("schema snapshots settle", _ => Task.CompletedTask);
+        await Step("nothing changed", _ => Task.CompletedTask);
+        Assert.True(both.KeysFromRecord > 0, "the record's own hashes were never compared");
         await Step("edit one entity", repo => SyntheticModelGenerator.EditOneEntityAsync(repo, model, Ct));
         await Step("revert the edit", repo => SyntheticModelGenerator.RevertEditAsync(repo, model, Ct));
         await Step("edit a fanout template", repo =>
@@ -60,5 +63,20 @@ public sealed class SkipByKeyTests
             return Task.CompletedTask;
         }, byKey: false);
         await Step("edit one entity again", repo => SyntheticModelGenerator.EditOneEntityAsync(repo, model, Ct));
+
+        // A run cancelled once its skip check has decided writes nothing; the next run renders what the full check renders.
+        await SyntheticModelGenerator.RevertEditAsync(keyed.RepoRoot, model, Ct);
+        await SyntheticModelGenerator.RevertEditAsync(full.RepoRoot, model, Ct);
+        await both.RunCancelledAsync(Ct);
+        await Step("after a cancelled run", _ => Task.CompletedTask);
+
+        // A run of one pack, then of all.
+        await Step("one pack", repo => SyntheticModelGenerator.EditOneEntityAsync(repo, model, Ct), packs: ["fanout"]);
+        await Step("all packs after one", _ => Task.CompletedTask);
+
+        // A dry run of an edit, the edit reverted, then a run.
+        await Step("dry run", repo => SyntheticModelGenerator.RevertEditAsync(repo, model, Ct), mode: GenerationMode.DryRun);
+        await Step("reverted after a dry run", repo => SyntheticModelGenerator.EditOneEntityAsync(repo, model, Ct));
+        await Step("nothing changed at the end", _ => Task.CompletedTask);
     }
 }

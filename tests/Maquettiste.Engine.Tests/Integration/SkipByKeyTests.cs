@@ -61,5 +61,50 @@ public sealed class SkipByKeyTests
         await IncrementalTests.AssertIncrementalEqualsForcedAsync(repo);
     }
 
+    [Fact]
+    public async Task A_template_saved_between_the_skip_check_and_a_render_renders_its_readers_in_the_next_run()
+    {
+        // One run can see a pack file twice: the skip check hashes the keys its candidates read, and rendering hashes them again for
+        // the units it renders. A partial saved in between must not let the next run take the newer hash as the one its readers'
+        // states were checked against.
+        await using var repo = E2ERepo.Create();
+        await repo.ApplyAsync();
+        await repo.ApplyAsync();
+        Assert.Equal(0, Stats(repo).Checked);
+
+        // A new entity, so the next run renders a unit that reads the partial; the partial is saved once the skip check has accepted
+        // its other readers by key.
+        repo.Repo.WriteFile(".maquettiste/model/entities/coupon.json", """
+            {
+              "kind": "entity",
+              "id": "01J92P0V2K0000000000000002",
+              "name": "Coupon",
+              "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+              "key": { "attributes": ["01J92P0V2K0000000000000004"], "strategy": "uuid-v7" },
+              "attributes": [
+                { "id": "01J92P0V2K0000000000000004", "name": "id", "type": "uuid", "required": true },
+                { "id": "01J92P0V2K0000000000000003", "name": "code", "type": "string", "length": 20, "required": true }
+              ]
+            }
+
+            """);
+        var partial = Path.Combine(repo.Repo.ModelRoot, "templates", "billing-demo", "_property.scriban");
+        var detector = (ChangeDetector)repo.Service.Services.ChangeDetector;
+        detector.AfterSelect = () =>
+        {
+            detector.AfterSelect = null;
+            File.WriteAllText(partial, File.ReadAllText(partial).Replace("{ get; init; }", "{ get; set; }", StringComparison.Ordinal));
+        };
+        await repo.ApplyAsync();
+        Assert.Contains("{ get; set; }", repo.Repo.ReadFile("src/Generated/demo/src/Billing/Coupon.g.cs"), StringComparison.Ordinal);
+        Assert.Contains("{ get; init; }", repo.Repo.ReadFile("src/Generated/demo/src/Billing/Customer.g.cs"), StringComparison.Ordinal);
+
+        // Nothing else changes: the partial's other readers still render, as the full check would have them.
+        var next = await repo.ApplyAsync();
+        Assert.True(next.UnitsRendered >= 8, Stats(repo).ToString());
+        Assert.Contains("{ get; set; }", repo.Repo.ReadFile("src/Generated/demo/src/Billing/Customer.g.cs"), StringComparison.Ordinal);
+        await IncrementalTests.AssertIncrementalEqualsForcedAsync(repo);
+    }
+
     private static SkipStats Stats(E2ERepo repo) => ((ChangeDetector)repo.Service.Services.ChangeDetector).LastStats!;
 }

@@ -1453,8 +1453,9 @@ packs and no schema diffs.
 hash each read key had and the input hashes that were current: those of the units the run skipped and those its hasher computed for
 the units it rendered, each with its static hash (`Planning/SkipBaseline.cs`). A unit whose stored state carries such an input hash
 with the same static hash, and none of whose read keys changed hash since, gets the answer the comparison above would give, without
-computing its input hash; every other unit takes the comparison. The record is trusted only for states the process computed itself
-(the states the unit state store saved, or the very states the previous run checked): states decoded from a file, other settings,
+computing its input hash; every other unit takes the comparison. The record is trusted only for states this process saved or loaded
+(the states the unit state store saved, or the very states the previous run loaded and looked at, passed or not): states decoded
+anew from a file, other settings,
 the first run of a host, and forced and check runs check every unit as before. The hasher has no list of what changed, so every key
 such a unit reads is still hashed once per run (an `e:` key is a lookup; `r:` keys pay `ModelSnapshot.ReferrersHash`). Outputs are
 still checked for every unit whose inputs are unchanged, reached by the edit or not (ruling R1 is open).

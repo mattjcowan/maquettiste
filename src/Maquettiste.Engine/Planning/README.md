@@ -202,8 +202,9 @@ or a unit or companion template under it is MQ6001; the check uses the resolved 
 - **Skip by key.** The change detector keeps a record of the previous run (`SkipBaseline`): each read key's hash, the input hashes
   of the units it skipped (with their static hashes, as 32 bytes) and, through `DependencyHasher.InputHashes`, those of the units
   it rendered. A unit whose stored state carries such an input hash with the same static hash, and none of whose keys changed hash,
-  is accepted without computing its input hash; the rest take the full check. The record is trusted only for states the store
-  saved itself (`UnitStateStore.Saved`) or the very states the previous run checked; other settings, a new host, forced and check
+  is accepted without computing its input hash; the rest take the full check. The record is trusted only for states this process
+  saved or loaded: those the store saved itself (`UnitStateStore.Saved`), or the very states the previous run loaded and looked at,
+  passed or not (only an input hash the record holds as current is used); states decoded anew from a file, other settings, a new host, forced and check
   runs check in full. Same decisions as the full check (`SkipByKeyTests` in the engine, packs and bench tests run both side by side
   and check every acceptance again in full).
 - Every key a candidate reads is still hashed once per run (85,360 on the benchmark model): the hasher has no list of what changed,

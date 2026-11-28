@@ -36,11 +36,15 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
     /// check of every unit).</summary>
     internal bool KeyDriven { get; init; } = true;
 
-    /// <summary>Tests: every unit accepted by key is checked again in full, and a disagreement is added to <see cref="CrossCheckFailures"/>.</summary>
+    /// <summary>Tests: every unit accepted by key is checked again in full, with a hasher of its own (so the run's cache, which the next
+    /// run reads, stays as it would be), and a disagreement is added to <see cref="CrossCheckFailures"/>.</summary>
     internal bool CrossCheck { get; init; }
 
     /// <summary>The units accepted by key whose full check disagreed (with <see cref="CrossCheck"/>).</summary>
     internal ConcurrentQueue<string> CrossCheckFailures { get; } = new();
+
+    /// <summary>Tests: runs once a skip check that checked units has decided, before anything renders.</summary>
+    internal Action? AfterSelect { get; set; }
 
     /// <summary>What the last skip check that checked units did.</summary>
     internal SkipStats? LastStats { get; private set; }
@@ -118,7 +122,7 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
                 }
             });
 
-            var (keysHashed, keysChanged, tableKeys) = tables is null ? (0, 0, 0) : CompareKeys(tables.Values, own!, previous!, run, parallel);
+            var (keysHashed, keysChanged, keysFromRecord, tableKeys) = tables is null ? (0, 0, 0, 0) : CompareKeys(tables.Values, own!, previous!, run, parallel);
             var full = 0;
             for (var i = 0; i < units.Count; i++)
             {
@@ -129,6 +133,8 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
             // Keys decoded from a state file hash fastest through the file's key table when most units take the full check; for a few,
             // the table's one sort per run costs more than it saves.
             var viaTable = tables is null || full * 4 > tableKeys;
+            // The cross-check hashes with a hasher of its own: through this run's, it would put every key in the cache the next run reads.
+            IDependencyHasher? checker = CrossCheck ? own?.Fresh() ?? hasher : null;
             var repoRoot = Path.GetFullPath(options.RepoRoot);
             var skippedState = new UnitState?[units.Count];
             var done = 0;
@@ -145,7 +151,7 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
                     {
                         inputs = true;
                         Interlocked.Increment(ref byKey);
-                        if (CrossCheck && !InputsSame(unit, previousState, hasher, viaTable: false))
+                        if (checker is not null && !InputsSame(unit, previousState, checker, viaTable: false))
                             CrossCheckFailures.Enqueue(unit.Key);
                     }
                     else
@@ -196,8 +202,9 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
             if (exclusive)
                 Remember(own!, run, states, tableKeys);
             var withState = stored.Count(s => s is not null);
-            LastStats = new SkipStats(units.Count, withState, byKey, withState - byKey, keysHashed, keysChanged, outputsChecked,
+            LastStats = new SkipStats(units.Count, withState, byKey, withState - byKey, keysHashed, keysChanged, keysFromRecord, outputsChecked,
                 Stopwatch.GetElapsedTime(0, outputTicks));
+            AfterSelect?.Invoke();
             return new SkipResult(toRender, skipped);
         }
         finally
@@ -209,7 +216,7 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
 
     /// <summary>
     /// The key table of each pack whose states the previous run's record trusts: states this store saved, or the very states the previous
-    /// run checked. The states of one file share one key table; a state with another (a store other than the engine's) is no candidate.
+    /// run loaded and looked at (passed or not). The states of one file share one key table; a state with another (a store other than the engine's) is no candidate.
     /// </summary>
     private static Dictionary<string, KeyTable> KeyTables(Dictionary<string, IReadOnlyDictionary<string, UnitState>> states, UnitStateStore store,
         SkipBaseline.RunRecord previous)
@@ -230,8 +237,9 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
     /// Hashes every key a candidate reads, once even when several packs' tables hold it, compares each with the previous run's hash, then
     /// records this run's: the comparisons all finish before any hash is replaced.
     /// </summary>
-    /// <returns>The keys hashed, those whose hash changed (or was unknown) and the size of the key tables.</returns>
-    private (int Hashed, int Changed, int TableKeys) CompareKeys(IEnumerable<KeyTable> tables, DependencyHasher hasher, SkipBaseline.RunRecord previous, int run,
+    /// <returns>The keys hashed, those whose hash changed (or was unknown), those whose previous hash came from the record's own
+    /// comparison rather than the previous run's hasher cache, and the size of the key tables.</returns>
+    private (int Hashed, int Changed, int FromRecord, int TableKeys) CompareKeys(IEnumerable<KeyTable> tables, DependencyHasher hasher, SkipBaseline.RunRecord previous, int run,
         ParallelOptions parallel)
     {
         var distinct = new List<SkipBaseline.KeyMemo>();
@@ -255,11 +263,14 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
             }
         }
 
+        var fromRecord = 0;
         Parallel.For(0, distinct.Count, parallel, n =>
         {
             var memo = distinct[n];
             var now = hasher.Uncached(memo.Key, memo.Rest);
             var before = previous.HashOf(memo);
+            if (memo.Run == previous.Run && !previous.Cache.ContainsKey(memo.Key))
+                Interlocked.Increment(ref fromRecord);
             memo.Now = now;
             memo.Changed = before is null || !string.Equals(before, now, StringComparison.Ordinal);
         });
@@ -274,7 +285,7 @@ internal sealed class ChangeDetector(EngineOptions options) : IChangeDetector
             memo.Run = run;
         }
 
-        return (distinct.Count, changed, size);
+        return (distinct.Count, changed, fromRecord, size);
     }
 
     /// <summary>One state file's key table: per key, whether a candidate reads it, then its record entry (whose

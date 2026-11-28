@@ -43,9 +43,10 @@ internal readonly record struct UnitHash(ulong A, ulong B, ulong C, ulong D)
 /// <para>Why that is the full check's answer: an input hash is <c>H(static hash, key₁, hash₁, ...)</c> over the state's own read keys.
 /// One recorded as current was computed (or recomputed) by the previous run from that static hash, those keys and that run's key
 /// hashes; a state holding it with the same static hash and keys whose hashes did not change therefore hashes to it again now. States
-/// are trusted to hold the input hash of their own read keys only when this process computed them: the states this store saved
-/// (<see cref="UnitStateStore.Saved"/>), or the very states the previous run checked. States read from a file someone else wrote take
-/// the full check, once.</para>
+/// are trusted to hold the input hash of their own read keys only when this process saved or loaded them: the states this store saved
+/// (<see cref="UnitStateStore.Saved"/>), or the very states the previous run loaded and looked at, whether or not each passed (an
+/// input hash is used only when the record holds it as current, which a failed one never is). A state file read anew from disk,
+/// which someone else may have written, takes the full check, once.</para>
 /// <para>Every key a candidate unit reads is still hashed each run (the hasher has no list of what changed): an <c>e:</c> key is a
 /// lookup, and the rest of each key is kept here so hashing it allocates nothing; <c>r:</c> keys pay what
 /// <see cref="Model.ModelSnapshot.ReferrersHash"/> pays. What the record saves is the per-unit work: the input hash of every unit,
@@ -115,9 +116,19 @@ internal sealed class SkipBaseline
     internal sealed record RunRecord(int Run, string SettingsHash, ConcurrentDictionary<string, string> Cache, ConcurrentDictionary<string, UnitHash> Rendered,
         IReadOnlyDictionary<string, WeakReference<IReadOnlyDictionary<string, UnitState>>> Seen)
     {
-        /// <summary>The hash a key had in this run, or <see langword="null"/> when this run did not hash it.</summary>
-        public string? HashOf(KeyMemo memo) =>
-            Cache.TryGetValue(memo.Key, out var hash) ? hash : memo.Run == Run ? memo.Hash : null;
+        /// <summary>
+        /// The hash a key had in this run, or <see langword="null"/> when this run did not hash it, or hashed it twice with two answers:
+        /// the skip check's comparison and the rendering each hash a key once per run, and a key that reads a file (a <c>t:</c> key) can
+        /// change between them when the file is saved mid-run. Then the input hashes this run recorded were computed from either hash,
+        /// so the key counts as changed and its readers take the full check.
+        /// </summary>
+        public string? HashOf(KeyMemo memo)
+        {
+            var compared = memo.Run == Run ? memo.Hash : null;
+            if (!Cache.TryGetValue(memo.Key, out var cached))
+                return compared;
+            return compared is null || string.Equals(compared, cached, StringComparison.Ordinal) ? cached : null;
+        }
 
         /// <summary>
         /// Whether an input hash was current in this run, computed from this static hash, with the record's entry when a skip check
@@ -150,6 +161,8 @@ internal sealed class SkipBaseline
 /// <param name="Checked">Units whose input hash was computed again (today's check).</param>
 /// <param name="KeysHashed">Keys hashed for the comparison.</param>
 /// <param name="KeysChanged">Of those, keys whose hash changed or was unknown.</param>
+/// <param name="KeysFromRecord">Of those, keys whose previous hash came from the record's own comparison (not the previous run's hasher
+/// cache).</param>
 /// <param name="OutputsChecked">Recorded outputs checked on disk and in the manifest.</param>
 /// <param name="OutputCheckTime">Time spent checking outputs, summed over threads.</param>
-internal sealed record SkipStats(int Units, int Stored, int ByKey, int Checked, int KeysHashed, int KeysChanged, int OutputsChecked, TimeSpan OutputCheckTime);
+internal sealed record SkipStats(int Units, int Stored, int ByKey, int Checked, int KeysHashed, int KeysChanged, int KeysFromRecord, int OutputsChecked, TimeSpan OutputCheckTime);

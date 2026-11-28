@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Pipeline;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
@@ -23,11 +24,11 @@ public sealed class SkipByKeyTests
         using var full = PackRepo.Billing();
         await using var both = new SkipEquivalence(keyed.Repo.Options, full.Repo.Options);
 
-        async Task Step(string name, Action<PackRepo> edit, bool byKey = true)
+        async Task Step(string name, Action<PackRepo> edit, bool byKey = true, GenerationMode mode = GenerationMode.Apply, IReadOnlyList<string>? packs = null)
         {
             edit(keyed);
             edit(full);
-            var differences = await both.RunAsync(Ct);
+            var differences = await both.RunAsync(mode, packs, Ct);
             Assert.True(differences.Count == 0, name + ":\n" + string.Join('\n', differences));
             Assert.True(both.CrossCheckFailures.Count == 0, name + ": accepted by key but changed: " + string.Join(", ", both.CrossCheckFailures));
             if (byKey)
@@ -36,6 +37,8 @@ public sealed class SkipByKeyTests
 
         await Step("cold", _ => { }, byKey: false);
         await Step("nothing changed", _ => { });
+        // The apply run follows a plan run that accepted every unit by key: its previous hashes come from the record itself.
+        Assert.True(both.KeysFromRecord > 0, "the record's own hashes were never compared");
         await Step("change an attribute", r =>
         {
             r.EditJson(CustomerPath, c => c["attributes"]!.AsArray().Single(a => (string?)a!["id"] == CustomerName)!["length"] = 150);
@@ -79,5 +82,20 @@ public sealed class SkipByKeyTests
         await Step("change a pack template", r => File.AppendAllText(r.PathOf(".maquettiste/templates/csharp-dapper/enum.scriban"), "// edited\n"));
         await Step("edit the same attribute again", r =>
             r.EditJson(CustomerPath, c => c["attributes"]!.AsArray().Single(a => (string?)a!["id"] == CustomerName)!["description"] = "The customer's name."));
+
+        // A run cancelled once its skip check has decided writes nothing; the next run renders what the full check renders.
+        keyed.EditJson(CustomerPath, c => c["description"] = "Who buys.");
+        full.EditJson(CustomerPath, c => c["description"] = "Who buys.");
+        await both.RunCancelledAsync(Ct);
+        await Step("after a cancelled run", _ => { });
+
+        // A run of one pack, then of all.
+        await Step("one pack", r => r.EditJson(".maquettiste/model/entities/invoice.json", i => i["description"] = "A bill."), packs: ["sql-ddl"]);
+        await Step("all packs after one", _ => { });
+
+        // A dry run of an edit, the edit reverted, then a run.
+        await Step("dry run", r => r.EditJson(".maquettiste/model/entities/invoice.json", i => i["description"] = "A bill sent."), mode: GenerationMode.DryRun);
+        await Step("reverted after a dry run", r => r.EditJson(".maquettiste/model/entities/invoice.json", i => i["description"] = "A bill."));
+        await Step("nothing changed at the end", _ => { });
     }
 }

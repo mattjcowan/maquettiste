@@ -70,6 +70,10 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
     /// <summary>The hash of the snapshot's settings.</summary>
     internal string ModelSettingsHash => model.SettingsHash;
 
+    /// <summary>A hasher over the same inputs with a cache of its own (tests: a check that must not fill this run's cache).</summary>
+    /// <returns>The hasher.</returns>
+    internal DependencyHasher Fresh() => new(model, resolved, packs, schemaDiffs, baselineHash) { Exports = Exports };
+
     /// <summary>
     /// Whether <see cref="InputHash"/> of these inputs equals <paramref name="expected"/>, computed without allocating: the change
     /// detector asks this of every stored unit state in a run, so the fields are gathered in a pooled buffer and the digest is
