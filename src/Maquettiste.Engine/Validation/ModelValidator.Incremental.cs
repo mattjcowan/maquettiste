@@ -18,7 +18,11 @@ namespace Maquettiste.Engine.Validation;
 /// <param name="Validated">How many documents the built-in rules ran on.</param>
 /// <param name="Incremental">Whether it was worked out from a previous report rather than over every document.</param>
 internal sealed record WholeValidation(ValidationReport Report, IReadOnlyDictionary<string, IReadOnlyList<Diagnostic>> PerDocument,
-    IReadOnlySet<string> TextHolders, bool DeferScriptedRows, int Validated, bool Incremental);
+    IReadOnlySet<string> TextHolders, bool DeferScriptedRows, int Validated, bool Incremental)
+{
+    /// <summary>Why a validation given a previous one covered the whole model anyway, or <see langword="null"/>.</summary>
+    public string? Fallback { get; init; }
+}
 
 /// <summary>A plain element change between two snapshots that an incremental validation can take (<see cref="ModelValidator.PrepareIncremental"/>).</summary>
 /// <param name="Changed">The ids of the element documents created, changed or deleted.</param>
@@ -66,15 +70,16 @@ internal sealed partial class ModelValidator
     {
         ArgumentNullException.ThrowIfNull(model);
         var scope = deferScriptedRows ? ValidationScope.Previews : ValidationScope.All;
+        string? fallback = null;
         if (incremental is not null && incremental.Previous.DeferScriptedRows != deferScriptedRows)
-            incremental = null;
+            (incremental, fallback) = (null, "a previous validation of the other variant");
         // A rows script reads the model (model.withStereotype, names, ...), so any edit may change a scripted seed's rows and findings: the
         // variant that judges scripted seeds validates the whole model while any seed has one (previews leave them unjudged).
         if (incremental is not null && !deferScriptedRows && model.All<Seed>().Any(static s => s.RowsFrom?.Script is not null))
-            incremental = null;
+            (incremental, fallback) = (null, "a seed with a rows script");
         var run = await RunAsync(model, scope, incremental, collect: true, progress, ct).ConfigureAwait(false);
         return new WholeValidation(run.Report, run.PerDocument ?? new Dictionary<string, IReadOnlyList<Diagnostic>>(),
-            run.TextHolders ?? new HashSet<string>(), deferScriptedRows, run.Validated, incremental is not null);
+            run.TextHolders ?? new HashSet<string>(), deferScriptedRows, run.Validated, incremental is not null) { Fallback = fallback };
     }
 
     /// <summary>
@@ -436,7 +441,12 @@ internal sealed partial class ModelValidator
 
             case ReferenceType type:
                 foreach (var binding in type.Bindings)
-                    reached.Add(binding.Table); // MQ7125
+                {
+                    // MQ7125 on the table, and on seeds any number of foreign keys away whose natural rows come through the bound type.
+                    reached.Add(binding.Table);
+                    ReferencingSeeds(context, binding.Table, reached);
+                }
+
                 TypedSeeds(model, type.Id, reached);
                 TypeReaders(model, oneSided, reached);
                 break;

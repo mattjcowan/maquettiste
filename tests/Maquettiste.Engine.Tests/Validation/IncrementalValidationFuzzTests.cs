@@ -28,7 +28,7 @@ public sealed class IncrementalValidationFuzzTests
     {
         var models = new TheoryData<string>
         {
-            "billing", "billing+rows-script", "billing+seed-chain", "billing+several-types", "process-basics+lifecycle", "former-codes",
+            "billing", "billing+rows-script", "billing+seed-chain", "billing+bound-type", "billing+several-types", "process-basics+lifecycle", "former-codes",
             "showcase", "reference-data", "processes", "bindings", "sql-queries", "process-basics",
         };
         if (Long)
@@ -59,6 +59,9 @@ public sealed class IncrementalValidationFuzzTests
                 break;
             case "seed-chain":
                 IncrementalValidationReproTests.SeedChain(repo);
+                break;
+            case "bound-type":
+                IncrementalValidationReproTests.BoundTypeChain(repo);
                 break;
             case "lifecycle":
                 IncrementalValidationReproTests.BorrowedLifecycle(repo);
@@ -129,19 +132,23 @@ public sealed class IncrementalValidationFuzzTests
                 operations.AddRange(mutations.Select(m => (doc, m)));
             }
 
-            // The default run takes a seeded sample of every kind of mutation, the changed files' kinds spread by the shuffle.
-            var single = Long ? operations : [.. operations.OrderBy(_ => rng.Next()).Take(SingleBudget(model))];
+            // The default run takes a seeded, weighted sample: files of the kinds an incremental validation takes weigh four times those that
+            // always validate the whole model (weighted sampling without replacement, key = u^(1/w)).
+            var single = Long ? operations : [.. operations
+                .Select(o => (Operation: o, Key: Math.Pow(rng.NextDouble(), 1.0 / (Incremental(o.Document.Element) ? 4 : 1))))
+                .OrderByDescending(o => o.Key).Take(SingleBudget(model)).Select(o => o.Operation)];
             foreach (var (doc, mutation) in single)
             {
                 var label = $"{doc.Element.KindName} {doc.Element.Name} [{doc.Path}] {mutation.Label}";
+                var original = await File.ReadAllBytesAsync(check.FullPath(doc.Path), Ct);
                 try
                 {
-                    await ApplyAndUndoAsync(check, doc, mutation, label);
+                    await ApplyAndUndoAsync(check, doc, mutation, label, original);
                 }
                 catch (InvalidOperationException e) when (IsMismatch(e))
                 {
                     failures.Add(e.Message);
-                    check = await ReloadAsync(check, repo, [doc.Path]);
+                    check = await ReloadAsync(check, repo, [(doc.Path, original)]);
                 }
             }
 
@@ -184,9 +191,7 @@ public sealed class IncrementalValidationFuzzTests
                 catch (InvalidOperationException e) when (IsMismatch(e))
                 {
                     failures.Add(e.Message);
-                    for (var k = 0; k < picked.Count; k++)
-                        File.WriteAllBytes(check.FullPath(picked[k].Path), originals[k]);
-                    check = await ReloadAsync(check, repo, []);
+                    check = await ReloadAsync(check, repo, [.. picked.Select((d, k) => (d.Path, originals[k]))]);
                 }
             }
 
@@ -209,16 +214,22 @@ public sealed class IncrementalValidationFuzzTests
         _ => 120,
     };
 
+    /// <summary>Whether a file's kind is one an incremental validation takes (Validation/README.md, "Incremental validation").</summary>
+    private static bool Incremental(Element element) =>
+        element is Entity or Relation or Mapping or Table or ReferenceType or EnumType or ValueObject || element is Seed { RowsFrom: null };
+
     private static bool IsMismatch(InvalidOperationException e) => e.Message.Contains(" differs.", StringComparison.Ordinal) || e.Message.Contains("whole has", StringComparison.Ordinal);
 
-    private static async Task<IncrementalValidationCheck> ReloadAsync(IncrementalValidationCheck check, TempRepo repo, IReadOnlyList<string> paths)
+    /// <summary>After a mismatch: the files put back as they were (a moved file's copies removed), and a new store over them.</summary>
+    private static async Task<IncrementalValidationCheck> ReloadAsync(IncrementalValidationCheck check, TempRepo repo, IReadOnlyList<(string Path, byte[] Bytes)> files)
     {
         await check.DisposeAsync();
-        foreach (var path in paths)
+        foreach (var (path, bytes) in files)
         {
             var folder = path[..(path.LastIndexOf('/') + 1)];
             foreach (var stray in new[] { "0000-moved.json", "zzzz-moved.json" })
                 File.Delete(check.FullPath(folder + stray));
+            File.WriteAllBytes(check.FullPath(path), bytes);
         }
 
         var fresh = new IncrementalValidationCheck(repo.Options);
@@ -226,10 +237,9 @@ public sealed class IncrementalValidationFuzzTests
         return fresh;
     }
 
-    private static async Task ApplyAndUndoAsync(IncrementalValidationCheck check, ElementDocument doc, Mutation mutation, string label)
+    private static async Task ApplyAndUndoAsync(IncrementalValidationCheck check, ElementDocument doc, Mutation mutation, string label, byte[] original)
     {
         var path = doc.Path;
-        var original = await File.ReadAllBytesAsync(check.FullPath(path), Ct);
         if (mutation.Label == "DELETE")
         {
             await check.DeleteAsync(path, Ct);
@@ -383,6 +393,16 @@ public sealed class IncrementalValidationFuzzTests
                     {
                         foreach (var other in byCategory[cat].Where(x => x != s).Take(1))
                             mutations.Add(new Mutation($"retarget {Show(p)} -> {other}", r => At(r, parent)![index] = other));
+                    }
+                    else if (a[i] is JsonValue cell)
+                    {
+                        // A value in a list: a seed row's cell, a code, a stated value.
+                        if (cell.TryGetValue<string>(out var text))
+                            mutations.Add(new Mutation("cell " + Show(p), r => At(r, parent)![index] = text + "z"));
+                        else if (cell.TryGetValue<long>(out var number))
+                            mutations.Add(new Mutation("cell " + Show(p), r => At(r, parent)![index] = number + 1));
+                        else if (cell.TryGetValue<bool>(out var flag))
+                            mutations.Add(new Mutation("cell " + Show(p), r => At(r, parent)![index] = !flag));
                     }
                 }
 

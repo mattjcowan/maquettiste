@@ -52,6 +52,7 @@ public sealed class IncrementalValidationReproTests
         await check.CheckAsync("load", false, Ct);
         await check.EditAsync(Integration.E2ERepo.InvoiceId, n => n["name"] = "Boom", Ct);
         await check.CheckAsync("audited Invoice renamed Boom", false, Ct);
+        Assert.Equal("a seed with a rows script", check.Store.LastIncrementalFallback);
         Assert.Contains((await check.Store.WholeValidationAsync(check.Snapshot, false, Ct)).Report.Diagnostics, d => d.Rule == "MQ7127");
     }
 
@@ -117,11 +118,80 @@ public sealed class IncrementalValidationReproTests
         Assert.Contains((await check.Store.WholeValidationAsync(check.Snapshot, false, Ct)).Report.Diagnostics, d => d.Rule == "MQ7125" && d.ElementId == N(36));
         var path = check.Snapshot.GetDocument(N(6))!.Path;
         var bytes = await check.DeleteAsync(path, Ct);
-        await check.CheckAsync("customers seed deleted", null, Ct);
+        await check.CheckAsync("customers seed deleted", true, Ct);
         await check.WriteAsync(path, bytes, Ct);
-        await check.CheckAsync("customers seed created again", null, Ct);
+        await check.CheckAsync("customers seed created again", true, Ct);
         await check.EditAsync(N(6), n => n.Remove("target"), Ct);
-        await check.CheckAsync("customers seed made invalid", null, Ct);
+        await check.CheckAsync("customers seed made invalid", true, Ct);
+        await check.WriteAsync(path, bytes, Ct);
+        await check.CheckAsync("customers seed restored", true, Ct);
+        await check.EditAsync(N(6), n => n["rows"]![0]!["values"]![1] = "ada@example.org", Ct);
+        await check.CheckAsync("customers seed cell changed", true, Ct);
+    }
+
+    /// <summary>
+    /// <see cref="SeedChain"/> without the customers seed, and reference type CustomerKind bound to table customers (code to email, label
+    /// to name) with one seed row: the far table's rows come through the bound type (MQ7125 on seed invoiceLines depends on it).
+    /// </summary>
+    internal static void BoundTypeChain(TempRepo repo)
+    {
+        SeedChain(repo);
+        File.Delete(Path.Combine(repo.ModelRoot, "model/seeds/customers/customers.json"));
+        Write(repo, "model/reference-types/customer-kind.json", $$"""
+            {"kind":"reference-type","id":"01KRT000000000000000000001","name":"CustomerKind","code":{"id":"01KRT000000000000000000002","length":254},
+             "label":{"id":"01KRT000000000000000000003","length":64},
+             "bindings":[{"id":"01KRT000000000000000000004","database":"{{N(99)}}","table":"{{N(1)}}","fields":[{"attribute":"code","column":"{{N(4)}}"},{"attribute":"label","column":"{{N(3)}}"}]}]}
+            """);
+        Write(repo, "model/seeds/customer-kind/customer-kind.json", """
+            {"kind":"seed","id":"01KRT000000000000000000010","name":"CustomerKind","target":"01KRT000000000000000000001","columns":["code","label"],
+             "rows":[{"id":"01KRT000000000000000000011","values":["ada@example.com","Ada"]}]}
+            """);
+    }
+
+    [Fact]
+    public async Task A_reference_type_binding_reaches_the_seeds_two_foreign_keys_away()
+    {
+        using var repo = Repo("billing");
+        BoundTypeChain(repo);
+        await using var check = new IncrementalValidationCheck(repo.Options);
+        await check.CheckAsync("load", false, Ct);
+        var type = "01KRT000000000000000000001";
+        var seed = "01KRT000000000000000000010";
+        var original = await check.EditAsync(type, n => n.Remove("bindings"), Ct);
+        await check.CheckAsync("type binding removed", true, Ct);
+        await check.WriteAsync(check.Snapshot.GetDocument(type)!.Path, original, Ct);
+        await check.CheckAsync("type binding added back", true, Ct);
+        var rows = await check.EditAsync(seed, n => n["rows"]![0]!["values"]![0] = "bob@example.com", Ct);
+        await check.CheckAsync("type seed row code changed", true, Ct);
+        await check.WriteAsync(check.Snapshot.GetDocument(seed)!.Path, rows, Ct);
+        await check.CheckAsync("type seed restored", true, Ct);
+        await check.EditAsync(seed, n => n["rows"]!.AsArray().Clear(), Ct);
+        await check.CheckAsync("type seed rows removed", true, Ct);
+        await check.WriteAsync(check.Snapshot.GetDocument(seed)!.Path, rows, Ct);
+        await check.CheckAsync("type seed rows back", true, Ct);
+    }
+
+    [Fact]
+    public async Task An_id_that_names_a_part_on_one_side_validates_the_whole_model()
+    {
+        using var repo = Repo("billing");
+        const string Spare = "01KSP000000000000000000001";
+        Write(repo, "model/enums/spare.json", $$"""
+            {"kind":"enum","id":"{{Spare}}","name":"Spare","package":"01J92P0V01KDRN8GX5PGYCNKSX","members":[{"id":"01KSP000000000000000000002","name":"One"}]}
+            """);
+        await using var check = new IncrementalValidationCheck(repo.Options);
+        await check.CheckAsync("load", false, Ct);
+
+        // One refresh deletes the enum and gives an Invoice attribute its id: the id names an element before and a part after.
+        var invoice = check.Snapshot.GetDocument(Integration.E2ERepo.InvoiceId)!.Path;
+        var spare = check.Snapshot.GetDocument(Spare)!.Path;
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(check.FullPath(invoice)))!.AsObject();
+        node["attributes"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject { ["id"] = Spare, ["name"] = "spare", ["type"] = "string" });
+        File.WriteAllText(check.FullPath(invoice), node.ToJsonString());
+        File.Delete(check.FullPath(spare));
+        await check.Store.RefreshAsync([invoice, spare], Ct);
+        await check.CheckAsync("enum id reused as an attribute id", false, Ct);
+        Assert.Equal("an id that is a part on one side", check.Store.LastIncrementalFallback);
     }
 
     /// <summary>process-basics with entity Invoice naming OrderLifecycle (whose subject is Order) as its lifecycle (MQ9201 on Invoice).</summary>

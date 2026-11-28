@@ -31,7 +31,10 @@ public sealed partial class ModelStore
 
     }
 
-    /// <summary>Why the last published change needs a whole-model validation (<see cref="ModelValidator.IncrementalFallback"/>), for tests.</summary>
+    /// <summary>
+    /// Why the last published change needs a whole-model validation (<see cref="ModelValidator.IncrementalFallback"/>), or why the last
+    /// validation given a previous one covered the whole model anyway (a seed with a rows script); for tests.
+    /// </summary>
     internal string? LastIncrementalFallback { get; private set; }
 
     /// <summary>The ids a published snapshot changed since the validated one before it, for tests.</summary>
@@ -159,7 +162,10 @@ public sealed partial class ModelStore
             {
                 try
                 {
-                    return await validator.ValidateWholeAsync(snapshot, defer, input, null, CancellationToken.None).ConfigureAwait(false);
+                    var validated = await validator.ValidateWholeAsync(snapshot, defer, input, null, CancellationToken.None).ConfigureAwait(false);
+                    if (validated.Fallback is { } reason && ReferenceEquals(_current, snapshot))
+                        LastIncrementalFallback = reason;
+                    return validated;
                 }
                 catch (Exception e) when (e is not OutOfMemoryException)
                 {

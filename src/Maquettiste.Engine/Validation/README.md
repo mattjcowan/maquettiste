@@ -211,7 +211,7 @@ what is still current, since a rule may read anything), settings, suppressions, 
 are added in path order exactly as a whole run adds them, so the report is identical, finding by finding and in order (proved by
 `Validation/IncrementalValidationFuzzTests.cs`, seeded differential fuzzing over fixtures and variants with rows scripts, former codes, ends of
 several types, foreign-key chains of table seeds, kind changes, moves and multi-file refreshes, with a long mode behind
-`MAQUETTISTE_FUZZ_INCREMENTAL=long`; `Validation/IncrementalValidationReproTests.cs`, the five mismatches the 2026-11-28 review's fuzzing found; and by
+`MAQUETTISTE_FUZZ_INCREMENTAL=long`; `Validation/IncrementalValidationReproTests.cs`, the mismatches the 2026-11-28 reviews' fuzzing found; and by
 `Validation/IncrementalValidationTests.cs` over six fixture models and `Maquettiste.Bench.Tests/IncrementalValidationTests.cs` over a
 synthetic one, each against a fresh whole-model validation after every edit). A change the store did not validate before the next one
 leaves nothing to build on: that next validation covers the whole model.
@@ -237,7 +237,7 @@ covered (its referrers); reads that `ConflictPeers` brings are covered on both s
 | `HasDerived`: whether some entity derives from the document | MQ4009 (RelationTypeRules) | widened: an entity brings its base |
 | Seeds read their target's flattened attributes and keys through its bases | MQ7003, MQ7004, MQ7102 | widened: an entity brings the seeds of itself and its descendants |
 | Seeds and lifecycles name the end entity (messages), coverage of lifecycles, trigger points and operations; entities that name a lifecycle whose subject it is | MQ7009, MQ3116, MQ8101 to MQ8107, MQ9305, MQ9201 | widened: an entity created, deleted or renamed brings every process, trigger point, operation and scenario, and the entities that name a lifecycle naming it |
-| A table's seeds, bound types and the entities seeded on its tables | MQ7125, MQ7113, MQ7019 (message) | widened: a seed brings its table and the seeds of every table referencing it at any depth, its entity's bound tables and peers, and for a reference type with former codes its referrers and the seeds that write values of it; a reference type brings its bound tables |
+| A table's seeds, bound types and the entities seeded on its tables | MQ7125, MQ7113, MQ7019 (message) | widened: a seed brings its table and the seeds of every table referencing it at any depth, its entity's bound tables and peers, and for a reference type with former codes its referrers and the seeds that write values of it; a reference type brings its bound tables and the seeds of every table referencing them at any depth |
 | Row cycles of three seeds or more | MQ7103 | widened: a seed with a cyclic row brings every seed with one |
 | Seeds whose cells an enum or a reference type types | MQ7004, MQ7019 | widened: the seeds that name a part of the type's referrers |
 | Lifecycles, scenarios and pending facts that read an enum, a reference type or a value object without naming it; copy blocks and operation members typed by one created or deleted | MQ9204, MQ9305, MQ4103, MQ3046, MQ3048, MQ9025, MQ9026 | widened: any change of one brings every process, scenario and migration fact; one created or deleted also every operation and every entity with a copy block |
