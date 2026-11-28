@@ -191,3 +191,76 @@ Tests: `tests/Maquettiste.Engine.Tests/Validation/`; fixtures under `tests/fixtu
   suppressed list into `ValidationReport.Suppressed`, which the counts exclude and `TruncateTo` empties first.
 - MQ5020 is judged once, by the outermost report, after all its findings, on a whole-model report whose model
   resolved: one warning per entry that matched nothing, except entries MQ5018 or MQ5019 already reports.
+
+## Incremental validation (change-driven-edits-design.md section 4, step 2)
+
+The store keeps one whole-model validation per snapshot and variant (`ModelStore.WholeValidationAsync`: seeds with a rows script judged,
+or left out as previews want; one shared validation when no seed has a script). Validate, the shared resolution of previews and a
+generation run's validation stage (`ModelStore.ValidateForRunAsync`, when the run validates the snapshot the store serves with the
+engine's validator, and, when a seed has a rows script, shares the store's rows cache) all read it. `ModelValidator.ValidateWholeAsync` returns the report with each document's own findings
+(`WholeValidation.PerDocument`: built-in rules, extension schemas and suppression checks, before script rules, settings, suppressions and
+positions) and the documents whose expressions hold text (`WholeValidation.TextHolders`).
+
+When the store publishes a snapshot that differs from a validated one by plain element changes, it records the change on publish
+(`ModelValidator.PrepareIncremental`, worked out while both snapshots are at hand, so the old one is let go at once): the changed ids, the
+created or deleted ones, the renamed ones and the documents the change reached in the old snapshot. The next whole validation then runs the
+built-in rules only on the documents the change reaches (below) and takes every other active document's findings from the previous run.
+Everything else runs as in a whole run: load diagnostics, settings, localization and branding checks, extension files, rule pools and their
+warnings, calculation files, rule declarations, whole-model script rules, element script rules on every document (their result cache judges
+what is still current, since a rule may read anything), settings, suppressions, the MQ2006 collapse, positions and the sort. The documents
+are added in path order exactly as a whole run adds them, so the report is identical, finding by finding and in order (proved by
+`Validation/IncrementalValidationFuzzTests.cs`, seeded differential fuzzing over fixtures and variants with rows scripts, former codes, ends of
+several types, foreign-key chains of table seeds, kind changes, moves and multi-file refreshes, with a long mode behind
+`MAQUETTISTE_FUZZ_INCREMENTAL=long`; `Validation/IncrementalValidationReproTests.cs`, the five mismatches the 2026-11-28 review's fuzzing found; and by
+`Validation/IncrementalValidationTests.cs` over six fixture models and `Maquettiste.Bench.Tests/IncrementalValidationTests.cs` over a
+synthetic one, each against a fresh whole-model validation after every edit). A change the store did not validate before the next one
+leaves nothing to build on: that next validation covers the whole model.
+
+### What the change reaches
+
+On each snapshot (the old one on publish, the new one at validation): the targets of a validation of the changed ids with their referrers
+(`SelectTargets`: the changed documents, their referrers and their conflict peers), widened by `ModelValidator.Widen` where the rule
+inventory below found reads beyond them, then, on the new snapshot, every document whose expressions hold text (with the lifecycles that
+use such a named right and the citers of such a constraint), every scenario when a process is among them, and every migration fact when
+one is.
+
+### Rule inventory (2026-11-28)
+
+Every per-document rule was read for what it reads of other elements. Reads of the document itself, and of an element it names by id, are
+covered (its referrers); reads that `ConflictPeers` brings are covered on both snapshots. What remained, and what was done:
+
+| Read beyond referrers and conflict peers | Rules | Outcome |
+| --- | --- | --- |
+| Ids `SubElementIds` does not list (seed rows, codes, bindings, keys, checks, stereotype members, view columns, process and scenario parts) | MQ2001, MQ2002, MQ2011, MQ2022, MQ2020 | widened: the referrers of every id the changed file holds |
+| A named right's condition typed at each lifecycle that uses it | expression typer findings | widened: the users of a right that names a changed id |
+| A mapping reads the bindings of its relation's dependent entity (`BoundTable`) | MQ4009 | widened: an entity brings the mappings and seeds of the relations that name it |
+| `HasDerived`: whether some entity derives from the document | MQ4009 (RelationTypeRules) | widened: an entity brings its base |
+| Seeds read their target's flattened attributes and keys through its bases | MQ7003, MQ7004, MQ7102 | widened: an entity brings the seeds of itself and its descendants |
+| Seeds and lifecycles name the end entity (messages), coverage of lifecycles, trigger points and operations; entities that name a lifecycle whose subject it is | MQ7009, MQ3116, MQ8101 to MQ8107, MQ9305, MQ9201 | widened: an entity created, deleted or renamed brings every process, trigger point, operation and scenario, and the entities that name a lifecycle naming it |
+| A table's seeds, bound types and the entities seeded on its tables | MQ7125, MQ7113, MQ7019 (message) | widened: a seed brings its table and the seeds of every table referencing it at any depth, its entity's bound tables and peers, and for a reference type with former codes its referrers and the seeds that write values of it; a reference type brings its bound tables |
+| Row cycles of three seeds or more | MQ7103 | widened: a seed with a cyclic row brings every seed with one |
+| Seeds whose cells an enum or a reference type types | MQ7004, MQ7019 | widened: the seeds that name a part of the type's referrers |
+| Lifecycles, scenarios and pending facts that read an enum, a reference type or a value object without naming it; copy blocks and operation members typed by one created or deleted | MQ9204, MQ9305, MQ4103, MQ3046, MQ3048, MQ9025, MQ9026 | widened: any change of one brings every process, scenario and migration fact; one created or deleted also every operation and every entity with a copy block |
+| Value objects on a containment cycle of three or more | MQ3015 | widened: the value objects that contain the changed one at any depth |
+| The first holder of a user-defined native type (count of uses) | MQ4016 | widened: every holder of each such type the table uses |
+| Seeds fill foreign keys through natural rows any number of keys away | MQ4056, MQ7125 (`FilledValue`) | widened: the seeds of every table that references the changed table, at any depth |
+| A table's name in messages on tables holding codes of a type bound to it | MQ4084 | widened: the bound column peers of the types bound to the table |
+| Pending facts judged against the resolved tables (one verdict per database batch) | MQ4103, MQ4101 | widened: a table brings every migration fact; any fact among the targets brings every fact |
+| The process replay of scenarios (paths through far entities, other lifecycles) | MQ93xx, MQ95xx | widened: any process among the targets brings every scenario |
+| Expressions written as text, resolved by name in scope (any rename, create or delete may move them) | typer findings, MQ3108 | widened: every text holder (`HoldsText`), the users of such a right, the citers of such a constraint |
+| Base chains, carriers and package defaults (flattened attributes of descendants, navigations, several-types ends, operation and process scopes, lifecycle coverage) | MQ3006, MQ3007, MQ3009, MQ3043, MQ3111, MQ3116, MQ8101, MQ8102, MQ9801, MQ9903, typer | fallback: an entity whose base, stereotypes or package changed; an entity created or deleted while it has derived entities or an end of several types exists; a relation with an end of several types |
+| An element created where other files named it, or deleted while they still do (reads through those names) | any | fallback |
+| An id whose element changed kind (an entity rewritten as an enum), or that names a part on one side and an element on the other | any | fallback |
+| Rows scripts read the model (`model.withStereotype`, names), so any edit may change a scripted seed's rows | MQ7116, MQ7127, MQ7128, the row rules | fallback in the variant that judges scripted seeds while any seed has a rows script (previews leave them unjudged and stay incremental) |
+| The model's first or last revisions block (what scenarios replay) | MQ93xx | fallback when an entity change flips it |
+| Package chains, seed order, layering and its cycles, package defaults | MQ2008, MQ2021, MQ3003, MQ7001, MQ7102, MQ7112, MQ7121, MQ2031 | fallback: any package change |
+| Stereotype attributes, implied sets, groups, conflicts, property schemas, operation errors | MQ2001 (`<op>.<error>`), MQ2031, MQ3006, MQ3009, MQ5019, MQ9801 | fallback: any stereotype change |
+| Vocabularies (tags, categories, verbs) | MQ2005, MQ2006, MQ2008, MQ3021, MQ9701, MQ9704 | fallback |
+| Databases (dialect, name, schema defaults), scalar types (base), constraints (cited through others), processes, operations, actors, scenarios, trigger points, rights, views, routines, database types, SQL objects, queries, migrations, diagrams, custom elements | MQ4056, MQ7006, MQ4020, MQ3103, MQ3109, MQ9013, MQ9802, MQ8101, MQ8104, ... | fallback: an incremental validation takes only entities, relations, mappings, tables, seeds without a rows script, reference types, enums and value objects (`TakesIncremental`) |
+| Settings, extension and custom property schemas, custom kinds, rule, rows and calculation scripts, rule declarations, library packs, locale shards, duplicate ids or ignored vocabularies (MQ1004, MQ1009), more than 512 changed documents | many | fallback (`IncrementalFallback`) |
+
+Not judged by targets at all: element script rules (they run on every document through `RuleResultCache`, whose keys record the model-wide
+lookups a rule made), whole-model script rules, and the model-level checks listed above (they run in full on every validation).
+
+Cost (bench, 5,000 entities, one attribute edit): the validation runs the built-in rules on 20 documents; what it allocates is mostly the
+per-snapshot indexes the conflict peers and the rules read (names, bound column types, end coverage), which resolution builds anyway.

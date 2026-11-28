@@ -183,7 +183,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
         try
         {
             var start = Clock.Now;
-            var report = await services.Validator.ValidateAsync(snapshot, new ValidationScope(), progress, ct).ConfigureAwait(false);
+            var report = await store.ValidateForRunAsync(services, snapshot, progress, ct).ConfigureAwait(false);
             Clock.Record(PipelineStage.Validate, start, snapshot.Documents.Count);
             Add(report.Diagnostics);
             if (report.HasErrors)

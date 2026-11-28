@@ -30,7 +30,7 @@ namespace Maquettiste.Engine.Validation;
 /// <param name="seedRows">The engine's cache of rows script runs (next-phase-2-design.md section 3.4); a cache of its own when absent.</param>
 /// <param name="calculations">The service that loads the calculation files once for validation and resolution, and that the checks after
 /// resolution read the rule registrations from; the resolver's when absent, else one of its own.</param>
-internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts, IModelResolver? resolver = null,
+internal sealed partial class ModelValidator(EngineOptions options, ISchemaRegistry schemas, IScriptSandboxFactory scripts, IModelResolver? resolver = null,
     SeedRowsCache? seedRows = null, CalculationService? calculations = null)
     : IModelValidator
 {
@@ -72,7 +72,19 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     public async Task<ValidationReport> ValidateAsync(ModelSnapshot model, ValidationScope scope, IProgress<ProgressUpdate>? progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(model);
-        scope ??= ValidationScope.All;
+        return (await RunAsync(model, scope ?? ValidationScope.All, null, collect: false, progress, ct).ConfigureAwait(false)).Report;
+    }
+
+    /// <summary>
+    /// The validation behind <see cref="ValidateAsync"/> and <see cref="ValidateWholeAsync"/>. With <paramref name="incremental"/> (a
+    /// whole-model scope only), the per-document rules run on the documents the change reaches (<see cref="IncrementalTargets"/>) and
+    /// every other active document keeps its findings from the previous whole-model run; everything else runs as in a whole run, so the
+    /// report is the same. With <paramref name="collect"/>, the result keeps each document's own findings for the next incremental run.
+    /// </summary>
+    private async Task<(ValidationReport Report, IReadOnlyDictionary<string, IReadOnlyList<Diagnostic>>? PerDocument, IReadOnlySet<string>? TextHolders,
+        int Validated)> RunAsync(
+        ModelSnapshot model, ValidationScope scope, IncrementalInput? incremental, bool collect, IProgress<ProgressUpdate>? progress, CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
 
         var active = ActiveDocuments(model);
@@ -81,7 +93,18 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         {
             DeferScriptedRows = wholeModel && scope.DeferScriptedRows,
         };
-        var targets = SelectTargets(shared, active, scope);
+        HashSet<string>? reached = null;
+        List<ElementDocument> targets;
+        if (incremental is not null && wholeModel)
+        {
+            reached = IncrementalTargets(shared, active, incremental);
+            targets = [.. active.Where(d => reached.Contains(d.Element.Id))];
+        }
+        else
+        {
+            targets = SelectTargets(shared, active, scope);
+        }
+
         if (!wholeModel)
             shared.Scope = targets.Select(d => d.Element.Id).ToHashSet(StringComparer.Ordinal);
         var parallelism = options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount;
@@ -209,48 +232,117 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
         }
 
+        Dictionary<string, IReadOnlyList<Diagnostic>>? ownFindings = null;
+        HashSet<string>? textHolders = null;
         var ticket = _ruleResults.Begin();
         var runScripts = scope.IncludeScriptRules && pool is not null && rules.Count > 0;
         var kept = false;
         try
         {
             var context = shared.WithRuleNames(ruleNames);
-            if (wholeModel)
+            if (wholeModel && reached is null)
                 context.BuildCommonIndexes(parallelism, ct);
             var calls = new RuleLibraryCalls(libraryPools);
             var ruleRun = runScripts ? new RuleRun(pool!, rules, RuleKinds(pool!), CachedRuleFiles(model, pool!), _ruleResults, ticket, calls) : null;
-            var perDocument = new IReadOnlyList<Diagnostic>[targets.Count];
+            // A whole run validates every active document. An incremental one runs the built-in rules on the documents the change reaches
+            // and takes every other document's from the previous run; while script rules run, it visits every document, since a rule may
+            // read anything and its result cache judges what is still current.
+            var docs = reached is not null && ruleRun is not null ? active : targets;
+            var perDocument = new IReadOnlyList<Diagnostic>[docs.Count];
+            var builtinCounts = collect ? new int[docs.Count] : null;
+            var holdsText = collect ? new bool[docs.Count] : null;
             var done = 0;
             await Parallel.ForEachAsync(
-                Enumerable.Range(0, targets.Count),
+                Enumerable.Range(0, docs.Count),
                 new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct },
                 (i, token) =>
                 {
-                    var report = new Report(targets[i]);
-                    BuiltinRules.Validate(context, report);
-                    MemberRules.Validate(context, report);
-                    StatusRules.Validate(context, report);
-                    PackageRules.Validate(context, report);
-                    ProcessRules.Validate(context, report);
-                    RevisionRules.Validate(context, report);
-                    CopyRules.Validate(context, report);
-                    OperationRules.Validate(context, report);
-                    ExpressionRules.Validate(context, report);
-                    CustomRules.Validate(context, report);
-                    ScenarioRules.Validate(context, report, runtime);
-                    if (facts is not null)
-                        MigrationRules.Validate(context, report, facts);
-                    extensions.Check(context, report);
-                    SuppressionRules.Validate(context, report);
+                    var report = new Report(docs[i]);
+                    var id = docs[i].Element.Id;
+                    if (reached is null || reached.Contains(id))
+                    {
+                        BuiltinRules.Validate(context, report);
+                        MemberRules.Validate(context, report);
+                        StatusRules.Validate(context, report);
+                        PackageRules.Validate(context, report);
+                        ProcessRules.Validate(context, report);
+                        RevisionRules.Validate(context, report);
+                        CopyRules.Validate(context, report);
+                        OperationRules.Validate(context, report);
+                        ExpressionRules.Validate(context, report);
+                        CustomRules.Validate(context, report);
+                        ScenarioRules.Validate(context, report, runtime);
+                        if (facts is not null)
+                            MigrationRules.Validate(context, report, facts);
+                        extensions.Check(context, report);
+                        SuppressionRules.Validate(context, report);
+                        if (holdsText is not null)
+                            holdsText[i] = HoldsText(model, docs[i].Element);
+                    }
+                    else
+                    {
+                        foreach (var d in incremental!.Previous.PerDocument.GetValueOrDefault(id) ?? [])
+                            report.Add(d);
+                        if (holdsText is not null)
+                            holdsText[i] = incremental.Previous.TextHolders.Contains(id);
+                    }
+
+                    if (builtinCounts is not null)
+                        builtinCounts[i] = report.Items.Count;
                     if (ruleRun is not null)
                         RunScripts(ruleRun, model, report, token);
                     perDocument[i] = report.Items;
-                    progress?.Report(new ProgressUpdate(PipelineStage.Validate, Interlocked.Increment(ref done), targets.Count, targets[i].Path, null));
+                    progress?.Report(new ProgressUpdate(PipelineStage.Validate, Interlocked.Increment(ref done), docs.Count, docs[i].Path, null));
                     return ValueTask.CompletedTask;
                 }).ConfigureAwait(false);
 
-            foreach (var items in perDocument)
-                diagnostics.AddRange(items);
+            if (collect)
+            {
+                ownFindings = new Dictionary<string, IReadOnlyList<Diagnostic>>(StringComparer.Ordinal);
+                textHolders = new HashSet<string>(StringComparer.Ordinal);
+                if (reached is not null && !ReferenceEquals(docs, active))
+                {
+                    foreach (var (id, items) in incremental!.Previous.PerDocument)
+                    {
+                        if (!reached.Contains(id) && model.GetDocument(id) is not null)
+                            ownFindings[id] = items;
+                    }
+
+                    foreach (var id in incremental.Previous.TextHolders)
+                    {
+                        if (!reached.Contains(id) && model.GetDocument(id) is not null)
+                            textHolders.Add(id);
+                    }
+                }
+
+                for (var i = 0; i < docs.Count; i++)
+                {
+                    var id = docs[i].Element.Id;
+                    if (builtinCounts![i] > 0)
+                        ownFindings[id] = builtinCounts[i] == perDocument[i].Count ? perDocument[i] : [.. perDocument[i].Take(builtinCounts[i])];
+                    if (holdsText![i])
+                        textHolders.Add(id);
+                }
+            }
+
+            if (reached is not null && !ReferenceEquals(docs, active))
+            {
+                // Every active document in path order, as a whole run adds them: the documents the change reaches with their new findings,
+                // the others with the previous run's (their inputs did not change), so the list is the one a whole run would build.
+                var fresh = new Dictionary<string, IReadOnlyList<Diagnostic>>(docs.Count, StringComparer.Ordinal);
+                for (var i = 0; i < docs.Count; i++)
+                    fresh[docs[i].Element.Id] = perDocument[i];
+                foreach (var doc in active)
+                {
+                    var id = doc.Element.Id;
+                    diagnostics.AddRange(fresh.TryGetValue(id, out var found) ? found : incremental!.Previous.PerDocument.GetValueOrDefault(id) ?? []);
+                }
+            }
+            else
+            {
+                foreach (var items in perDocument)
+                    diagnostics.AddRange(items);
+            }
 
             // Whole-model rules run once per whole-model validation, on one lease, after the per-document loop (section 5.7); scoped
             // validations (element saves) skip them, so they never refuse a save over elements outside the change.
@@ -272,7 +364,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         // A whole-model validation with script rules used every entry that is still current, so the others go (bounding memory). That
         // holds when no element rule ran too (every rule file deleted or failing to load, or only whole-model rules left): all go.
-        if (wholeModel && scope.IncludeScriptRules)
+        // An incremental run used only the entries of the documents it validated again: the others are still current.
+        if (wholeModel && scope.IncludeScriptRules && reached is null)
             _ruleResults.Sweep(ticket);
 
         ct.ThrowIfCancellationRequested();
@@ -286,9 +379,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             configured = CollapseUndeclaredTags(model, configured);
         var positioned = await AddPositionsAsync(model, configured, ct).ConfigureAwait(false);
         if (suppressed.Count == 0)
-            return ValidationReport.From(positioned);
+            return (ValidationReport.From(positioned), ownFindings, textHolders, targets.Count);
         var findings = await AddPositionsAsync(model, [.. suppressed.Select(s => s.Finding)], ct).ConfigureAwait(false);
-        return ValidationReport.From(positioned, suppressed.Select((s, i) => s with { Finding = findings[i] }));
+        return (ValidationReport.From(positioned, suppressed.Select((s, i) => s with { Finding = findings[i] })), ownFindings, textHolders, targets.Count);
     }
 
     /// <summary>
