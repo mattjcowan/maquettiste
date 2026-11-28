@@ -83,7 +83,9 @@ internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSand
     /// <summary>
     /// The key cache and size hint for the next whole-model run. The <c>e:</c> and <c>r:</c> strings are pure functions of ids, so a run reuses
     /// the previous run's (an edit run resolves the same ids again); like the inflector's memo, the cache is carried over only while it holds
-    /// at most <see cref="MaxCarriedWords"/> keys for the model. The registry is sized for the previous run's objects plus an eighth.
+    /// at most <see cref="MaxCarriedWords"/> keys for the model. The registry is sized for the previous run's objects plus an eighth, but only
+    /// when the previous model had about as many documents (within a quarter): a model of another size keeps the per-document estimate, so a
+    /// small model after a large one does not get the large one's registry, nor a much larger one a registry that must regrow.
     /// </summary>
     private (DependencyKeyCache Keys, int? Expected) CarryFor(int documents)
     {
@@ -91,10 +93,11 @@ internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSand
         if (last is null)
             return (new DependencyKeyCache(), null);
         var keys = last.Keys.Count <= MaxCarriedWords(documents) ? last.Keys : new DependencyKeyCache();
-        return (keys, Math.Max(1024, last.Registered + (last.Registered / 8)));
+        var similar = Math.Abs(documents - last.Documents) <= last.Documents / 4;
+        return (keys, similar ? Math.Max(1024, last.Registered + (last.Registered / 8)) : null);
     }
 
-    private sealed record RunCarry(DependencyKeyCache Keys, int Registered);
+    private sealed record RunCarry(DependencyKeyCache Keys, int Registered, int Documents);
 
     /// <inheritdoc/>
     public Task<ResolvedModel> ResolveAsync(ModelSnapshot model, IProgress<ProgressUpdate>? progress, CancellationToken ct)
@@ -110,7 +113,7 @@ internal sealed class ModelResolver(EngineOptions options, Scripting.IScriptSand
                 Scripts = Scripts, SeedRows = SeedRows, Calculations = host, Keys = keys,
             };
             var resolved = run.Run();
-            Volatile.Write(ref _carry, new RunCarry(keys, run.Registered));
+            Volatile.Write(ref _carry, new RunCarry(keys, run.Registered, model.Documents.Count));
             return resolved;
         }), ct);
     }
