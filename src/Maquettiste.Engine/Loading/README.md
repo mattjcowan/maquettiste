@@ -118,3 +118,20 @@ The model loader (stage 1), the index cache, the file-name policy, the change pl
 - **Per-file strings kept.** Each `FileEntry` keeps its repo-relative path, and the placement verdict of each document (MQ1005) is kept
   with the document it was judged against (its database, or its seed's target, scenario's process or operation's subject), so an edit
   judges only the files it touched. Bench, 5,000 entities, one entity edit, full stat pass: about 257 MB before.
+
+## Memory notes (held memory, one string per value)
+
+- **One string per id, pointer and schema reference.** The loader owns a `StringPool` (`Text/StringPool.cs`) and carries it across
+  loads. The reader takes element files' ids from it as it deserializes them (`EngineJson.Options` has one string converter, which
+  reads ids, `$schema` references and built-in type keywords through the reading thread's pool while one is set, `Json/PooledStrings.cs`,
+  and otherwise reads and writes as the built-in one), and its scan
+  takes ids and pointers from it; the index (`ModelIndexer.Build`) takes its entry and reference pointers and the ids it splits out of
+  keyed values from the same pool. An element's own id, every reference to it and the index entries share one instance, and
+  `/attributes/0` is one string for the whole model. An edit's files take the instances the previous snapshot holds.
+- **Bounded.** After the first load the pool may grow to twice what that load pooled (at least 65,536 strings); past that, a load empties
+  it and refills it from its snapshot's index (every id, entry and reference pointer, referenced id), and the limit becomes twice the
+  refilled size. Ids and pointers of files edited away do not stay forever.
+- **Entries keyed by their own path.** A full scan lists every path again; the entries are keyed by each entry's own path instance, so the
+  listing's copy is not kept.
+- Bench, 5,000 entities, after the cold run and one edit: the live heap (a forced full collection, objects reachable) went from about
+  1,034 MB to 893 MB; strings from 377 MB to 222 MB (duplicate ids 79 to 6 MB, pointers 61 to 0.2 MB, paths 22 MB to none live).

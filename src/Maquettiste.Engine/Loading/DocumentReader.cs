@@ -6,6 +6,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Text;
 
 namespace Maquettiste.Engine.Loading;
 
@@ -94,6 +95,12 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
 
     private readonly JsonPositionLocator _locator = new();
 
+    /// <summary>
+    /// The string pool element files' ids and pointers are taken from (<see cref="StringPool"/>; the loader's, carried across its loads), or
+    /// <see langword="null"/> for plain strings.
+    /// </summary>
+    public StringPool? Pool { get; init; }
+
     /// <summary>Reads an element file.</summary>
     /// <param name="bytes">The file bytes.</param>
     /// <param name="repoPath">The repo-relative path.</param>
@@ -136,7 +143,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
             Element element;
             try
             {
-                element = ElementReader.ReadElement(root);
+                element = ElementReader.ReadElement(root, Pool);
             }
             catch (Exception ex) when (IsDeserializationFailure(ex))
             {
@@ -148,7 +155,7 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
             if (!isCanonical)
                 diagnostics.Add(RuleCatalog.Create("MQ1003", "The file is not in canonical form: rewrite it from the Problems panel or run maquettiste format.", element.Id, repoPath, ""));
 
-            var (ids, sidecars) = Scan(root);
+            var (ids, sidecars) = Scan(root, Pool);
             return new ParsedFile
             {
                 Element = element,
@@ -562,9 +569,11 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
 
     /// <summary>Collects every <c>id</c> and every sidecar reference in an element document, skipping free-form values.</summary>
     /// <param name="root">The document.</param>
+    /// <param name="pool">The pool the ids and pointers are taken from, or <see langword="null"/>.</param>
     /// <returns>The ids with pointers, and the sidecar references with the pointers of their descriptions.</returns>
     /// <remarks>Pointers are built only for the objects that hold an id or a sidecar reference, from the path of the walk.</remarks>
-    public static (ImmutableArray<(string Id, string Pointer)> Ids, ImmutableArray<(string Pointer, string File)> Sidecars) Scan(JsonElement root)
+    public static (ImmutableArray<(string Id, string Pointer)> Ids, ImmutableArray<(string Pointer, string File)> Sidecars) Scan(JsonElement root,
+        StringPool? pool = null)
     {
         var ids = ImmutableArray.CreateBuilder<(string, string)>();
         var sidecars = ImmutableArray.CreateBuilder<(string, string)>();
@@ -583,12 +592,12 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
                             continue;
                         if (property.NameEquals("id"u8) && property.Value.ValueKind == JsonValueKind.String)
                         {
-                            ids.Add((property.Value.GetString()!, Pointer(path, null)));
+                            ids.Add((IdOf(property.Value, pool), Pointer(path, null, pool)));
                         }
                         else if (property.NameEquals("description"u8) && property.Value.ValueKind == JsonValueKind.Object
                             && property.Value.TryGetProperty("file"u8, out var file) && file.ValueKind == JsonValueKind.String)
                         {
-                            sidecars.Add((Pointer(path, "description"), file.GetString()!));
+                            sidecars.Add((Pointer(path, "description", pool), file.GetString()!));
                         }
                         else if (path.Count == 0 && property.NameEquals("rowsFrom"u8) && property.Value.ValueKind == JsonValueKind.Object
                             && property.Value.TryGetProperty("file"u8, out var rows) && rows.ValueKind == JsonValueKind.String)
@@ -635,7 +644,20 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
         return false;
     }
 
-    private static string Pointer(List<(JsonProperty Property, int Index)> path, string? last)
+    /// <summary>A string value that holds an id: the pool's instance when it is a valid id and a pool is given.</summary>
+    private static string IdOf(JsonElement value, StringPool? pool)
+    {
+        if (pool is not null)
+        {
+            var raw = System.Runtime.InteropServices.JsonMarshal.GetRawUtf8Value(value); // with its quotes
+            if (raw.Length == IdFormat.Length + 2 && IdFormat.IsValid(raw[1..^1]) && pool.InternAscii(raw[1..^1]) is { } pooled)
+                return pooled;
+        }
+
+        return value.GetString()!;
+    }
+
+    private static string Pointer(List<(JsonProperty Property, int Index)> path, string? last, StringPool? pool)
     {
         if (path.Count == 0 && last is null)
             return "";
@@ -651,7 +673,14 @@ internal sealed class DocumentReader(ISchemaRegistry schemas, ICanonicalJson can
 
         if (last is not null)
             builder.Append('/').Append(last);
-        return builder.ToString();
+        if (pool is null)
+            return builder.ToString();
+        // The same pointers recur in every file (/attributes/0): the pool's instance, built without a string of its own when it fits.
+        Span<char> chars = stackalloc char[256];
+        if (builder.Length > chars.Length)
+            return pool.Intern(builder.ToString());
+        builder.CopyTo(0, chars, builder.Length);
+        return pool.Intern(chars[..builder.Length]);
     }
 
     /// <summary>Whether an exception is a deserialization failure of well-formed JSON.</summary>

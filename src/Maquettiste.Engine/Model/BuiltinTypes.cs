@@ -47,4 +47,34 @@ public static class BuiltinTypes
     /// <param name="keyword">The candidate keyword.</param>
     /// <returns><see langword="true"/> for a range keyword.</returns>
     public static bool IsRange(string? keyword) => keyword is "range" or "multirange";
+
+    /// <summary>Every column type keyword with its UTF-8 bytes, for <see cref="Keyword"/>.</summary>
+    private static readonly (string Keyword, byte[] Utf8)[] KeywordBytes =
+        [.. Keywords.Concat(ColumnOnlyKeywords).Select(static k => (k, System.Text.Encoding.UTF8.GetBytes(k)))];
+
+    /// <summary>The longest column type keyword, in bytes.</summary>
+    private static readonly int LongestKeyword = KeywordBytes.Max(static k => k.Utf8.Length);
+
+    /// <summary>
+    /// The one instance of a column type keyword given as UTF-8 bytes, or <see langword="null"/> when the bytes are none: model files
+    /// name the same few types tens of thousands of times, and a reader that takes this instance keeps one string for all of them.
+    /// </summary>
+    /// <param name="utf8">The bytes.</param>
+    /// <returns>The keyword, or <see langword="null"/>.</returns>
+    internal static string? Keyword(ReadOnlySpan<byte> utf8)
+    {
+        if (utf8.Length > LongestKeyword || utf8.Length < 3 || !KeywordStarts.Contains(utf8[0]))
+            return null;
+        foreach (var (keyword, bytes) in KeywordBytes)
+        {
+            if (bytes.Length == utf8.Length && utf8.SequenceEqual(bytes))
+                return keyword;
+        }
+
+        return null;
+    }
+
+    /// <summary>The first bytes of the column type keywords, so most other strings are turned away at once.</summary>
+    private static readonly System.Buffers.SearchValues<byte> KeywordStarts =
+        System.Buffers.SearchValues.Create([.. KeywordBytes.Select(static k => k.Utf8[0]).Distinct()]);
 }

@@ -2,8 +2,8 @@
 
 Status: design, revision 2, 2026-11-28. The owner asked for it on 2026-11-27, after measurements showed that one entity
 edit in a large model costs the whole model ("Models should not require that kind of memory"). On 2026-11-28 the owner
-approved the order in section 9 (revision 2), which replaces the plan in sections 4 and 7 where they differ. Ruling R1
-(section 8) is still open and is needed before the skip check is built.
+approved the order in section 9 (revision 2), which replaces the plan in sections 4 and 7 where they differ. Steps 1 to 3
+of that order are built; section 10 has the results. Ruling R1 (section 8) and the reuse decision (step 4) are open.
 
 ## 1. The problem
 
@@ -203,3 +203,53 @@ every call until A. Step 2 below gives previews the per-database resolve the eng
    against about 80 to 120 for the two-layer design in the Resolution README. Decided on the numbers after steps 2
    and 3.
 
+
+## 10. Results after steps 2 and 3 (2026-11-28)
+
+Steps 1 to 3 of section 9 are built: A (#101), the resolver's working memory cut (#102), the skip check by key (#103),
+unit states that share the file's string table (#104), validation of what the edit reaches and a cheaper rescan (#105),
+and one string per id, pointer and path at load (this pull request). Every change is proved by an equivalence test against
+the full path: the same diagnostics, the same plan and the same bytes.
+
+Bench, 5,000 entities, one entity edit, shared machine (load average 3 to 13), two to four runs each:
+
+| One edit | Before | After A | After #105 | After this pull request |
+|---|---:|---:|---:|---:|
+| Allocated | 2,683 MiB | 2,258 MiB | 1,203 to 1,223 MiB | 1,203 MiB |
+| Time | 3.6 to 4.1 s | 3.4 to 3.6 s | 1.86 to 2.10 s | 1.87 to 2.01 s |
+| GC pauses during the edit | 1.2 to 1.5 s | | 0 s | 0 s |
+| Live heap at the next edit | about 2,090 MiB | about 1,850 MiB | 1,732 to 1,842 MiB | 1,545 to 1,649 MiB |
+| Peak working set, whole bench | about 10.4 GB | | 8.2 to 8.9 GB | |
+
+The 2 s budget is met on a quiet machine and missed by up to 0.1 s on a loaded one. Cold load got about 0.15 s slower in
+this pull request (ids are shared while parsing); load, validate and resolve together is about 3.0 to 3.3 s against its
+3 s budget, which the base also misses on a loaded machine.
+
+**What one model holds** (step 3; 5,000 entities, after a cold run and one edit, before this pull request): about 1,322 MiB
+of live data, linear in the model's size. The snapshot 548 MiB (element objects 221, raw file bytes 85, the id and
+reference indexes 173), unit states kept in memory 332 MiB, the resolved model beyond the snapshot 234 MiB, loader state
+110 MiB. Strings were a third of it, 290 MiB of them repeats: unit-state labels (removed in #104) and ids, pointers and
+paths (removed here: strings fell from 377 to 222 MiB in a heap dump). Besides live data the bench's live-heap figure
+counted 234 to 319 MiB of gaps in the large-object heap, from a save buffer that doubled (sized once in #104).
+
+**Previews on the per-database resolve: skipped.** Templates read the whole model (processes, verbs, actors, every
+database), so a template preview cannot use a partial resolve and stay identical; "explain this file" and the full
+Problems check need the whole model by definition. Only the seed rows preview could, for 0.2 to 0.6 s per preview when no
+generation run has resolved the snapshot. Instead, a preview that arrives while a generation run is validating or
+resolving now waits for that run's work rather than starting its own (this pull request).
+
+**Left, not built:**
+
+- Raw bytes kept in memory: the documents' file bytes (85 MiB, not read in this flow) and the unit-state file bytes
+  (77 MiB, read only by "explain this file"). About 70 to 150 MiB, 4 to 8 elapsed AI hours; dropping them means reading
+  again from disk with a hash check.
+- About 180 MiB the GC keeps after a run that no walk of the heap reaches; the cause is not known. It goes when the store
+  and service are dropped.
+- What an edit still allocates is mainly the resolve (it rebuilds the whole resolved model) and the rescan. Only reuse,
+  step 4 of section 9, removes it.
+
+**Decisions for the owner:**
+
+- R1 (section 8): whether the editor and `watch` check only the outputs an edit reaches. Behaviour is unchanged until then.
+- Step 4, reuse across an edit: about 45 to 70 elapsed AI hours.
+- A release with these changes.

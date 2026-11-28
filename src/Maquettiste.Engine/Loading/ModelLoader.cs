@@ -9,6 +9,7 @@ using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Localization;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Text;
 
 namespace Maquettiste.Engine.Loading;
 
@@ -57,12 +58,28 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ModelPaths _paths = new(options);
-    private readonly DocumentReader _reader = new(schemas, json);
+    // The reader takes element files' ids and pointers from the loader's string pool (Strings), which the index shares.
+    private readonly DocumentReader _reader = new(schemas, json) { Pool = new StringPool() };
     private readonly Lazy<string> _schemaSetHash = new(() => IndexCache.SchemaSetHash(schemas));
     private LoaderState _state = LoaderState.Empty;
     private IReadOnlyDictionary<string, CacheRecord>? _diskCache;
     private IModelDocumentStore? _documents = documents;
     private int _tempCounter;
+
+    /// <summary>
+    /// The pool size above which a load refills the pool from its snapshot (<see cref="BoundStrings"/>); 0 until the first load sets it to
+    /// twice what that load pooled.
+    /// </summary>
+    private int _stringLimit;
+
+    /// <summary>The smallest <see cref="_stringLimit"/>: a small model never refills its pool.</summary>
+    private const int MinimumStringLimit = 1 << 16;
+
+    /// <summary>
+    /// One instance per distinct id and pointer for everything this loader reads and indexes (<see cref="StringPool"/>): carried across
+    /// loads, so an edited file's ids are the instances the unchanged files and the previous index already hold.
+    /// </summary>
+    internal StringPool Strings => _reader.Pool!;
 
     /// <summary>The store the documents come from.</summary>
     internal IModelDocumentStore Documents => _documents ??= new FileDocumentStore(_paths, paths);
@@ -142,8 +159,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var checkedEntries = await CheckAllAsync(primary, previous, request.VerifyHashes, counters, progress, ct, listed: listed).ConfigureAwait(false);
         for (var i = 0; i < primary.Length; i++)
         {
+            // Keyed by the entry's own path: a full scan lists every path again, and that copy is not kept.
             if (checkedEntries[i] is { } entry)
-                entries[primary[i]] = entry;
+                entries[entry.ModelPath] = entry;
             else
                 entries.Remove(primary[i]);
         }
@@ -239,9 +257,45 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         var cacheWritten = await cacheTask.ConfigureAwait(false);
         _state = new LoaderState(entries, documents, snapshot) { MissingSidecars = missingSidecars, Memo = memo };
+        BoundStrings(snapshot);
 
         LastStatistics = new LoadStatistics(entries.Count, counters.Read, counters.FromCache, counters.Reused, counters.Parsed, counters.SchemaEvaluations, cacheWritten);
         return new LoadResult(snapshot, changes);
+    }
+
+    /// <summary>
+    /// Keeps the string pool from holding what no snapshot uses any more: once it has grown past twice its size after the last refill (ids
+    /// and pointers of files edited away accumulate), it is emptied and refilled from the snapshot's index (every id, the pointers of its
+    /// entries and references, the ids references name), which holds the instances the loaded files and the index share. Amortized, a
+    /// refill costs a constant per string added. Runs inside the load gate, when no read uses the pool.
+    /// </summary>
+    /// <param name="snapshot">The snapshot the load produced.</param>
+    private void BoundStrings(ModelSnapshot snapshot)
+    {
+        var strings = Strings;
+        var count = strings.Count;
+        if (_stringLimit == 0)
+            _stringLimit = Math.Max(MinimumStringLimit, 2 * count);
+        if (count <= _stringLimit)
+            return;
+        strings.Reset();
+        var index = snapshot.Index;
+        foreach (var (id, entry) in index.Entries)
+        {
+            strings.Intern(id);
+            strings.Intern(entry.JsonPointer);
+        }
+
+        foreach (var references in index.ReferencesFrom.Values)
+        {
+            foreach (var reference in references)
+            {
+                strings.Intern(reference.JsonPointer);
+                strings.Intern(reference.ToId);
+            }
+        }
+
+        _stringLimit = Math.Max(MinimumStringLimit, 2 * strings.Count);
     }
 
     /// <summary>
@@ -761,7 +815,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         var libraries = Libraries(settings, settingsEntry, entries, diagnostics);
         diagnostics.Sort(Diagnostic.Order);
         var snapshot = ModelSnapshot.CreateAfter(previousSnapshot, documents, settings, settingsHash, extensions, scripts, version, diagnostics,
-            options.EffectiveParallelism, ct, shards, seedScripts, customKinds, libraries, calculationScripts, declaredRules);
+            options.EffectiveParallelism, ct, shards, seedScripts, customKinds, libraries, calculationScripts, declaredRules, Strings);
         return (snapshot, byPath, distinct ? new AssembleMemo(ordered, ids) : null);
     }
 

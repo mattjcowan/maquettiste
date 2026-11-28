@@ -177,6 +177,8 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             var token = speculative.Token;
             early = Observed(Task.Run(() => services.Resolver.ResolveAsync(snapshot, null, token), token));
             _ = early.ContinueWith(_ => speculative.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            // A preview or validate of the same snapshot while this resolves waits for it instead of resolving the model a second time.
+            store.ShareResolving(snapshot, early);
         }
 
         var used = false;
@@ -226,7 +228,7 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             {
                 start = Clock.Now;
                 progress?.Report(new ProgressUpdate(PipelineStage.Resolve, 0, 0, null, null));
-                resolved = await shared.WaitAsync(ct).ConfigureAwait(false);
+                resolved = await store.AwaitModelAsync(snapshot, shared, ct).ConfigureAwait(false);
                 Clock.Record(PipelineStage.Resolve, start, snapshot.Documents.Count);
                 progress?.Report(new ProgressUpdate(PipelineStage.Resolve, snapshot.Documents.Count, snapshot.Documents.Count, null, null));
             }
@@ -241,7 +243,9 @@ internal sealed class GenerationRun(EngineServices services, ModelStore store, I
             else
             {
                 start = Clock.Now;
-                resolved = await services.Resolver.ResolveAsync(snapshot, progress, ct).ConfigureAwait(false);
+                var resolving = services.Resolver.ResolveAsync(snapshot, progress, ct);
+                store.ShareResolving(snapshot, resolving);
+                resolved = await resolving.ConfigureAwait(false);
                 Clock.Record(PipelineStage.Resolve, start, snapshot.Documents.Count);
             }
 

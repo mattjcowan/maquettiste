@@ -14,6 +14,12 @@ public sealed partial class ModelStore
     private (ModelSnapshot Snapshot, Task<Resolution.ResolvedModel> Task)? _model;
 
     /// <summary>
+    /// The resolutions in <see cref="_model"/> that a generation run started and may cancel (<see cref="ShareResolving"/>): a reader that
+    /// finds one cancelled or failed resolves with the store's resolver instead (<see cref="AwaitModelAsync"/>). Weak: it holds no task.
+    /// </summary>
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Task<Resolution.ResolvedModel>, object> _borrowed = [];
+
+    /// <summary>
     /// A snapshot's whole-model validation report and, when it has no error (pending migration facts aside, MQ4101), its resolved model:
     /// computed once per snapshot and shared
     /// by everything that needs them (validate's resolver findings, the resolved model's paged reader, template previews and path
@@ -50,22 +56,70 @@ public sealed partial class ModelStore
         var report = (await WholeValidationAsync(snapshot, deferScriptedRows: true, CancellationToken.None).ConfigureAwait(false)).Report;
         if (report.Diagnostics.Any(Generation.Outcomes.BlocksResolution))
             return new ResolvedSnapshot(snapshot, report, null);
-        Task<Resolution.ResolvedModel> resolving;
+        return new ResolvedSnapshot(snapshot, report, await AwaitModelAsync(snapshot, ModelTask(snapshot, null), CancellationToken.None).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// The resolution of a snapshot the store holds or is running (a generation run's under way included), else one started now with the
+    /// store's resolver, kept when the snapshot is current (single flight). <paramref name="failed"/>, a run's resolution found cancelled or
+    /// failed, is replaced rather than handed out again.
+    /// </summary>
+    private Task<Resolution.ResolvedModel> ModelTask(ModelSnapshot snapshot, Task<Resolution.ResolvedModel>? failed)
+    {
         lock (_modelGate)
         {
-            if (_model is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled)
-            {
-                resolving = cached.Task;
-            }
-            else
-            {
-                resolving = _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None);
-                if (IsCurrent(snapshot))
-                    _model = (snapshot, resolving);
-            }
+            if (_model is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !ReferenceEquals(cached.Task, failed) && !cached.Task.IsFaulted
+                && !cached.Task.IsCanceled)
+                return cached.Task;
+            var resolving = _services.Resolver.ResolveAsync(snapshot, null, CancellationToken.None);
+            if (IsCurrent(snapshot))
+                _model = (snapshot, resolving);
+            return resolving;
+        }
+    }
+
+    /// <summary>
+    /// Waits for a shared resolution of a snapshot. A generation run's (<see cref="ShareResolving"/>) that ends cancelled (the run was) or
+    /// failed is not the answer: the store resolves the snapshot itself (single flight) and that is awaited instead, so a reader never fails
+    /// for a run it did not start. The store's own resolutions run without a token, so they never end cancelled.
+    /// </summary>
+    /// <param name="snapshot">The snapshot.</param>
+    /// <param name="shared">The shared resolution (<see cref="SharedModel"/> or <see cref="ModelTask"/>).</param>
+    /// <param name="ct">Cancellation of the wait only.</param>
+    /// <returns>The resolved model.</returns>
+    internal async Task<Resolution.ResolvedModel> AwaitModelAsync(ModelSnapshot snapshot, Task<Resolution.ResolvedModel> shared, CancellationToken ct)
+    {
+        try
+        {
+            return await shared.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested && (shared.IsCanceled || shared.IsFaulted) && _borrowed.TryGetValue(shared, out _))
+        {
+            // The run's resolution did not finish: resolved here instead.
         }
 
-        return new ResolvedSnapshot(snapshot, report, await resolving.ConfigureAwait(false));
+        return await ModelTask(snapshot, shared).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Lets the store's readers wait for a generation run's resolution of the snapshot the store serves while it runs, instead of starting a
+    /// second whole resolution (a preview that arrives while the run resolves): the run's resolution becomes the store's, unless the store
+    /// holds one of the snapshot already. The run may still cancel it (its caller did, or its validation failed); a reader that finds it
+    /// cancelled or failed resolves on its own (<see cref="AwaitModelAsync"/>). A reader that needs a validated model takes it only after the
+    /// snapshot validates (<see cref="ResolvedAsync"/>, a run's own validation), as it does its own. A snapshot the store no longer serves is
+    /// not kept.
+    /// </summary>
+    /// <param name="snapshot">The run's snapshot.</param>
+    /// <param name="resolving">The run's resolution of it.</param>
+    internal void ShareResolving(ModelSnapshot snapshot, Task<Resolution.ResolvedModel> resolving)
+    {
+        lock (_modelGate)
+        {
+            if (!IsCurrent(snapshot) || (_model is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled))
+                return;
+            _borrowed.AddOrUpdate(resolving, this);
+            _model = (snapshot, resolving);
+        }
     }
 
     /// <summary>
@@ -94,7 +148,7 @@ public sealed partial class ModelStore
         if (ReferenceEquals(snapshot, _current))
         {
             if (SharedModel(snapshot) is { } held)
-                return await held.WaitAsync(ct).ConfigureAwait(false);
+                return await AwaitModelAsync(snapshot, held, ct).ConfigureAwait(false);
             if ((await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Model is { } shared)
                 return shared;
         }

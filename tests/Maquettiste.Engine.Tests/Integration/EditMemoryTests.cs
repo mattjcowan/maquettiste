@@ -177,6 +177,102 @@ public sealed class EditMemoryTests
         Assert.Same(shared.Model, await store.SharedModel(current)!);
     }
 
+    [Fact]
+    public async Task A_preview_started_while_a_run_resolves_waits_for_the_runs_resolution()
+    {
+        await using var repo = E2ERepo.Create();
+        var services = EngineServices.Create(repo.Options);
+        var resolver = new GatedResolver(services.Resolver);
+        var gated = services with { Resolver = resolver };
+        await using var store = new ModelStore(repo.Options, gated);
+        var service = new GenerationService(store, repo.Options, gated);
+
+        // The run's resolution waits at the gate; a preview of the same snapshot arrives meanwhile.
+        resolver.Close();
+        var run = service.RunAsync(new GenerationRequest { StageBarriers = false, Jobs = 2 }, null, Ct);
+        await resolver.Entered.WaitAsync(Ct);
+        await RunResolutionSharedAsync(store);
+        var preview = service.PreviewAsync("e2e", "entity", E2ERepo.CustomerId, Ct);
+        resolver.Open();
+
+        Assert.Equal(RunOutcome.Succeeded, (await run).Outcome);
+        Assert.NotEmpty((await preview).Files);
+        Assert.Equal(1, resolver.Calls);
+        Assert.Same(await store.SharedModel(store.Current!)!, (await store.ResolvedAsync(store.Current!, Ct)).Model);
+        Assert.Equal(1, resolver.Calls);
+    }
+
+    [Fact]
+    public async Task A_preview_waiting_for_a_cancelled_runs_resolution_resolves_on_its_own()
+    {
+        await using var repo = E2ERepo.Create();
+        var services = EngineServices.Create(repo.Options);
+        var resolver = new GatedResolver(services.Resolver);
+        var gated = services with { Resolver = resolver };
+        await using var store = new ModelStore(repo.Options, gated);
+        var service = new GenerationService(store, repo.Options, gated);
+
+        resolver.Close();
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var run = service.RunAsync(new GenerationRequest { StageBarriers = false, Jobs = 2 }, null, cancel.Token);
+        await resolver.Entered.WaitAsync(Ct);
+        await RunResolutionSharedAsync(store);
+        var preview = service.PreviewAsync("e2e", "entity", E2ERepo.CustomerId, Ct);
+
+        // The run is cancelled while it resolves: the preview does not fail with it, it resolves the snapshot itself.
+        await cancel.CancelAsync();
+        Assert.Equal(RunOutcome.Cancelled, (await run).Outcome);
+        resolver.Open();
+        var files = (await preview).Files;
+
+        Assert.NotEmpty(files);
+        Assert.Equal(2, resolver.Calls);
+        Assert.NotNull((await store.ResolvedAsync(store.Current!, Ct)).Model);
+        Assert.Equal(2, resolver.Calls);
+    }
+
+    /// <summary>Waits until the store holds the run's resolution of its current snapshot (the run registers it as it starts it).</summary>
+    private static async Task RunResolutionSharedAsync(ModelStore store)
+    {
+        for (var i = 0; i < 1_000 && (store.Current is not { } current || store.SharedModel(current) is null); i++)
+            await Task.Delay(10, Ct);
+        Assert.NotNull(store.SharedModel(store.Current!));
+    }
+
+    /// <summary>A resolver whose resolutions wait while it is closed (cancellable), counting every call.</summary>
+    private sealed class GatedResolver(IModelResolver inner) : IModelResolver
+    {
+        private volatile TaskCompletionSource _gate = Opened();
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        public SemaphoreSlim Entered { get; } = new(0);
+
+        public void Close() => _gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Open() => _gate.TrySetResult();
+
+        public async Task<ResolvedModel> ResolveAsync(ModelSnapshot model, IProgress<ProgressUpdate>? progress, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _calls);
+            if (!_gate.Task.IsCompleted)
+            {
+                Entered.Release();
+                await _gate.Task.WaitAsync(ct);
+            }
+
+            return await inner.ResolveAsync(model, progress, ct);
+        }
+
+        private static TaskCompletionSource Opened()
+        {
+            var source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            source.SetResult();
+            return source;
+        }
+    }
+
     private static async Task EditCustomerAsync(ModelStore store)
     {
         var customer = (await store.GetElementAsync(E2ERepo.CustomerId, Ct))!;
