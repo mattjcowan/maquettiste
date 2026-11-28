@@ -45,6 +45,25 @@ internal interface IModelDocumentStore
     /// <returns>The paths, hidden ones (a segment starting with <c>.</c>) included; callers filter.</returns>
     IReadOnlyList<string> List(string modelFolder, bool recursive);
 
+    /// <summary>
+    /// Lists the loadable documents under a folder (<see cref="ModelPaths.Classify(string)"/> decides) with their stats, in no particular order, so
+    /// a full scan stats nothing twice. The default lists, filters and stats each path.
+    /// </summary>
+    /// <param name="modelFolder">The model-relative folder.</param>
+    /// <param name="recursive">Whether to include subfolders.</param>
+    /// <returns>The paths with their stats.</returns>
+    IReadOnlyList<(string Path, DocumentStat Stat)> ListLoadable(string modelFolder, bool recursive)
+    {
+        var listed = new List<(string, DocumentStat)>();
+        foreach (var path in List(modelFolder, recursive))
+        {
+            if (ModelPaths.Classify(path) is not null && Stat(path) is { } stat)
+                listed.Add((path, stat));
+        }
+
+        return listed;
+    }
+
     /// <summary>Reads a document's bytes.</summary>
     /// <param name="modelPath">The model-relative path.</param>
     /// <param name="ct">Cancellation.</param>
@@ -116,6 +135,76 @@ internal sealed class FileDocumentStore(ModelPaths paths, IOutputPathPolicy poli
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// One pass over the folder: each entry's length and write time come with it, its model-relative path is built once from the entry's
+    /// own name, and a path the loader ignores is never built. A link is stated through its target, as <see cref="Stat"/> does.
+    /// </remarks>
+    public IReadOnlyList<(string Path, DocumentStat Stat)> ListLoadable(string modelFolder, bool recursive)
+    {
+        var folder = paths.FullPath(modelFolder);
+        if (!Directory.Exists(folder))
+            return [];
+        var root = paths.ModelRoot;
+        try
+        {
+            var listed = new List<(string, DocumentStat)>();
+            var entries = new System.IO.Enumeration.FileSystemEnumerable<(string? Path, DocumentStat Stat, bool Link)>(
+                folder,
+                (ref System.IO.Enumeration.FileSystemEntry entry) =>
+                {
+                    var path = ModelPathOf(root, entry.Directory, entry.FileName);
+                    if (path is null)
+                        return (null, default, false);
+                    var link = (entry.Attributes & FileAttributes.ReparsePoint) != 0;
+                    return (path, link ? default : new DocumentStat(entry.Length, entry.LastWriteTimeUtc.UtcDateTime.Ticks), link);
+                },
+                recursive ? Recursive : TopOnly)
+            {
+                ShouldIncludePredicate = (ref System.IO.Enumeration.FileSystemEntry entry) => !entry.IsDirectory,
+            };
+            foreach (var (path, stat, link) in entries)
+            {
+                if (path is null)
+                    continue;
+                if (!link)
+                    listed.Add((path, stat));
+                else if (Stat(path) is { } target)
+                    listed.Add((path, target));
+            }
+
+            return listed;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return []; // a folder that vanished mid-scan
+        }
+    }
+
+    /// <summary>
+    /// The model-relative path of a file under the model root when the loader reads it (<see cref="ModelPaths.Classify(string)"/>), else
+    /// <see langword="null"/>; built only when it is one.
+    /// </summary>
+    private static string? ModelPathOf(string root, ReadOnlySpan<char> directory, ReadOnlySpan<char> name)
+    {
+        if (!directory.StartsWith(root, StringComparison.Ordinal))
+            return null;
+        var relative = directory[root.Length..];
+        if (relative.Length > 0 && (relative[0] == Path.DirectorySeparatorChar || relative[0] == Path.AltDirectorySeparatorChar))
+            relative = relative[1..];
+        else if (relative.Length > 0)
+            return null;
+        var length = relative.Length + (relative.Length > 0 ? 1 : 0) + name.Length;
+        Span<char> buffer = length <= 512 ? stackalloc char[length] : new char[length];
+        relative.CopyTo(buffer);
+        if (relative.Length > 0)
+            buffer[relative.Length] = '/';
+        name.CopyTo(buffer[(relative.Length + (relative.Length > 0 ? 1 : 0))..]);
+        if (Path.DirectorySeparatorChar != '/')
+            buffer.Replace(Path.DirectorySeparatorChar, '/');
+        return ModelPaths.Classify(buffer) is null ? null : new string(buffer);
+    }
+
+    /// <inheritdoc/>
     public async Task<byte[]?> ReadAsync(string modelPath, CancellationToken ct)
     {
         try
@@ -161,6 +250,9 @@ internal sealed class ReadOnlyFolderDocumentStore(ModelPaths paths) : IModelDocu
 
     /// <inheritdoc/>
     public IReadOnlyList<string> List(string modelFolder, bool recursive) => _files.List(modelFolder, recursive);
+
+    /// <inheritdoc/>
+    public IReadOnlyList<(string Path, DocumentStat Stat)> ListLoadable(string modelFolder, bool recursive) => _files.ListLoadable(modelFolder, recursive);
 
     /// <inheritdoc/>
     public Task<byte[]?> ReadAsync(string modelPath, CancellationToken ct) => _files.ReadAsync(modelPath, ct);
@@ -225,6 +317,9 @@ internal sealed class TolerantDocumentStore(IModelDocumentStore inner) : IModelD
 
     /// <inheritdoc/>
     public IReadOnlyList<string> List(string modelFolder, bool recursive) => inner.List(modelFolder, recursive);
+
+    /// <inheritdoc/>
+    public IReadOnlyList<(string Path, DocumentStat Stat)> ListLoadable(string modelFolder, bool recursive) => inner.ListLoadable(modelFolder, recursive);
 
     /// <inheritdoc/>
     public async Task<byte[]?> ReadAsync(string modelPath, CancellationToken ct)

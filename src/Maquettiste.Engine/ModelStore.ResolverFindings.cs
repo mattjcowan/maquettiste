@@ -10,8 +10,6 @@ public sealed partial class ModelStore
     private (ModelSnapshot Snapshot, Task<ResolverFindings> Task)? _findings;
     private readonly Lock _resolvedGate = new();
     private (ModelSnapshot Snapshot, Task<ResolvedSnapshot> Task)? _resolved;
-    private readonly Lock _wholeGate = new();
-    private (ModelSnapshot Snapshot, Task<ValidationReport> Task)? _whole;
     private readonly Lock _modelGate = new();
     private (ModelSnapshot Snapshot, Task<Resolution.ResolvedModel> Task)? _model;
 
@@ -49,7 +47,7 @@ public sealed partial class ModelStore
 
     private async Task<ResolvedSnapshot> ResolveSnapshotAsync(ModelSnapshot snapshot)
     {
-        var report = await _services.Validator.ValidateAsync(snapshot, ValidationScope.Previews, null, CancellationToken.None).ConfigureAwait(false);
+        var report = (await WholeValidationAsync(snapshot, deferScriptedRows: true, CancellationToken.None).ConfigureAwait(false)).Report;
         if (report.Diagnostics.Any(Generation.Outcomes.BlocksResolution))
             return new ResolvedSnapshot(snapshot, report, null);
         Task<Resolution.ResolvedModel> resolving;
@@ -155,11 +153,7 @@ public sealed partial class ModelStore
                 _resolved = null;
         }
 
-        lock (_wholeGate)
-        {
-            if (_whole is { } whole && !ReferenceEquals(whole.Snapshot, current))
-                _whole = null;
-        }
+        ReleaseValidationsOfOtherSnapshots(current);
 
         lock (_modelGate)
         {
@@ -195,33 +189,14 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// A snapshot's whole-model validation report with every seed's rows judged, scripted rows included (next-phase-2-design.md section
-    /// 3.4, decision 31): the shared report of <see cref="ResolvedAsync"/> when no seed has a rows script, else a validation of its own,
-    /// once per snapshot (single flight, without any caller's token; the last snapshot's result is kept).
+    /// 3.4, decision 31): once per snapshot, shared with <see cref="ResolvedAsync"/> when no seed has a rows script
+    /// (<see cref="WholeValidationAsync"/>).
     /// </summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="ct">Cancellation of the wait only.</param>
     /// <returns>The report.</returns>
-    private async Task<ValidationReport> WholeReportAsync(ModelSnapshot snapshot, CancellationToken ct)
-    {
-        if (!snapshot.All<Seed>().Any(s => s.RowsFrom?.Script is not null))
-            return (await ResolvedAsync(snapshot, ct).ConfigureAwait(false)).Report;
-        Task<ValidationReport> task;
-        lock (_wholeGate)
-        {
-            if (_whole is { } cached && ReferenceEquals(cached.Snapshot, snapshot) && !cached.Task.IsFaulted && !cached.Task.IsCanceled)
-            {
-                task = cached.Task;
-            }
-            else
-            {
-                task = Task.Run(() => _services.Validator.ValidateAsync(snapshot, ValidationScope.All, null, CancellationToken.None), CancellationToken.None);
-                if (IsCurrent(snapshot))
-                    _whole = (snapshot, task);
-            }
-        }
-
-        return await task.WaitAsync(ct).ConfigureAwait(false);
-    }
+    private async Task<ValidationReport> WholeReportAsync(ModelSnapshot snapshot, CancellationToken ct) =>
+        (await WholeValidationAsync(snapshot, deferScriptedRows: false, ct).ConfigureAwait(false)).Report;
 
     /// <summary>
     /// What the resolver finds in a snapshot that validation cannot see (MQ4005 over the resolved columns, MQ4061 on what a foreign key's

@@ -131,29 +131,62 @@ internal sealed class ModelPaths
     /// <summary>Classifies a model-relative path; sidecars are classified by reference, not by path.</summary>
     /// <param name="modelPath">The model-relative path.</param>
     /// <returns>The kind, or <see langword="null"/> when the loader ignores the file.</returns>
-    public static ModelFileKind? Classify(string modelPath)
+    public static ModelFileKind? Classify(string modelPath) => Classify(modelPath.AsSpan());
+
+    /// <summary>
+    /// Classifies a model-relative path given as characters (<see cref="Classify(string)"/>), allocating nothing: a full scan classifies
+    /// every file of the model folder, some more than once.
+    /// </summary>
+    /// <param name="modelPath">The model-relative path.</param>
+    /// <returns>The kind, or <see langword="null"/> when the loader ignores the file.</returns>
+    public static ModelFileKind? Classify(ReadOnlySpan<char> modelPath)
     {
-        if (modelPath == SettingsFile)
+        if (modelPath.SequenceEqual(SettingsFile))
             return ModelFileKind.Settings;
-        var segments = modelPath.Split('/');
-        if (segments.Any(s => s.Length == 0 || s[0] == '.'))
-            return null; // hidden files and folders, including the engine's own temp files
-        if (segments.Length >= 4 && segments[0] == "model" && segments[1] == "locales" && modelPath.EndsWith(".json", StringComparison.Ordinal))
-            return ModelFileKind.LocaleShard;
-        if (segments.Length >= 2 && segments[0] == "model" && modelPath.EndsWith(".json", StringComparison.Ordinal))
-            return ModelFileKind.Element;
-        if (segments.Length == 2 && segments[0] == "extensions" && modelPath.EndsWith(".json", StringComparison.Ordinal))
-            return ModelFileKind.Extension;
-        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "rules" && modelPath.EndsWith(".js", StringComparison.Ordinal))
-            return ModelFileKind.RuleScript;
-        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "rules" && modelPath.EndsWith(".json", StringComparison.Ordinal))
-            return ModelFileKind.DeclaredRules;
-        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "seeds" && modelPath.EndsWith(".js", StringComparison.Ordinal))
-            return ModelFileKind.SeedScript;
-        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "calculated" && modelPath.EndsWith(".js", StringComparison.Ordinal))
-            return ModelFileKind.CalculationScript;
-        if (segments.Length == 3 && segments[0] == "extensions" && segments[1] == "kinds" && modelPath.EndsWith(".json", StringComparison.Ordinal))
-            return ModelFileKind.CustomKind;
+
+        // Segments: none empty, none hidden (a leading '.', the engine's own temp files included). The first three are kept.
+        ReadOnlySpan<char> first = default, second = default;
+        var count = 0;
+        var rest = modelPath;
+        while (true)
+        {
+            var slash = rest.IndexOf('/');
+            var segment = slash < 0 ? rest : rest[..slash];
+            if (segment.Length == 0 || segment[0] == '.')
+                return null;
+            if (count == 0)
+                first = segment;
+            else if (count == 1)
+                second = segment;
+            count++;
+            if (slash < 0)
+                break;
+            rest = rest[(slash + 1)..];
+        }
+
+        var json = modelPath.EndsWith(".json", StringComparison.Ordinal);
+        var js = modelPath.EndsWith(".js", StringComparison.Ordinal);
+        if (first.SequenceEqual("model"))
+        {
+            if (count >= 4 && second.SequenceEqual("locales") && json)
+                return ModelFileKind.LocaleShard;
+            return count >= 2 && json ? ModelFileKind.Element : null;
+        }
+
+        if (!first.SequenceEqual("extensions"))
+            return null;
+        if (count == 2)
+            return json ? ModelFileKind.Extension : null;
+        if (count != 3)
+            return null;
+        if (second.SequenceEqual("rules"))
+            return js ? ModelFileKind.RuleScript : json ? ModelFileKind.DeclaredRules : null;
+        if (second.SequenceEqual("seeds"))
+            return js ? ModelFileKind.SeedScript : null;
+        if (second.SequenceEqual("calculated"))
+            return js ? ModelFileKind.CalculationScript : null;
+        if (second.SequenceEqual("kinds"))
+            return json ? ModelFileKind.CustomKind : null;
         return null;
     }
 

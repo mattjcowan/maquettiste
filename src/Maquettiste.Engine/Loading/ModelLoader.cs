@@ -105,10 +105,12 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         Dictionary<string, FileEntry> entries;
         HashSet<string> toCheck;
         var hints = new HashSet<string>(StringComparer.Ordinal);
+        Dictionary<string, DocumentStat>? listed = null;
         if (full)
         {
             entries = new Dictionary<string, FileEntry>(StringComparer.Ordinal);
-            toCheck = Enumerate();
+            listed = new Dictionary<string, DocumentStat>(previous.Entries.Count + 16, StringComparer.Ordinal);
+            toCheck = Enumerate(listed);
         }
         else
         {
@@ -137,7 +139,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         // 2. Stat, read or reuse each file, in parallel.
         var primary = toCheck.Where(p => ModelPaths.Classify(p) is not null).Order(StringComparer.Ordinal).ToArray();
-        var checkedEntries = await CheckAllAsync(primary, previous, request.VerifyHashes, counters, progress, ct).ConfigureAwait(false);
+        var checkedEntries = await CheckAllAsync(primary, previous, request.VerifyHashes, counters, progress, ct, listed: listed).ConfigureAwait(false);
         for (var i = 0; i < primary.Length; i++)
         {
             if (checkedEntries[i] is { } entry)
@@ -449,6 +451,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         return ordered;
     }
 
+    // listed: the stats a full scan's listing gave, by path; an unchanged file is then reused without a stat of its own or a task.
     private async Task<FileEntry?[]> CheckAllAsync(
         string[] modelPaths,
         LoaderState previous,
@@ -456,30 +459,51 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         Counters counters,
         IProgress<ProgressUpdate>? progress,
         CancellationToken ct,
-        ModelFileKind unclassified = ModelFileKind.Sidecar)
+        ModelFileKind unclassified = ModelFileKind.Sidecar,
+        Dictionary<string, DocumentStat>? listed = null)
     {
         var results = new FileEntry?[modelPaths.Length];
         if (modelPaths.Length == 0)
             return results;
         var done = 0;
+        var pending = new List<int>();
+        for (var i = 0; i < modelPaths.Length; i++)
+        {
+            var path = modelPaths[i];
+            if (!verify && listed is not null && listed.TryGetValue(path, out var stat) && previous.Entries.TryGetValue(path, out var old)
+                && old.Length == stat.Length && old.LastWriteTicks == stat.LastWriteTicks && old.Kind == (ModelPaths.Classify(path) ?? unclassified))
+            {
+                results[i] = old;
+                Interlocked.Increment(ref counters.Reused);
+                progress?.Report(new ProgressUpdate(PipelineStage.Load, Interlocked.Increment(ref done), modelPaths.Length, _paths.ToRepoPath(path), null));
+                continue;
+            }
+
+            pending.Add(i);
+        }
+
+        if (pending.Count == 0)
+            return results;
         var parallel = new ParallelOptions { MaxDegreeOfParallelism = options.EffectiveParallelism, CancellationToken = ct };
         // Locale shards first: they are the largest files, and started last they would form the tail of the parallel read.
-        var order = Enumerable.Range(0, modelPaths.Length).OrderBy(i => ModelPaths.Classify(modelPaths[i]) == ModelFileKind.LocaleShard ? 0 : 1).ToArray();
+        var order = pending.OrderBy(i => ModelPaths.Classify(modelPaths[i]) == ModelFileKind.LocaleShard ? 0 : 1).ToArray();
         await Parallel.ForEachAsync(order, parallel, async (i, token) =>
         {
             var path = modelPaths[i];
             previous.Entries.TryGetValue(path, out var old);
             var kind = ModelPaths.Classify(path) ?? unclassified;
-            results[i] = await CheckAsync(path, kind, old, verify, counters, token).ConfigureAwait(false);
+            DocumentStat? known = listed is not null && listed.TryGetValue(path, out var stat) ? stat : null;
+            results[i] = await CheckAsync(path, kind, old, verify, counters, token, known).ConfigureAwait(false);
             progress?.Report(new ProgressUpdate(PipelineStage.Load, Interlocked.Increment(ref done), modelPaths.Length, _paths.ToRepoPath(path), null));
         }).ConfigureAwait(false);
         return results;
     }
 
-    private async Task<FileEntry?> CheckAsync(string modelPath, ModelFileKind kind, FileEntry? old, bool verify, Counters counters, CancellationToken ct)
+    private async Task<FileEntry?> CheckAsync(string modelPath, ModelFileKind kind, FileEntry? old, bool verify, Counters counters, CancellationToken ct,
+        DocumentStat? known = null)
     {
         ct.ThrowIfCancellationRequested();
-        if (Documents.Stat(modelPath) is not { } stat)
+        if ((known ?? Documents.Stat(modelPath)) is not { } stat)
             return null;
         var length = stat.Length;
         var ticks = stat.LastWriteTicks;
@@ -511,7 +535,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 var unreadable = new ParsedFile { Diagnostics = [RuleCatalog.Create("MQ1001", "The file cannot be read: " + ex.Message, null, repoPath, null)] };
-                return new FileEntry(modelPath, kind, length, ticks, "", [], unreadable);
+                return new FileEntry(modelPath, kind, length, ticks, "", [], unreadable) { RepoPath = repoPath };
             }
 
             hash = ContentHash.Of(bytes);
@@ -559,7 +583,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         // An element without sidecar references has a dependency hash that depends on its bytes alone: computed here, on the
         // parallel readers, rather than in the sequential assembly.
         var ownDependencyHash = kind == ModelFileKind.Element && parsed.SidecarReferences.IsEmpty ? HashBuilder.Of(hash, null) : null;
-        return new FileEntry(modelPath, kind, length, ticks, hash, bytes, parsed) { OwnDependencyHash = ownDependencyHash };
+        return new FileEntry(modelPath, kind, length, ticks, hash, bytes, parsed) { OwnDependencyHash = ownDependencyHash, RepoPath = repoPath };
     }
 
     private (ModelSnapshot Snapshot, IReadOnlyDictionary<string, ElementDocument> Documents, AssembleMemo? Memo) Assemble(
@@ -603,6 +627,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         var distinct = true; // no id held twice: the table can serve the next load
         var documents = new List<ElementDocument>(entries.Count);
+        var placed = new List<(ElementDocument, string)>(entries.Count);
         var byPath = new Dictionary<string, ElementDocument>(entries.Count, StringComparer.Ordinal);
         foreach (var entry in ordered)
         {
@@ -611,12 +636,13 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             diagnostics.AddRange(entry.Parsed.Diagnostics);
             if (entry.Parsed.Element is not { } element || !entry.Parsed.Valid)
                 continue;
-            var repoPath = _paths.ToRepoPath(entry.ModelPath);
+            var repoPath = entry.RepoPath;
             if (patched)
             {
                 // Every id is in the table, each held once (the patch checked the changed files).
                 var reused = BuildDocument(entry, repoPath, entries, previousDocuments);
                 documents.Add(reused);
+                placed.Add((reused, entry.ModelPath));
                 byPath[repoPath] = reused;
                 continue;
             }
@@ -648,10 +674,32 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
             var document = BuildDocument(entry, repoPath, entries, previousDocuments);
             documents.Add(document);
+            placed.Add((document, entry.ModelPath));
             byPath[repoPath] = document;
         }
 
-        diagnostics.AddRange(ConventionDiagnostics(documents));
+        // The first document holding an element id: with every id held once, the id table names its file; else the first loaded document
+        // whose element has it.
+        Dictionary<string, ElementDocument>? firstById = null;
+        ElementDocument? DocumentOf(string id)
+        {
+            if (distinct)
+            {
+                return ids.TryGetValue(id, out var at) && at.Pointer.Length == 0 && byPath.TryGetValue(at.Path, out var held)
+                    && string.Equals(held.Element.Id, id, StringComparison.Ordinal) ? held : null;
+            }
+
+            if (firstById is null)
+            {
+                firstById = new Dictionary<string, ElementDocument>(documents.Count, StringComparer.Ordinal);
+                foreach (var document in documents)
+                    firstById.TryAdd(document.Element.Id, document);
+            }
+
+            return firstById.GetValueOrDefault(id);
+        }
+
+        diagnostics.AddRange(ConventionDiagnostics(placed, DocumentOf));
 
         var extensions = new List<ExtensionDocument>();
         var scripts = new List<ScriptSource>();
@@ -667,12 +715,12 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                 case ModelFileKind.CustomKind:
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.Valid)
-                        customKinds.Add(new CustomKindDocument(ElementReader.Read<CustomKind>(entry.Parsed.Json), _paths.ToRepoPath(entry.ModelPath), entry.Hash));
+                        customKinds.Add(new CustomKindDocument(ElementReader.Read<CustomKind>(entry.Parsed.Json), entry.RepoPath, entry.Hash));
                     break;
                 case ModelFileKind.Extension:
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.Extension is { } extension)
-                        extensions.Add(new ExtensionDocument(extension, _paths.ToRepoPath(entry.ModelPath), entry.Hash));
+                        extensions.Add(new ExtensionDocument(extension, entry.RepoPath, entry.Hash));
                     break;
                 case ModelFileKind.LocaleShard:
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
@@ -688,24 +736,24 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
                     // Declared rules are read here and run in the checks after resolution (section 5.6).
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.DeclaredRules is { } declared)
-                        declaredRules.Add(new DeclaredRuleDocument(declared, _paths.ToRepoPath(entry.ModelPath), entry.Hash));
+                        declaredRules.Add(new DeclaredRuleDocument(declared, entry.RepoPath, entry.Hash));
                     break;
                 case ModelFileKind.RuleScript:
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.Text is { } code)
-                        scripts.Add(new ScriptSource(_paths.ToRepoPath(entry.ModelPath), code, entry.Hash));
+                        scripts.Add(new ScriptSource(entry.RepoPath, code, entry.Hash));
                     break;
                 case ModelFileKind.SeedScript:
                     // Rows scripts are read, never run: a seed runs its script when something reads its rows (section 3.4).
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.Text is { } rows)
-                        seedScripts.Add(new ScriptSource(_paths.ToRepoPath(entry.ModelPath), rows, entry.Hash));
+                        seedScripts.Add(new ScriptSource(entry.RepoPath, rows, entry.Hash));
                     break;
                 case ModelFileKind.CalculationScript:
                     // Calculation files are read, never run here: a calculated value is evaluated when something reads it (section 5.5).
                     diagnostics.AddRange(entry.Parsed.Diagnostics);
                     if (entry.Parsed.Text is { } calculation)
-                        calculationScripts.Add(new ScriptSource(_paths.ToRepoPath(entry.ModelPath), calculation, entry.Hash));
+                        calculationScripts.Add(new ScriptSource(entry.RepoPath, calculation, entry.Hash));
                     break;
             }
         }
@@ -781,7 +829,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
 
         foreach (var (file, sidecar) in sidecars)
             hash.Add(file).Add(sidecar.Hash);
-        return new LocaleShardDocument(entry.Parsed.LocaleShard!, _paths.ToRepoPath(entry.ModelPath), entry.ModelPath, entry.Hash,
+        return new LocaleShardDocument(entry.Parsed.LocaleShard!, entry.RepoPath, entry.ModelPath, entry.Hash,
             sidecars.Count == 0 ? entry.Hash : hash.Finish(), sidecars);
     }
 
@@ -849,30 +897,73 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         return (seed with { Rows = rows }, JsonSerializer.SerializeToElement(node));
     }
 
-    private IEnumerable<Diagnostic> ConventionDiagnostics(List<ElementDocument> documents)
+    /// <summary>
+    /// The last load's placement verdict (MQ1005) of each document, with the document its conventional folder was read from (its
+    /// database, or its seed's target, scenario's process or operation's subject): the next load reuses a verdict while both are the same
+    /// documents, so an edit judges only the files it touched instead of kebab-casing every name of the model again.
+    /// </summary>
+    private Dictionary<ElementDocument, (ElementDocument? Dependency, Diagnostic? Finding)> _placements = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>MQ1005 for each document outside its conventional place (engine-design.md section 2.2).</summary>
+    /// <param name="documents">The loaded documents, in path order, with their model-relative paths.</param>
+    /// <param name="documentOf">The first document that holds an element id, or <see langword="null"/>.</param>
+    /// <returns>The findings.</returns>
+    private List<Diagnostic> ConventionDiagnostics(List<(ElementDocument Document, string ModelPath)> documents, Func<string, ElementDocument?> documentOf)
     {
-        var databaseFolders = documents
-            .Where(d => d.Element is Database)
-            .GroupBy(d => d.Element.Id, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => ModelPaths.FolderOf(_paths.FromRepoPath(g.First().Path)), StringComparer.Ordinal);
-        var stems = documents.Any(d => d.Element is Seed or Scenario or Operation { Subject: not null })
-            ? documents.GroupBy(d => d.Element.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => ModelPaths.Stem(g.First().Element), StringComparer.Ordinal)
-            : [];
-        foreach (var document in documents)
+        var placements = new Dictionary<ElementDocument, (ElementDocument? Dependency, Diagnostic? Finding)>(documents.Count, ReferenceEqualityComparer.Instance);
+        var found = new List<Diagnostic>();
+        foreach (var (document, modelPath) in documents)
         {
-            var modelPath = _paths.FromRepoPath(document.Path);
             var element = document.Element;
-            var folder = ModelPaths.ConventionalFolder(element, id => databaseFolders.GetValueOrDefault(id), id => stems.GetValueOrDefault(id));
-            if (ModelPaths.MatchesConvention(element, modelPath, folder))
+            var dependencyId = element switch
+            {
+                Table t => t.Database,
+                View v => v.Database,
+                Sequence q => q.Database,
+                Routine r => r.Database,
+                DatabaseType t => t.Database,
+                SqlObject o => o.Database,
+                Query q => q.Database,
+                Migration m => m.Database,
+                Seed seed => seed.Target,
+                Scenario scenario => scenario.Process,
+                Operation { Subject: { } subject } => subject,
+                _ => null,
+            };
+            var dependency = dependencyId is null ? null : documentOf(dependencyId);
+            if (_placements.TryGetValue(document, out var known) && ReferenceEquals(known.Dependency, dependency))
+            {
+                placements[document] = known;
+                if (known.Finding is { } kept)
+                    found.Add(kept);
                 continue;
-            var expected = element is Database ? folder + "/database.json" : ModelPaths.Join(folder, ModelPaths.FileName(element, false));
-            yield return RuleCatalog.Create(
-                "MQ1005",
-                $"A {element.KindName} named '{element.Name}' belongs at {_paths.ToRepoPath(expected)}; it loads from here.",
-                element.Id,
-                document.Path,
-                "");
+            }
+
+            string? DatabaseFolder(string id) => dependency is { Element: Database } && string.Equals(dependency.Element.Id, id, StringComparison.Ordinal)
+                ? ModelPaths.FolderOf(_paths.FromRepoPath(dependency.Path))
+                : null;
+            string? TargetStem(string id) => dependency is not null && string.Equals(dependency.Element.Id, id, StringComparison.Ordinal)
+                ? ModelPaths.Stem(dependency.Element)
+                : null;
+            var folder = ModelPaths.ConventionalFolder(element, DatabaseFolder, TargetStem);
+            Diagnostic? finding = null;
+            if (!ModelPaths.MatchesConvention(element, modelPath, folder))
+            {
+                var expected = element is Database ? folder + "/database.json" : ModelPaths.Join(folder, ModelPaths.FileName(element, false));
+                finding = RuleCatalog.Create(
+                    "MQ1005",
+                    $"A {element.KindName} named '{element.Name}' belongs at {_paths.ToRepoPath(expected)}; it loads from here.",
+                    element.Id,
+                    document.Path,
+                    "");
+                found.Add(finding);
+            }
+
+            placements[document] = (dependency, finding);
         }
+
+        _placements = placements;
+        return found;
     }
 
     private static ChangeSet Compare(ModelSnapshot? before, ModelSnapshot after)
@@ -941,18 +1032,23 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
         ShardCache.Prune(options.CacheDirectory, live, paths);
     }
 
-    private HashSet<string> Enumerate()
+    /// <param name="stats">Filled with each listed file's stat (a full scan's), or <see langword="null"/>.</param>
+    private HashSet<string> Enumerate(Dictionary<string, DocumentStat>? stats = null)
     {
-        var result = new HashSet<string>(StringComparer.Ordinal);
-        if (Documents.Stat(ModelPaths.SettingsFile) is not null)
+        var result = new HashSet<string>(stats?.Count ?? 0, StringComparer.Ordinal);
+        if (Documents.Stat(ModelPaths.SettingsFile) is { } settings)
+        {
             result.Add(ModelPaths.SettingsFile);
-        result.UnionWith(EnumerateUnder("model"));
-        result.UnionWith(EnumerateFiles("extensions", ".json", recursive: false));
-        result.UnionWith(EnumerateFiles("extensions/rules", ".js", recursive: false));
-        result.UnionWith(EnumerateFiles("extensions/rules", ".json", recursive: false));
-        result.UnionWith(EnumerateFiles("extensions/seeds", ".js", recursive: false));
-        result.UnionWith(EnumerateFiles("extensions/calculated", ".js", recursive: false));
-        result.UnionWith(EnumerateFiles("extensions/kinds", ".json", recursive: false));
+            stats?.TryAdd(ModelPaths.SettingsFile, settings);
+        }
+
+        result.UnionWith(EnumerateFiles("model", null, recursive: true, stats));
+        result.UnionWith(EnumerateFiles("extensions", ".json", recursive: false, stats));
+        result.UnionWith(EnumerateFiles("extensions/rules", ".js", recursive: false, stats));
+        result.UnionWith(EnumerateFiles("extensions/rules", ".json", recursive: false, stats));
+        result.UnionWith(EnumerateFiles("extensions/seeds", ".js", recursive: false, stats));
+        result.UnionWith(EnumerateFiles("extensions/calculated", ".js", recursive: false, stats));
+        result.UnionWith(EnumerateFiles("extensions/kinds", ".json", recursive: false, stats));
         return result;
     }
 
@@ -960,13 +1056,23 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     {
         if (modelPath.Length == 0)
             return Enumerate();
-        return EnumerateFiles(modelPath, null, recursive: true);
+        return EnumerateFiles(modelPath, null, recursive: true, null);
     }
 
-    /// <summary>The loadable files under a folder: <see cref="ModelPaths.Classify"/> decides, after the optional extension filter.</summary>
-    private List<string> EnumerateFiles(string modelFolder, string? extension, bool recursive) =>
-        [.. Documents.List(modelFolder, recursive)
-            .Where(p => (extension is null || p.EndsWith(extension, StringComparison.Ordinal)) && ModelPaths.Classify(p) is not null)];
+    /// <summary>The loadable files under a folder: <see cref="ModelPaths.Classify(string)"/> decides, after the optional extension filter.</summary>
+    private List<string> EnumerateFiles(string modelFolder, string? extension, bool recursive, Dictionary<string, DocumentStat>? stats)
+    {
+        var found = new List<string>();
+        foreach (var (path, stat) in Documents.ListLoadable(modelFolder, recursive))
+        {
+            if (extension is not null && !path.EndsWith(extension, StringComparison.Ordinal))
+                continue;
+            found.Add(path);
+            stats?.TryAdd(path, stat);
+        }
+
+        return found;
+    }
 
     /// <summary>
     /// What an assembly whose ids were all distinct leaves for the next one: its entries in path order and its id table. The table is
@@ -1009,7 +1115,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             {
                 if (Contributes(ordered[i]) is not { } before)
                     continue;
-                var repoPath = paths.ToRepoPath(before.ModelPath);
+                var repoPath = before.RepoPath;
                 foreach (var (id, pointer) in before.Parsed.Ids)
                 {
                     if (ids.TryGetValue(id, out var held) && string.Equals(held.Path, repoPath, StringComparison.Ordinal)
@@ -1022,7 +1128,7 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
             {
                 if (Contributes(now[i]) is not { } after)
                     continue;
-                var repoPath = paths.ToRepoPath(after.ModelPath);
+                var repoPath = after.RepoPath;
                 foreach (var (id, pointer) in after.Parsed.Ids)
                 {
                     if (!ids.TryAdd(id, (repoPath, pointer)))
@@ -1042,6 +1148,9 @@ internal sealed class ModelLoader(EngineOptions options, ISchemaRegistry schemas
     {
         /// <summary><c>H(Hash, null)</c>, the dependency hash of an element without sidecar references (computed by the reader), else null.</summary>
         public string? OwnDependencyHash { get; init; }
+
+        /// <summary>The repo-relative path, worked out once when the file was read, so a reused entry costs no string per load.</summary>
+        public required string RepoPath { get; init; }
 
         public CacheRecordFlags Flags =>
             (Parsed.Valid ? CacheRecordFlags.Validated : CacheRecordFlags.None) | (Parsed.Canonical ? CacheRecordFlags.Canonical : CacheRecordFlags.None);

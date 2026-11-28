@@ -104,3 +104,17 @@ The model loader (stage 1), the index cache, the file-name policy, the change pl
   updates it after the target, its CSV rows file with it (`Relocate`, `DropRowsFile`); a sub-element that moves to
   another element of the plan keeps its translations (`ReconcileTranslations`) and does not count as deleted in the
   delete check (`CheckCandidate`).
+
+## Performance notes (change-driven edits, step 4)
+
+- **Not built: no stat pass while a watcher runs.** In the editor and `generate --watch` the file watcher already reports every changed
+  path through `RefreshAsync`, so `GetSnapshotAsync` could skip the full stat pass while a watcher holds, keeping it as the fallback after
+  a watcher error or overflow, on the command line and on first load. That needs a public way for hosts to tell the store a watcher holds
+  (a public engine addition, which is permanent), so it is left for the owner to decide. Today every `GetSnapshotAsync` rescans by stat.
+- **One listing, stats included.** A full scan lists each folder once through `IModelDocumentStore.ListLoadable` (the file provider walks
+  it with a `FileSystemEnumerable`, taking each file's length and write time from the entry and building a model path only for a file the
+  loader reads), so no file is stated twice; a file whose stat matches its last entry is reused without a task. `ModelPaths.Classify`
+  works on characters and allocates nothing.
+- **Per-file strings kept.** Each `FileEntry` keeps its repo-relative path, and the placement verdict of each document (MQ1005) is kept
+  with the document it was judged against (its database, or its seed's target, scenario's process or operation's subject), so an edit
+  judges only the files it touched. Bench, 5,000 entities, one entity edit, full stat pass: about 257 MB before.

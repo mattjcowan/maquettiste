@@ -837,7 +837,11 @@ public sealed partial class ModelStore : IAsyncDisposable
         var previous = _current;
         _current = result.Snapshot;
         if (!ReferenceEquals(previous, result.Snapshot))
+        {
+            DeriveLineage(previous, result.Snapshot, result.Changes);
             ReleaseResultsOfOtherSnapshots(result.Snapshot);
+        }
+
         return result.Changes with { Source = source };
     }
 
