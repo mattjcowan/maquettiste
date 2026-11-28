@@ -11,6 +11,8 @@ internal sealed class TableBuild
         Table = table;
         Source = source;
         table.FileId = source.Id;
+        Columns = new List<RColumn>(source.Columns.Count);
+        ByKey = new Dictionary<string, RColumn>(source.Columns.Count, StringComparer.Ordinal);
     }
 
     public RTable Table { get; }
@@ -21,10 +23,10 @@ internal sealed class TableBuild
     /// <summary>The element diagnostics about the table point at: the table file's id.</summary>
     public string SourceElementId => Source.Id;
 
-    public List<RColumn> Columns { get; } = [];
+    public List<RColumn> Columns { get; }
 
     /// <summary>Columns by key (a column id, or the keyed id of an inherited column).</summary>
-    public Dictionary<string, RColumn> ByKey { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, RColumn> ByKey { get; }
 
     public List<string> PrimaryKey { get; } = [];
 
@@ -69,6 +71,15 @@ internal sealed class TableBuild
 
     /// <summary>A column by key or id.</summary>
     public RColumn? Resolve(string key) => ByKey.GetValueOrDefault(key);
+
+    /// <summary>The columns of keys, in order, <see langword="null"/> for a key the table does not have.</summary>
+    public List<RColumn?> ResolveAll(IReadOnlyList<string> keys)
+    {
+        var columns = new List<RColumn?>(keys.Count);
+        for (var i = 0; i < keys.Count; i++)
+            columns.Add(Resolve(keys[i]));
+        return columns;
+    }
 }
 
 /// <summary>A unique constraint to resolve; <paramref name="Origin"/> is <see langword="null"/> for the table's own, else the stereotype that

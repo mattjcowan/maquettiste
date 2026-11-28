@@ -547,7 +547,7 @@ internal sealed partial class DatabaseRun
             _b.Description = file.Description is { } description
                 ? description.Text ?? (description.File is null ? null : run._run.Model.GetDocument(entity.Id)?.SidecarText)
                 : null;
-            _b.Tags = [.. file.Tags];
+            _b.Tags = file.Tags.Count == 0 ? [] : [.. file.Tags];
             _b.Properties = ResolutionValues.PlainMap(file.Properties);
 
             ResolveSource();
@@ -942,6 +942,12 @@ internal sealed partial class DatabaseRun
         {
             if (_b.SourceTable is { } t)
                 return FindTableColumn(t, name) is { } c ? (c.Name, c, null, null, PhysicalType(c), c.Nullable) : null;
+            return FindViewOrQueryColumn(name);
+        }
+
+        /// <summary><see cref="FindSourceColumn"/> for a view or query source (apart, so a table source makes no closure).</summary>
+        private (string Name, RColumn? Table, RViewColumn? View, RQueryField? Query, string? Type, bool Nullable)? FindViewOrQueryColumn(string name)
+        {
             if (_b.SourceView is { } v)
             {
                 var column = v.Columns.FirstOrDefault(c => c.Name == name) ?? Loose(v.Columns, c => c.Name, name);
@@ -957,11 +963,30 @@ internal sealed partial class DatabaseRun
             return null;
         }
 
-        internal static RColumn? FindTableColumn(RTable table, string name) =>
-            table.Columns.FirstOrDefault(c => c.Name == name)
-            ?? table.Columns.FirstOrDefault(c => c.Key == name)
-            ?? table.Columns.FirstOrDefault(c => c.Id == name)
-            ?? Loose(table.Columns, c => c.Name, name);
+        internal static RColumn? FindTableColumn(RTable table, string name)
+        {
+            // Plain loops (every field of every binding asks): by name, then key, then id, then loosely by name.
+            var columns = table.Columns.Items;
+            foreach (var c in columns)
+            {
+                if (c.Name == name)
+                    return c;
+            }
+
+            foreach (var c in columns)
+            {
+                if (c.Key == name)
+                    return c;
+            }
+
+            foreach (var c in columns)
+            {
+                if (c.Id == name)
+                    return c;
+            }
+
+            return Loose(table.Columns, c => c.Name, name);
+        }
 
         /// <summary>The write table's column for a source column: the same column, else by key, then by name.</summary>
         private RColumn? WriteColumnFor(string written, string name, RColumn? sourceColumn)
@@ -970,9 +995,16 @@ internal sealed partial class DatabaseRun
                 return null;
             if (sourceColumn is not null && ReferenceEquals(sourceColumn.Table, w))
                 return sourceColumn;
-            return (sourceColumn is not null ? w.Columns.FirstOrDefault(c => c.Key == sourceColumn.Key) : null)
-                ?? FindTableColumn(w, written)
-                ?? FindTableColumn(w, name);
+            if (sourceColumn is not null)
+            {
+                foreach (var c in w.Columns.Items)
+                {
+                    if (c.Key == sourceColumn.Key)
+                        return c;
+                }
+            }
+
+            return FindTableColumn(w, written) ?? FindTableColumn(w, name);
         }
 
         private static T? Loose<T>(IEnumerable<T> columns, Func<T, string> nameOf, string name) where T : class
@@ -994,13 +1026,55 @@ internal sealed partial class DatabaseRun
         /// <summary>A field's pointer, built only for a finding (a large model resolves hundreds of thousands of fields).</summary>
         private static string FieldAt(int i) => "/fields/" + i.ToString(CultureInfo.InvariantCulture);
 
+        /// <summary>
+        /// The field indexes <see cref="ResolveFields"/> fills, reused by the next binding built on the same thread (every binding of a large
+        /// model makes three): taken while in use, so a nested build makes its own, and cleared before they are put back.
+        /// </summary>
+        [ThreadStatic]
+        private static FieldIndexes? t_fieldIndexes;
+
+        private sealed class FieldIndexes
+        {
+            public Dictionary<string, int> Attributes { get; } = new(StringComparer.Ordinal);
+
+            public Dictionary<string, int> Columns { get; } = new(StringComparer.Ordinal);
+
+            public Dictionary<string, int> Paths { get; } = new(StringComparer.Ordinal);
+
+            public void Clear()
+            {
+                Attributes.Clear();
+                Columns.Clear();
+                Paths.Clear();
+            }
+        }
+
         private List<RBindingField> ResolveFields()
+        {
+            var indexes = t_fieldIndexes ?? new FieldIndexes();
+            t_fieldIndexes = null;
+            try
+            {
+                return ResolveFieldsWith(indexes.Attributes, indexes.Columns, indexes.Paths);
+            }
+            finally
+            {
+                indexes.Clear();
+                t_fieldIndexes = indexes;
+            }
+        }
+
+        /// <summary>Resolves the fields, with empty indexes to fill.</summary>
+        /// <param name="attributes">The first field of each attribute reference (empty).</param>
+        /// <param name="columns">The first field of each source column (empty).</param>
+        /// <param name="paths">The first field of each attribute path (empty).</param>
+        private List<RBindingField> ResolveFieldsWith(Dictionary<string, int> attributes, Dictionary<string, int> columns, Dictionary<string, int> paths)
         {
             var count = file.Fields.Count;
             var fields = new List<RBindingField>(count);
-            var attributes = new Dictionary<string, int>(count, StringComparer.Ordinal);
-            var columns = new Dictionary<string, int>(count, StringComparer.Ordinal);
-            var paths = new Dictionary<string, int>(count, StringComparer.Ordinal);
+            attributes.EnsureCapacity(count);
+            columns.EnsureCapacity(count);
+            paths.EnsureCapacity(count);
             var dottedPaths = false; // one path can lie below another only when one of them names a member
             var perTypeBase = run.IsPerType(entity) ? run.BoundBase(entity) : null;
             for (var i = 0; i < file.Fields.Count; i++)
@@ -1015,7 +1089,7 @@ internal sealed partial class DatabaseRun
                 else if (!attributes.TryAdd(f.Attribute, i))
                     Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' twice (fields {attributes[f.Attribute].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", FieldAt(i) + "/attribute");
                 else if (field is { Attribute: not null, End: null } && (dottedPaths || f.Attribute.Contains('.', StringComparison.Ordinal))
-                    && paths.Keys.FirstOrDefault(p => IsBelow(p, f.Attribute) || IsBelow(f.Attribute, p)) is { } overlap)
+                    && Overlap(paths, f.Attribute) is { } overlap)
                     // A value object held whole (a JSON column) and member by member (retire-projection-design.md section 6).
                     Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' both whole and member by member (fields {paths[overlap].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}): map the value object to one JSON column, or each member to a column.", FieldAt(i) + "/attribute");
                 else if (perTypeBase is not null && MapsInherited(field, perTypeBase))
@@ -1049,12 +1123,25 @@ internal sealed partial class DatabaseRun
             }
 
             return fields;
+
+            // The first path mapped so far that lies below the attribute's or above it (a plain loop: a lambda over the loop's field made a
+            // closure for every field).
+            static string? Overlap(Dictionary<string, int> paths, string attribute)
+            {
+                foreach (var p in paths.Keys)
+                {
+                    if (IsBelow(p, attribute) || IsBelow(attribute, p))
+                        return p;
+                }
+
+                return null;
+            }
         }
 
         /// <summary>Fills what a field's <c>attribute</c> names; false when it names nothing of the entity.</summary>
         private bool Target(RBindingField field, string reference)
         {
-            if (entity.Attributes.FirstOrDefault(a => a.Id == reference) is { } attribute)
+            if (AttributeById(reference) is { } attribute)
             {
                 field.Attribute = attribute;
                 field.Name = attribute.Name;
@@ -1062,7 +1149,7 @@ internal sealed partial class DatabaseRun
             }
 
             var dot = reference.IndexOf('.', StringComparison.Ordinal);
-            if (dot > 0 && entity.Attributes.FirstOrDefault(a => a.Id == reference[..dot]) is { } owner)
+            if (dot > 0 && AttributeById(reference.AsSpan(0, dot)) is { } owner)
             {
                 // A member of an embedded value object, to any depth (retire-projection-design.md section 6): a path that ends at a nested value
                 // object or a list maps a JSON column.
@@ -1094,7 +1181,14 @@ internal sealed partial class DatabaseRun
                 if (opposite.HasSeveralTypes)
                     _deps.Add(EndCoverage.TypesKey(opposite.Id));
                 field.End = end;
-                field.Navigation = run._run.InheritedNavigations(entity.Id).FirstOrDefault(n => ReferenceEquals(n.To, end));
+                var navigations = run._run.InheritedNavigations(entity.Id);
+                field.Navigation = null;
+                for (var n = 0; n < navigations.Count && field.Navigation is null; n++)
+                {
+                    if (ReferenceEquals(navigations[n].To, end))
+                        field.Navigation = navigations[n];
+                }
+
                 var stem = field.Navigation?.Name;
                 (field.Name, field.Holds, field.KeyOf) = form switch
                 {
@@ -1107,6 +1201,18 @@ internal sealed partial class DatabaseRun
 
             field.Name = reference;
             return false;
+        }
+
+        /// <summary>The entity's first attribute with an id (a plain loop: every field of every binding asks).</summary>
+        private RAttribute? AttributeById(ReadOnlySpan<char> id)
+        {
+            foreach (var a in entity.Attributes.Items)
+            {
+                if (id.SequenceEqual(a.Id))
+                    return a;
+            }
+
+            return null;
         }
 
         /// <summary>Whether the entity holds an end through its opposite: it is (or derives from) the opposite's entity, or the opposite covers it.</summary>
@@ -1502,14 +1608,14 @@ internal sealed partial class DatabaseRun
                 field.InInsert = _b.Writes && column is not null && !field.IsGenerated && field.Attribute is not null;
                 var target = field.Member ?? field.Attribute;
                 field.InUpdate = field.InInsert && !field.IsKey && !(target is { ReadOnly: true } or { Immutable: true }) && !(field.Attribute is { ReadOnly: true } or { Immutable: true })
-                    && !field.Members.Any(m => m.ReadOnly || m.Immutable);
+                    && !AnyReadOnly(field.Members);
                 if (field.End is not null)
                 {
                     field.InInsert = _b.Writes && column is not null && !field.IsGenerated;
                     field.InUpdate = field.InInsert;
                 }
 
-                if (column is not null && (constants.Any(c => ReferenceEquals(c.WriteColumn, column)) || ReferenceEquals(_b.DiscriminatorColumn?.WriteColumn, column)))
+                if (column is not null && (WritesColumn(constants, column) || ReferenceEquals(_b.DiscriminatorColumn?.WriteColumn, column)))
                     (field.InInsert, field.InUpdate) = (false, false);
 
                 if (field.IsKey && field.IsGenerated && _b.Writes)
@@ -1517,6 +1623,28 @@ internal sealed partial class DatabaseRun
             }
 
             _b.Generated = generated;
+
+            static bool AnyReadOnly(IReadOnlyList<RAttribute> members)
+            {
+                for (var i = 0; i < members.Count; i++)
+                {
+                    if (members[i].ReadOnly || members[i].Immutable)
+                        return true;
+                }
+
+                return false;
+            }
+
+            static bool WritesColumn(List<RBindingConstant> constants, RColumn column)
+            {
+                foreach (var c in constants)
+                {
+                    if (ReferenceEquals(c.WriteColumn, column))
+                        return true;
+                }
+
+                return false;
+            }
         }
 
         /// <summary>
@@ -1540,16 +1668,14 @@ internal sealed partial class DatabaseRun
         private List<RBindingColumn> Account(List<(string Name, RColumn? Column, string? Type)> columns, List<RBindingField> fields,
             List<RBindingConstant> constants, Dictionary<string, BindingColumnStatus> listed, bool write)
         {
-            var result = new List<RBindingColumn>();
+            var result = new List<RBindingColumn>(columns.Count);
             foreach (var (name, column, _) in columns)
             {
                 var entry = new RBindingColumn { Name = name, Column = column };
                 var field = write && column is not null
-                    ? fields.FirstOrDefault(f => ReferenceEquals(f.WriteColumn, column)) ?? fields.FirstOrDefault(f => f.ColumnName == name && f.WriteColumn is null)
-                    : fields.FirstOrDefault(f => f.ColumnName == name);
-                var constant = write && column is not null
-                    ? constants.FirstOrDefault(c => ReferenceEquals(c.WriteColumn, column))
-                    : constants.FirstOrDefault(c => c.ColumnName == name);
+                    ? FieldWriting(fields, column) ?? FieldReading(fields, name, unwritten: true)
+                    : FieldReading(fields, name, unwritten: false);
+                var constant = write && column is not null ? ConstantWriting(constants, column) : ConstantReading(constants, name);
                 if (field is not null)
                 {
                     entry.Status = "field";
@@ -1595,6 +1721,51 @@ internal sealed partial class DatabaseRun
             }
 
             return result;
+
+            // Plain loops (each column of each binding asks): the first field or constant that writes or reads the column.
+            static RBindingField? FieldWriting(List<RBindingField> fields, RColumn column)
+            {
+                foreach (var f in fields)
+                {
+                    if (ReferenceEquals(f.WriteColumn, column))
+                        return f;
+                }
+
+                return null;
+            }
+
+            static RBindingField? FieldReading(List<RBindingField> fields, string name, bool unwritten)
+            {
+                foreach (var f in fields)
+                {
+                    if (f.ColumnName == name && (!unwritten || f.WriteColumn is null))
+                        return f;
+                }
+
+                return null;
+            }
+
+            static RBindingConstant? ConstantWriting(List<RBindingConstant> constants, RColumn column)
+            {
+                foreach (var c in constants)
+                {
+                    if (ReferenceEquals(c.WriteColumn, column))
+                        return c;
+                }
+
+                return null;
+            }
+
+            static RBindingConstant? ConstantReading(List<RBindingConstant> constants, string name)
+            {
+                foreach (var c in constants)
+                {
+                    if (c.ColumnName == name)
+                        return c;
+                }
+
+                return null;
+            }
         }
 
         /// <summary>MQ4047: the owner's "a mapping for every column": a column nothing accounts for, once per table the binding uses.</summary>
@@ -1623,17 +1794,19 @@ internal sealed partial class DatabaseRun
         {
             if (_b.SourceKind is null)
                 return;
-            var mapped = file.Fields.Select(f => f.Attribute).ToHashSet(StringComparer.Ordinal);
+            var mapped = new HashSet<string>(file.Fields.Count, StringComparer.Ordinal);
+            foreach (var f in file.Fields)
+                mapped.Add(f.Attribute);
             // What the tables above the binding's own store (table per type): the attributes of the nearest base whose table it joins.
             var above = run.UpperLevels(entity).FirstOrDefault() ?? (file.BaseForeignKey is not null ? run.BoundBase(entity) : null);
             // An attribute a child table stores is that entry's to report (retire-projection-design.md section 5).
-            var stored = file.ChildTables.Select(c => c.Attribute).ToHashSet(StringComparer.Ordinal);
+            var stored = file.ChildTables.Count == 0 ? null : file.ChildTables.Select(c => c.Attribute).ToHashSet(StringComparer.Ordinal);
             var names = new List<string>();
             foreach (var attribute in entity.Attributes)
             {
-                if (attribute.Collection || attribute.Derived is { Stored: false } || stored.Contains(attribute.Id))
+                if (attribute.Collection || attribute.Derived is { Stored: false } || stored?.Contains(attribute.Id) == true)
                     continue;
-                if (above is not null && above.Attributes.Any(a => a.Id == attribute.Id))
+                if (above is not null && HasAttribute(above, attribute.Id))
                     continue;
                 if (attribute.Type is { Kind: "value-object", ValueObject: { } valueObject })
                 {
@@ -1650,6 +1823,17 @@ internal sealed partial class DatabaseRun
 
             if (names.Count > 0)
                 Report("MQ4058", $"No field maps {string.Join(", ", names)}: the entity reads {(names.Count == 1 ? "it" : "them")} from nowhere.", "/fields");
+
+            static bool HasAttribute(REntity owner, string id)
+            {
+                foreach (var a in owner.Attributes.Items)
+                {
+                    if (a.Id == id)
+                        return true;
+                }
+
+                return false;
+            }
         }
 
         /// <summary>

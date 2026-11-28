@@ -182,9 +182,9 @@ internal sealed class EndCoverage
     public static bool HasSeveralTypes(Relation relation)
     {
         ArgumentNullException.ThrowIfNull(relation);
-        foreach (var end in relation.Ends)
+        for (var i = 0; i < relation.Ends.Count; i++)
         {
-            if (end.HasSeveralTypes)
+            if (relation.Ends[i].HasSeveralTypes)
                 return true;
         }
 

@@ -120,7 +120,7 @@ internal sealed class Inflector
     public string Pluralize(string word)
     {
         ArgumentNullException.ThrowIfNull(word);
-        return _pluralCache.GetOrAdd(word, w => Inflect(w, _plurals, _singulars, PluralRules));
+        return _pluralCache.GetOrAdd(word, static (w, self) => self.Inflect(w, self._plurals, self._singulars, PluralRules), this);
     }
 
     /// <summary>Singularizes a word or the last word of a name.</summary>
@@ -129,7 +129,7 @@ internal sealed class Inflector
     public string Singularize(string word)
     {
         ArgumentNullException.ThrowIfNull(word);
-        return _singularCache.GetOrAdd(word, w => Inflect(w, _singulars, _plurals, SingularRules));
+        return _singularCache.GetOrAdd(word, static (w, self) => self.Inflect(w, self._singulars, self._plurals, SingularRules), this);
     }
 
     private string Inflect(string text, FrozenDictionary<string, string> irregular, FrozenDictionary<string, string> inverse,

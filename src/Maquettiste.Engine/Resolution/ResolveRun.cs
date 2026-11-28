@@ -31,7 +31,11 @@ internal sealed partial class ResolveRun
     private int _done;
     private int _total;
 
-    public ResolveRun(ModelSnapshot model, IProgress<ProgressUpdate>? progress, CancellationToken ct, int parallelism = 1, Inflector? inflector = null)
+    /// <summary>The model's packages: the longest package chain without a repeat (<see cref="AddPackageChain"/>).</summary>
+    private readonly int _packageCount;
+
+    public ResolveRun(ModelSnapshot model, IProgress<ProgressUpdate>? progress, CancellationToken ct, int parallelism = 1, Inflector? inflector = null,
+        int? expectedObjects = null)
     {
         _parallelism = Math.Max(1, parallelism);
         Model = model;
@@ -40,10 +44,13 @@ internal sealed partial class ResolveRun
         Ct = ct;
         _progress = progress;
         // Sized from the model up front: a resolution registers several objects per element (attributes, columns, tables, ends), and
-        // growing a dictionary of a few hundred thousand entries step by step costs more than the estimate.
-        var estimate = Math.Max(1024, model.Documents.Count * 16);
+        // growing a dictionary of a few hundred thousand entries step by step costs more than the estimate. The resolver passes what the
+        // previous run of the model registered, with room to grow; a first run takes the generous estimate (the dictionary is kept on the
+        // resolved model, so an estimate three times too large stays allocated as long as the model).
+        var estimate = expectedObjects ?? Math.Max(1024, model.Documents.Count * 16);
         _byId = new Dictionary<string, IResolvedObject>(estimate, StringComparer.Ordinal);
         _withDependencies = [];
+        _packageCount = model.All<Package>().Count;
     }
 
     public ModelSnapshot Model { get; }
@@ -70,8 +77,11 @@ internal sealed partial class ResolveRun
 
     public List<Diagnostic> Diagnostics { get; } = [];
 
-    /// <summary>Shared <c>e:</c> and <c>r:</c> key strings.</summary>
-    public DependencyKeyCache Keys { get; } = new();
+    /// <summary>Shared <c>e:</c> and <c>r:</c> key strings (the resolver hands one run's cache to the next).</summary>
+    public DependencyKeyCache Keys { get; init; } = new();
+
+    /// <summary>The number of objects registered by id (the next run's size hint).</summary>
+    internal int Registered => _byId.Count;
 
     /// <summary>Runs the resolution.</summary>
     public ResolvedModel Run()
@@ -681,5 +691,5 @@ internal sealed partial class ResolveRun
     }
 
     private static ImmutableSortedDictionary<string, TValue> SortedMap<TValue>(IEnumerable<KeyValuePair<string, TValue>> values) =>
-        values.ToImmutableSortedDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+        ImmutableSortedDictionary.CreateRange(StringComparer.Ordinal, values);
 }

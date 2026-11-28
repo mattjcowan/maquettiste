@@ -71,7 +71,8 @@ internal sealed partial class ResolveRun
     {
         // Built once under a lock: the bindings of a database build side by side and ask at the same time (the lock-free overload runs the
         // factory on every thread that races it).
-        var index = LazyInitializer.EnsureInitialized(ref _relationsByEndId, ref _relationsByEndIdLock, () =>
+        // Read first: the factory below is a new delegate on every call (every relation-end field of every binding asks).
+        var index = Volatile.Read(ref _relationsByEndId) ?? LazyInitializer.EnsureInitialized(ref _relationsByEndId, ref _relationsByEndIdLock, () =>
         {
             var built = new Dictionary<string, List<(RRelation, REnd)>>(StringComparer.Ordinal);
             foreach (var relation in _relationOrder)
@@ -440,16 +441,18 @@ internal sealed partial class ResolveRun
         var raw = new List<(ModelAttribute Attribute, Entity Declaring, AppliedStereotype? Applied)>();
         foreach (var level in chain)
         {
-            raw.AddRange(level.Attributes.Select(a => (a, level, (AppliedStereotype?)null)));
+            foreach (var a in level.Attributes)
+                raw.Add((a, level, null));
             foreach (var applied in AppliedOf(level))
             {
                 deps.Element(applied.Stereotype.Id);
-                raw.AddRange(applied.Stereotype.Attributes.Select(a => (a, level, (AppliedStereotype?)applied)));
+                foreach (var a in applied.Stereotype.Attributes)
+                    raw.Add((a, level, applied));
             }
         }
 
-        var flattened = StableByOrder(raw.DistinctBy(x => x.Attribute.Id, StringComparer.Ordinal), x => x.Attribute.Order).ToList();
-        var attributes = new List<RAttribute>();
+        var flattened = FlattenByOrder(raw, static x => x.Attribute);
+        var attributes = new List<RAttribute>(flattened.Count);
         foreach (var (attribute, declaring, applied) in flattened)
         {
             var inherited = !string.Equals(declaring.Id, entity.Id, StringComparison.Ordinal);
@@ -463,7 +466,9 @@ internal sealed partial class ResolveRun
 
         SetOrder(attributes);
         r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
-        var own = entity.Attributes.Select(a => attributes.First(x => string.Equals(x.Id, a.Id, StringComparison.Ordinal))).ToList();
+        var own = new List<RAttribute>(entity.Attributes.Count);
+        foreach (var a in entity.Attributes)
+            own.Add(AttributeWithId(attributes, a.Id) ?? throw new InvalidOperationException("Sequence contains no matching element"));
         r.OwnAttributes = new RList<RAttribute>(own, [Keys.Element(entity.Id)]);
         ResolveExpressions(r, chain, flattened, attributes, registrations);
 
@@ -471,8 +476,13 @@ internal sealed partial class ResolveRun
         var root = chain[0];
         if (root.Key is { } key)
         {
-            var keyAttributes = key.Attributes.Select(id => attributes.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal)))
-                .OfType<RAttribute>().ToList();
+            var keyAttributes = new List<RAttribute>(key.Attributes.Count);
+            foreach (var id in key.Attributes)
+            {
+                if (AttributeWithId(attributes, id) is { } keyAttribute)
+                    keyAttributes.Add(keyAttribute);
+            }
+
             r.Key = new RKey
             {
                 Attributes = new RList<RAttribute>(keyAttributes, deps.ToList()),
@@ -649,12 +659,19 @@ internal sealed partial class ResolveRun
     private ResolvedRelation? BuildRelation(Relation relation)
     {
         Ct.ThrowIfCancellationRequested();
-        foreach (var end in relation.Ends)
+        for (var i = 0; i < relation.Ends.Count; i++)
         {
+            var end = relation.Ends[i];
             if (!end.HasSeveralTypes && (end.SingleEntity is not { } entityId || !_entities.ContainsKey(entityId)))
                 return null;
         }
 
+        return BuildCheckedRelation(relation);
+    }
+
+    /// <summary>Builds a relation whose one-type ends all name resolved entities.</summary>
+    private ResolvedRelation BuildCheckedRelation(Relation relation)
+    {
         var r = new RRelation();
         var deps = DepsOf(r);
         FillCommon(r, relation, deps);
@@ -664,10 +681,11 @@ internal sealed partial class ResolveRun
         r.AllowDuplicates = relation.AllowDuplicates;
         deps.Referrers(relation.Id).Add(Conventions).Add("k:database").AddRange(MappingKeysOf(relation.Id)).AddRange(DatabaseKeys);
 
-        var ends = new List<REnd>();
+        var ends = new List<REnd>(relation.Ends.Count);
         IReadOnlyList<string> endDeps = [Keys.Element(relation.Id)];
-        foreach (var end in relation.Ends)
+        for (var i = 0; i < relation.Ends.Count; i++)
         {
+            var end = relation.Ends[i];
             var e = new REnd
             {
                 Id = end.Id,
@@ -711,12 +729,22 @@ internal sealed partial class ResolveRun
 
         r.Ends = new RList<REnd>(ends, endDeps);
         r.Cardinality = CardinalityOf(relation);
-        var raw = relation.Attributes.Select(a => (Attribute: a, Applied: (AppliedStereotype?)null)).ToList();
+        var raw = new List<(ModelAttribute Attribute, AppliedStereotype? Applied)>(relation.Attributes.Count);
+        foreach (var a in relation.Attributes)
+            raw.Add((a, null));
         foreach (var applied in AppliedOf(relation))
-            raw.AddRange(applied.Stereotype.Attributes.Select(a => (Attribute: a, Applied: (AppliedStereotype?)applied)));
-        var attributes = raw.Count == 0 ? [] : StableByOrder(raw.DistinctBy(x => x.Attribute.Id, StringComparer.Ordinal), x => x.Attribute.Order)
-            .Select(x => MakeAttribute(x.Attribute, r, r.Package, null, false, x.Applied?.Stereotype, x.Applied?.Stereotype.Id ?? relation.Id, x.Applied?.Source))
-            .ToList();
+        {
+            foreach (var a in applied.Stereotype.Attributes)
+                raw.Add((a, applied));
+        }
+
+        var attributes = new List<RAttribute>();
+        if (raw.Count > 0)
+        {
+            foreach (var x in FlattenByOrder(raw, static x => x.Attribute))
+                attributes.Add(MakeAttribute(x.Attribute, r, r.Package, null, false, x.Applied?.Stereotype, x.Applied?.Stereotype.Id ?? relation.Id, x.Applied?.Source));
+        }
+
         SetOrder(attributes);
         r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
         return new ResolvedRelation(relation, r, ends, attributes);
@@ -1057,8 +1085,10 @@ internal sealed partial class ResolveRun
     /// <param name="packageId">The innermost package, or <see langword="null"/>.</param>
     internal void AddPackageChain(DependencySet deps, string? packageId)
     {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var id = packageId; id is not null && seen.Add(id);)
+        // A chain visits each package at most once, so a parent cycle (an invalid model) ends after as many steps as there are
+        // packages; the keys it adds again collapse in the set. No set of visited ids is needed (this runs for every resolved object).
+        var steps = _packageCount;
+        for (var id = packageId; id is not null && steps-- > 0;)
         {
             var package = Model.Get<Package>(id);
             if (package is null)
@@ -1093,6 +1123,42 @@ internal sealed partial class ResolveRun
     }
 
     private static IEnumerable<T> StableByOrder<T>(IEnumerable<T> items, Func<T, int?> order) => items.OrderBy(x => order(x) ?? 0);
+
+    /// <summary>
+    /// The first entry of each attribute id, stably sorted by order (none counting as 0): what <c>StableByOrder(raw.DistinctBy(id), order)</c>
+    /// gives, in one pass when the orders already rise (most attributes state none), as every entity and relation flattens its attributes.
+    /// </summary>
+    private static List<T> FlattenByOrder<T>(List<T> raw, Func<T, ModelAttribute> attributeOf)
+    {
+        var distinct = new List<T>(raw.Count);
+        var seen = new HashSet<string>(raw.Count, StringComparer.Ordinal);
+        var rising = true;
+        var previous = int.MinValue;
+        foreach (var x in raw)
+        {
+            var attribute = attributeOf(x);
+            if (!seen.Add(attribute.Id))
+                continue;
+            var order = attribute.Order ?? 0;
+            rising &= order >= previous;
+            previous = order;
+            distinct.Add(x);
+        }
+
+        return rising ? distinct : [.. distinct.OrderBy(x => attributeOf(x).Order ?? 0)];
+    }
+
+    /// <summary>The first attribute of a list with an id (a plain loop).</summary>
+    private static RAttribute? AttributeWithId(List<RAttribute> attributes, string id)
+    {
+        foreach (var a in attributes)
+        {
+            if (string.Equals(a.Id, id, StringComparison.Ordinal))
+                return a;
+        }
+
+        return null;
+    }
 
     private static void SetOrder(List<RAttribute> attributes)
     {
@@ -1196,7 +1262,7 @@ internal sealed partial class ResolveRun
         r.Rationale = element.Rationale;
         r.Decision = element.Decision;
         r.Status = StatusName(element.Status);
-        r.Tags = [.. element.Tags];
+        r.Tags = element.Tags.Count == 0 ? [] : [.. element.Tags];
         if (element.Category is { } category && _categories.TryGetValue(category, out var rc))
         {
             r.Category = rc;
@@ -1207,14 +1273,22 @@ internal sealed partial class ResolveRun
         if (element is Element top)
             AddPackageChain(deps, Model.HolderOf(top).Package);
         var effective = AppliedOf(element);
-        var stereotypes = new List<RStereotype>();
-        foreach (var applied in effective)
+        if (effective.Count == 0)
         {
-            stereotypes.Add(Summary(applied));
-            deps.Element(applied.Stereotype.Id);
+            r.Stereotypes = [];
+        }
+        else
+        {
+            var stereotypes = new List<RStereotype>(effective.Count);
+            foreach (var applied in effective)
+            {
+                stereotypes.Add(Summary(applied));
+                deps.Element(applied.Stereotype.Id);
+            }
+
+            r.Stereotypes = stereotypes;
         }
 
-        r.Stereotypes = stereotypes;
         r.Properties = MergedProperties(effective, element.Properties);
         r.Generation = element.Generation.Count == 0 ? ImmutableSortedDictionary<string, GenerationHints>.Empty : SortedMap(element.Generation);
     }

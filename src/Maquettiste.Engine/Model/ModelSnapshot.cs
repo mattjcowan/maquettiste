@@ -109,6 +109,12 @@ public sealed class ModelSnapshot
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, StereotypeHolder> _holders = new(StringComparer.Ordinal);
 
+    /// <summary><see cref="GetStereotype"/> as one delegate: the effective sets are asked for once per resolved object, and a method group
+    /// would allocate a delegate each time.</summary>
+    private Func<string, Stereotype?>? _stereotypeOf;
+
+    private Func<string, Stereotype?> StereotypeOf => _stereotypeOf ??= GetStereotype;
+
     /// <summary>
     /// Builds a snapshot and its indexes. Pure: no I/O. On duplicate ids the document with the ordinally first path wins; a second
     /// tag vocabulary or category tree is ignored and reported (MQ1009) in <see cref="LoadDiagnostics"/>.
@@ -444,7 +450,7 @@ public sealed class ModelSnapshot
     /// </summary>
     /// <param name="keys">The element's stereotype keys, as its file lists them.</param>
     /// <returns>The effective set: own entries with <see cref="StereotypeSource.Own"/>, implied ones with <see cref="StereotypeSource.Implied"/>.</returns>
-    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(IReadOnlyList<string> keys) => StereotypeDefaults.Layer(keys, GetStereotype);
+    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(IReadOnlyList<string> keys) => StereotypeDefaults.Layer(keys, StereotypeOf);
 
     /// <summary>
     /// What a top-level element's effective set is built from (next-phase-2-design.md section 3.1): its own and excluded keys, the
@@ -482,7 +488,7 @@ public sealed class ModelSnapshot
     /// </summary>
     /// <param name="holder">The holder.</param>
     /// <returns>The effective set.</returns>
-    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(StereotypeHolder holder) => StereotypeDefaults.Effective(holder, GetStereotype);
+    public IReadOnlyList<AppliedStereotype> EffectiveStereotypes(StereotypeHolder holder) => StereotypeDefaults.Effective(holder, StereotypeOf);
 
     /// <summary>
     /// The keys custom property schemas apply to a top-level element by (next-phase-2-design.md section 3.1): when the model declares a

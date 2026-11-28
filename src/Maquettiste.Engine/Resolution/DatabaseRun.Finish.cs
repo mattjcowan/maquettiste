@@ -20,7 +20,13 @@ internal sealed partial class DatabaseRun
             for (var i = 0; i < t.Columns.Count; i++)
                 t.Columns[i].Position = i;
             FillComments(t);
-            var pk = t.PrimaryKey.Select(t.Resolve).OfType<RColumn>().Distinct().ToList();
+            var pk = new List<RColumn>(t.PrimaryKey.Count);
+            foreach (var key in t.PrimaryKey)
+            {
+                if (t.Resolve(key) is { } column && !pk.Contains(column))
+                    pk.Add(column);
+            }
+
             if (pk.Count == 0)
                 continue;
             foreach (var column in pk)
@@ -41,7 +47,7 @@ internal sealed partial class DatabaseRun
             {
                 var target = spec.Target ?? (spec.TargetKey is null ? null : _tables.GetValueOrDefault(spec.TargetKey));
                 spec.Target = target;
-                var columns = spec.Columns.Select(t.Resolve).ToList();
+                var columns = t.ResolveAll(spec.Columns);
                 if (target is null)
                 {
                     ReportUnresolved(t, spec, $"the referenced table '{spec.TargetKey}' is not in the database");
@@ -55,7 +61,7 @@ internal sealed partial class DatabaseRun
                 }
 
                 var referenced = spec.TargetColumns.Count > 0
-                    ? spec.TargetColumns.Select(target.Resolve).ToList()
+                    ? target.ResolveAll(spec.TargetColumns)
                     : [.. target.Table.PrimaryKey?.Columns ?? []];
                 if (referenced.Any(c => c is null))
                 {
@@ -87,7 +93,7 @@ internal sealed partial class DatabaseRun
             }
 
             t.Table.ForeignKeys = foreignKeys;
-            t.Table.Uniques = [.. t.Uniques.Select(u => (Spec: u, Columns: u.Columns.Select(t.Resolve).ToList()))
+            t.Table.Uniques = [.. t.Uniques.Select(u => (Spec: u, Columns: t.ResolveAll(u.Columns)))
                 .Where(x => x.Columns.Count > 0 && x.Columns.All(c => c is not null))
                 .Select(x => new RUnique
                 {
@@ -99,7 +105,7 @@ internal sealed partial class DatabaseRun
                     MemberOrigin = x.Spec.Origin ?? RMemberOrigin.Own,
                 })];
             var indexes = t.Indexes.Select(i => (Spec: i, Columns: i.Columns.Select(c => (Column: c.Column is null ? null : t.Resolve(c.Column), c.Descending, c.Expression, c.Length, c.OperatorClass, c.Nulls)).ToList(),
-                    Include: i.Include.Select(t.Resolve).ToList()))
+                    Include: t.ResolveAll(i.Include)))
                 .Where(x => x.Columns.Count > 0 && x.Columns.All(c => c.Column is not null || c.Expression is not null) && x.Include.All(c => c is not null))
                 .ToList();
             // An index the table file declares overrides an index a stereotype gives on the same columns, so a file can change its sort
@@ -126,7 +132,7 @@ internal sealed partial class DatabaseRun
                     MemberOrigin = x.Spec.Origin ?? RMemberOrigin.Own,
                 })];
             // Partition columns the table does not have leave the partitioning out (validation's MQ4008 says so).
-            if (t.PartitionBy is { } partitionBy && partitionBy.Columns.Select(t.Resolve).ToList() is var partitionColumns && partitionColumns.All(c => c is not null))
+            if (t.PartitionBy is { } partitionBy && t.ResolveAll(partitionBy.Columns) is var partitionColumns && partitionColumns.All(c => c is not null))
                 t.Table.PartitionBy = new RPartitionBy { Strategy = ResolutionValues.Kebab(partitionBy.Strategy), Columns = [.. partitionColumns!] };
             // An exclusion constraint naming a column the table does not have is left out (validation's MQ4008 says so).
             t.Table.Exclusions = [.. t.Exclusions
@@ -503,9 +509,19 @@ internal sealed partial class DatabaseRun
     /// <param name="Name">Its name.</param>
     /// <param name="Table">The table it belongs to, or <see langword="null"/> for a schema object.</param>
     /// <param name="ElementId">The element the diagnostic is reported on.</param>
-    /// <param name="Pointer">The pointer in that element's file, or <see langword="null"/>.</param>
+    /// <param name="PointerHead">The pointer in that element's file (with <see cref="At"/>, the part before the index), or <see langword="null"/>.</param>
     /// <param name="Schema">A schema object's schema, for messages.</param>
-    private sealed record NameHolder(NameHolders Holder, string What, string Name, RTable? Table, string ElementId, string? Pointer, string? Schema = null);
+    private sealed record NameHolder(NameHolders Holder, string What, string Name, RTable? Table, string ElementId, string? PointerHead, string? Schema = null)
+    {
+        /// <summary>The entry's index in its list, when the pointer ends with one: put between the head and the tail when it is reported.</summary>
+        public int At { get; init; } = -1;
+
+        /// <summary>What follows the index in the pointer.</summary>
+        public string? PointerTail { get; init; }
+
+        /// <summary>The pointer, built only for a finding (every index and constraint of every table has a holder).</summary>
+        public string? Pointer => At < 0 ? PointerHead : PointerHead + At.ToString(CultureInfo.InvariantCulture) + PointerTail;
+    }
 
     /// <summary>
     /// MQ4068 (next-phase-1-design.md section 3.5): two index or constraint names collide in a namespace the dialect keeps
@@ -520,7 +536,10 @@ internal sealed partial class DatabaseRun
     {
         var spaces = DialectInfo.NameSpaces(_db.Dialect);
         var limit = _rdb.MaxIdentifierLength;
-        var taken = new Dictionary<(int Space, string Instance, string Key), NameHolder>();
+        var holders = 0;
+        foreach (var t in _tableOrder)
+            holders += 1 + t.Table.Uniques.Count + t.Table.ForeignKeys.Count + t.Table.Checks.Count + t.Table.Exclusions.Count + t.Table.Indexes.Count;
+        var taken = new Dictionary<(int Space, string Instance, string Key), NameHolder>(holders + _views.Count + _sequenceOrder.Count + _routines.Count);
         var tables = _tableOrder
             .OrderBy(t => t.Table.Schema ?? "", StringComparer.Ordinal).ThenBy(t => t.Table.Name, StringComparer.Ordinal)
             .ThenBy(t => t.Table.Key, StringComparer.Ordinal).ToList();
@@ -545,6 +564,7 @@ internal sealed partial class DatabaseRun
 
         foreach (var t in tables)
         {
+            string? tableInstance = null;
             foreach (var holder in HoldersOf(t))
             {
                 NameHolder? first = null;
@@ -553,8 +573,8 @@ internal sealed partial class DatabaseRun
                 {
                     if ((spaces[i].Holders & holder.Holder) == 0)
                         continue;
-                    var instance = spaces[i].Scope == NameScope.Table ? t.Table.Key : t.Table.Schema ?? "";
-                    var key = (i, spaces[i].Scope == NameScope.Table ? "t:" + instance : instance, Key(holder.Name));
+                    var instance = spaces[i].Scope == NameScope.Table ? tableInstance ??= "t:" + t.Table.Key : t.Table.Schema ?? "";
+                    var key = (i, instance, Key(holder.Name));
                     if (taken.TryAdd(key, holder) || first is not null)
                         continue;
                     first = taken[key];
@@ -602,13 +622,13 @@ internal sealed partial class DatabaseRun
         }
 
         foreach (var unique in table.Uniques)
-            yield return Holder(NameHolders.UniqueKey, "unique key", unique.Name, unique.Id, "uniques", file?.Uniques.Select(u => (u.Id, u.Name)));
+            yield return Holder(NameHolders.UniqueKey, "unique key", unique.Name, unique.Id, "/uniques/", file?.Uniques, static u => u.Id, static u => u.Name);
         foreach (var fk in table.ForeignKeys)
-            yield return Holder(NameHolders.ForeignKey, "foreign key", fk.Name, fk.Id, "foreignKeys", file?.ForeignKeys.Select(f => (f.Id, f.Name)));
+            yield return Holder(NameHolders.ForeignKey, "foreign key", fk.Name, fk.Id, "/foreignKeys/", file?.ForeignKeys, static f => f.Id, static f => f.Name);
         foreach (var check in table.Checks)
-            yield return Holder(NameHolders.Check, "check constraint", check.Name, check.Id, "checks", file?.Checks.Select(c => (c.Id, c.Name)));
+            yield return Holder(NameHolders.Check, "check constraint", check.Name, check.Id, "/checks/", file?.Checks, static c => c.Id, static c => c.Name);
         foreach (var exclusion in table.Exclusions)
-            yield return Holder(NameHolders.Exclusion, "exclusion constraint", exclusion.Name, exclusion.Id, "exclusions", file?.Exclusions.Select(e => (e.Id, e.Name)));
+            yield return Holder(NameHolders.Exclusion, "exclusion constraint", exclusion.Name, exclusion.Id, "/exclusions/", file?.Exclusions, static e => e.Id, static e => e.Name);
         if (_db.Dialect == Dialect.SqlServer)
         {
             foreach (var column in t.Columns)
@@ -617,22 +637,30 @@ internal sealed partial class DatabaseRun
                     continue;
                 var at = file is null ? -1 : IndexOf(file.Columns.Select(c => (c.Id, c.DefaultName)), column.Id);
                 yield return new NameHolder(NameHolders.DefaultConstraint, $"default constraint of column '{column.Name}'", name, table,
-                    at < 0 ? t.SourceElementId : file!.Id,
-                    at < 0 ? null : "/columns/" + at.ToString(CultureInfo.InvariantCulture) + "/defaultName");
+                    at < 0 ? t.SourceElementId : file!.Id, at < 0 ? null : "/columns/") { At = at, PointerTail = "/defaultName" };
             }
         }
 
         foreach (var index in table.Indexes)
-            yield return Holder(NameHolders.Index, "index", index.Name, index.Id, "indexes", file?.Indexes.Select(i => (i.Id, i.Name)));
+            yield return Holder(NameHolders.Index, "index", index.Name, index.Id, "/indexes/", file?.Indexes, static i => i.Id, static i => i.Name);
 
-        NameHolder Holder(NameHolders kind, string what, string name, string? id, string list, IEnumerable<(string Id, string? Name)>? entries)
+        // Where the file declares the entry (by id): its index in the list, and whether it names it.
+        NameHolder Holder<T>(NameHolders kind, string what, string name, string? id, string list, IReadOnlyList<T>? entries, Func<T, string> idOf,
+            Func<T, string?> nameOf)
         {
-            var items = entries?.ToList();
-            var at = id is null || items is null ? -1 : IndexOf(items, id);
+            var at = -1;
+            for (var i = 0; id is not null && entries is not null && i < entries.Count; i++)
+            {
+                if (string.Equals(idOf(entries[i]), id, StringComparison.Ordinal))
+                {
+                    at = i;
+                    break;
+                }
+            }
+
             if (at < 0)
                 return new NameHolder(kind, what, name, table, t.SourceElementId, null);
-            var pointer = "/" + list + "/" + at.ToString(CultureInfo.InvariantCulture);
-            return new NameHolder(kind, what, name, table, file!.Id, items![at].Name is null ? pointer : pointer + "/name");
+            return new NameHolder(kind, what, name, table, file!.Id, list) { At = at, PointerTail = nameOf(entries![at]) is null ? null : "/name" };
         }
 
         static int IndexOf(IEnumerable<(string Id, string? Name)> entries, string? id)
