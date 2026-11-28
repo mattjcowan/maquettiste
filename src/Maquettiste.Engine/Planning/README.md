@@ -217,3 +217,15 @@ or a unit or companion template under it is MQ6001; the check uses the resolved 
   the stats taken beside resolve (`OutputStats.Collect`, about 55 MiB and 60 ms) plus the check itself (about 4 MiB, 50 ms on one
   thread). R1's recommended option would skip both for units the edit does not reach.
 - Live memory: the record holds about 85,000 keys and 100,000 input hashes, roughly 20 MB on the benchmark model.
+
+## Performance notes (held memory, unit states, 2026-11-28)
+
+- **Kept names share the table's labels.** After a save, the states the store keeps held each rendered unit's own name map, with a
+  fresh `Name (kind)` string per unit (about 155 MiB live on the benchmark model). They now hold `TableNames` over the written
+  table, as decoded states do: one label string per pack, the map built only when an explanation reads it.
+- **One buffer per save.** The body is allocated at `BodySize` (copied records at their length, others from their exact strings and
+  an upper bound per table index) instead of 256 bytes per state doubled as it grew (25, 51, then 102 MB for a 71 MB body on a cold
+  run, the last kept with 31 MB unused). Now 74 MB cold and 71 MB on an edit, no growth; a rare overflow grows by an eighth. The
+  head is sized exactly. Same bytes (`UnitStateFastPathTests`, which pins a hash of the earlier encoder's output).
+- The body stays in memory: the kept states' key hashes (explanations) are slices of it, records are copied from it as bytes on the
+  next save, and an unchanged file is detected by comparing with it. Most of it is key hashes, so dropping it would save little.

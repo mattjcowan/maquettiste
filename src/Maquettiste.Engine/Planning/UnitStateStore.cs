@@ -29,7 +29,9 @@ namespace Maquettiste.Engine.Planning;
 /// and decoded unless it holds the same bytes; so an edited, replaced or foreign file is always decoded. The loader trusts model files'
 /// stats the same way. The states handed out are read-only and shared between loads. A save writes the file as two parts, the key
 /// table and the records, and keeps both as they are: records whose keys keep their indexes are copied as bytes (see
-/// <see cref="Encode(IReadOnlyCollection{UnitState}, List{UnitState}, int)"/>), and nothing is concatenated or read back.
+/// <see cref="Encode(IReadOnlyCollection{UnitState}, List{UnitState})"/>), and nothing is concatenated or read back. Both parts are
+/// allocated once at their size (the body from a per-state estimate), and the states kept after a save hold their element names as
+/// table indexes, as decoded states do, so a label is one string per pack whatever the number of units naming it.
 /// </remarks>
 /// <param name="options">The engine options.</param>
 /// <param name="paths">The engine-write guard (<see cref="WriteTarget.Cache"/>).</param>
@@ -126,7 +128,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         }
 
         var indexed = new List<UnitState>(states.Count);
-        var (head, body) = EncodeParts(states, indexed, previous?.Length ?? 0);
+        var (head, body) = EncodeParts(states, indexed);
 
         // The same bytes as the file this store last read or wrote, still with the stat it had then (a run that skipped every unit of
         // the pack): the file is left alone, as the manifest store leaves an unchanged manifest, so its time stamp keeps saying
@@ -210,11 +212,10 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     /// </summary>
     /// <param name="states">The states.</param>
     /// <param name="indexed">Receives the states as a load of the bytes would give them, or <see langword="null"/>.</param>
-    /// <param name="sizeHint">The size of the pack's previous file, or 0.</param>
     /// <returns>The bytes.</returns>
-    internal static byte[] Encode(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed, int sizeHint = 0)
+    internal static byte[] Encode(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed)
     {
-        var (head, body) = EncodeParts(states, indexed, sizeHint);
+        var (head, body) = EncodeParts(states, indexed);
         var bytes = new byte[head.Length + body.Length];
         head.Span.CopyTo(bytes);
         body.Span.CopyTo(bytes.AsSpan(head.Length));
@@ -224,22 +225,24 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     /// <summary>
     /// Encodes states as the file's two parts, the head (magic, format, engine version and key table) and the body (the records), which
     /// the file holds one after the other; with <paramref name="indexed"/>, also gives them back as a load of the bytes would (key order,
-    /// indexed read keys), their records and key hashes pointing into the body, which is never copied.
+    /// indexed read keys, <see cref="TableNames"/> element names), their records and key hashes pointing into the body, which is never
+    /// copied.
     /// </summary>
+    /// <remarks>
+    /// The body is allocated once, at <see cref="BodySize"/>: a record that can be copied counts its own length, any other its exact
+    /// strings and an upper bound for its table indexes. The buffer is kept with the states, so a looser size stays in memory, and each
+    /// doubling left the large-object heap a gap as large as all the body so far (25, then 51 MB for a 71 MB body over 100,000 units).
+    /// </remarks>
     /// <param name="states">The states.</param>
     /// <param name="indexed">Receives the states with <see cref="TableKeys"/> read keys, or <see langword="null"/>.</param>
-    /// <param name="sizeHint">
-    /// The size of the pack's previous file, or 0: the body starts that large, so a run that saves about what it read grows no buffer (each
-    /// doubling copied the whole body, about 150 MB a run over a 100,000-unit model's packs).
-    /// </param>
     /// <returns>The head and the body.</returns>
-    internal static (ReadOnlyMemory<byte> Head, ReadOnlyMemory<byte> Body) EncodeParts(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed,
-        int sizeHint = 0)
+    internal static (ReadOnlyMemory<byte> Head, ReadOnlyMemory<byte> Body) EncodeParts(IReadOnlyCollection<UnitState> states, List<UnitState>? indexed)
     {
         var ordered = SortedByKey(states);
         var table = new Dictionary<string, int>(StringComparer.Ordinal);
         var strings = new List<string>();
-        var body = new ByteWriter(Math.Max(ordered.Count * 256, sizeHint)); // about 280 bytes per state in a typical file
+        var exportsJson = new string?[ordered.Count];
+        var body = new ByteWriter(BodySize(ordered, exportsJson));
         int IndexOf(string value)
         {
             if (!table.TryGetValue(value, out var index))
@@ -253,12 +256,12 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         }
 
         // The element names after the static parts: count, then (position among the read keys, label table index), positions ascending.
-        int[] WriteNames(ByteWriter writer, UnitState state)
+        (int[] Positions, int[] Labels) WriteNames(ByteWriter writer, UnitState state)
         {
             if (state.Names is not { Count: > 0 } names)
             {
                 writer.WriteVarInt(0);
-                return [];
+                return ([], []);
             }
 
             var positions = new List<int>();
@@ -282,7 +285,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
                 writer.WriteVarInt(labels[i]);
             }
 
-            return [.. labels];
+            return ([.. positions], [.. labels]);
         }
 
         // States decoded from a file (the skipped units of an incremental run: nearly all of them) carry their keys as indexes into
@@ -294,6 +297,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         var hashStarts = indexed is null ? null : new int[ordered.Count];
         var partIndexes = indexed is null ? null : new int[ordered.Count];
         var nameIndexes = indexed is null ? null : new int[ordered.Count][];
+        var namePositions = indexed is null ? null : new int[ordered.Count][];
         body.WriteInt32(ordered.Count);
         for (var s = 0; s < ordered.Count; s++)
         {
@@ -353,6 +357,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
                         ranges![s] = (start, body.Length - start);
                         partIndexes![s] = partsIndex;
                         nameIndexes![s] = tableKeys.NameIndexes;
+                        namePositions![s] = NamePositions(state, tableKeys.NameIndexes.Length);
                         hashStarts![s] = System.Runtime.InteropServices.MemoryMarshal.TryGetArray(state.KeyHashes, out var segment)
                             && ReferenceEquals(segment.Array, tableKeys.Source) && segment.Count > 0
                             ? start + (segment.Offset - tableKeys.Start)
@@ -404,15 +409,20 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
             var parts = state.StaticParts is null ? -1 : IndexOf(state.StaticParts);
             partIndexes?[s] = parts;
             body.WriteVarInt(parts + 1);
-            var labelIndexes = WriteNames(body, state);
+            var (positions, labelIndexes) = WriteNames(body, state);
             nameIndexes?[s] = labelIndexes;
-            WriteExports(body, state);
+            namePositions?[s] = positions;
+            WriteExports(body, state, exportsJson[s]);
 
             if (ranges is not null)
                 ranges[s] = (start, body.Length - start);
         }
 
-        var head = new ByteWriter((strings.Count * 48) + 64);
+        // The head's exact size: magic, format, the engine version, the string count and the strings.
+        var headSize = (long)Magic.Length + 4 + StringSize(EngineVersion.Value) + 4;
+        foreach (var value in strings)
+            headSize += StringSize(value);
+        var head = new ByteWriter(checked((int)headSize));
         head.WriteBytes(Magic);
         head.WriteInt32(Format);
         head.WriteString(EngineVersion.Value);
@@ -428,9 +438,11 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
                 var state = ordered[s];
                 var (start, length) = ranges![s];
                 var keys = new TableKeys(keyTable, stateIndexes![s], records, start, length, partIndexes![s]) { NameIndexes = nameIndexes![s] };
+                // The names as a load gives them: table indexes, so the labels are the table's strings (a rendered state's labels are
+                // its own strings, one per unit naming the element, and only the first of each went into the table).
                 var copy = new UnitState(state.Key, state.InputHash, keys, state.Outputs)
                 {
-                    Names = state.Names,
+                    Names = nameIndexes[s].Length == 0 ? null : new TableNames(keyTable, stateIndexes[s], namePositions![s], nameIndexes[s]),
                     Exports = state.Exports,
                     KeyHashes = hashStarts![s] < 0 ? default : new ReadOnlyMemory<byte>(records, hashStarts[s], keys.Count * KeyHashes.Size),
                     StaticParts = partIndexes[s] < 0 ? null : keyTable[partIndexes[s]],
@@ -517,7 +529,10 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     /// positions among the read keys. Positions, not table indexes, so a record copied as its bytes stays valid; exports whose keys
     /// are not all read keys are not stored (the unit's values are then evaluated again).
     /// </summary>
-    private static void WriteExports(ByteWriter writer, UnitState state)
+    /// <param name="writer">The writer.</param>
+    /// <param name="state">The state.</param>
+    /// <param name="json">The values' canonical JSON when <see cref="BodySize"/> already formatted it, or <see langword="null"/>.</param>
+    private static void WriteExports(ByteWriter writer, UnitState state, string? json)
     {
         var positions = state.Exports is { } exports ? Positions(state.ReadKeys, exports.ReadKeys) : null;
         if (positions is null)
@@ -527,8 +542,8 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         }
 
         writer.WriteVarInt(1);
-        writer.WriteString(CanonicalForm.Json(state.Exports!.Values));
-        writer.WriteString(state.Exports.InputHash);
+        writer.WriteString(json ?? CanonicalForm.Json(state.Exports!.Values));
+        writer.WriteString(state.Exports!.InputHash);
         writer.WriteVarInt(positions.Count);
         foreach (var position in positions)
             writer.WriteVarInt(position);
@@ -572,6 +587,94 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         return document.RootElement.ValueKind == JsonValueKind.Object && limit > 0
             ? new UnitExports(document.RootElement.Clone(), keys, inputHash)
             : throw new FormatException("Invalid exports.");
+    }
+
+    /// <summary>
+    /// The body's size for these states, an upper bound in practice: a record that may be copied counts its length (one whose keys move
+    /// is encoded again at about the same size), any other its strings exactly, each table index at the size of the largest the table
+    /// can reach (capped at three bytes, two million strings), and its exports' canonical JSON, formatted here once and kept in
+    /// <paramref name="exportsJson"/> for the writer.
+    /// </summary>
+    /// <param name="ordered">The states, in file order.</param>
+    /// <param name="exportsJson">Receives each state's exports JSON when it is formatted here.</param>
+    /// <returns>The size in bytes.</returns>
+    private static int BodySize(IReadOnlyList<UnitState> ordered, string?[] exportsJson)
+    {
+        // The table holds at most every key, label and static parts the encoded states name, plus the tables of copied records.
+        long strings = 0;
+        var tables = new HashSet<string[]>(ReferenceEqualityComparer.Instance);
+        foreach (var state in ordered)
+        {
+            if (state.ReadKeys is TableKeys keys && keys.Source is not null && ReferenceEquals(keys.Owner, state))
+                strings += tables.Add(keys.Table) ? keys.Table.Length : 0;
+            else
+                strings += state.ReadKeys.Count + (state.Names?.Count ?? 0) + 1;
+        }
+
+        var index = VarIntSize((int)Math.Min(strings, (1 << 21) - 1));
+        long size = 4;
+        for (var s = 0; s < ordered.Count; s++)
+        {
+            var state = ordered[s];
+            if (state.ReadKeys is TableKeys keys && keys.Source is not null && ReferenceEquals(keys.Owner, state))
+            {
+                size += keys.Length;
+                continue;
+            }
+
+            var count = state.ReadKeys.Count;
+            size += StringSize(state.Key) + StringSize(state.InputHash) + VarIntSize(count) + ((long)count * index);
+            size += VarIntSize(state.Outputs.Count);
+            foreach (var output in state.Outputs)
+                size += StringSize(output.Path) + StringSize(output.ManifestHash) + 16;
+            size += VarIntSize(count) + (state.KeyHashes.Length == count * KeyHashes.Size ? state.KeyHashes.Length : 0);
+            size += index; // static parts
+            var names = Math.Min(state.Names?.Count ?? 0, count);
+            size += VarIntSize(names) + ((long)names * (VarIntSize(count) + index));
+            size += 1;
+            if (state.Exports is { } exports && Positions(state.ReadKeys, exports.ReadKeys) is { } positions)
+            {
+                var json = exportsJson[s] = CanonicalForm.Json(exports.Values);
+                size += StringSize(json) + StringSize(exports.InputHash) + VarIntSize(positions.Count) + ((long)positions.Count * VarIntSize(count));
+            }
+        }
+
+        return (int)Math.Min(size, Array.MaxLength);
+    }
+
+    /// <summary>The bytes a length-prefixed UTF-8 string takes (what <see cref="ByteWriter.WriteString"/> writes).</summary>
+    private static long StringSize(string value)
+    {
+        var count = System.Text.Ascii.IsValid(value) ? value.Length : Encoding.UTF8.GetByteCount(value);
+        return VarIntSize(count) + count;
+    }
+
+    /// <summary>The bytes a 7-bit encoded non-negative integer takes.</summary>
+    private static int VarIntSize(int value) => value < 0x80 ? 1 : value < 0x4000 ? 2 : value < 0x200000 ? 3 : value < 0x10000000 ? 4 : 5;
+
+    /// <summary>
+    /// The positions among its read keys of a copied record's named keys: those its decoded names hold, or found again from its names
+    /// (a state whose names are not table indexes).
+    /// </summary>
+    /// <param name="state">The state, whose record is copied.</param>
+    /// <param name="count">How many names the record holds.</param>
+    /// <returns>The positions, ascending.</returns>
+    private static int[] NamePositions(UnitState state, int count)
+    {
+        if (count == 0)
+            return [];
+        if (state.Names is TableNames tableNames)
+            return tableNames.Positions;
+        var positions = new List<int>(count);
+        var k = 0;
+        foreach (var key in state.ReadKeys)
+        {
+            if (state.Names!.ContainsKey(key))
+                positions.Add(k);
+            k++;
+        }
+
+        return [.. positions];
     }
 
     /// <summary>The states ordered by key (ordinal); the input itself when it already is.</summary>
@@ -667,7 +770,11 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         private Span<byte> Reserve(int count)
         {
             if (Length + count > _buffer.Length)
-                Array.Resize(ref _buffer, Math.Max(_buffer.Length * 2, Length + count));
+            {
+                // Sized up front, so this is rare: a large buffer grows by an eighth, not double, as it is kept with the states.
+                var grown = _buffer.Length < (1 << 20) ? _buffer.Length * 2 : _buffer.Length + (_buffer.Length >> 3);
+                Array.Resize(ref _buffer, (int)Math.Min(Math.Max(grown, (long)Length + count), Array.MaxLength));
+            }
             return _buffer.AsSpan(Length, count);
         }
     }
@@ -712,7 +819,7 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
 
     /// <summary>
     /// The read keys of a decoded state: indexes into the file's key table, which the decoded states share (smaller than one string
-    /// array per state, and it lets <see cref="Encode(IReadOnlyCollection{UnitState}, List{UnitState}, int)"/> map old indexes to new
+    /// array per state, and it lets <see cref="Encode(IReadOnlyCollection{UnitState}, List{UnitState})"/> map old indexes to new
     /// ones instead of hashing every key again).
     /// </summary>
     /// <param name="table">The file's key table.</param>
@@ -777,6 +884,9 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     internal sealed class TableNames(string[] table, int[] keys, int[] positions, int[] labels) : IReadOnlyDictionary<string, string>
     {
         private Dictionary<string, string>? _names;
+
+        /// <summary>The named keys' positions among the read keys, ascending.</summary>
+        public int[] Positions => positions;
 
         private Dictionary<string, string> Names
         {
