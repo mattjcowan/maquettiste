@@ -32,7 +32,7 @@
   {
     "rule": "MQ2001",
     "severity": "error",
-    "message": "Foreign key references table '01JTAB00000000000000000098', which is neither a table file nor a synthesized table key.",
+    "message": "Foreign key references table '01JTAB00000000000000000098', which is not a table file.",
     "elementId": "01JKEY00000000000000000004",
     "filePath": ".maquettiste/model/databases/main/tables/orders-2.json",
     "jsonPointer": "/foreignKeys/0/referencesTable",

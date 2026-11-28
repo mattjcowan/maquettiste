@@ -308,22 +308,6 @@ public sealed class ModelValidatorTests
     }
 
     [Fact]
-    public async Task An_ignored_relation_mapping_needs_no_foreign_key_MQ4011()
-    {
-        var b = new ModelBuilder();
-        var db = b.Database("main", Dialect.PostgreSql);
-        var customer = b.Entity("Customer").Key("id", "uuid");
-        var order = b.Entity("Order").Key("id", "uuid");
-        var places = b.Relation("places", customer, order, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many);
-        b.Mapping(db, customer).Table(b.Table("customers", db).Column("id", "uuid").PrimaryKey("id"));
-        b.Mapping(db, order).Table(b.Table("orders", db).Column("id", "uuid").PrimaryKey("id"));
-        var ignored = b.Mapping(db, places).Ignore();
-        Assert.NotNull(ignored);
-
-        Assert.Empty((await Validate(b.Build())).Diagnostics);
-    }
-
-    [Fact]
     public async Task Inherited_navigations_collide_with_derived_members_MQ3009()
     {
         var b = new ModelBuilder();

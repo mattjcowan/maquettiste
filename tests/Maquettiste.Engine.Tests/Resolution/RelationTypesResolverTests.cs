@@ -233,7 +233,7 @@ public sealed class RelationTypesResolverTests
         Assert.Equal(attached, attached with { Entities = [Part, Assembly], Covers = [Contract, Document] });
         Assert.NotEqual(attached, attached with { Covers = [Document, Contract] });
         Assert.Equal($"{{\"entity\":\"{Comment}\",\"role\":\"comment\"}}", JsonSerializer.Serialize(rows.Single(r => r.Id == AttachedTo).Ends![0], Web));
-        Assert.Equal("maquettiste-index/e14", Engine.ModelReads.IndexFormat);
+        Assert.Equal("maquettiste-index/e15", Engine.ModelReads.IndexFormat);
 
         // Carriers come from other files: an entity gaining the stereotype refreshes covers.
         h.Write("model/entities/assembly.json", EntityFile(Assembly, "Assembly", stereotype: "approvable"));

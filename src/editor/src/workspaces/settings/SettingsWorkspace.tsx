@@ -36,7 +36,6 @@ import { StrategiesHint } from "./StrategiesHint";
 import { ValidationSettings } from "./ValidationSettings";
 import { AssistantSettings } from "./AssistantSettings";
 import { CommentsConvention } from "./CommentsConvention";
-import { TablesByConvention } from "./DatabaseConvention";
 import { onListArrowKeys } from "@/lib/listKeys";
 import { STEREOTYPE_KIND_GROUPS, STEREOTYPE_KINDS } from "./stereotypeKinds";
 import {
@@ -91,7 +90,6 @@ export function SettingsWorkspace() {
             <>
               <StrategiesHint />
               <ConventionsSettings />
-              <TablesByConvention />
             </>
           ) : t === "locales" ? (
             <LocalesSettings />
@@ -399,7 +397,7 @@ const CONVENTION_FIELDS: { key: ConventionKey; kind: "enum" | "bool" | "text" | 
   { key: "enumStorage", kind: "enum", options: ["int", "string"], engineDefault: "int" },
   { key: "valueObjectStorage", kind: "enum", options: ["embedded", "table", "json"], engineDefault: "embedded" },
   { key: "valueObjectCollectionStorage", kind: "enum", options: ["table", "json"] },
-  { key: "relationsWithAttributes", kind: "enum", options: ["junction", "promoted"] },
+  { key: "relationsWithAttributes", kind: "enum", options: ["junction"] },
   { key: "inheritance", kind: "enum", options: ["tph", "tpt", "tpc"] },
 ];
 

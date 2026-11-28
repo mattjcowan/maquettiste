@@ -83,25 +83,25 @@ public sealed class SchemaValidationTests
     }
 
     [Fact]
-    public void Synthesized_table_overlay_may_omit_its_name_but_a_designed_table_may_not()
+    public void A_table_needs_its_name_and_each_column_its_type()
     {
-        const string overlay = """{"kind":"table","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y","origin":"synthesized","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","attribute":"01JAX3KC3D4E5F6G7H8J9KAMBN","nativeType":"citext"}]}""";
+        const string valid = """{"kind":"table","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","name":"t","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"c","type":"string"}]}""";
         const string designed = """{"kind":"table","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y"}""";
         const string designedColumnWithoutType = """{"kind":"table","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","name":"t","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y","columns":[{"id":"01JAX3KB2C3D4E5F6G7H8J9KAM","name":"c"}]}""";
 
-        Assert.Empty(Evaluate("table.json", overlay));
+        Assert.Empty(Evaluate("table.json", valid));
         Assert.NotEmpty(Evaluate("table.json", designed));
         Assert.NotEmpty(Evaluate("table.json", designedColumnWithoutType));
     }
 
     [Fact]
-    public void Mapping_names_exactly_one_of_entity_and_relation()
+    public void A_mapping_names_its_relation()
     {
         const string head = """{"kind":"mapping","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","name":"m","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y" """;
 
-        Assert.Empty(Evaluate("mapping.json", head + ""","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K"}"""));
+        Assert.Empty(Evaluate("mapping.json", head + ""","relation":"01JAX3KB2C3D4E5F6G7H8J9KAM"}"""));
         Assert.NotEmpty(Evaluate("mapping.json", head + "}"));
-        Assert.NotEmpty(Evaluate("mapping.json", head + ""","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K","relation":"01JAX3KB2C3D4E5F6G7H8J9KAM"}"""));
+        Assert.NotEmpty(Evaluate("mapping.json", head + ""","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K"}"""));
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public sealed class SchemaValidationTests
     [Fact]
     public void Settings_reject_unknown_convention_values()
     {
-        Assert.Empty(Evaluate("maquettiste.json", """{"formatVersion":1,"conventions":{"tableCase":"snake","relationsWithAttributes":"promoted"}}"""));
+        Assert.Empty(Evaluate("maquettiste.json", """{"formatVersion":1,"conventions":{"tableCase":"snake"}}"""));
         Assert.NotEmpty(Evaluate("maquettiste.json", """{"formatVersion":1,"conventions":{"tableCase":"shouting"}}"""));
         Assert.NotEmpty(Evaluate("maquettiste.json", """{"conventions":{}}"""));
     }
@@ -213,17 +213,14 @@ public sealed class SchemaValidationTests
     }
 
     [Theory]
-    [InlineData(""","origin":"synthesized","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, true)]
-    [InlineData(""","origin":"synthesized","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K","attribute":"01JAX3KB2C3D4E5F6G7H8J9KAM" """, true)]
-    [InlineData(""","origin":"synthesized","relation":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, true)]
-    [InlineData(""","origin":"synthesized","enum":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)] // the enum lookup table overlay is retired
-    [InlineData(""","origin":"synthesized" """, false)]
-    [InlineData(""","origin":"synthesized","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K","relation":"01JAX3KB2C3D4E5F6G7H8J9KAM" """, false)]
-    [InlineData(""","origin":"synthesized","attribute":"01JAX3KB2C3D4E5F6G7H8J9KAM","enum":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)]
-    [InlineData(""","name":"t","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)]
-    [InlineData(""","name":"t","origin":"imported","enum":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)]
     [InlineData(""","name":"t" """, true)]
-    public void Synthesized_tables_target_exactly_one_entity_relation_or_enum_and_others_target_none(string fields, bool valid)
+    [InlineData(""","name":"t","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)]
+    [InlineData(""","name":"t","relation":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)]
+    [InlineData(""","name":"t","attribute":"01JAX3KB2C3D4E5F6G7H8J9KAM" """, false)]
+    [InlineData(""","name":"t","enum":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)]
+    [InlineData(""","name":"t","origin":"synthesized" """, false)]
+    [InlineData(""","origin":"synthesized","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K" """, false)]
+    public void A_table_names_no_entity_relation_or_attribute(string fields, bool valid)
     {
         var diagnostics = Evaluate("table.json", """{"kind":"table","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y" """ + fields + "}");
 
@@ -231,7 +228,6 @@ public sealed class SchemaValidationTests
     }
 
     [Theory]
-    [InlineData("mapping.json", """{"kind":"mapping","id":"01JAX3K9V2Q7M4T8W1Z5C6B0DE","name":"m","database":"01JAX3JZ0H6N2P5R8S1T4V7W9Y","entity":"01JAX3KA1B2C3D4E5F6G7H8J9K","attributes":[{"attribute":"01JAX3KB2C3D4E5F6G7H8J9KAM","storage":"lookup"}]}""", "/attributes/0/storage")]
     [InlineData("maquettiste.json", """{"formatVersion":1,"conventions":{"enumStorage":"lookup"}}""", "/conventions/enumStorage")]
     [InlineData("maquettiste.json", """{"formatVersion":1,"databases":{"main":{"enumStorage":"lookup"}}}""", "/databases/main/enumStorage")]
     public void The_retired_enum_lookup_storage_is_an_MQ7012_error_naming_the_conversion(string schemaFile, string json, string pointer)

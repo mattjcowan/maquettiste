@@ -489,15 +489,14 @@ public sealed class CanonicalJsonTests
     }
 
     [Fact]
-    public void Designed_columns_drop_nullable_true_but_overlay_columns_keep_it()
+    public void Columns_drop_nullable_true_and_keep_nullable_false()
     {
         const string table = """
             {
               "kind": "table", "id": "01JAX3K9V2Q7M4T8W1Z5C6B0DE", "name": "t", "database": "01JAX3JZ0H6N2P5R8S1T4V7W9Y",
               "columns": [
                 { "id": "01JAX3KA1B2C3D4E5F6G7H8J9K", "name": "a", "type": "string", "nullable": true },
-                { "id": "01JAX3KB2C3D4E5F6G7H8J9KAM", "name": "b", "type": "string", "nullable": false },
-                { "id": "01JAX3KC3D4E5F6G7H8J9KAMBN", "attribute": "01JAX3KD4E5F6G7H8J9KAMBNCP", "nullable": true }
+                { "id": "01JAX3KB2C3D4E5F6G7H8J9KAM", "name": "b", "type": "string", "nullable": false }
               ]
             }
             """;
@@ -506,7 +505,6 @@ public sealed class CanonicalJsonTests
 
         Assert.Null(columns[0]!["nullable"]);
         Assert.False(columns[1]!["nullable"]!.GetValue<bool>());
-        Assert.True(columns[2]!["nullable"]!.GetValue<bool>());
     }
 
     [Fact]

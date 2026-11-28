@@ -12,8 +12,7 @@ namespace Maquettiste.Engine.Migrations;
 /// </summary>
 /// <remarks>
 /// It starts from the database, every element that names it (its tables, views, sequences, routines, types, SQL objects, queries,
-/// mappings and facts), the elements that name one of those (entity and reference type bindings, seeds) and the entities its
-/// convention takes (<see cref="DatabaseScope.ByConvention"/>). It then closes over what each reached element references (base
+/// mappings and facts), and the elements that name one of those (entity and reference type bindings, seeds). It then closes over what each reached element references (base
 /// entities, value objects, scalar types, enums, reference types, stereotypes, packages and their parents), over the relations
 /// that name a reached entity (and so the entities at their other ends, every entity an end with several types covers included where a mapping
 /// of the relation in the database states storage) and
@@ -54,12 +53,6 @@ internal static class DatabaseReach
             // What names the database's own elements: an entity or reference type bound to one of its tables, a seed of one.
             foreach (var inward in model.ReferencesTo(reference.FromElementId))
                 Reach(inward.FromElementId);
-        }
-
-        foreach (var entity in model.All<Entity>())
-        {
-            if (DatabaseScope.ByConvention(model, database, entity.Package))
-                Reach(entity.Id);
         }
 
         while (queue.Count > 0)
@@ -106,7 +99,7 @@ internal static class DatabaseReach
     }
 
     /// <summary>
-    /// Whether the relation's mapping in the database (the first by id, as the database run reads it) states storage: not ignored, with a
+    /// Whether the relation's mapping in the database (the first by id, as the database run reads it) states storage: a
     /// <c>junctionTable</c> or an <c>ends</c> entry (decision 49).
     /// </summary>
     private static bool StatesStorage(ModelSnapshot model, string relationId, string databaseId)
@@ -119,6 +112,6 @@ internal static class DatabaseReach
                 first = m;
         }
 
-        return first is { Ignore: false } && (first.JunctionTable is not null || first.Ends.Count > 0);
+        return first is not null && (first.JunctionTable is not null || first.Ends.Count > 0);
     }
 }

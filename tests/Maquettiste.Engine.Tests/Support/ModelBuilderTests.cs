@@ -58,11 +58,7 @@ public sealed class ModelBuilderTests
         var main = b.Database("main", Dialect.PostgreSql).DefaultSchema("app");
         main.Schema("app");
         var legacy = b.Table("legacy_customer", main).Column("id", "int64", nullable: false).Column("email", "string", length: 254).PrimaryKey("id").Index(true, "email");
-        b.Table("invoices", main).OverlayFor(invoice).Overlay(invoice.AttrId("number"), nativeType: "citext");
-        b.Mapping(main, party).Inheritance(InheritanceStrategy.Tph).Discriminator("party");
-        b.Mapping(main, customer).Table(legacy);
-        b.Mapping(main, invoice).Storage("status", StorageKind.String);
-        b.Mapping(main, tagged).Shape(RelationShape.Promoted);
+        b.Mapping(main, tagged).Shape(RelationShape.Junction);
         b.Settings(s => s with { Name = "Billing", Outputs = new OutputSettings { Allow = [new OutputRoot { Path = "db" }] } });
 
         var model = b.Build();
@@ -72,7 +68,7 @@ public sealed class ModelBuilderTests
         Assert.Equal("Billing", model.Settings.Name);
         Assert.NotNull(model.Tags);
         Assert.Equal(2, model.Categories!.Categories.Count);
-        Assert.Equal(4, model.All<Mapping>().Count);
+        Assert.Single(model.All<Mapping>());
         Assert.Contains(model.Documents, d => d.Path == ".maquettiste/model/databases/main/tables/legacy-customer.json");
         Assert.Contains(model.Documents, d => d.Path == ".maquettiste/model/vocabularies/tags.json");
         Assert.Contains(model.Documents, d => d.Path == ".maquettiste/model/vocabularies/categories.json");

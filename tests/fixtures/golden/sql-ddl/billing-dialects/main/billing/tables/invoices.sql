@@ -12,8 +12,6 @@ CREATE TABLE billing.invoices (
     created_at timestamptz(6) NOT NULL,
     updated_at timestamptz(6) NULL,
     deleted_at timestamptz(6) NULL,
-    reason varchar(200) NULL,
-    discriminator varchar(64) NOT NULL,
     customer_id uuid NOT NULL,
     CONSTRAINT pk_invoices PRIMARY KEY (id),
     CONSTRAINT uq_invoices_number UNIQUE (number),

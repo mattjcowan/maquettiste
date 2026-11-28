@@ -180,7 +180,10 @@
     "hash": "55c3a1fbcbbce6893e08e5e4c944879824987b048bc1b4c4c5eefa8e21fa9412",
     "path": ".maquettiste/model/entities/customer-note.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "boundTo": [
+      "01K6BND0000000000000000001"
+    ]
   },
   {
     "id": "01J92P0V0ETQKXXP951CMMNHH3",
@@ -197,6 +200,9 @@
     "stereotypes": [
       "aggregate-root",
       "audited"
+    ],
+    "boundTo": [
+      "01M8EJPZN867GR1CJR5ZERBJ0V"
     ]
   },
   {
@@ -208,7 +214,10 @@
     "hash": "90c4156b079e2df24ffae2234641160c9ec2f00f1864839da4f4108a15819baa",
     "path": ".maquettiste/model/entities/invoice-line.json",
     "category": "01J92P0V06TYE8P8990AV35A8K",
-    "stereotypes": []
+    "stereotypes": [],
+    "boundTo": [
+      "01M8EJPZN9VC241ZQY1P20V7D5"
+    ]
   },
   {
     "id": "01K6BND0000000000000000010",
@@ -219,7 +228,10 @@
     "hash": "03505cbd6cd9b3efc554fcdfc0354f4bf1c4a6a25ee031af87ecb3a2e39ac443",
     "path": ".maquettiste/model/entities/invoice-note.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "boundTo": [
+      "01K6BND0000000000000000001"
+    ]
   },
   {
     "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
@@ -236,6 +248,9 @@
       "aggregate-root",
       "audited",
       "soft-delete"
+    ],
+    "boundTo": [
+      "01J92P0V1T0J6RH4MY9H81NYB4"
     ]
   },
   {
@@ -249,6 +264,9 @@
     "category": "01J92P0V06TYE8P8990AV35A8K",
     "stereotypes": [
       "audited"
+    ],
+    "boundTo": [
+      "01M8EJPZN9C4NZBD1KXE8NG70G"
     ]
   },
   {
@@ -262,6 +280,9 @@
     "category": "01J92P0V07KWPZMZ6FKXDYJ3JA",
     "stereotypes": [
       "soft-delete"
+    ],
+    "boundTo": [
+      "01M8EJPZN967ERTF2BPP3YM4QY"
     ]
   },
   {
@@ -273,7 +294,10 @@
     "hash": "53f8d68d169ccae85de2b7e26c6ff7a403c6871de87f233b7bc89ae709cd5d6e",
     "path": ".maquettiste/model/entities/revenue-month.json",
     "category": null,
-    "stereotypes": []
+    "stereotypes": [],
+    "boundTo": [
+      "01K6QRY0000000000000000002"
+    ]
   },
   {
     "id": "01J92P0V05WQDH2GZG539D9VG1",

@@ -33,12 +33,6 @@ internal static class TableSeedRules
     public static void Check(ValidationContext context, Seed seed, Table table, Report report)
     {
         var model = context.Model;
-        if (table.Origin == TableOrigin.Synthesized)
-        {
-            report.Add("MQ7107", $"Seed '{seed.Name}' targets '{table.Name}', a projected table's overlay: seed a table file of the database (store the table as a file first).", "/target");
-            return;
-        }
-
         // The members the table inherits from its stereotypes count as its own, by keyed id (next-phase-2-design.md section 3.1).
         var members = TableMembers.Of(model, table);
         table = MemberRules.WithMembers(model, table);

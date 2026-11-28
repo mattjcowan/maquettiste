@@ -52,7 +52,7 @@ public sealed class StereotypeMemberRuleTests
         var f = Build(s => s with
         {
             AppliesTo = ["entity", "column"],
-            Columns = [s.Columns[0] with { Attribute = s.Columns[1].Id }, s.Columns[1] with { Sequence = "01K6SMR0000000000000000008" }],
+            Columns = [s.Columns[0], s.Columns[1] with { Sequence = "01K6SMR0000000000000000008" }],
             PrimaryKey = new PrimaryKey { Id = "01K6SMR0000000000000000001", Columns = [s.Columns[0].Id], Name = "pk_audited" },
             Uniques = [new UniqueConstraint { Id = "01K6SMR0000000000000000002", Columns = [s.Columns[1].Id], Name = "uq_audited" }],
             Checks = [new CheckConstraint { Id = "01K6SMR0000000000000000003", Name = "ck_audited", Expression = new Dictionary<string, string> { ["*"] = "updated_at >= created_at" } }],
@@ -65,7 +65,6 @@ public sealed class StereotypeMemberRuleTests
             [
                 ("MQ2024", "/appliesTo"),
                 ("MQ2024", "/checks/0/name"),
-                ("MQ2024", "/columns/0/attribute"),
                 ("MQ2024", "/columns/1/sequence"),
                 ("MQ2024", "/indexes/0/name"),
                 ("MQ2024", "/primaryKey/name"),

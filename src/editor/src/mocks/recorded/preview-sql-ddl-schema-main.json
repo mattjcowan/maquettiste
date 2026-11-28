@@ -96,5 +96,5 @@
     "t:sql-ddl/_table.scriban",
     "t:sql-ddl/schema.scriban"
   ],
-  "elapsedMs": 114
+  "elapsedMs": 423
 }

@@ -32,6 +32,8 @@ internal sealed class EditorHost : IAsyncDisposable
     public const string InvoiceNotesAttributeId = "01J92P0V0WKRGKH7YBKA2V30NC";
     public const string ContainsRelationId = "01J92P0V1BWHG0REWKSTR292RS";
     public const string MainDatabaseId = "01J92P0V1QRN2181XM2ZWE02W4";
+    public const string InvoicesTableId = "01J92P0V1T0J6RH4MY9H81NYB4";
+    public const string CustomersTableId = "01M8EJPZN867GR1CJR5ZERBJ0V";
     public const string OverviewDiagramId = "01J92P0V2164SDBW687ZV6E1MV";
     public const string BillingPackageId = "01J92P0V01KDRN8GX5PGYCNKSX";
 

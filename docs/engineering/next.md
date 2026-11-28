@@ -40,7 +40,7 @@ must help any team whether they use it or not, and it stays optional.
 | | Custom properties and stereotypes on guards, actions, invokes and gates, and custom properties on checks and constraints | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies), decision 9, plus checks and constraints. An operation's guards hold them as well. Properties on a check never reach its SQL. |
 | 4.2 | Shared process guards, actions and gate policies | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies). A library's guard holds an expression, not a condition, since a condition names one process's context. The editor edits a library through the JSON view. |
 | 4.1 | Lifecycles any implementation can follow: a stable code per state, `subjects` for one lifecycle on many types (the one-subject form deprecated with a warning), the state held in an attribute as one option, guard conditions that read the object, and a scenario's objects | yes | Built, 0.13.0 | [The design](lifecycle-design.md), with the owner's decisions of 2026-11-05, checked four times. Built in #36 to #39, each reviewed independently, in about four hours by agents. [What lifecycle systems can do](lifecycle-capabilities.md) is its yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the order of the items that follow. |
-| | Reuse resolve results between edits (speed margin for large bound models) | no | Not started, owner to schedule | Since our models hold designed tables and bindings (0.29.0), the bench model has 61,109 files and gate 1 passes with little margin at 5,000 entities. Keeping unchanged resolved databases and entities from one run to the next is the change that would give it room; the design is in [the Resolution README](../../src/Maquettiste.Engine/Resolution/README.md#not-built-reuse-across-an-edit). |
+| | Change-driven edits: an edit costs what it changes, not the whole model | yes (the owner) | Next after 0.29.0; design first | Measured on 2026-11-27: after a one-entity edit of the 5,000-entity bench model, only rendering is limited to what changed (57 of 100,050 units). Rescan, validation, resolve, the skip check and the manifest and unit-state files all cover the whole model, so the edit allocates about 2.8 GB (0.56 MB per entity) and takes about 3.6 s against the 2 s budget; the old resolved model also stays alive while the new one is built. Done only for changed work, an edit should allocate about 30 to 60 MB. Steps: release the old model before resolving; pass the rescan's changes to the run; keep manifests and unit states in memory and write only what changed; validate changed files and their referrers; check only units that read a changed key; a cheaper rescan (about two weeks together); then resolve only what the edit affects (two to four weeks), [sketched in the Resolution README](../../src/Maquettiste.Engine/Resolution/README.md#not-built-reuse-across-an-edit). |
 
 ## Lifecycles after 4.1 (the owner, 2026-11-05)
 
@@ -271,14 +271,14 @@ Built since:
   through composition (`entity.parts`), each part with its own binding. `csharp-dapper` teaches the binding way and still
   renders a query that names an entity; the reference sample's `OpenSalesOrders` query lost its entity and its lines
   collection, and the new read-only entity `OpenSalesOrder` binds to it. Requested.
-- **A table per type (0.29.0, pull request 1 of "Retiring projection", unreleased).** A derived entity's binding names its
+- **A table per type (0.29.0, pull request 1 of "Retiring projection", pending release).** A derived entity's binding names its
   table's foreign key to the base's table (`baseForeignKey`) and maps only the entity's own attributes. The key is the
   foreign key's columns; reads join up the chain; each base's table renders its insert, update and delete for the derived
   entity (its type code, the base's constants), the root's insert returning the generated key; a soft delete is the base's;
   `exists` probes a row. Type-column membership and several types read it. MQ4128 to MQ4136. A relation mapping's
   `attributes[].column` also works on the foreign-key shape. `csharp-dapper` builds the repository. Child tables and
   deeper field paths follow in the same pull request. [The design](retire-projection-design.md).
-- **Child tables and field paths of any depth (0.29.0, pull request 1 of "Retiring projection", unreleased).** A binding
+- **Child tables and field paths of any depth (0.29.0, pull request 1 of "Retiring projection", pending release).** A binding
   keeps a list attribute, or a single value object, in a table of its own (`childTables`: the attribute, the table, the
   owner foreign key on the owning table's primary or unique key, fields, an integer order column for a list, constants,
   columns). Each entry renders its select by owner (ordered), delete by owner and insert of one row; writes replace the rows,
@@ -288,7 +288,7 @@ Built since:
   MQ4144; MQ4058 counts nested members. `csharp-dapper` loads and writes the rows in one unit, its bases' too, and its delete
   checks the row first. The Storage tab has a Child tables section and a Base table section, the field map walks nested
   paths, and the SQL preview shows every level and child table. [The design](retire-projection-design.md), section 5.
-- **"Create tables…" proposes every shape (0.29.0, pull request 2 of "Retiring projection", step 2a, unreleased).**
+- **"Create tables…" proposes every shape (0.29.0, pull request 2 of "Retiring projection", step 2a, pending release).**
   `materialize-tables` proposes tables with its own designer, outside resolution, only when asked: a hierarchy, named whole,
   as one table, a table per concrete entity or a table per type (`hierarchy`); a list in a child table with a `childTables`
   entry, or a JSON column (`listStorage`); a junction table and relation mapping for a many-to-many relationship; a relation
@@ -301,11 +301,15 @@ Built since:
   done (0.29.0, unreleased): the reference sample (210 designed tables, 439 relation mappings, every entity bound), the
   billing, processes and schemas fixtures and the bench's synthetic model now use designed tables, bindings and relation
   mappings, and every database says `byConvention: none`. The generated DDL is the same but for the lookup tables and
-  reference constraints, which move from seed.sql into the schema. The sample's storage lives in `domain/storage/`. The
-  projected copies of the billing and processes fixtures and of the physical and mappings validation families stay until pull
-  request 3, which deletes them and converts or deletes what still projects: the validation fixtures names-keys, values and
-  reference-data (entities broken on purpose), and the editor's several-types, several-types-storage-files and
-  several-types-storage-run fixtures. [The design](retire-projection-design.md), sections 6 and 7.
+  reference constraints, which move from seed.sql into the schema. The sample's storage lives in `domain/storage/`. Pull
+  request 3 deleted the projected copies of the billing and processes fixtures and of the physical and mappings validation
+  families, and converted or deleted what still projected: the validation fixtures names-keys, values and reference-data, and
+  the editor's several-types-storage fixtures. [The design](retire-projection-design.md), sections 6 and 7.
+- **Projection removed (0.29.0, pull request 3 of "Retiring projection", pending release).** Tables are no longer laid out
+  from entities; every table is designed. A file with a removed key is error MQ4145 (one per file; no setting changes
+  it). A database with no `byConvention` is warning MQ4146 while an entity is not bound to it (its quick fix writes `none`). Baselines and snapshots from
+  before 0.29.0 read with the removed keys dropped. The Settings › Conventions "Older projects" panel and the overlay mode
+  are gone. Requested flag as above. [The design](retire-projection-design.md), section 9.
 - **Queries stop naming entities: removal (0.28.0).** `entity`, `collections` and a select field's `attribute` are gone
   from the query format, the resolved model, the SQL renderer (`query_collection_sql` too), `csharp-dapper` and the
   editor. A file that still has one does not load: MQ4127 is now an error at load that no setting changes, naming the
@@ -332,7 +336,7 @@ design questions on 2026-11-26; their answers are folded in below.
 
 Decided: the database knows no entities; entities own their bindings; writes of attribute-per-row (EAV) tables are out.
 
-- **Retiring projection (tables made from entities).** Pull request 1 of 3 built (the binding shapes); pull request 2 step 2a built ("Create tables…" proposes every shape, entity seeds through bindings), step 2b (converting our models) next. Design: [retire-projection-design.md](retire-projection-design.md).
+- **Retiring projection (tables made from entities).** Built in 0.29.0, pending release (all three pull requests: the binding shapes; "Create tables…" for every shape and our converted models; the removal). Removed: `byConvention` all and packages, entity mappings, overlays, the promoted shape, six rules (MQ4007, MQ4012, MQ4013, MQ4014, MQ4054, MQ4079) and the template members that described them. Old files are error MQ4145; a database with no `byConvention` is MQ4146 while an entity is unbound. The validation fixtures names-keys, values and reference-data and the editor's several-types-storage fixtures were converted or deleted, and the projected fixture copies are deleted. Design: [retire-projection-design.md](retire-projection-design.md).
   Asked for by the owner on 2026-11-26 (not requested by a team). One release (0.29.0), three pull requests: bindings
   learn every shape projection makes (table per type with `baseForeignKey`; an attribute in a child table, as a list or
   a single value, with `childTables`; field paths of any depth; relation attributes on a foreign key; entity seeds

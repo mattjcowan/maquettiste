@@ -5,10 +5,10 @@ using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
-[UsesProjectedFixtures]
 public sealed class GenerateTests
 {
     private const string CustomerFile = ".maquettiste/model/entities/customer.json";
+    private const string CustomersTable = ".maquettiste/model/databases/main/tables/customers.json";
     private const string CustomersSql = "db/main/customers.sql";
     private const string CustomerClass = "src/Generated/Customer.g.cs";
     private const string CustomerId = "01J92P0V0ETQKXXP951CMMNHH3";
@@ -109,7 +109,7 @@ public sealed class GenerateTests
         Assert.Equal("", clean.Out);
 
         // Model drift: a stale committed file.
-        repo.Replace(CustomerFile, "\"length\": 120", "\"length\": 150");
+        repo.Replace(CustomersTable, "\"length\": 120", "\"length\": 150");
         var stale = await repo.RunAsync("generate", "--check");
         Assert.Equal(2, stale.ExitCode);
         Assert.Equal(["M " + CustomersSql], Text.Lines(stale.Out));
@@ -120,7 +120,7 @@ public sealed class GenerateTests
         Assert.Contains("+    name varchar(150) NOT NULL,", Text.Lines(withDiff.Out));
 
         // Every root is checked: a deleted file under src/Generated is drift too, until generate restores it.
-        repo.Replace(CustomerFile, "\"length\": 150", "\"length\": 120");
+        repo.Replace(CustomersTable, "\"length\": 150", "\"length\": 120");
         File.Delete(repo.PathOf("src/Generated/Customer.g.cs"));
         var deleted = await repo.RunAsync("generate", "--check");
         Assert.Equal(2, deleted.ExitCode);
@@ -215,7 +215,7 @@ public sealed class GenerateTests
         using var repo = CliRepo.Billing();
         Assert.Equal(0, (await repo.RunAsync("generate")).ExitCode);
         var manifest = File.ReadAllBytes(repo.PathOf(".maquettiste/manifest/ddl.json"));
-        repo.Replace(CustomerFile, "\"length\": 120", "\"length\": 150");
+        repo.Replace(CustomersTable, "\"length\": 120", "\"length\": 150");
 
         var result = await repo.RunAsync("generate", "--dry-run", "--diff");
         Assert.True(result.ExitCode == 0, result.ToString());
@@ -322,7 +322,7 @@ public sealed class GenerateTests
         var diffFile = repo.Read("db/changes/main.txt");
 
         // A wider customer name changes the customers table and the schema diff; a deleted class file is one any classes run writes again.
-        repo.Replace(CustomerFile, "\"length\": 120", "\"length\": 150");
+        repo.Replace(CustomersTable, "\"length\": 120", "\"length\": 150");
         File.Delete(repo.PathOf(CustomerClass));
 
         // The table's id: its script only. The class stays missing and the schema snapshot stays where the full run left it.

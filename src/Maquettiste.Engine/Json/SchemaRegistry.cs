@@ -70,6 +70,10 @@ internal sealed class SchemaRegistry : ISchemaRegistry
         var removed = string.Equals(fileName, RemovedQueryKeys.SchemaFile, StringComparison.Ordinal) ? RemovedQueryKeys.Find(document) : [];
         if (removed.Count > 0)
             diagnostics.Add(RemovedQueryKeys.Finding(document, removed, elementId, path));
+        // The keys 0.29.0 removed with projection are one MQ4145 naming what replaces them, in place of the schema failures they cause.
+        var projection = RemovedProjectionKeys.Applies(fileName) ? RemovedProjectionKeys.Find(fileName, document) : [];
+        if (projection.Count > 0)
+            diagnostics.Add(RemovedProjectionKeys.Finding(fileName, document, projection, elementId, path));
         foreach (var detail in results.Details ?? [])
         {
             if (detail.Errors is null || InsideDiscardedBranch(detail))
@@ -80,6 +84,8 @@ internal sealed class SchemaRegistry : ISchemaRegistry
                     continue; // summarized by the failures of the subschemas it applies
                 var pointer = detail.InstanceLocation.ToString();
                 if (removed.Count > 0 && RemovedQueryKeys.Covers(pointer, removed))
+                    continue;
+                if (projection.Count > 0 && RemovedProjectionKeys.Covers(pointer, projection))
                     continue;
                 if (IsRetiredEnumLookup(document, pointer))
                 {

@@ -132,12 +132,7 @@ async function moveKey(
     const matching: string[] = [];
     for (const entity of listed) {
       const doc = (await endpoints.getElement(entity)).json as unknown as Json;
-      let table = boundTableOf(doc, database);
-      if (!table)
-        for (const row of rows.filter((r) => r.kind === "mapping" && r.entity === entity && r.database === database)) {
-          const file = (await endpoints.getElement(row.id)).json as unknown as Json;
-          if (file.ignore !== true && typeof file.table === "string") table = file.table;
-        }
+      const table = boundTableOf(doc, database);
       if (table === referenced) matching.push(entity);
     }
     if (matching.length === 0) continue;

@@ -7,7 +7,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>E1: <see cref="GenerationService.GetDatabaseViewAsync"/> (phase2-design.md section 3.8).</summary>
-[UsesProjectedFixtures]
 public sealed class DatabaseViewTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
@@ -28,23 +27,20 @@ public sealed class DatabaseViewTests
         // The customers table as the sql-ddl example in docs/api/openapi.yaml renders it.
         var customers = view.Tables.Single(t => t.Name == "customers");
         Assert.Equal("billing", customers.Schema);
-        Assert.Equal("synthesized", customers.Origin);
-        Assert.Equal(EditorRepo.CustomerId + "@" + EditorRepo.MainDatabaseId, customers.Key);
-        Assert.Equal(EditorRepo.CustomerId, customers.EntityId);
+        Assert.Equal("01M8EJPZN867GR1CJR5ZERBJ0V", customers.Key);
         Assert.Equal(["id", "name", "email", "customer_since", "created_at", "updated_at"], customers.Columns.Select(c => c.Name));
         Assert.Equal(["uuid", "varchar(120)", "varchar(254)", "date", "timestamptz(6)", "timestamptz(6)"], customers.Columns.Select(c => c.NativeType));
         Assert.Equal(Enumerable.Range(0, customers.Columns.Count), customers.Columns.Select(c => c.Position));
         var id = customers.Columns[0];
         Assert.True(id.IsPrimaryKey);
         Assert.False(id.Nullable);
-        Assert.Equal("01J92P0V0KGPC29TQQG8R57EBM", id.AttributeId);
         Assert.Equal("pk_customers", customers.PrimaryKey!.Name);
         Assert.Equal([id.Key], customers.PrimaryKey.Columns);
         Assert.Equal("uq_customers_email", Assert.Single(customers.Uniques).Name);
 
-        // The overlay table keeps its file's id as key; the invoices table references customers through the places relation.
+        // A table's key is its file's id; the invoices table references customers through the places relation.
         var invoices = view.Tables.Single(t => t.Name == "invoices");
-        Assert.Equal(EditorRepo.InvoiceId + "@" + EditorRepo.MainDatabaseId, invoices.Key);
+        Assert.Equal(EditorRepo.OverlayTableId, invoices.Key);
         var toCustomer = invoices.ForeignKeys.Single(f => f.ReferencedTable == customers.Key);
         Assert.Equal(EditorRepo.PlacesRelationId, toCustomer.RelationId);
         Assert.Contains(toCustomer.EndId, new[] { "01J92P0V1EHF7PB28CZJG9C5SN", "01J92P0V1F439P4NH5F6HV5QM1" });
@@ -78,7 +74,7 @@ public sealed class DatabaseViewTests
             }
         }
 
-        // The designed overlay's descending index on issuedOn survives the projection.
+        // The invoices table's descending index on issued_on.
         var invoices = view.Tables.Single(t => t.Name == "invoices");
         Assert.Contains(invoices.Indexes, i => i.Columns.Any(c => c.Descending));
     }
@@ -135,8 +131,8 @@ public sealed class DatabaseViewTests
         Assert.Equal(json, JsonSerializer.Serialize(back, Web));
         var column = node["view"]!["tables"]![0]!["columns"]![0]!.AsObject();
         Assert.Equal(
-            ["key", "name", "type", "nativeType", "length", "precision", "scale", "nullable", "defaultSql", "identity", "computed", "attributeId",
-                "attributePath", "isPrimaryKey", "isForeignKey", "isDiscriminator", "position", "default", "computedStored", "sequenceId", "dbTypeId", "collation",
+            ["key", "name", "type", "nativeType", "length", "precision", "scale", "nullable", "defaultSql", "identity", "computed",
+                "isPrimaryKey", "isForeignKey", "position", "default", "computedStored", "sequenceId", "dbTypeId", "collation",
                 "comment", "displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation", "boundType", "sensitive",
                 "memberOrigin"],
             column.Select(p => p.Key));
@@ -206,7 +202,7 @@ public sealed class DatabaseViewTests
     {
         // next-phase-2-design.md section 3.1: audited contributes two columns and an index to every table of schema billing; notes keeps
         // its own created_at (and so leaves out the index on it), redefines updated_at's comment, and carries owned, whose column, unique and
-        // foreign key it inherits.
+        // foreign key it inherits; customers, invoices and payments keep their own created_at and updated_at the same way.
         await using var repo = EditorRepo.Create(packs: false);
         Edit(repo, Audited, s =>
         {
@@ -220,7 +216,7 @@ public sealed class DatabaseViewTests
             {"kind": "stereotype", "id": "01JC7AVD1TC0000000000000S4", "key": "owned", "name": "Owned", "appliesTo": ["table"],
              "columns": [{"id": "{{OwnerId}}", "name": "owner_id", "type": "uuid"}],
              "uniques": [{"id": "{{OwnerUnique}}", "columns": ["{{OwnerId}}"]}],
-             "foreignKeys": [{"id": "{{OwnerKey}}", "columns": ["{{OwnerId}}"], "referencesTable": "{{EditorRepo.CustomerId}}@{{EditorRepo.MainDatabaseId}}"}]}
+             "foreignKeys": [{"id": "{{OwnerKey}}", "columns": ["{{OwnerId}}"], "referencesTable": "01M8EJPZN867GR1CJR5ZERBJ0V"}]}
             """, new UTF8Encoding(false));
         DefaultAudited(repo);
         Edit(repo, NotesTable, t =>
@@ -229,6 +225,8 @@ public sealed class DatabaseViewTests
             t["redefines"] = JsonNode.Parse($$"""[{"member": "{{UpdatedAt}}", "comment": "When the note last changed."}]""");
             t["excludes"] = new JsonArray(CreatedAt, CreatedIndex);
         });
+        foreach (var name in new[] { "customers", "invoices", "payments" })
+            Edit(repo, $".maquettiste/model/databases/main/tables/{name}.json", t => t["excludes"] = new JsonArray(CreatedAt, UpdatedAt, CreatedIndex));
 
         var result = await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
 
@@ -248,7 +246,7 @@ public sealed class DatabaseViewTests
         var index = products.Indexes.Single(i => i.MemberOrigin is not null);
         Assert.Equal(("schema-default", "audited", CreatedIndex), (index.MemberOrigin!.Source, index.MemberOrigin.Stereotype, index.MemberOrigin.MemberId));
         Assert.Equal([inherited[0].Key], index.Columns.Select(c => c.Column));
-        // customers stores audited's attributes as columns, so it inherits nothing; its own members carry no origin.
+        // customers excludes every member of audited, so it inherits nothing; its own members carry no origin.
         var customers = view.Tables.Single(t => t.Name == "customers");
         Assert.All(customers.Columns, c => Assert.Null(c.MemberOrigin));
         Assert.All(customers.Uniques, u => Assert.Null(u.MemberOrigin));
@@ -279,10 +277,10 @@ public sealed class DatabaseViewTests
     }
 
     [Fact]
-    public async Task A_table_without_a_file_shows_its_default_stereotypes()
+    public async Task A_table_shows_its_default_stereotypes()
     {
-        // next-phase-2-design.md section 3.1: a synthesized table without an overlay carries the stereotypes its schema default gives
-        // it, with their default properties; the view and the sequence, which audited does not apply to, take none.
+        // next-phase-2-design.md section 3.1: a table carries the stereotypes its schema default gives it, with their default
+        // properties; the view and the sequence, which audited does not apply to, take none.
         await using var repo = EditorRepo.Create(packs: false);
         var before = (await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct)).View!;
         DefaultAudited(repo);
@@ -295,7 +293,6 @@ public sealed class DatabaseViewTests
         foreach (var name in new[] { "customers", "products" })
         {
             var table = view.Tables.Single(t => t.Name == name);
-            Assert.Equal("synthesized", table.Origin);
             Assert.Equal(["audited"], table.Stereotypes);
             Assert.Equal(2555L, Convert.ToInt64(table.Properties["retentionDays"], System.Globalization.CultureInfo.InvariantCulture));
             Assert.Null(table.DisplayName);

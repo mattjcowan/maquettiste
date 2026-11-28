@@ -55,33 +55,6 @@ async function openTableEditor(page: Page, name: string) {
   await expect(editor(page).getByTestId("editor-title")).toHaveText(name);
 }
 
-test("Store as table files stores every laid-out table in one step, each file with every column, and undo lays them out again", async ({ page }) => {
-  await page.goto("/database?mock=projected");
-  const banner = page.getByTestId("store-tables-banner");
-  await expect(banner).toHaveText(/5 tables are not stored as table files yet\. Store them as files to edit every part of them\./);
-  await page.getByTestId("database-table-customers").click();
-  const columns = await page.getByTestId("column-grid").locator("tbody tr").allTextContents();
-  expect(await fileOf(page, "customers")).toBeUndefined();
-
-  await page.getByTestId("store-tables").click();
-  await expect(page.getByText("5 tables are now stored as table files.")).toBeVisible();
-  await expect(banner).toHaveCount(0);
-  const file = await fileOf(page, "customers");
-  expect(file?.columns).toHaveLength(columns.length);
-  for (const name of ["invoices", "invoice_lines", "payments", "products"]) expect(await fileOf(page, name)).toBeDefined();
-
-  // The table's JSON tab is the whole file now.
-  await page.getByTestId("database-table-customers").click();
-  await inspector(page).getByRole("tab", { name: "JSON" }).click();
-  for (const name of ["id", "name", "email", "customer_since"]) await expect(inspector(page)).toContainText(`"name": "${name}"`);
-  await expect(inspector(page)).not.toContainText("synthesized");
-
-  // One undo step puts every table back as it was.
-  await undo(page);
-  await expect(banner).toBeVisible();
-  await expect.poll(() => fileOf(page, "customers")).toBeUndefined();
-});
-
 test("each part tab adds, edits and deletes its parts, each one undo step, and a picked part is the inspector's only subject", async ({ page }) => {
   await openTableEditor(page, "notes");
   const tab = (name: string) => editor(page).getByRole("tab", { name, exact: true });
@@ -188,7 +161,7 @@ test("each part tab adds, edits and deletes its parts, each one undo step, and a
 });
 
 test("the explorer's table folders open the editor on their tab with the part picked, and offer New and Delete", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
+  await openEditor(page, "/");
   await expandTable(page, "customers");
   for (const folder of ["Columns", "Primary key", "Unique constraints", "Indexes", "Foreign keys", "Checks", "Referenced by"])
     await expect(tree(page).getByTestId(`explorer-folder-${folder}`).first()).toBeVisible();
@@ -210,7 +183,7 @@ test("the explorer's table folders open the editor on their tab with the part pi
   await page.getByTestId("row-menu").getByRole("menuitem", { name: "Open", exact: true }).click();
   await expect(editor(page).getByRole("tab", { name: "Indexes" })).toHaveAttribute("aria-selected", "true");
 
-  // The table's New index stores the laid-out table as a file and opens the new index picked.
+  // The table's New index adds the index to its file and opens it picked.
   const table = tree(page).locator('[role="treeitem"][data-testid$="-customers"]').first();
   await table.click({ button: "right" });
   const menu = page.getByTestId("row-menu");
@@ -221,10 +194,8 @@ test("the explorer's table folders open the editor on their tab with the part pi
   await expect(page.getByRole("dialog", { name: "New foreign key on customers" })).toBeVisible();
   await expect(page.getByTestId("fk-dialog").getByLabel("References table")).toHaveValue("");
   await page.keyboard.press("Escape");
-  expect(await fileOf(page, "customers")).toBeUndefined();
   await table.click({ button: "right" });
   await menu.getByRole("menuitem", { name: "New index" }).click();
-  await expect(page.getByText("customers is now stored as a table file.")).toBeVisible();
   await expect(editor(page).getByRole("tab", { name: "Indexes" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("part-row-index-ix_customers_id")).toHaveAttribute("aria-selected", "true");
   await expect

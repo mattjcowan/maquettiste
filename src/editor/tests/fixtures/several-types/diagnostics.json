@@ -78,27 +78,6 @@
     },
     {
       "rule": "MQ4115",
-      "elementId": "01KST0END00000000000000002",
-      "pointer": "/ends/1",
-      "message": "Relation 'AttachedTo' has an end with several types, so database 'main' stores nothing for it.",
-      "severity": "info"
-    },
-    {
-      "rule": "MQ4115",
-      "elementId": "01KST0END00000000000000004",
-      "pointer": "/ends/1",
-      "message": "Relation 'Concerns' has an end with several types, so database 'main' stores nothing for it.",
-      "severity": "info"
-    },
-    {
-      "rule": "MQ4115",
-      "elementId": "01KST0END00000000000000006",
-      "pointer": "/ends/1",
-      "message": "Relation 'Tagged' has an end with several types, so database 'main' stores nothing for it.",
-      "severity": "info"
-    },
-    {
-      "rule": "MQ4115",
       "elementId": "01KST0END00000000000000008",
       "pointer": "/ends/1",
       "message": "Relation 'Filed' has an end with several types, so database 'main' stores nothing for it.",
@@ -116,27 +95,6 @@
       "elementId": "01KST0END00000000000000015",
       "pointer": "/ends/1",
       "message": "Relation 'Holds' has an end with several types, so database 'main' stores nothing for it.",
-      "severity": "info"
-    },
-    {
-      "rule": "MQ4115",
-      "elementId": "01KST0END00000000000000019",
-      "pointer": "/ends/1",
-      "message": "Relation 'DerivedBeside' has an end with several types, so database 'main' stores nothing for it.",
-      "severity": "info"
-    },
-    {
-      "rule": "MQ4115",
-      "elementId": "01KST0END00000000000000021",
-      "pointer": "/ends/1",
-      "message": "Relation 'CarrierBeside' has an end with several types, so database 'main' stores nothing for it.",
-      "severity": "info"
-    },
-    {
-      "rule": "MQ4115",
-      "elementId": "01KST0END00000000000000023",
-      "pointer": "/ends/1",
-      "message": "Relation 'FromCarrier' has an end with several types, so database 'main' stores nothing for it.",
       "severity": "info"
     },
     {

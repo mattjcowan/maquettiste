@@ -3,7 +3,6 @@ using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
-[UsesProjectedFixtures]
 public sealed class WatchTests
 {
     [Fact]
@@ -20,13 +19,13 @@ public sealed class WatchTests
             await WaitForAsync(() => error.Text().Contains("[watch] watching", StringComparison.Ordinal), run, error);
             Assert.Contains("varchar(120)", repo.Read("db/main/customers.sql"), StringComparison.Ordinal);
 
-            repo.Replace(".maquettiste/model/entities/customer.json", "\"length\": 120", "\"length\": 150");
+            repo.Replace(".maquettiste/model/databases/main/tables/customers.json", "\"length\": 120", "\"length\": 150");
             await WaitForAsync(() => error.Text().Contains("[watch] run 1:", StringComparison.Ordinal), run, error);
             Assert.Contains("varchar(150)", repo.Read("db/main/customers.sql"), StringComparison.Ordinal);
             Assert.Contains("M db/main/customers.sql", output.Text(), StringComparison.Ordinal);
-            // Each watch run counts only the files it compared: the edit re-renders 3 units (1 file changed, 2 unchanged), and the
-            // initial run's 11 files are not counted again.
-            Assert.True(error.Text().Contains("[watch] run 1: Generated: 0 added, 1 modified, 0 deleted, 2 unchanged", StringComparison.Ordinal), error.Text());
+            // Each watch run counts only the files it compared: the edit re-renders 2 units (1 file changed, 1 unchanged), and the
+            // initial run's 15 files are not counted again.
+            Assert.True(error.Text().Contains("[watch] run 1: Generated: 0 added, 1 modified, 0 deleted, 1 unchanged", StringComparison.Ordinal), error.Text());
 
             // The engine's own writes (manifests, journal) trigger no further runs: touch a manifest, then stay well past the
             // debounce (4 x 250 ms plus a run) before looking for a second run.

@@ -87,9 +87,6 @@ public sealed record PackageRecord(string Id, string Kind, string Name, string? 
 /// <param name="AlternateKeys">The alternate keys.</param>
 /// <param name="Navigations">The navigations to related entities.</param>
 /// <param name="Relations">The ids of the relations with an end at this entity.</param>
-/// <param name="Mappings">One mapping per database the entity is mapped to (not ignored in), by database name.</param>
-/// <param name="IsPromoted">Whether the entity is a promoted relation.</param>
-/// <param name="PromotedFrom">The promoted relation's id.</param>
 /// <param name="Seeds">The ids of the seeds that hold its rows.</param>
 /// <param name="Lifecycle">The id of the process that is its lifecycle.</param>
 /// <param name="DisplayName">As <see cref="PackageRecord.DisplayName"/>.</param>
@@ -113,7 +110,7 @@ public sealed record PackageRecord(string Id, string Kind, string Name, string? 
 /// and left out of the JSON, when neither the entity nor a base has a copy block.</param>
 public sealed record EntityRecord(string Id, string Kind, string Name, string? Package, bool IsAbstract, string? Base, IReadOnlyList<string> Derived,
     IReadOnlyList<AttributeRecord> Attributes, KeyRecord? Key, IReadOnlyList<AlternateKeyRecord> AlternateKeys, IReadOnlyList<NavigationRecord> Navigations,
-    IReadOnlyList<string> Relations, IReadOnlyList<EntityMappingRecord> Mappings, bool IsPromoted, string? PromotedFrom, IReadOnlyList<string> Seeds,
+    IReadOnlyList<string> Relations, IReadOnlyList<string> Seeds,
     string? Lifecycle, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
     IReadOnlyList<EntityBindingRecord> Bindings,
@@ -352,13 +349,7 @@ public sealed record StorageChoiceRecord(string Database, string? Strategy, IRea
 /// <summary>An entity's primary key.</summary>
 /// <param name="Attributes">The key attributes' ids, in key order.</param>
 /// <param name="Strategy"><c>application</c>, <c>identity</c>, <c>sequence</c>, ...</param>
-/// <param name="Sequences">For the <c>sequence</c> strategy, the key sequence per database.</param>
-public sealed record KeyRecord(IReadOnlyList<string> Attributes, string Strategy, IReadOnlyList<KeySequenceRecord> Sequences);
-
-/// <summary>The key sequence of an entity in one database.</summary>
-/// <param name="Database">The database's id.</param>
-/// <param name="Sequence">The sequence's id or synthesized key, as <see cref="SequenceView.Id"/>.</param>
-public sealed record KeySequenceRecord(string Database, string Sequence);
+public sealed record KeyRecord(IReadOnlyList<string> Attributes, string Strategy);
 
 /// <summary>An alternate key.</summary>
 /// <param name="Id">The key id.</param>
@@ -380,21 +371,6 @@ public sealed record AlternateKeyRecord(string Id, string Name, IReadOnlyList<st
 /// </param>
 public sealed record NavigationRecord(string Id, string Name, string Relation, string From, string To, string? Target, bool IsCollection,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Targets = null);
-
-/// <summary>An entity's mapping to one database.</summary>
-/// <param name="Database">The database's id.</param>
-/// <param name="Table">The table's key, as <see cref="TableView.Key"/>.</param>
-/// <param name="Inheritance">The inheritance strategy, or <see langword="null"/>.</param>
-/// <param name="DiscriminatorColumn">The discriminator column's key.</param>
-/// <param name="DiscriminatorValue">The discriminator value.</param>
-/// <param name="Columns">Which column stores each attribute path.</param>
-public sealed record EntityMappingRecord(string Database, string Table, string? Inheritance, string? DiscriminatorColumn, object? DiscriminatorValue,
-    IReadOnlyList<ColumnMappingRecord> Columns);
-
-/// <summary>The column that stores an attribute path.</summary>
-/// <param name="AttributePath">The attribute path (a value object's members are dotted).</param>
-/// <param name="Column">The column's key, as <see cref="ColumnView.Key"/>.</param>
-public sealed record ColumnMappingRecord(string AttributePath, string Column);
 
 /// <summary>A resolved relation.</summary>
 /// <param name="Id">The relation id.</param>
@@ -450,10 +426,9 @@ public sealed record EndRecord(string Id, string? Entity, string Role, string? N
 
 /// <summary>A relation's mapping to one database.</summary>
 /// <param name="Database">The database's id.</param>
-/// <param name="Shape"><c>foreign-key</c>, <c>junction</c> or <c>promoted</c>.</param>
+/// <param name="Shape"><c>foreign-key</c> or <c>junction</c>.</param>
 /// <param name="ForeignKey">The foreign key's name, for the <c>foreign-key</c> shape.</param>
 /// <param name="JunctionTable">The junction table's key, for the <c>junction</c> shape.</param>
-/// <param name="PromotedEntity">The promoted entity's id, for the <c>promoted</c> shape.</param>
 /// <param name="Links">For a relation with an end of several types: one entry per pair of targets (several-types-design.md section 19.8); for
 /// a one-type relation whose designed link table's mapping writes constants or attribute columns, its one link; left out when empty.</param>
 /// <param name="Constants">The link table's columns with a fixed value (decision 44); left out when empty.</param>
@@ -461,7 +436,7 @@ public sealed record EndRecord(string Id, string? Entity, string Role, string? N
 /// <param name="LeftOut">Covered entities not placed in the database; left out when empty.</param>
 /// <param name="NotStored">Placed targets no pointer reaches (MQ4120); left out when empty.</param>
 /// <param name="TypeCodes">The code of every entity a type column holds (decision 42); left out when empty.</param>
-public sealed record RelationMappingRecord(string Database, string Shape, string? ForeignKey, string? JunctionTable, string? PromotedEntity,
+public sealed record RelationMappingRecord(string Database, string Shape, string? ForeignKey, string? JunctionTable,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationLinkRecord>? Links = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationConstantRecord>? Constants = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationAttributeColumnRecord>? Attributes = null,
@@ -1533,8 +1508,6 @@ public sealed record ConstraintParameterRecord(string Id, string Name, TypeRecor
 /// <param name="Schemas">Every schema, as <see cref="DatabaseView.Schemas"/>.</param>
 /// <param name="Quoting">As <see cref="DatabaseView.Quoting"/>.</param>
 /// <param name="MaxIdentifierLength">As <see cref="DatabaseView.MaxIdentifierLength"/>.</param>
-/// <param name="ByConvention">As <see cref="DatabaseView.ByConvention"/>.</param>
-/// <param name="Packages">As <see cref="DatabaseView.Packages"/>.</param>
 /// <param name="DisplayName">As <see cref="DatabaseView.DisplayName"/>.</param>
 /// <param name="PluralName">As <see cref="DatabaseView.PluralName"/>.</param>
 /// <param name="Description">As <see cref="DatabaseView.Description"/>.</param>
@@ -1546,7 +1519,7 @@ public sealed record ConstraintParameterRecord(string Id, string Name, TypeRecor
 public sealed record DatabaseRecord(string Id, string Kind, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
     IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types,
     IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<QueryView> Queries, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
-    string ByConvention, IReadOnlyList<ConventionPackageView> Packages, string? DisplayName, string? PluralName, string? Description,
+    string? DisplayName, string? PluralName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation);
 
@@ -1681,7 +1654,7 @@ public static class ResolvedRecords
 
         if (all || scope == "entities")
         {
-            foreach (var e in model.Entities.Where(e => databaseName is null || e.Mappings.ContainsKey(databaseName) || e.Bindings.ContainsKey(databaseName)))
+            foreach (var e in model.Entities.Where(e => databaseName is null || e.Bindings.ContainsKey(databaseName)))
                 yield return new Entry("entity", e.Name, e.Id, () => context.Entity(e), e);
         }
 
@@ -1840,7 +1813,7 @@ public static class ResolvedRecords
     {
         var view = DatabaseViews.From(database);
         return new DatabaseRecord(view.Id, "database", view.Name, view.Dialect, view.Version, view.DefaultSchema, view.Tables, view.Views, view.Sequences,
-            view.Routines, view.Types, view.Objects, view.Queries, view.Schemas, view.Quoting, view.MaxIdentifierLength, view.ByConvention, view.Packages, view.DisplayName, view.PluralName, view.Description,
+            view.Routines, view.Types, view.Objects, view.Queries, view.Schemas, view.Quoting, view.MaxIdentifierLength, view.DisplayName, view.PluralName, view.Description,
             view.Stereotypes, view.Tags, view.Category, view.Properties, view.Generation);
     }
 
@@ -1894,13 +1867,11 @@ public static class ResolvedRecords
             var key = e.Key is { } k ? k.Attributes.Select(a => a.Id).ToHashSet(StringComparer.Ordinal) : [];
             return new EntityRecord(e.Id, "entity", e.Name, e.Package?.Id, e.IsAbstract, e.Base?.Id, Ids(e.Derived),
                 [.. e.Attributes.Select(a => Attribute(a, key))],
-                e.Key is { } pk ? new KeyRecord(Ids(pk.Attributes), pk.Strategy, [.. pk.Sequences.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => new KeySequenceRecord(DatabaseId(s.Key), s.Value.Id))]) : null,
+                e.Key is { } pk ? new KeyRecord(Ids(pk.Attributes), pk.Strategy) : null,
                 [.. e.AlternateKeys.Select(a => new AlternateKeyRecord(a.Id, a.Name, Ids(a.Attributes)))],
                 [.. e.Navigations.Select(Navigation)],
                 Ids(e.Relations),
-                [.. e.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new EntityMappingRecord(m.Value.Database.Id, m.Value.Table.Key, m.Value.Inheritance,
-                    m.Value.DiscriminatorColumn?.Key, Plain(m.Value.DiscriminatorValue), [.. m.Value.Columns.Select(c => new ColumnMappingRecord(c.AttributePath, c.Column.Key))]))],
-                e.IsPromoted, e.PromotedFrom?.Id, Ids(e.Seeds), e.Lifecycle?.Id,
+                Ids(e.Seeds), e.Lifecycle?.Id,
                 e.DisplayName!, e.PluralName!, e.Description, e.Tags, e.Category?.Id, Keys(e.Stereotypes), Plain(e.Properties), e.Generation,
                 [.. e.Bindings.OrderBy(b => b.Key, StringComparer.Ordinal).Select(b => BindingViews.Record(b.Value))],
                 e.Checks.Count == 0 ? null : [.. e.Checks.Select(c => new EntityCheckRecord(c.Id, c.Name, c.Attribute?.Id, Expression(c.Condition), c.Message,
@@ -1977,7 +1948,7 @@ public static class ResolvedRecords
         /// relation whose ends each have one type, with no constants or attribute columns, keeps today's record.
         /// </summary>
         internal static RelationMappingRecord RelationMapping(string database, RRelationMapping m) => new(database, m.Shape, m.ForeignKey?.Name,
-            m.JunctionTable?.Key, m.PromotedEntity?.Id,
+            m.JunctionTable?.Key,
             NullIfEmpty(m.Links, l => new RelationLinkRecord(l.Table.Key, [.. l.Ends.Select(LinkEnd)])),
             NullIfEmpty(m.Constants, c => new RelationConstantRecord(c.Column.Key, [.. c.Values])),
             NullIfEmpty(m.Attributes, a => new RelationAttributeColumnRecord(a.Attribute.Id, a.Column.Key)),

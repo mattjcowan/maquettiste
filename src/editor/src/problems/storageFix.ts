@@ -41,7 +41,7 @@ export function keptCodeOf(message: string): { entity: string; database: string;
   return { entity: at[1], database: at[2], code: at[4] !== undefined ? Number(at[4]) : (at[3] ?? "") };
 }
 
-const KEYS_REFUSED = new Set(["foreignKeyEnd", "foreignKey", "promotedName", "shape", "attributes", "constants"]);
+const KEYS_REFUSED = new Set(["foreignKeyEnd", "foreignKey", "shape", "attributes", "constants"]);
 
 /** The relation's ends as documents write them. */
 const endsOf = (relation: ModelJson | undefined): Json[] => ((relation as Json | undefined)?.ends as Json[] | undefined) ?? [];

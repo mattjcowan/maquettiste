@@ -9,14 +9,13 @@ import { renderQuery, splitWith } from "@/mocks/model/querySql";
 import { bindingProblems, sourceOf } from "@/editors/storage/fieldMap";
 import { namedOptions, renameNamedField, renameNamedQuery, scopeOf, type NamedQuery, type QueryDoc } from "@/model/queryTree";
 import type { DatabaseView } from "@/api/types";
-import { billingProjectedSeed } from "@/mocks/model/seed";
+import { billingSeed } from "@/mocks/model/seed";
 
 type Json = Record<string, unknown>;
 
 const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
-const INVOICE = "01J92P0V0FJ23CGSNKM7P1W5V7";
-const INVOICES = `${INVOICE}@${MAIN}`;
-const LINES = `01J92P0V0GWFR78HZH0P8Z3GY7@${MAIN}`;
+const INVOICES = "01J92P0V1T0J6RH4MY9H81NYB4";
+const LINES = "01M8EJPZN9VC241ZQY1P20V7D5";
 const QUERY = "01K6QRY0000000000000000099";
 
 const chain = (extra: Json = {}): Json => ({
@@ -52,7 +51,7 @@ const query = (extra: Json = {}): Json => ({
 });
 
 function bind(json: Json, dialect?: string) {
-  const backend = new MockBackend({ seed: billingProjectedSeed() });
+  const backend = new MockBackend({ seed: billingSeed() });
   const view = { ...backend.generation.databaseView(MAIN)!.view!, ...(dialect ? { dialect } : {}) } as DatabaseView;
   const docs = new Map(backend.model.docs());
   docs.set(QUERY, { kind: "query", database: MAIN, ...json });
@@ -160,7 +159,7 @@ describe("named queries: rendering", () => {
   });
 
   it("puts the WITH of a built query first in a binding's select over it", () => {
-    const backend = new MockBackend({ seed: billingProjectedSeed() });
+    const backend = new MockBackend({ seed: billingSeed() });
     backend.model.create({ kind: "query", database: MAIN, ...query() });
     const sql = backend.generation.databaseView(MAIN)!.view!.queries!.find((x) => x.id === QUERY)!.sql!;
     const { with: head, statement } = splitWith(sql);
@@ -175,7 +174,7 @@ describe("hand-written queries under a binding", () => {
   const NOTE = "01K6BND0000000000000000010";
   const BINDING = "01K6BND0000000000000000015";
   const bound = (sql: string) => {
-    const backend = new MockBackend({ seed: billingProjectedSeed() });
+    const backend = new MockBackend({ seed: billingSeed() });
     backend.model.create({
       kind: "query",
       database: MAIN,
@@ -466,7 +465,7 @@ describe("named queries: bindings and the editor", () => {
       ],
     });
     expect(namedOptions(d.with, 0)).toEqual([]);
-    const scope = scopeOf(d, undefined, [], [], options);
+    const scope = scopeOf(d, undefined, [], options);
     expect(scope[0]).toMatchObject({ alias: "chain" });
     expect(scope[0].columns.map((c) => c.name)).toEqual(["id", "depth"]);
   });

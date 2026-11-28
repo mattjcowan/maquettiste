@@ -266,7 +266,7 @@ internal static class PlanExplainer
         "exports" => ExportsOf(key) is (var pack, { } id)
             ? "The exports of " + (Label(id, nameOf) ?? "element " + id) + " from " + pack
             : "The model exports of " + key[3..],
-        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? RightsNamingWords(key) ?? TriggerNamingWords(key) ?? FreezingNamingWords(key) ?? PromotionNamingWords(key) ?? ApprovalNamingWords(key) ?? "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? RightsNamingWords(key) ?? TriggerNamingWords(key) ?? FreezingNamingWords(key) ?? ApprovalNamingWords(key) ?? "Input " + key,
     };
 
     /// <summary>The <c>ap:approvals</c> key's words (signoff-design.md section 7): "The approvals the lifecycles state". Its cause kind stays <c>inputs</c>.</summary>
@@ -280,9 +280,6 @@ internal static class PlanExplainer
     /// <summary>The <c>fn:freezing</c> key's words (rights-design.md decision 28): "Whether the project uses freezing". Its cause kind stays <c>inputs</c>.</summary>
     private static string? FreezingNamingWords(string key) =>
         string.Equals(key, Planning.FreezingNaming.Key, StringComparison.Ordinal) ? "Whether the project uses freezing" : null;
-
-    private static string? PromotionNamingWords(string key) =>
-        string.Equals(key, Planning.PromotionNaming.Key, StringComparison.Ordinal) ? "Which relation mappings can promote a relation" : null;
 
     /// <summary>
     /// The <c>tn:trigger-points</c> key's words (trigger-points-design.md section 7): "The trigger points the lifecycles state". Its cause kind

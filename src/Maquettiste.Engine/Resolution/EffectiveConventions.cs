@@ -47,11 +47,6 @@ internal sealed record EffectiveConventions
         return effective;
     }
 
-    /// <summary>Whether any convention set in the settings (project or database) promotes relations with attributes.</summary>
-    public static bool AnyPromotes(ProjectSettings settings) =>
-        settings.Conventions.RelationsWithAttributes == RelationShape.Promoted
-        || settings.Databases.Values.Any(c => c.RelationsWithAttributes == RelationShape.Promoted);
-
     private EffectiveConventions Over(Conventions? c) => c is null ? this : this with
     {
         TableCase = c.TableCase ?? TableCase,

@@ -11,7 +11,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>Pack authoring, the unit rules and the plan explanation (generation-ui.md sections 3, 4 and 5).</summary>
-[UsesProjectedFixtures]
 public sealed class PackAuthoringTests
 {
     private static CancellationToken Ct => EditorRepo.Ct;
@@ -240,10 +239,11 @@ public sealed class PackAuthoringTests
         var edited = await repo.Service.PreviewAsync("sql-ddl", "schema", EditorRepo.MainDatabaseId, null, Ct);
         Assert.Contains("-- appended on disk", edited.Files[0].Text, StringComparison.Ordinal);
 
-        var customer = repo.Repo.PathOf(".maquettiste/model/entities/customer.json");
-        var node = JsonNode.Parse(File.ReadAllText(customer))!.AsObject();
-        node["name"] = "Client";
-        File.WriteAllText(customer, node.ToJsonString());
+        // The customers table renamed on disk: the schema script names the new table.
+        var customers = repo.Repo.PathOf(".maquettiste/model/databases/main/tables/customers.json");
+        var node = JsonNode.Parse(File.ReadAllText(customers))!.AsObject();
+        node["name"] = "clients";
+        File.WriteAllText(customers, node.ToJsonString());
         var renamed = await repo.Service.PreviewAsync("sql-ddl", "schema", EditorRepo.MainDatabaseId, null, Ct);
         Assert.NotEqual(edited.Files[0].Text, renamed.Files[0].Text);
     }

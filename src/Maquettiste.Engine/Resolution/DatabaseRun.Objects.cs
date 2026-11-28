@@ -244,8 +244,6 @@ internal sealed partial class DatabaseRun
         foreach (var t in _tableOrder)
         {
             byId.TryAdd(t.Table.Id, t.Table);
-            if (t.Overlay is { } overlay)
-                byId.TryAdd(overlay.Id, t.Table);
         }
 
         foreach (var v in views)

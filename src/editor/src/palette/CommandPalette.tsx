@@ -5,8 +5,7 @@
 // worker and search/rank.ts decide the order.
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Command } from "cmdk";
-import { keys, useIndex, useProject } from "@/api/queries";
-import { tableKeyOfDoc } from "@/workspaces/database/columnEdits";
+import { useIndex, useProject } from "@/api/queries";
 import type { ElementKind, ElementSummary } from "@/api/types";
 import { useServices } from "@/app/context";
 import { KindIcon } from "@/app/icons";
@@ -166,7 +165,7 @@ function useCommands(close: () => void): LocalItem[] {
 }
 
 function SearchDialog({ mode }: { mode: Mode }) {
-  const { store, queryClient } = useServices();
+  const { store } = useServices();
   const open = useEditor(store, (s) => (mode === "palette" ? s.paletteOpen : s.quickOpen));
   const selection = useEditor(store, (s) => s.selection);
   const recent = useEditor(store, (s) => s.recent);
@@ -208,11 +207,7 @@ function SearchDialog({ mode }: { mode: Mode }) {
       .then((a) => {
         if (!live) return;
         setFull(false);
-        const hits = dropTableDuplicates(
-          a.hits,
-          byId,
-          (row) => tableKeyOfDoc(queryClient.getQueryData<{ json?: unknown }>(keys.element(row.id))?.json as Record<string, unknown> | undefined)?.key,
-        );
+        const hits = dropTableDuplicates(a.hits, byId);
         setAnswer({ text, hits, total: a.total - (a.hits.length - hits.length) });
       });
     return () => {

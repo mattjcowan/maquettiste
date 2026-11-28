@@ -5,7 +5,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Cli.Tests;
 
 /// <summary><c>maquettiste model apply</c>: a batch file applied all or nothing, by name, with ids minted (next-phase-1-design.md 5.1).</summary>
-[UsesProjectedFixtures]
 public sealed class ModelApplyTests
 {
     private const string Main = "01J92P0V1QRN2181XM2ZWE02W4";
@@ -83,6 +82,7 @@ public sealed class ModelApplyTests
     internal static void AuditColumns(CliRepo repo)
     {
         const string NotesPath = ".maquettiste/model/databases/main/tables/notes.json";
+        const string InvoicesPath = ".maquettiste/model/databases/main/tables/invoices.json";
         const string ArchivePath = ".maquettiste/model/databases/archive/database.json";
         repo.Replace(".maquettiste/model/vocabularies/stereotypes/audited.json", "  \"defaultProperties\": {",
             $$"""
@@ -92,6 +92,11 @@ public sealed class ModelApplyTests
               "indexes": [ { "id": "{{AuditCreatedIndex}}", "columns": [ { "column": "{{AuditCreatedAt}}" } ] } ],
               "defaultProperties": {
             """);
+        // The invoices table carries audited and states its own created_at and updated_at; it stops carrying it, so only notes takes the
+        // new members.
+        var invoices = JsonNode.Parse(repo.Read(InvoicesPath))!.AsObject();
+        invoices.Remove("stereotypes");
+        repo.Write(InvoicesPath, Encoding.UTF8.GetString(TestServices.Json.Write(invoices, "table.json", InvoicesPath)));
         var notes = JsonNode.Parse(repo.Read(NotesPath))!;
         notes["indexes"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{NotesCreatedIndex}}", "columns": [ { "column": "01K6BND0000000000000000006" } ] }"""));
         repo.Write(NotesPath, Encoding.UTF8.GetString(TestServices.Json.Write(notes, "table.json", NotesPath)));
@@ -194,25 +199,30 @@ public sealed class ModelApplyTests
     public async Task Model_apply_dry_run_prints_the_impact()
     {
         // next-phase-2-design.md section 6.1: the dry run runs through the generation service and prints the referrers, the databases
-        // reached and per pack the units whose stored inputs it touches, with their files.
+        // reached and per pack the units whose stored inputs it touches, with their files. The batch renames Invoice's attribute number
+        // and the column it is bound to.
         const string invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
-        const string number = "01J92P0V0R3VSP7D5238DTNZX1";
+        const string invoices = "01J92P0V1T0J6RH4MY9H81NYB4";
+        const string attribute = "01J92P0V0R3VSP7D5238DTNZX1";
+        const string number = "01J92P0V1VQAA9FW71PKYWWHKN";
         using var repo = CliRepo.Billing();
         var generated = await repo.RunAsync("generate");
         Assert.True(generated.ExitCode == 0, generated.ToString());
-        string element;
-        string hash;
+        var operations = new List<string>();
         await using (var store = new Maquettiste.Engine.ModelStore(repo.Temp.Options))
         {
             await store.LoadAsync(TestContext.Current.CancellationToken);
-            var document = store.Current!.GetDocument(invoice)!;
-            var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
-            node["attributes"]!.AsArray().Single(a => (string?)a!["id"] == number)!["name"] = "code";
-            (element, hash) = (node.ToJsonString(), document.Hash);
+            foreach (var (id, list, member) in new[] { (invoice, "attributes", attribute), (invoices, "columns", number) })
+            {
+                var document = store.Current!.GetDocument(id)!;
+                var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
+                node[list]!.AsArray().Single(a => (string?)a!["id"] == member)!["name"] = "code";
+                operations.Add($$"""{ "op": "update", "id": "{{id}}", "expectedHash": "{{document.Hash}}", "element": {{node.ToJsonString()}} }""");
+            }
         }
 
         var batch = Path.Combine(repo.Temp.Root, "rename.json");
-        File.WriteAllText(batch, $$"""[ { "op": "update", "id": "{{invoice}}", "expectedHash": "{{hash}}", "element": {{element}} } ]""");
+        File.WriteAllText(batch, "[ " + string.Join(", ", operations) + " ]");
         var before = repo.Tree(".maquettiste");
 
         var text = await repo.RunAsync("model", "apply", batch, "--dry-run");
@@ -280,7 +290,7 @@ public sealed class ModelApplyTests
         {
             var path = Path.Combine(repo.Temp.Root, excludeMissing ? "fold.json" : "fold-strict.json");
             File.WriteAllText(path, $$"""
-                [ { "op": "fold-into-stereotype", "id": "@stereotype:audited", "schema": "@schema:billing"{{(excludeMissing ? ", \"excludeMissing\": true" : "")}} } ]
+                [ { "op": "fold-into-stereotype", "id": "@stereotype:audited", "tables": [ "@table:billing.notes" ]{{(excludeMissing ? ", \"excludeMissing\": true" : "")}} } ]
                 """);
             return path;
         }
@@ -308,7 +318,7 @@ public sealed class ModelApplyTests
         // The rekey the write would record is one of the files.
         Assert.Contains("+++ b/.maquettiste/model/databases/main/migrations/open/", text.Out, StringComparison.Ordinal);
         Assert.Contains("+  \"fact\": \"rekey\",", text.Out, StringComparison.Ordinal);
-        Assert.Contains("\n@schema:billing  " + BillingSchema + "\n", "\n" + text.Out, StringComparison.Ordinal);
+        Assert.Contains("\n@table:billing.notes  " + Notes + "\n", "\n" + text.Out, StringComparison.Ordinal);
         Assert.Contains("\n@stereotype:audited  01J92P0V25BX5TMQ8N9F6AJE61\n", "\n" + text.Out, StringComparison.Ordinal);
         Assert.Contains("nothing was written", text.Error, StringComparison.Ordinal);
 

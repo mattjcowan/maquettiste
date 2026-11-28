@@ -18,9 +18,10 @@ public sealed partial class RelationTypeStorageTests
 {
     private const string Linkable = "01JSTR00000000000000000961", Tracked = "01JSTR00000000000000000962";
 
-    private const string AssemblyCodeFinding = "Entity 'Assembly' is not part of an inheritance hierarchy, so it has no discriminator.";
+    private const string AssemblyCodeFinding =
+        "Entity 'Assembly' is not part of an inheritance hierarchy and no relation end with several types covers it, so its binding has no type code to set; remove 'discriminatorValue'.";
 
-    /// <summary>AttachedTo covers Part and whatever carries <c>linkable</c>; Assembly carries <c>tracked</c> and sets a code in its mapping.</summary>
+    /// <summary>AttachedTo covers Part and whatever carries <c>linkable</c>; Assembly carries <c>tracked</c> and sets a code in its binding.</summary>
     private static Task<(LoaderHarness Harness, ModelStore Store)> OpenCarriersAsync(string trackedImplies) => OpenAsync(h =>
     {
         // MQ4009 as a warning, so a save that brings it back is saved and its findings can be compared with a whole-model validation.
@@ -30,7 +31,8 @@ public sealed partial class RelationTypeStorageTests
         h.Write("model/stereotypes/linkable.json", $$"""{"kind":"stereotype","id":"{{Linkable}}","key":"linkable","name":"Linkable","appliesTo":["entity"]}""");
         h.Write("model/stereotypes/tracked.json", $$"""{"kind":"stereotype","id":"{{Tracked}}","key":"tracked","name":"Tracked","appliesTo":["entity"]{{trackedImplies}}}""");
         h.Write("model/entities/assembly.json", EntityFile(SAssembly, "Assembly", stereotype: "tracked",
-            attributes: $$""","key":{"attributes":["{{N(P, 102)}}"]},"attributes":[{"id":"{{N(P, 102)}}","name":"id","type":"uuid"}]"""));
+            attributes: $$""","key":{"attributes":["{{N(P, 102)}}"]},"attributes":[{"id":"{{N(P, 102)}}","name":"id","type":"uuid"}],"""
+                + $$""" "bindings":[{"id":"{{N(P, 812)}}","database":"{{Main}}","source":"{{Assemblies}}","discriminatorValue":"A","fields":[{"attribute":"{{N(P, 102)}}","column":"id"}]}]"""));
         h.Write("model/relations/attached-to.json", $$"""
             {"kind":"relation","id":"{{Attached}}","name":"AttachedTo","package":"{{Sales}}","ends":[
              {"id":"{{CommentEnd}}","entity":"{{SComment}}","role":"comment","navigation":"comments","max":"*"},
@@ -41,7 +43,7 @@ public sealed partial class RelationTypeStorageTests
              {"id":"{{FolderEnd}}","entity":"{{SFolder}}","role":"folder","navigation":"folder","max":1},
              {"id":"{{ItemsEnd}}","types":[{"entity":"{{SPart}}"},{"entity":"{{SComment}}"}],"role":"items","navigation":"items","max":"*"}]}
             """);
-    }, assemblyMapping: ",\"discriminatorValue\":\"A\"");
+    });
 
     private static async Task<SaveResult> SaveAsync(ModelStore store, string id, Action<JsonObject> edit)
     {
@@ -54,18 +56,17 @@ public sealed partial class RelationTypeStorageTests
     }
 
     /// <summary>
-    /// The save checked Assembly's mapping again, and its findings there agree with a whole-model validation: present in both, or in
+    /// The save checked Assembly's binding again, and its findings there agree with a whole-model validation: present in both, or in
     /// neither while the save's scope reached the file.
     /// </summary>
     private static async Task AssertAgreesAsync(LoaderHarness h, ModelStore store, SaveResult saved, string savedId, bool expected)
     {
-        var mappingId = N(P, 903);
         static List<string> On(IEnumerable<Diagnostic> found, string id) => [.. found.Where(d => d.Rule == "MQ4009" && d.ElementId == id).Select(d => d.Message)];
         var full = await ActorKit.ValidateAsync(h, store.Current!);
-        Assert.Equal(expected ? [AssemblyCodeFinding] : [], On(full, mappingId));
-        Assert.Equal(On(full, mappingId), On(saved.Diagnostics, mappingId));
+        Assert.Equal(expected ? [AssemblyCodeFinding] : [], On(full, SAssembly));
+        Assert.Equal(On(full, SAssembly), On(saved.Diagnostics, SAssembly));
         if (!expected)
-            Assert.Contains(mappingId, ModelValidator.TargetIds(store.Current!, new ValidationScope([savedId], IncludeReferrers: true)));
+            Assert.Contains(SAssembly, ModelValidator.TargetIds(store.Current!, new ValidationScope([savedId], IncludeReferrers: true)));
     }
 
     [Fact]
@@ -74,7 +75,7 @@ public sealed partial class RelationTypeStorageTests
         var (h, store) = await OpenCarriersAsync("");
         using var _ = h;
         await using var __ = store;
-        Assert.Contains(AssemblyCodeFinding, Of(await ActorKit.ValidateAsync(h, store.Current!), "MQ4009", "/mappings/assembly").Select(x => x.Message));
+        Assert.Contains(AssemblyCodeFinding, Of(await ActorKit.ValidateAsync(h, store.Current!), "MQ4009", "/entities/assembly").Select(x => x.Message));
 
         // tracked now implies linkable: Assembly carries it, the end covers Assembly, and its code is allowed.
         var implies = await SaveAsync(store, Tracked, s => s["implies"] = new JsonArray("linkable"));

@@ -3,9 +3,9 @@
 // References (and Code generation when an extension schema applies). Every edit goes through the element's draft (state/drafts.ts).
 import { useMemo, useState } from "react";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
-import { useElements, useIndex, useSettings } from "@/api/queries";
+import { useElements, useIndex } from "@/api/queries";
 import { useStereotypes } from "@/editors/process/ProcessControls";
-import type { AttributeDoc, components, ElementSummary, EntityDoc, RelationDoc, RelationEndDoc } from "@/api/types";
+import type { AttributeDoc, ElementSummary, EntityDoc, RelationDoc, RelationEndDoc } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -29,21 +29,9 @@ import { EntityRevisionsTab } from "./EntityRevisionsTab";
 import { SeedDataTab } from "./SeedDataTab";
 import { StorageTab } from "./storage/StorageTab";
 import { endLabel, endReach, type EndLike } from "@/model/endTypes";
-import {
-  fieldSources,
-  inHierarchy,
-  inheritanceRows,
-  setDiscriminator,
-  setInheritance,
-  SOURCE_LABELS,
-  STRATEGY_LABELS,
-  wouldCycle,
-  type InheritanceStrategy,
-} from "./inheritance";
-import { useElementEdits } from "./mappingEdit";
+import { fieldSources, inHierarchy, wouldCycle } from "./inheritance";
 
 type Rec = Record<string, unknown>;
-type TableDoc = components["schemas"]["table"];
 type KeyStrategy = NonNullable<NonNullable<EntityDoc["key"]>["strategy"]>;
 type AlternateKey = NonNullable<EntityDoc["alternateKeys"]>[number];
 
@@ -530,57 +518,24 @@ function RelationshipsTab({ id, domain }: { id: string; domain: string | null })
   );
 }
 
-function IndexesTab({ id, json }: EditorContext) {
-  const index = useIndex();
-  const { tables } = relatedOf(index.data, id);
-  const docs = useElements(tables.map((t) => t.id));
+function IndexesTab({ json }: EditorContext) {
   const attributes: AttributeDoc[] = (json as EntityDoc).attributes ?? [];
   const declared = attributes.filter((a) => a.unique || a.indexed);
-  const physical = tables.flatMap((t) => {
-    const table = docs.byId.get(t.id)?.json as TableDoc | undefined;
-    return [
-      ...(table?.uniques ?? []).map((u) => ({ table: t, id: u.id, name: u.name ?? "(unnamed)", columns: u.columns.join(", "), unique: true })),
-      ...(table?.indexes ?? []).map((x) => ({
-        table: t,
-        id: x.id,
-        name: x.name ?? "(unnamed)",
-        columns: x.columns.map((c) => `${c.column}${c.descending ? " desc" : ""}`).join(", "),
-        unique: x.unique === true,
-      })),
-    ];
-  });
-  if (!declared.length && !physical.length)
-    return <EmptyState title="No indexes">Mark a field Unique or Indexed on the Attributes tab, or add an index to a table this entity maps to.</EmptyState>;
+  if (!declared.length)
+    return <EmptyState title="No indexes">Mark a field Unique or Indexed on the Attributes tab. Indexes of a table are on the table.</EmptyState>;
   return (
     <div className="flex flex-col gap-2" data-testid="editor-indexes">
-      {declared.length ? (
-        <section className="flex flex-col gap-1">
-          <SectionTitle>On fields</SectionTitle>
-          <ul className="text-13">
-            {declared.map((a) => (
-              <li key={a.id} className="flex gap-2">
-                <span className="font-mono">{a.name}</span>
-                <span className="text-secondary">{a.unique ? "unique" : "indexed"}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      {physical.length ? (
-        <section className="flex flex-col gap-1">
-          <SectionTitle>On tables</SectionTitle>
-          <ul className="text-13">
-            {physical.map((x) => (
-              <li key={`${x.table.id}:${x.id}`} className="flex gap-2">
-                <span className="font-mono">{x.name}</span>
-                <span className="text-secondary">
-                  {x.table.name} ({x.columns}){x.unique ? ", unique" : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <section className="flex flex-col gap-1">
+        <SectionTitle>On fields</SectionTitle>
+        <ul className="text-13">
+          {declared.map((a) => (
+            <li key={a.id} className="flex gap-2">
+              <span className="font-mono">{a.name}</span>
+              <span className="text-secondary">{a.unique ? "unique" : "indexed"}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }
@@ -588,27 +543,10 @@ function IndexesTab({ id, json }: EditorContext) {
 function InheritanceTab({ id, json, edit, flush }: EditorContext) {
   const entity = json as EntityDoc;
   const index = useIndex();
-  const settings = useSettings();
   const lookup = indexLookup(index.data);
   const chain = baseChain(lookup.byId, entity.base);
   const root = chain[chain.length - 1] ?? id;
   const { derived } = relatedOf(index.data, id);
-  const rootMappings = relatedOf(index.data, root).mappings;
-  const ownMappings = relatedOf(index.data, id).mappings;
-  const docs = useElements([...new Set([...rootMappings, ...ownMappings].map((m) => m.id))]);
-  const edits = useElementEdits();
-  type MappingJson = { database?: string; inheritance?: InheritanceStrategy; discriminatorValue?: string | number };
-  const mappingJson = (list: ElementSummary[]) =>
-    list.map((m) => (docs.byId.get(m.id)?.json as MappingJson | undefined) ?? { database: m.database ?? undefined });
-  const project = settings.data?.json as
-    { conventions?: { inheritance?: InheritanceStrategy }; databases?: Record<string, { inheritance?: InheritanceStrategy }> } | undefined;
-  const rows = inheritanceRows({
-    databases: lookup.ofKind("database").map((d) => ({ id: d.id, name: d.name })),
-    rootMappings: mappingJson(rootMappings),
-    ownMappings: mappingJson(ownMappings),
-    conventions: project?.conventions,
-    perDatabase: project?.databases,
-  });
   const rootSummary = lookup.byId.get(root);
   const rootName = rootSummary?.name ?? "the root";
   const dom = domIdOf(id);
@@ -648,77 +586,6 @@ function InheritanceTab({ id, json, edit, flush }: EditorContext) {
           </ul>
         ) : (
           <p className="text-12 text-secondary">No entity derives from {entity.name}.</p>
-        )}
-      </section>
-      <section className="flex flex-col gap-1">
-        <SectionTitle>Mapping strategy</SectionTitle>
-        <p className="text-12 text-secondary">
-          For an older project: set on the mapping element of {rootName} in each database that lays it out by convention, else read from the conventions
-          (Settings). An inheritance hierarchy cannot be stored as table files or bound yet, so a database without such a mapping has nothing to choose here.
-        </p>
-        {rows.length ? (
-          <table className="w-full text-13" aria-label="Inheritance strategy per database" data-testid="editor-inheritance-strategies">
-            <thead className="text-left text-11 text-secondary">
-              <tr>
-                <th className="font-medium">Database</th>
-                <th className="font-medium">Strategy</th>
-                <th className="font-medium">From</th>
-                <th className="font-medium">Discriminator value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const rootMapping = rootMappings.find((m) => m.database === r.database);
-                const ownMapping = ownMappings.find((m) => m.database === r.database);
-                const explicit = rootMapping ? (docs.byId.get(rootMapping.id)?.json as MappingJson | undefined)?.inheritance : undefined;
-                return (
-                  <tr key={r.database} data-testid={`inheritance-row-${r.databaseName}`}>
-                    <td>{r.databaseName}</td>
-                    <td>
-                      <Select
-                        aria-label={`Strategy in ${r.databaseName}`}
-                        className="h-6 w-64"
-                        value={explicit ?? ""}
-                        disabled={!rootMapping}
-                        title={rootMapping ? undefined : `${rootName} has no mapping in ${r.databaseName}`}
-                        onChange={(e) => {
-                          if (!rootMapping) return;
-                          const v = (e.target.value || null) as InheritanceStrategy | null;
-                          void edits.update(rootMapping.id, (j) => setInheritance(j, v));
-                        }}
-                      >
-                        <option value="">{explicit ? "By convention" : `By convention: ${STRATEGY_LABELS[r.strategy]}`}</option>
-                        {(Object.keys(STRATEGY_LABELS) as InheritanceStrategy[]).map((k) => (
-                          <option key={k} value={k}>
-                            {STRATEGY_LABELS[k]}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                    <td className="text-secondary">{SOURCE_LABELS[r.source]}</td>
-                    <td>
-                      <Input
-                        aria-label={`Discriminator value in ${r.databaseName}`}
-                        className="h-6 w-32 font-mono"
-                        disabled={!ownMapping}
-                        title={ownMapping ? undefined : `${entity.name} has no mapping in ${r.databaseName}`}
-                        defaultValue={r.discriminatorValue != null ? String(r.discriminatorValue) : ""}
-                        key={`${r.database}:${r.discriminatorValue ?? ""}`}
-                        placeholder="—"
-                        onBlur={(e) => {
-                          if (!ownMapping || e.target.value.trim() === String(r.discriminatorValue ?? "")) return;
-                          const v = e.target.value;
-                          void edits.update(ownMapping.id, (j) => setDiscriminator(j, v));
-                        }}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
-          <p className="text-12 text-secondary">No database yet: the strategy applies once a database maps the hierarchy.</p>
         )}
       </section>
     </div>

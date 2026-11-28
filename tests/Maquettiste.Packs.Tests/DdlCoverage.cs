@@ -247,7 +247,6 @@ internal static class DdlCoverage
     private static JsonObject Table(Db db, int n, string name, string? schema, JsonArray columns)
     {
         var table = Element(db, "table", n, name, schema);
-        table["origin"] = "designed";
         table["columns"] = columns;
         return table;
     }

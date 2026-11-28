@@ -32,7 +32,6 @@ internal static partial class BuiltinRules
                 break;
             case Entity entity:
                 CheckEntity(context, entity, report);
-                MappingRules.CheckEntityPlacement(context, entity, report);
                 ColumnTypeRules.CheckEntity(context, entity, report);
                 RelationTypeRules.CheckBindingFields(context, entity, report);
                 break;
@@ -50,7 +49,7 @@ internal static partial class BuiltinRules
                 break;
             case Database database:
                 CheckDatabase(context, database, report);
-                MappingRules.CheckConventionPackages(database, report);
+                MappingRules.CheckConventionLayout(context, database, report);
                 break;
             case Table table:
                 PhysicalRules.CheckTable(context, table, report);
@@ -150,7 +149,7 @@ internal static partial class BuiltinRules
 
             var reference = site.Reference;
             if (reference.Keyed)
-                continue; // physical keys: MQ4007, MQ4008 and the referenced-table check in PhysicalRules
+                continue; // physical keys: MQ4008 and the referenced-table check in PhysicalRules
             if (site.DeclaringType == typeof(EntityKey) || site.DeclaringType == typeof(AlternateKey))
                 continue; // key attributes: MQ3006
             var isCategory = (site.DeclaringType == typeof(ElementBase) && site.PropertyName == nameof(ElementBase.Category))
@@ -357,8 +356,7 @@ internal static partial class BuiltinRules
     /// <summary>
     /// Why a column or key of a stereotype is out of the <c>of: "$element"</c> scope of a table (next-phase-2-design.md section 3.1), or
     /// <see langword="null"/>: the table reaches a member it inherits by its keyed id <c>&lt;tableId&gt;.&lt;memberId&gt;</c> only. A bare
-    /// member id, another table's keyed id and a member the table does not inherit (or excludes) are out of scope. An overlay's inherited
-    /// members are keyed by the synthesized table key, which holds <c>@</c> and so is no value an <c>x-ref</c> takes (MQ2010).
+    /// member id, another table's keyed id and a member the table does not inherit (or excludes) are out of scope.
     /// </summary>
     private static string? InheritedMemberScopeProblem(ModelSnapshot model, Table table, Stereotype stereotype, string[] ids)
     {
@@ -371,9 +369,7 @@ internal static partial class BuiltinRules
             // The keyed id is worth suggesting only when the table inherits the member; else it is out of scope too.
             if (NotInherited() is { } problem)
                 return problem;
-            return table.Origin == TableOrigin.Synthesized
-                ? $"{what}; of \"$element\" takes a member a table inherits by its keyed id, and the keyed id of an overlay's inherited member ('{keyed}') holds the synthesized table key, which an x-ref value cannot hold"
-                : $"{what}; of \"$element\" takes a member a table inherits by its keyed id: write '{keyed}'";
+            return $"{what}; of \"$element\" takes a member a table inherits by its keyed id: write '{keyed}'";
         }
 
         if (ids.Length != 2 || !string.Equals(ids[0], tableKey, StringComparison.Ordinal))
@@ -785,8 +781,6 @@ internal static partial class BuiltinRules
             case Package or Entity or ValueObject or ScalarType or EnumType or Process:
                 CheckIdentifier(element.Name, element.KindName, "/name", element.Id, report);
                 break;
-            case Table { Origin: TableOrigin.Synthesized, Name.Length: 0 }:
-                break; // an overlay keeps the conventional name
             case Migration { Name.Length: 0 }:
                 break; // a recorded fact has no name (next-phase-1-design.md section 3.2)
             case Stereotype stereotype:
@@ -1298,9 +1292,9 @@ internal static partial class BuiltinRules
 
     /// <summary>
     /// The members a stereotype contributes to tables (next-phase-2-design.md section 3.1): MQ2024 for members on a stereotype that does
-    /// not apply to tables, a column with <c>attribute</c> or <c>sequence</c>, and a key, index or check with a <c>name</c> (every carrier
+    /// not apply to tables, a column with <c>sequence</c>, and a key, index or check with a <c>name</c> (every carrier
     /// would share it); MQ2025 for a key, index or check naming a column the stereotype does not declare; MQ2026 for a foreign key's
-    /// target; MQ2001 for a fixed <c>referencesTable</c> that is neither a table file nor a synthesized table key.
+    /// target; MQ2001 for a fixed <c>referencesTable</c> that is not a table file.
     /// </summary>
     private static void CheckStereotypeMembers(ModelSnapshot model, Stereotype stereotype, Report report)
     {
@@ -1331,12 +1325,6 @@ internal static partial class BuiltinRules
         {
             var column = s.Columns[i];
             var pointer = Ptr.At("/columns", i);
-            if (column.Attribute is not null)
-            {
-                report.Add("MQ2024", $"Column '{column.Name}' of stereotype '{s.Key}' sets attribute, which only a synthesized table's overlay column has: a contributed column stores no attribute (the stereotype's attributes serve entities).",
-                    pointer + "/attribute", column.Id);
-            }
-
             if (column.Sequence is not null)
             {
                 report.Add("MQ2024", $"Column '{column.Name}' of stereotype '{s.Key}' sets sequence: a sequence belongs to one database, and a stereotype's column reaches tables of any database. Use a default or an identity instead.",
@@ -1424,8 +1412,8 @@ internal static partial class BuiltinRules
 
         if (parameter is null)
         {
-            if (model.Get<Table>(fk.ReferencesTable!) is null && !PhysicalRules.IsSynthesizedTableKey(model, fk.ReferencesTable!))
-                report.Add("MQ2001", $"Foreign key '{fk.Id}' of stereotype '{s.Key}' references table '{fk.ReferencesTable}', which is neither a table file nor a synthesized table key.", pointer + "/referencesTable", fk.Id);
+            if (model.Get<Table>(fk.ReferencesTable!) is null)
+                report.Add("MQ2001", $"Foreign key '{fk.Id}' of stereotype '{s.Key}' references table '{fk.ReferencesTable}', which is not a table file.", pointer + "/referencesTable", fk.Id);
             return;
         }
 

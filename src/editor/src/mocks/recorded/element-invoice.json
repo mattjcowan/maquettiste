@@ -12,6 +12,7 @@
       "strategy": "uuid-v7"
     },
     "alternateKeys": [],
+    "checks": [],
     "attributes": [
       {
         "type": "uuid",
@@ -210,8 +211,88 @@
         "source": null
       }
     ],
-    "bindings": [],
+    "bindings": [
+      {
+        "id": "01M8EJPZNY4K1BHRA5SQ8252NV",
+        "database": "01J92P0V1QRN2181XM2ZWE02W4",
+        "source": "01J92P0V1T0J6RH4MY9H81NYB4",
+        "baseForeignKey": null,
+        "constants": [],
+        "fields": [
+          {
+            "attribute": "01J92P0V0Q9EK961M5HAQ3C5MY",
+            "column": "01M8EJPZN8P9AWRMABQ8VM73RS"
+          },
+          {
+            "attribute": "01J92P0V0R3VSP7D5238DTNZX1",
+            "column": "01J92P0V1VQAA9FW71PKYWWHKN"
+          },
+          {
+            "attribute": "01J92P0V0SNXS6PZ42VDK42HP9",
+            "column": "01M8EJPZN8RF69424595Z93TBZ"
+          },
+          {
+            "attribute": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ",
+            "column": "01M8EJPZN81N1AY89T2YY52EQC"
+          },
+          {
+            "attribute": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V093A7BE6Q8AS477H7D",
+            "column": "01M8EJPZN8E3K4QAZEP5F52DXA"
+          },
+          {
+            "attribute": "01J92P0V0VB1Z49SWERMAGR4TV",
+            "column": "01M8EJPZN8DEZ6EM0M25ZCHNPZ"
+          },
+          {
+            "attribute": "01J92P0V0WKRGKH7YBKA2V30NC",
+            "column": "01M8EJPZN8DNZMM57CDYT1P8DX"
+          },
+          {
+            "attribute": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+            "column": "01M8EJPZN8NQHHH3BFZMS10JT0"
+          },
+          {
+            "attribute": "01J92P0V27P8NW8KPEDG0RBZ4W",
+            "column": "01M8EJPZN8P1AVSF3JB5N1A9VG"
+          },
+          {
+            "attribute": "01J92P0V29S2CSA68TATT9P1QS",
+            "column": "01M8EJPZN8N06DCGNFY5P3V81K"
+          },
+          {
+            "attribute": "01J92P0V1EHF7PB28CZJG9C5SN",
+            "column": "01M8EJPZN80NTY1M4QZCPKETNX"
+          }
+        ],
+        "columns": [],
+        "childTables": [],
+        "write": null,
+        "delete": null,
+        "discriminatorColumn": null,
+        "discriminatorValue": null,
+        "checks": [],
+        "provenance": {
+          "columns": {
+            "01J92P0V1VQAA9FW71PKYWWHKN": "12886f9d:8d6df7d5",
+            "01M8EJPZN80NTY1M4QZCPKETNX": "c001011d:8da1c7b8",
+            "01M8EJPZN81N1AY89T2YY52EQC": "6a31bb87:8922ffc1",
+            "01M8EJPZN8DEZ6EM0M25ZCHNPZ": "073c1634:dddfaca1",
+            "01M8EJPZN8DNZMM57CDYT1P8DX": "ab5aa970:43ec92f3",
+            "01M8EJPZN8E3K4QAZEP5F52DXA": "90d51eb0:75525505",
+            "01M8EJPZN8N06DCGNFY5P3V81K": "7e7e7ac8:fd717804",
+            "01M8EJPZN8NQHHH3BFZMS10JT0": "42049432:e0d08678",
+            "01M8EJPZN8P1AVSF3JB5N1A9VG": "d31d4567:fd717804",
+            "01M8EJPZN8P9AWRMABQ8VM73RS": "a5614527:8da1c7b8",
+            "01M8EJPZN8RF69424595Z93TBZ": "1d320e02:81884634"
+          }
+        },
+        "description": null,
+        "tags": [],
+        "properties": {}
+      }
+    ],
     "$schema": "../../.schema/v1/entity.json",
+    "excludeStereotypes": null,
     "suppressions": [],
     "id": "01J92P0V0FJ23CGSNKM7P1W5V7",
     "name": "Invoice",
@@ -239,8 +320,9 @@
     "source": null
   },
   "path": ".maquettiste/model/entities/invoice.json",
-  "hash": "4e425013f5f3873348f00f748d9c3ba2d2faa83084f705f545f9fec05cb15e73",
-  "dependencyHash": "2bb293bd02aa400817ba26da376c49e5df22efb82909dad133922768a407a9c7",
+  "hash": "46bac0ca20bfd65ef33cc164b8d86d762945a87918a8e9eb374c3302135c1ed5",
+  "dependencyHash": "71655647c95b0c9b5683051618784da74abe4a8ce354c5f5d3789403561d2c82",
+  "sidecarText": "# Invoice\n\nA bill issued to a customer. Its number is assigned when it is issued and never reused.\n",
   "json": {
     "$schema": "../../.schema/v1/entity.json",
     "kind": "entity",
@@ -309,9 +391,76 @@
         "type": "text"
       }
     ],
+    "bindings": [
+      {
+        "id": "01M8EJPZNY4K1BHRA5SQ8252NV",
+        "database": "01J92P0V1QRN2181XM2ZWE02W4",
+        "source": "01J92P0V1T0J6RH4MY9H81NYB4",
+        "fields": [
+          {
+            "attribute": "01J92P0V0Q9EK961M5HAQ3C5MY",
+            "column": "01M8EJPZN8P9AWRMABQ8VM73RS"
+          },
+          {
+            "attribute": "01J92P0V0R3VSP7D5238DTNZX1",
+            "column": "01J92P0V1VQAA9FW71PKYWWHKN"
+          },
+          {
+            "attribute": "01J92P0V0SNXS6PZ42VDK42HP9",
+            "column": "01M8EJPZN8RF69424595Z93TBZ"
+          },
+          {
+            "attribute": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V08P9BVJAPQ793XYNTQ",
+            "column": "01M8EJPZN81N1AY89T2YY52EQC"
+          },
+          {
+            "attribute": "01J92P0V0T6EA0XM025XQX8GBW.01J92P0V093A7BE6Q8AS477H7D",
+            "column": "01M8EJPZN8E3K4QAZEP5F52DXA"
+          },
+          {
+            "attribute": "01J92P0V0VB1Z49SWERMAGR4TV",
+            "column": "01M8EJPZN8DEZ6EM0M25ZCHNPZ"
+          },
+          {
+            "attribute": "01J92P0V0WKRGKH7YBKA2V30NC",
+            "column": "01M8EJPZN8DNZMM57CDYT1P8DX"
+          },
+          {
+            "attribute": "01J92P0V26XYZRDQ8FJ6KZXT6S",
+            "column": "01M8EJPZN8NQHHH3BFZMS10JT0"
+          },
+          {
+            "attribute": "01J92P0V27P8NW8KPEDG0RBZ4W",
+            "column": "01M8EJPZN8P1AVSF3JB5N1A9VG"
+          },
+          {
+            "attribute": "01J92P0V29S2CSA68TATT9P1QS",
+            "column": "01M8EJPZN8N06DCGNFY5P3V81K"
+          },
+          {
+            "attribute": "01J92P0V1EHF7PB28CZJG9C5SN",
+            "column": "01M8EJPZN80NTY1M4QZCPKETNX"
+          }
+        ],
+        "provenance": {
+          "columns": {
+            "01J92P0V1VQAA9FW71PKYWWHKN": "12886f9d:8d6df7d5",
+            "01M8EJPZN80NTY1M4QZCPKETNX": "c001011d:8da1c7b8",
+            "01M8EJPZN81N1AY89T2YY52EQC": "6a31bb87:8922ffc1",
+            "01M8EJPZN8DEZ6EM0M25ZCHNPZ": "073c1634:dddfaca1",
+            "01M8EJPZN8DNZMM57CDYT1P8DX": "ab5aa970:43ec92f3",
+            "01M8EJPZN8E3K4QAZEP5F52DXA": "90d51eb0:75525505",
+            "01M8EJPZN8N06DCGNFY5P3V81K": "7e7e7ac8:fd717804",
+            "01M8EJPZN8NQHHH3BFZMS10JT0": "42049432:e0d08678",
+            "01M8EJPZN8P1AVSF3JB5N1A9VG": "d31d4567:fd717804",
+            "01M8EJPZN8P9AWRMABQ8VM73RS": "a5614527:8da1c7b8",
+            "01M8EJPZN8RF69424595Z93TBZ": "1d320e02:81884634"
+          }
+        }
+      }
+    ],
     "properties": {
       "retentionDays": 3650
     }
-  },
-  "sidecarText": "# Invoice\n\nA bill issued to a customer. Its number is assigned when it is issued and never reused.\n"
+  }
 }

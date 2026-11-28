@@ -5,12 +5,11 @@ using Maquettiste.Testing;
 namespace Maquettiste.Functions.Tests;
 
 /// <summary>Unit paths, template context, file move, pack outputs, pack settings and explain (generation-ui.md sections 4.3 and 5), against the contract.</summary>
-[UsesProjectedFixtures]
 public sealed class PackAuthoringEndpointTests
 {
     private static string Hash(TestResponse response) => response.Json["hash"]!.GetValue<string>();
 
-    private static string TableKey => EditorHost.CustomerId + "@" + EditorHost.MainDatabaseId;
+    private static string TableKey => EditorHost.CustomersTableId;
 
     [Fact]
     public async Task Paths_list_the_scope_render_only_the_elements_asked_for_and_a_constant_pattern_is_MQ6020()

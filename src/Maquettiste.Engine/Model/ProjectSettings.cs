@@ -444,3 +444,37 @@ public enum CaseStyle
     /// <summary><c>preserve</c>: the name as written.</summary>
     [JsonStringEnumMemberName("preserve")] Preserve,
 }
+
+/// <summary>The hierarchy shape "Create tables" proposes by default (<c>conventions.inheritance</c>).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<InheritanceStrategy>))]
+public enum InheritanceStrategy
+{
+    /// <summary>One table for the hierarchy, with a type column: <c>tph</c>.</summary>
+    [JsonStringEnumMemberName("tph")] Tph,
+
+    /// <summary>A table per type: <c>tpt</c>.</summary>
+    [JsonStringEnumMemberName("tpt")] Tpt,
+
+    /// <summary>A table per concrete entity: <c>tpc</c>.</summary>
+    [JsonStringEnumMemberName("tpc")] Tpc,
+}
+
+/// <summary>How "Create tables" stores an enum or a value object by default (the <c>conventions</c> storage settings).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<StorageKind>))]
+public enum StorageKind
+{
+    /// <summary>Enum as its integer value: <c>int</c>.</summary>
+    [JsonStringEnumMemberName("int")] Int,
+
+    /// <summary>Enum as its code or name: <c>string</c>.</summary>
+    [JsonStringEnumMemberName("string")] String,
+
+    /// <summary>Value object as prefixed columns: <c>embedded</c>.</summary>
+    [JsonStringEnumMemberName("embedded")] Embedded,
+
+    /// <summary>Value object in its own (child) table: <c>table</c>.</summary>
+    [JsonStringEnumMemberName("table")] Table,
+
+    /// <summary>Value object as one JSON column: <c>json</c>.</summary>
+    [JsonStringEnumMemberName("json")] Json,
+}

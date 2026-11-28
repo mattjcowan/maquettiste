@@ -1,5 +1,5 @@
 // What an element editor's tabs list about one element, from the index rows alone (no documents): the relations
-// with the element at an end, the mappings and tables of an entity, its seed data and the entities derived from it.
+// with the element at an end, its seed data and the entities derived from it.
 import type { ElementSummary } from "@/api/types";
 import { indexPatchOf } from "@/api/indexPatch";
 import { endCoveredEntities } from "@/model/endTypes";
@@ -9,8 +9,6 @@ type Row = ElementSummary & { target?: string | null; rowCount?: number | null }
 
 export interface RelatedRows {
   relations: ElementSummary[];
-  mappings: ElementSummary[];
-  tables: ElementSummary[];
   seeds: (ElementSummary & { rowCount?: number | null })[];
   derived: ElementSummary[];
 }
@@ -28,11 +26,10 @@ interface RelatedState {
 
 const states = new WeakMap<readonly ElementSummary[], RelatedState | null>();
 
-/** The ids a row points at (relation ends, the entity of a mapping or table, a seed's target, a base entity). */
+/** The ids a row points at (relation ends, a seed's target, a base entity). */
 function targetsOf(r: Row): string[] {
   const out: string[] = [];
   if (r.kind === "relation") for (const e of r.ends ?? []) out.push(...endCoveredEntities(e));
-  if ((r.kind === "mapping" || r.kind === "table") && r.entity) out.push(r.entity);
   if ((r.kind as string) === "seed" && r.target) out.push(r.target);
   if (r.base) out.push(r.base);
   return out;
@@ -97,17 +94,15 @@ function stateOf(rows: readonly ElementSummary[]): RelatedState {
 
 /** The rows related to one element, from a reverse index kept per index array and patched with it. */
 export function relatedOf(rows: readonly ElementSummary[] | undefined, id: string): RelatedRows {
-  if (!rows) return { relations: [], mappings: [], tables: [], seeds: [], derived: [] };
+  if (!rows) return { relations: [], seeds: [], derived: [] };
   const state = stateOf(rows);
   const known = state.results.get(id);
   if (known) return known;
-  const out: RelatedRows = { relations: [], mappings: [], tables: [], seeds: [], derived: [] };
+  const out: RelatedRows = { relations: [], seeds: [], derived: [] };
   for (const rowId of state.links.get(id) ?? []) {
     const r = state.byId.get(rowId);
     if (!r) continue;
     if (r.kind === "relation" && r.ends?.some((e) => endCoveredEntities(e).includes(id))) out.relations.push(r);
-    else if (r.kind === "mapping" && r.entity === id) out.mappings.push(r);
-    else if (r.kind === "table" && r.entity === id) out.tables.push(r);
     else if ((r.kind as string) === "seed" && r.target === id) out.seeds.push(r);
     if (r.base === id) out.derived.push(r);
   }

@@ -1,4 +1,5 @@
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Loading;
 
@@ -167,4 +168,113 @@ internal sealed class ReadOnlyFolderDocumentStore(ModelPaths paths) : IModelDocu
     /// <inheritdoc/>
     public Task<FileSetFailure?> ApplyAsync(IReadOnlyList<(string Path, byte[] Bytes)> writes, IReadOnlyList<string> deletes, string batchId, CancellationToken ct) =>
         Task.FromResult<FileSetFailure?>(new FileSetFailure(paths.ModelRoot, Snapshots.ReadOnlyPathPolicy.Reason, true));
+}
+
+/// <summary>
+/// The documents of a baseline or a snapshot opened read-only, read tolerantly (docs/engineering/retire-projection-design.md section 9): a
+/// database, mapping, table or stereotype file taken before 0.29.0 has the keys that release removed with projection dropped
+/// (<see cref="Json.RemovedProjectionKeys.Strip"/>), so it loads and an older migration history still compares; an entity mapping or an
+/// overlay file reads as no document. Every other document passes through unchanged.
+/// </summary>
+internal sealed class TolerantDocumentStore(IModelDocumentStore inner) : IModelDocumentStore
+{
+    private volatile bool _laidOut;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _conventionless = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether the model read laid out tables by convention before 0.29.0, which the dropped keys no longer say: an entity mapping, an
+    /// overlay, the promoted shape or a database's <c>byConvention</c> other than <c>none</c> was read, or a database had no
+    /// <c>byConvention</c> while some entity of <paramref name="snapshot"/> is not bound to it. A schema comparison with such a model
+    /// would see every one of those tables as new.
+    /// </summary>
+    /// <param name="snapshot">The model as loaded through this store.</param>
+    /// <returns><see langword="true"/> when it did.</returns>
+    public bool LaidOutTables(ModelSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (_laidOut)
+            return true;
+        if (_conventionless.IsEmpty)
+            return false;
+        foreach (var entity in snapshot.All<Entity>())
+        {
+            foreach (var database in _conventionless.Keys)
+            {
+                if (!entity.Bindings.Any(b => string.Equals(b.Database, database, StringComparison.Ordinal)))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc/>
+    public string Description => inner.Description;
+
+    /// <inheritdoc/>
+    public bool IsReadOnly => inner.IsReadOnly;
+
+    /// <inheritdoc/>
+    public bool UsesIndexCache => false;
+
+    /// <inheritdoc/>
+    public DocumentStat? Stat(string modelPath) => inner.Stat(modelPath);
+
+    /// <inheritdoc/>
+    public bool FolderExists(string modelPath) => inner.FolderExists(modelPath);
+
+    /// <inheritdoc/>
+    public IReadOnlyList<string> List(string modelFolder, bool recursive) => inner.List(modelFolder, recursive);
+
+    /// <inheritdoc/>
+    public async Task<byte[]?> ReadAsync(string modelPath, CancellationToken ct)
+    {
+        var bytes = await inner.ReadAsync(modelPath, ct).ConfigureAwait(false);
+        if (bytes is null || !modelPath.EndsWith(".json", StringComparison.Ordinal) || !MayHoldRemovedKeys(bytes))
+            return bytes;
+        System.Text.Json.Nodes.JsonObject? node;
+        try
+        {
+            node = System.Text.Json.Nodes.JsonNode.Parse(bytes, documentOptions: new System.Text.Json.JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = System.Text.Json.JsonCommentHandling.Skip }) as System.Text.Json.Nodes.JsonObject;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return bytes;
+        }
+
+        var fileName = node?["kind"] is System.Text.Json.Nodes.JsonValue kind && kind.TryGetValue<string>(out var k) ? k + ".json" : null;
+        if (node is null || fileName is null || !Json.RemovedProjectionKeys.Applies(fileName) || fileName == "maquettiste.json")
+            return bytes;
+        var before = node.ToJsonString();
+        var stripped = Json.RemovedProjectionKeys.Strip(fileName, node);
+        if (stripped.Layout == Json.StripLayout.LaidOut)
+            _laidOut = true;
+        else if (stripped.Layout == Json.StripLayout.NoConvention && node["id"] is System.Text.Json.Nodes.JsonValue id && id.TryGetValue<string>(out var databaseId))
+            _conventionless[databaseId] = 0;
+        if (!stripped.Keep)
+            return null;
+        var after = node.ToJsonString();
+        return string.Equals(before, after, StringComparison.Ordinal) ? bytes
+            : System.Text.Encoding.UTF8.GetBytes(node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    /// <inheritdoc/>
+    public Task<FileSetFailure?> ApplyAsync(IReadOnlyList<(string Path, byte[] Bytes)> writes, IReadOnlyList<string> deletes, string batchId, CancellationToken ct) =>
+        inner.ApplyAsync(writes, deletes, batchId, ct);
+
+    private static readonly byte[][] Kinds =
+        [.. new[] { "\"database\"", "\"mapping\"", "\"table\"", "\"stereotype\"" }.Select(System.Text.Encoding.UTF8.GetBytes)];
+
+    /// <summary>Whether a document may be of a kind that can hold a removed key, before parsing it: most of a model's files are not.</summary>
+    private static bool MayHoldRemovedKeys(byte[] bytes)
+    {
+        var span = bytes.AsSpan();
+        foreach (var kind in Kinds)
+        {
+            if (span.IndexOf(kind) >= 0)
+                return true;
+        }
+
+        return false;
+    }
 }

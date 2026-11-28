@@ -15,7 +15,4 @@ public partial class Ingredient
     public string? PreferredUnit { get; set; }
     public IReadOnlyList<string> Allergens { get; set; } = [];
     public IReadOnlyList<string> PackUnits { get; set; } = [];
-
-    // Columns of table ingredients (database local) that no attribute maps, such as foreign keys.
-    public string? SubstituteSku { get; set; }
 }

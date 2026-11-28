@@ -253,7 +253,7 @@ public sealed partial class SnapshotLibrary
     private async Task<List<Diagnostic>> CheckDocumentsAsync(string file, CancellationToken ct)
     {
         using var documents = new ZipDocumentStore(file, includeTemplates: false);
-        var services = EngineServices.CreateReadOnly(_options, documents);
+        var services = EngineServices.CreateReadOnly(_options, documents, tolerant: false);
         var result = await services.Loader.LoadAsync(new LoadRequest(null, null, false), null, ct).ConfigureAwait(false);
         return [.. result.Snapshot.LoadDiagnostics.Where(d => d.Rule is "MQ1001" or "MQ1003" or "MQ1007").Select(d => d with { Severity = DiagnosticSeverity.Error })];
     }

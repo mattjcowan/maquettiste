@@ -666,10 +666,8 @@ internal sealed partial class ChangePlanner
     /// <param name="root">The referrer's document.</param>
     /// <param name="pointer">The reference.</param>
     /// <param name="referrerKind">The referrer's kind.</param>
-    /// <param name="narrow">Whether a database's last convention package may go by narrowing its convention to the listed packages
-    /// (<c>byConvention: packages</c>), so the emptied list means none instead of every package.</param>
     /// <param name="widening">Set when the reference is the last entry of a list whose emptiness means something wider.</param>
-    private static string? RemoveAt(JsonNode root, string pointer, ElementKind referrerKind, bool narrow, out bool widening)
+    private static string? RemoveAt(JsonNode root, string pointer, ElementKind referrerKind, out bool widening)
     {
         const string NotFound = "it is not where the index says.";
         widening = false;
@@ -678,20 +676,6 @@ internal sealed partial class ChangePlanner
         // A diagram member without its element means nothing: drop the member.
         if (referrerKind == ElementKind.Diagram && segments.Length == 3 && segments[0] == "members" && segments[2] == "element")
             pointer = "/members/" + segments[1];
-        // A convention package entry is the package id or { package, schema }: without its package the entry goes; without its
-        // schema it becomes the package id (erratum E26).
-        if (referrerKind == ElementKind.Database && segments.Length == 3 && segments[0] == "packages")
-        {
-            if (segments[2] == "schema" && JsonPointer.TryGetParent(root, "/packages/" + segments[1], out var list, out var index)
-                && list is JsonArray entries && JsonPointer.TryIndex(index, out var at) && at < entries.Count && entries[at] is JsonObject entry)
-            {
-                entries[at] = entry["package"]?.DeepClone();
-                return null;
-            }
-
-            pointer = "/packages/" + segments[1];
-            segments = ["packages", segments[1]];
-        }
         if (!JsonPointer.TryGetParent(root, pointer, out var parent, out var last))
             return NotFound;
         // A seed cell keeps its column: an end cell or a single code becomes null (a required end then fails MQ7003); a code in a
@@ -709,15 +693,8 @@ internal sealed partial class ChangePlanner
                 return obj.Remove(last) ? null : NotFound;
             case JsonArray array when JsonPointer.TryIndex(last, out var i) && i < array.Count:
                 // Some lists mean something wider when empty; emptying one would widen the element instead of clearing a reference.
-                if (array.Count == 1 && EmptyListMeaning(root, referrerKind, segments) is { } meaning)
+                if (array.Count == 1 && EmptyListMeaning(referrerKind, segments) is { } meaning)
                 {
-                    if (narrow && referrerKind == ElementKind.Database && root is JsonObject database)
-                    {
-                        database["byConvention"] = "packages";
-                        array.RemoveAt(i);
-                        return null;
-                    }
-
                     widening = true;
                     return $"it is the last entry, and an empty list means {meaning}; change the list first.";
                 }
@@ -729,10 +706,8 @@ internal sealed partial class ChangePlanner
     }
 
     /// <summary>What an empty reference list means, for the lists where empty is not simply "none" (D6; foreign keys).</summary>
-    private static string? EmptyListMeaning(JsonNode root, ElementKind kind, string[] segments) => kind switch
+    private static string? EmptyListMeaning(ElementKind kind, string[] segments) => kind switch
     {
-        // Only a database written before byConvention (absent) reads an empty list as every package; with packages it means none.
-        ElementKind.Database when segments.Length == 2 && segments[0] == "packages" && root["byConvention"] is null => "every package",
         ElementKind.Table when segments.Length >= 4 && segments[^2] == "referencesColumns" && segments[^4] == "foreignKeys" => "the referenced table's primary key",
         _ => null,
     };

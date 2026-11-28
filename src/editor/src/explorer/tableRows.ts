@@ -11,17 +11,8 @@ import { newId } from "@/lib/ids";
 import { openTableEditor } from "@/workspaces/database/openTableEditor";
 import { openNewForeignKeyFor } from "@/workspaces/database/foreignKeys";
 import { renameTableColumn } from "@/workspaces/database/columnRename";
-import { storedFileOf, updateTable } from "@/workspaces/database/storeTables";
-import {
-  addPart,
-  incomingForeignKeys,
-  isLaidOutKey,
-  PART_LABELS,
-  PART_TAB,
-  renamePart,
-  type TablePart,
-  type TablePartKind,
-} from "@/workspaces/database/tableParts";
+import { updateTable } from "@/workspaces/database/tableQueue";
+import { addPart, incomingForeignKeys, PART_LABELS, PART_TAB, renamePart, type TablePart, type TablePartKind } from "@/workspaces/database/tableParts";
 import { databaseOf, nodeOf, tableOf, type Forest, type TableExtras, type TreeNode } from "./tree";
 
 type Json = Record<string, unknown>;
@@ -32,7 +23,7 @@ export async function loadTableExtras(qc: QueryClient, database: string, node: T
   const extras: TableExtras = {};
   const [view, file] = await Promise.all([
     qc.fetchQuery(databaseViewQuery(qc, database)).catch(() => null),
-    key && !isLaidOutKey(key) ? qc.fetchQuery(elementQuery(key)).catch(() => null) : Promise.resolve(null),
+    key ? qc.fetchQuery(elementQuery(key)).catch(() => null) : Promise.resolve(null),
   ]);
   const tables = view?.view?.tables ?? [];
   extras.referencedBy = incomingForeignKeys(tables, key).map((r) => ({ tableKey: r.table.key, tableName: r.table.name, name: r.name, columns: r.columns }));
@@ -122,8 +113,7 @@ export function useTableRowActions() {
         return;
       }
       if (!ok) return;
-      // A table stored as a file just now opens as its file.
-      openTableEditor(store, database, storedFileOf(tableKey) ?? tableKey, { part: made, pin: true });
+      openTableEditor(store, database, tableKey, { part: made, pin: true });
     },
     [qc, services, store],
   );

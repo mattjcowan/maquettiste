@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Table",
-  "description": "A physical table. A synthesized table's file holds only overrides.",
+  "description": "A physical table, designed or imported, with its full definition.",
   "type": "object",
   "x-order": [
     "$schema",
@@ -13,10 +13,6 @@
     "package",
     "database",
     "schema",
-    "origin",
-    "entity",
-    "attribute",
-    "relation",
     "description",
     "rationale",
     "decision",
@@ -71,22 +67,6 @@
       "$ref": "common.json#/$defs/id"
     },
     "schema": {
-      "$ref": "common.json#/$defs/id"
-    },
-    "origin": {
-      "enum": ["synthesized", "designed", "imported"],
-      "default": "designed"
-    },
-    "entity": {
-      "description": "Synthesized: the entity whose table (or, with attribute, child table) this file overrides.",
-      "$ref": "common.json#/$defs/id"
-    },
-    "attribute": {
-      "description": "Synthesized child table: the attribute of entity whose child table this file overrides.",
-      "$ref": "common.json#/$defs/id"
-    },
-    "relation": {
-      "description": "Synthesized junction table: the relation.",
       "$ref": "common.json#/$defs/id"
     },
     "description": {
@@ -447,43 +427,6 @@
       "$ref": "common.json#/$defs/source"
     }
   },
-  "required": ["kind", "id", "database"],
-  "additionalProperties": false,
-  "if": {
-    "properties": {
-      "origin": {
-        "const": "synthesized"
-      }
-    },
-    "required": ["origin"]
-  },
-  "then": {
-    "oneOf": [
-      {
-        "required": ["entity"]
-      },
-      {
-        "required": ["relation"]
-      }
-    ],
-    "dependentRequired": {
-      "attribute": ["entity"]
-    }
-  },
-  "else": {
-    "required": ["name"],
-    "not": {
-      "anyOf": [
-        {
-          "required": ["entity"]
-        },
-        {
-          "required": ["attribute"]
-        },
-        {
-          "required": ["relation"]
-        }
-      ]
-    }
-  }
+  "required": ["kind", "id", "name", "database"],
+  "additionalProperties": false
 }

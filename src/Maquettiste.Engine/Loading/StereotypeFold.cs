@@ -102,15 +102,13 @@ internal sealed class StereotypeFold
             {
                 if (snapshot.Get<Table>(id) is not { } table)
                     problems.Add($"'{id}' is not a table.");
-                else if (table.Origin == TableOrigin.Synthesized)
-                    problems.Add($"Table '{ChangePlanner.ReadableName(snapshot, table)}' is an overlay of a synthesized table, whose columns come from attributes: materialize it first, then fold the designed table.");
                 else
                     targets.Add(table);
             }
         }
         else if (snapshot.All<Database>().FirstOrDefault(d => d.Schemas.Any(s => s.Id == o.Schema)) is { } database)
         {
-            targets.AddRange(snapshot.All<Table>().Where(t => t.Database == database.Id && t.Origin != TableOrigin.Synthesized
+            targets.AddRange(snapshot.All<Table>().Where(t => t.Database == database.Id
                 && string.Equals(snapshot.StereotypeDefaults.SchemaOf(t.Database, t.Schema), o.Schema, StringComparison.Ordinal)));
         }
         else
@@ -810,7 +808,7 @@ internal sealed class StereotypeFold
                 Kind = c.Kind, Table = f.File.Id, From = c.OwnId, To = ContributedMembers.KeyOf(f.File.Id, c.MemberId), Name = c.Name,
             })).OrderBy(m => m.Kind, StringComparer.Ordinal).ThenBy(m => m.From, StringComparer.Ordinal).ToList();
             if (rekeys.Count > 0 || members.Count > 0)
-                keyMaps.Add(new MaterializeResult(null, [], [], _snapshot.Get<Database>(group.Key)!.Name, rekeys, null, members));
+                keyMaps.Add(new MaterializeResult(null, [], [], _snapshot.Get<Database>(group.Key)!.Name, rekeys, members));
         }
 
         return (new MaterializeResult(null, ops, notes), keyMaps);

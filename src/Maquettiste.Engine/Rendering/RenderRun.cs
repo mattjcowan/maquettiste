@@ -887,7 +887,6 @@ internal sealed class UnitRun : IScriptLibraryCalls
     {
         IReadOnlyDictionary<string, object?> all = element switch
         {
-            REntity entity => entity.Mappings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal),
             RRelation relation => relation.Mappings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal),
             _ => new Dictionary<string, object?>(StringComparer.Ordinal),
         };

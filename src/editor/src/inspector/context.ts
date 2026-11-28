@@ -7,7 +7,7 @@ import { activeTab, type EditorTabsState } from "@/editors/tabs";
 import { RAIL_LABELS } from "@/model/labels";
 import { EXTENSIONS_TAB } from "@/workspaces/generate/packTabs";
 import type { EditorState, InspectedTable, SidebarView } from "@/state/store";
-import { isLaidOutKey, type TablePart } from "@/workspaces/database/tableParts";
+import type { TablePart } from "@/workspaces/database/tableParts";
 
 export type InspectorContext =
   | { mode: "element"; ids: string[]; source: "editor" | "explorer" }
@@ -28,12 +28,6 @@ export type ContextInput = Pick<EditorState, "workspace" | "editors" | "generati
 
 export function inspectorContext(s: ContextInput): InspectorContext {
   const tab = activeTab(s.editors as EditorTabsState);
-  // A table the model lays out has an editor by its key (no file): the inspector shows it as the table, with its pick.
-  if (tab?.kind === "table" && isLaidOutKey(tab.id)) {
-    const database = tab.id.slice(tab.id.lastIndexOf("@") + 1);
-    const t = s.inspectedTable?.database === database && s.inspectedTable.key === tab.id ? s.inspectedTable : null;
-    return { mode: "table", database, key: tab.id, column: t?.column ?? null, part: t?.part ?? null };
-  }
   if (tab) return { mode: "element", ids: [tab.id], source: "editor" };
   if (s.workspace === "settings" || s.workspace === "reference-data") return { mode: "none" };
   if (s.workspace === "generate") {

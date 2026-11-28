@@ -35,8 +35,8 @@ internal sealed partial class Materializer
     /// Plans <c>map-by-name</c> (decision 7): for each entity bound to the database, every attribute its binding does not map, matched to a
     /// free column of the same loose name, each column once in the source's column order. Fields hold column ids for a table file and
     /// names for a view; a table file's binding records the provenance of the columns it maps (every column when it has none). It writes
-    /// no attribute and no column. Refused for an entity with no binding to the database, a source it cannot read (a query, a projected
-    /// table, whose columns come from resolution), and when nothing matches for every entity named.
+    /// no attribute and no column. Refused for an entity with no binding to the database, a source it cannot read (a query, whose
+    /// columns come from resolution), and when nothing matches for every entity named.
     /// </summary>
     /// <param name="databaseId">The database.</param>
     /// <param name="entityIds">The entities.</param>

@@ -25,7 +25,7 @@ internal sealed record NavigationSite(ElementDocument Document, int EndIndex, st
 
 /// <summary>
 /// Everything built-in rules share for one validation run: the active documents and lazily built, thread-safe indexes over the
-/// whole model (names per scope, flattened attributes, navigations, mappings, overlays). Every index is built in document path
+/// whole model (names per scope, flattened attributes, navigations, mappings). Every index is built in document path
 /// order, so "the first" of duplicates is always the ordinally first file.
 /// </summary>
 internal sealed class ValidationContext
@@ -36,7 +36,6 @@ internal sealed class ValidationContext
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<NavigationSite>>> _navigations;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<ElementDocument>>> _compositions;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<ElementDocument>>> _mappings;
-    private readonly Lazy<FrozenDictionary<string, ImmutableArray<ElementDocument>>> _overlays;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<ElementDocument>>> _physicalNames;
     private readonly Lazy<FrozenDictionary<string, ImmutableArray<string>>> _derived;
     private readonly Lazy<ReferenceDataIndex> _referenceData;
@@ -75,7 +74,6 @@ internal sealed class ValidationContext
         _navigations = new(BuildNavigations);
         _compositions = new(BuildCompositions);
         _mappings = new(BuildMappings);
-        _overlays = new(BuildOverlays);
         _physicalNames = new(BuildPhysicalNames);
         _derived = new(BuildDerived);
         _referenceData = new(() => ReferenceDataIndex.Build(Documents.Select(d => d.Element)));
@@ -110,7 +108,6 @@ internal sealed class ValidationContext
         _navigations = other._navigations;
         _compositions = other._compositions;
         _mappings = other._mappings;
-        _overlays = other._overlays;
         _physicalNames = other._physicalNames;
         _derived = other._derived;
         _referenceData = other._referenceData;
@@ -685,43 +682,9 @@ internal sealed class ValidationContext
         var map = new Dictionary<string, ImmutableArray<ElementDocument>.Builder>(StringComparer.Ordinal);
         foreach (var doc in Documents)
         {
-            if (doc.Element is Mapping { } mapping && (mapping.Entity ?? mapping.Relation) is { } target)
+            if (doc.Element is Mapping { } mapping)
             {
-                var key = mapping.Database + "|" + target;
-                if (!map.TryGetValue(key, out var list))
-                    map[key] = list = ImmutableArray.CreateBuilder<ElementDocument>();
-                list.Add(doc);
-            }
-        }
-
-        return map.ToFrozenDictionary(kv => kv.Key, kv => kv.Value.ToImmutable(), StringComparer.Ordinal);
-    }
-
-    /// <summary>The key of the synthesized table a table overlay targets, or <see langword="null"/> for designed and imported tables.</summary>
-    /// <param name="table">The table.</param>
-    /// <returns>The synthesized table key (engine-design.md section 7.3).</returns>
-    public static string? OverlayTarget(Table table)
-    {
-        if (table.Origin != TableOrigin.Synthesized)
-            return null;
-        if (table.Entity is { } entity)
-            return (table.Attribute is { } attribute ? entity + "." + attribute : entity) + "@" + table.Database;
-        return table.Relation is { } target ? target + "@" + table.Database : null;
-    }
-
-    /// <summary>Returns the overlay files targeting one synthesized table, in path order.</summary>
-    /// <param name="targetKey">The synthesized table key.</param>
-    /// <returns>The overlay documents.</returns>
-    public ImmutableArray<ElementDocument> OverlaysOf(string targetKey) =>
-        _overlays.Value.TryGetValue(targetKey, out var list) ? list : [];
-
-    private FrozenDictionary<string, ImmutableArray<ElementDocument>> BuildOverlays()
-    {
-        var map = new Dictionary<string, ImmutableArray<ElementDocument>.Builder>(StringComparer.Ordinal);
-        foreach (var doc in Documents)
-        {
-            if (doc.Element is Table table && OverlayTarget(table) is { } key)
-            {
+                var key = mapping.Database + "|" + mapping.Relation;
                 if (!map.TryGetValue(key, out var list))
                     map[key] = list = ImmutableArray.CreateBuilder<ElementDocument>();
                 list.Add(doc);

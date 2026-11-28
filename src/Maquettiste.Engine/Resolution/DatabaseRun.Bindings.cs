@@ -148,7 +148,8 @@ internal sealed partial class DatabaseRun
         if (!_bindingByEntity.TryGetValue(entity.Id, out var own) || own.Binding.DiscriminatorColumn is null)
             return false;
         var host = BindingHostKey(own.Binding);
-        for (var e = entity.Base; e is not null; e = e.Base)
+        var steps = 0;
+        for (var e = entity.Base; e is not null && steps++ < MaxDepth; e = e.Base)
         {
             if (_bindingByEntity.TryGetValue(e.Id, out var bound) && bound.Binding.DiscriminatorColumn is not null
                 && string.Equals(BindingHostKey(bound.Binding), host, StringComparison.Ordinal))
@@ -198,7 +199,8 @@ internal sealed partial class DatabaseRun
     /// <summary>Whether an entity is another or derives from it.</summary>
     private static bool DerivesFrom(REntity entity, REntity from)
     {
-        for (var e = entity; e is not null; e = e.Base)
+        var steps = 0;
+        for (var e = entity; e is not null && steps++ < MaxDepth; e = e.Base)
         {
             if (ReferenceEquals(e, from))
                 return true;
@@ -245,7 +247,7 @@ internal sealed partial class DatabaseRun
         if (binding.Write is { None: true })
             return null;
         var key = binding.Write?.Table ?? binding.Source;
-        return _tables.TryGetValue(key, out var t) && t.IsDesigned ? t : null;
+        return _tables.GetValueOrDefault(key);
     }
 
     /// <summary>The bindings resolved so far in this database, by entity id.</summary>
@@ -334,10 +336,7 @@ internal sealed partial class DatabaseRun
         foreach (var t in _tableOrder)
         {
             tables.TryAdd(t.Table.Key, t);
-            if (t.Overlay is { } overlay)
-                tables.TryAdd(overlay.Id, t);
-            if (t.Source is { } designed)
-                tables.TryAdd(designed.Id, t);
+            tables.TryAdd(t.Source.Id, t);
         }
 
         var viewsById = views.ToDictionary(v => v.Id, StringComparer.Ordinal);
@@ -516,7 +515,7 @@ internal sealed partial class DatabaseRun
                     continue;
                 foreach (var column in new[] { field.SourceColumn, field.WriteColumn })
                 {
-                    if (column is { Attribute: null, OwnSensitive: null })
+                    if (column is { OwnSensitive: null })
                         column.Sensitive = ResolveRun.Stronger(column.Sensitive, value);
                 }
             }
@@ -542,7 +541,8 @@ internal sealed partial class DatabaseRun
             _b.Entity = entity;
             _b.Database = run._rdb;
             _deps = new DependencySet(run._run.Keys).Element(run._db.Id);
-            for (var e = entity; e is not null; e = e.Base)
+            var steps = 0;
+            for (var e = entity; e is not null && steps++ < MaxDepth; e = e.Base)
                 _deps.Element(e.Id);
             _b.Description = file.Description is { } description
                 ? description.Text ?? (description.File is null ? null : run._run.Model.GetDocument(entity.Id)?.SidecarText)
@@ -679,7 +679,7 @@ internal sealed partial class DatabaseRun
             if (other is not null && other != run._db.Id)
                 return $"is {element!.KindName} '{element.Name}' of database '{run._run.Model.Get<Database>(other)?.Name ?? other}', not of '{run._db.Name}'";
             if (element is Entity e)
-                return $"is entity '{e.Name}', which has no table in database '{run._db.Name}'";
+                return $"is entity '{e.Name}', not a table: name the table it is bound to";
             if (element is not null)
                 return $"is {element.KindName} '{element.Name}', not a {(tablesOnly ? "table" : "table, view or query")}";
             return $"is no {(tablesOnly ? "table" : "table, view or query")} of database '{run._db.Name}'";
@@ -961,7 +961,6 @@ internal sealed partial class DatabaseRun
             table.Columns.FirstOrDefault(c => c.Name == name)
             ?? table.Columns.FirstOrDefault(c => c.Key == name)
             ?? table.Columns.FirstOrDefault(c => c.Id == name)
-            ?? table.Columns.FirstOrDefault(c => c.Attribute?.Id == name)
             ?? Loose(table.Columns, c => c.Name, name);
 
         /// <summary>The write table's column for a source column: the same column, else by key, then by name.</summary>
@@ -988,7 +987,7 @@ internal sealed partial class DatabaseRun
             static string Fold(string text) => text.Replace("_", "", StringComparison.Ordinal).ToUpperInvariant();
         }
 
-        private static string PhysicalType(RColumn c) => c.Type == "reference" && c.CodeType is { } code ? code : c.Type;
+        private static string PhysicalType(RColumn c) => c.Type;
 
         // ---- fields ----------------------------------------------------------------------------------------------------------
 
@@ -1170,7 +1169,8 @@ internal sealed partial class DatabaseRun
 
         private bool IsSelfOrBase(REntity other)
         {
-            for (var e = entity; e is not null; e = e.Base)
+            var steps = 0;
+            for (var e = entity; e is not null && steps++ < MaxDepth; e = e.Base)
             {
                 if (ReferenceEquals(e, other))
                     return true;
@@ -1657,7 +1657,11 @@ internal sealed partial class DatabaseRun
         /// each member's): lists are skipped, as list attributes are, and so is a nested value object with no member a field can map; a nested
         /// value object a field maps whole is stored.
         /// </summary>
-        private static void UnmappedMembers(HashSet<string> mapped, string path, string name, RValueObject valueObject, List<string> names, int depth)
+        private static void UnmappedMembers(HashSet<string> mapped, string path, string name, RValueObject valueObject, List<string> names, int depth) =>
+            UnmappedMembers(mapped, path, name, valueObject, names, depth, new HashSet<RValueObject>(ReferenceEqualityComparer.Instance) { valueObject });
+
+        private static void UnmappedMembers(HashSet<string> mapped, string path, string name, RValueObject valueObject, List<string> names, int depth,
+            HashSet<RValueObject> containing)
         {
             foreach (var member in valueObject.Attributes)
             {
@@ -1669,9 +1673,14 @@ internal sealed partial class DatabaseRun
                     continue;
                 if (member.Type is { Kind: "value-object", ValueObject: { } nested })
                 {
-                    // A containment cycle is MQ3015's; the depth stops a speculative resolution of one.
-                    if (depth < 16)
-                        UnmappedMembers(mapped, memberPath, memberName, nested, names, depth + 1);
+                    // A containment cycle is MQ3015's: a value object already on the path is not walked again, so a speculative
+                    // resolution of one ends.
+                    if (depth < 16 && containing.Add(nested))
+                    {
+                        UnmappedMembers(mapped, memberPath, memberName, nested, names, depth + 1, containing);
+                        containing.Remove(nested);
+                    }
+
                     continue;
                 }
 

@@ -12,7 +12,7 @@ public abstract record ElementBase
     /// <summary>The element's permanent ULID (uppercase Crockford, 26 characters). Unique across the whole model.</summary>
     public required string Id { get; init; }
 
-    /// <summary>The element's name. Required by the schema except on a synthesized table and an overlay column.</summary>
+    /// <summary>The element's name.</summary>
     public string Name { get; init; } = "";
 
     /// <summary>An optional human-readable name; templates fall back to <see cref="Name"/>.</summary>

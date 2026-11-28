@@ -15,12 +15,12 @@ public sealed class RelationTypeJoinTests
 
     private static REntity Entity(string name) => new() { Id = "id-" + name, Name = name };
 
-    private static Placement Placed(REntity entity) => new(entity, new Entity { Id = entity.Id, Name = entity.Name }, null);
+    private static Placement Placed(REntity entity) => new(entity, new Entity { Id = entity.Id, Name = entity.Name });
 
     private static (TableBuild Build, Dictionary<string, RColumn> Columns) Table(string name, params string[] columns)
     {
         var table = new RTable { Id = name, Key = name, Name = name };
-        var build = new TableBuild(Keys, table, null, null, name);
+        var build = new TableBuild(Keys, table, new Table { Id = name, Name = name, Database = "db" });
         var byName = new Dictionary<string, RColumn>(StringComparer.Ordinal);
         foreach (var c in columns)
         {
@@ -121,7 +121,7 @@ public sealed class RelationTypeJoinTests
             commentEnd.Targets.Add(CommentP);
             var attachedEnd = new TypeLinkEnd { End = AttachedTo };
             attachedEnd.Targets.AddRange([PartP, AssemblyP]);
-            return new TypeLinks { Mapping = new Mapping { Id = "m", Name = "m", Database = "db" }, Ends = [commentEnd, attachedEnd] };
+            return new TypeLinks { Mapping = new Mapping { Id = "m", Name = "m", Database = "db", Relation = "r" }, Ends = [commentEnd, attachedEnd] };
         }
     }
 

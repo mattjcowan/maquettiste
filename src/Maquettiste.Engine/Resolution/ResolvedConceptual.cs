@@ -72,17 +72,8 @@ public sealed class REntity : RElement
     /// <summary>Relations with an end at this entity.</summary>
     public RList<RRelation> Relations { get; internal set; } = RList<RRelation>.Empty;
 
-    /// <summary>Mappings by database name.</summary>
-    public IReadOnlyDictionary<string, REntityMapping> Mappings { get; internal set; } = FrozenDictionary<string, REntityMapping>.Empty;
-
     /// <summary>Bindings by database name (erratum E43): how the entity reads from and writes to each database it is bound to.</summary>
     public IReadOnlyDictionary<string, REntityBinding> Bindings { get; internal set; } = FrozenDictionary<string, REntityBinding>.Empty;
-
-    /// <summary>Whether the entity was generated from a promoted relation.</summary>
-    public bool IsPromoted { get; internal set; }
-
-    /// <summary>The relation this entity was promoted from.</summary>
-    public RRelation? PromotedFrom { get; internal set; }
 
     /// <summary>The seeds whose target is the entity, in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
@@ -144,11 +135,6 @@ public sealed class RKey
     /// <summary>The identity strategy: <c>database-identity</c>, <c>sequence</c>, <c>uuid-v7</c>, <c>ulid</c> or <c>application</c>.</summary>
     public string Strategy { get; internal set; } = "application";
 
-    /// <summary>
-    /// For the <c>sequence</c> strategy: the key sequence per database name (from the key column's overlay, else synthesized by
-    /// the <c>sequenceName</c> convention); empty otherwise. The same sequence is the key column's <see cref="RColumn.Sequence"/>.
-    /// </summary>
-    public IReadOnlyDictionary<string, RSequence> Sequences { get; internal set; } = FrozenDictionary<string, RSequence>.Empty;
 }
 
 /// <summary>A resolved alternate key.</summary>
@@ -508,7 +494,7 @@ public sealed class REnd : RObject
 /// <summary>A resolved relation mapping in one database.</summary>
 public sealed class RRelationMapping
 {
-    /// <summary><c>foreign-key</c>, <c>junction</c> or <c>promoted</c>.</summary>
+    /// <summary><c>foreign-key</c> or <c>junction</c>.</summary>
     public string Shape { get; internal set; } = "foreign-key";
 
     /// <summary>The foreign key, for the <c>foreign-key</c> shape.</summary>
@@ -516,15 +502,6 @@ public sealed class RRelationMapping
 
     /// <summary>The junction table, for the <c>junction</c> shape.</summary>
     public RTable? JunctionTable { get; internal set; }
-
-    /// <summary>The generated entity, for the <c>promoted</c> shape.</summary>
-    public REntity? PromotedEntity { get; internal set; }
-
-    /// <summary>
-    /// Collection attributes typed by a reference type: the resolver maps them to no column and no table, and the templates realize
-    /// them as the effective storage strategy calls for (junction table, array column, JSON).
-    /// </summary>
-    public IReadOnlyList<RAttribute> TemplateDefined { get; internal set; } = [];
 
     /// <summary>
     /// For a relation with an end of several types whose mapping states storage (several-types-design.md section 19.8): one entry per pair
@@ -697,51 +674,6 @@ public sealed class RNavigation : RObject
 
     /// <summary>The paths per pair the database runs record, by database name, until the resolver publishes them as <see cref="TypeJoins"/>.</summary>
     internal SortedDictionary<string, IReadOnlyList<RJoinPath>>? PendingTypeJoins;
-}
-
-/// <summary>A resolved entity mapping in one database.</summary>
-public sealed class REntityMapping
-{
-    /// <summary>The database.</summary>
-    public RDatabase Database { get; internal set; } = null!;
-
-    /// <summary>The table.</summary>
-    public RTable Table { get; internal set; } = null!;
-
-    /// <summary><c>tph</c>, <c>tpt</c>, <c>tpc</c> or <see langword="null"/> outside a hierarchy.</summary>
-    public string? Inheritance { get; internal set; }
-
-    /// <summary>The discriminator column (TPH).</summary>
-    public RColumn? DiscriminatorColumn { get; internal set; }
-
-    /// <summary>The discriminator value.</summary>
-    public object? DiscriminatorValue { get; internal set; }
-
-    /// <summary>Attribute path → column, in column order.</summary>
-    public IReadOnlyList<RColumnMapping> Columns { get; internal set; } = [];
-
-    /// <summary>Join paths by navigation name.</summary>
-    public IReadOnlyDictionary<string, RJoinPath> Joins { get; internal set; } = FrozenDictionary<string, RJoinPath>.Empty;
-
-    /// <summary>
-    /// By navigation name, the paths of a navigation of the entity that leads to an end with several types, one per pair of targets
-    /// (several-types-design.md decision 48), in the order of <see cref="RNavigation.TypeJoins"/>; also of a navigation with more than one path
-    /// from the entity, such as to a one-type end over an abstract TPC root, which <see cref="Joins"/> can't hold. Empty otherwise.
-    /// </summary>
-    public IReadOnlyDictionary<string, IReadOnlyList<RJoinPath>> TypeJoins { get; internal set; } = FrozenDictionary<string, IReadOnlyList<RJoinPath>>.Empty;
-
-    /// <summary>Collection attributes typed by a reference type, which no column or table stores: the templates realize them.</summary>
-    public IReadOnlyList<RAttribute> TemplateDefined { get; internal set; } = [];
-}
-
-/// <summary>One attribute path mapped to a column.</summary>
-public sealed class RColumnMapping
-{
-    /// <summary>The attribute path (<c>&lt;attrId&gt;</c> or <c>&lt;attrId&gt;.&lt;memberAttrId&gt;</c>).</summary>
-    public string AttributePath { get; internal set; } = "";
-
-    /// <summary>The column.</summary>
-    public RColumn Column { get; internal set; } = null!;
 }
 
 /// <summary>A join path between tables.</summary>

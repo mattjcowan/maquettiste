@@ -9,10 +9,6 @@ import { MOCK_RULE } from "./extensions";
 import { databaseObjectFiles } from "./databaseObjectSeed";
 
 const fixture = import.meta.glob("../fixture/billing/**/*.{json,md}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
-const projectedFixture = import.meta.glob("../fixture/billing-projected/**/*.{json,md}", { query: "?raw", import: "default", eager: true }) as Record<
-  string,
-  string
->;
 const packFiles = import.meta.glob("../fixture/packs/*/pack.json", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /** The pack manifests the mock carries (the fixture copies of sql-ddl and csharp-dapper). */
@@ -24,15 +20,6 @@ export function packs(): Record<string, unknown>[] {
 
 export function billingSeed(): Seed {
   return seedFrom(fixture, "../fixture/billing/");
-}
-
-/**
- * The billing model as it was before its tables were designed: one table overlay and one entity mapping, every other
- * table and mapping projected by the engine's conventions. For the mock's tests of projection only; a backend seeded
- * with it serves no recorded answers.
- */
-export function billingProjectedSeed(): Seed {
-  return seedFrom(projectedFixture, "../fixture/billing-projected/");
 }
 
 function seedFrom(source: Record<string, string>, prefix: string): Seed {
@@ -67,8 +54,9 @@ function sid(n: number): string {
 }
 
 /**
- * `?mock=medium`: 200 entities in 12 packages, about 300 relations and one diagram holding every
- * entity, all derived from counters (no randomness), for the layout and explorer checks.
+ * `?mock=medium`: 200 entities in 12 packages, each bound to a table of its own, about 300 relations (each a foreign key of
+ * the child's table) and one diagram holding every entity, all derived from counters (no randomness), for the layout and
+ * explorer checks.
  */
 export function mediumSeed(entityCount = 200): Seed {
   let n = 1;
@@ -88,8 +76,20 @@ export function mediumSeed(entityCount = 200): Seed {
     add(`model/packages/area-${p + 1}.json`, { kind: "package", id, name: `Area${p + 1}` });
   }
   const databaseId = sid(n++);
-  add("model/databases/main/database.json", { kind: "database", id: databaseId, name: "main", dialect: "postgresql", version: "16", defaultSchema: "app" });
+  add("model/databases/main/database.json", {
+    kind: "database",
+    id: databaseId,
+    name: "main",
+    dialect: "postgresql",
+    version: "16",
+    defaultSchema: "app",
+    byConvention: "none",
+  });
   const entities: string[] = [];
+  const entityFiles: Record<string, unknown>[] = [];
+  const bindings: { fields: { attribute: string; column: string }[]; columns?: { column: string; status: string }[] }[] = [];
+  // Every entity is bound to a table file of its own (the model lays nothing out from entities).
+  const tables: { id: string; name: string; columns: Record<string, unknown>[]; foreignKeys: Record<string, unknown>[]; keyColumn: string }[] = [];
   for (let e = 0; e < entityCount; e++) {
     const id = sid(n++);
     const keyId = sid(n++);
@@ -99,15 +99,34 @@ export function mediumSeed(entityCount = 200): Seed {
       { id: sid(n++), name: "createdOn", type: "date" },
       { id: sid(n++), name: "amount", type: "decimal", precision: 12, scale: 2 },
     ];
+    const tableId = sid(n++);
+    const columnNames = ["id", "name", "created_on", "amount"];
+    const columns = attributes.map((a, i) => ({
+      id: sid(n++),
+      name: columnNames[i],
+      type: a.type,
+      ...(a.type === "string" ? { length: 120 } : {}),
+      ...(a.type === "decimal" ? { precision: 12, scale: 2 } : {}),
+      ...(a.required ? { nullable: false } : {}),
+    }));
+    tables.push({ id: tableId, name: `thing_${e + 1}`, columns, foreignKeys: [], keyColumn: String(columns[0].id) });
     entities.push(id);
-    add(`model/entities/thing-${e + 1}.json`, {
+    const binding = {
+      id: sid(n++),
+      database: databaseId,
+      source: tableId,
+      fields: attributes.map((a, i) => ({ attribute: a.id, column: String(columns[i].id) })),
+    };
+    entityFiles.push({
       kind: "entity",
       id,
       name: `Thing${e + 1}`,
       package: packageIds[e % 12],
       key: { attributes: [keyId], strategy: "uuid-v7" },
       attributes,
+      bindings: [binding],
     });
+    bindings.push(binding);
   }
   const members: Record<string, unknown>[] = entities.map((element) => ({ element }));
   let r = 0;
@@ -116,18 +135,52 @@ export function mediumSeed(entityCount = 200): Seed {
     if (e % 2 === 0 && e > 2) targets.push(e - 2);
     for (const t of targets) {
       const id = sid(n++);
+      const child = tables[e];
+      const fkColumn = sid(n++);
+      child.columns.push({ id: fkColumn, name: `parent${r + 1}_id`, type: "uuid" });
+      const foreignKey = sid(n++);
+      child.foreignKeys.push({
+        id: foreignKey,
+        name: `fk_${child.name}_parent${r + 1}`,
+        columns: [fkColumn],
+        referencesTable: tables[t].id,
+        referencesColumns: [tables[t].keyColumn],
+      });
+      const parentEnd = sid(n++);
+      // The binding lists the foreign key column as ignored: nothing in the entity holds it.
+      (bindings[e].columns ??= []).push({ column: fkColumn, status: "ignored" });
       add(`model/relations/link-${++r}.json`, {
         kind: "relation",
         id,
         name: `link${r}`,
         ends: [
-          { id: sid(n++), entity: entities[t], role: "parent", navigation: "parent", min: 1, max: 1, onDelete: "restrict" },
+          { id: parentEnd, entity: entities[t], role: "parent", navigation: "parent", min: 1, max: 1, onDelete: "restrict" },
           { id: sid(n++), entity: entities[e], role: `children${r}`, navigation: `children${r}` },
         ],
+      });
+      add(`model/mappings/link-${r}-in-main.json`, {
+        kind: "mapping",
+        id: sid(n++),
+        name: `link${r} in main`,
+        database: databaseId,
+        relation: id,
+        foreignKey,
+        foreignKeyEnd: parentEnd,
       });
       members.push({ element: id });
     }
   }
+  entityFiles.forEach((file, i) => add(`model/entities/thing-${i + 1}.json`, file));
+  for (const t of tables)
+    add(`model/databases/main/tables/${t.name}.json`, {
+      kind: "table",
+      id: t.id,
+      name: t.name,
+      database: databaseId,
+      columns: t.columns,
+      primaryKey: { columns: [t.keyColumn] },
+      ...(t.foreignKeys.length ? { foreignKeys: t.foreignKeys } : {}),
+    });
   add("model/diagrams/everything.json", { kind: "diagram", id: sid(n++), name: "Everything", members });
   return { files, packs: packs() };
 }

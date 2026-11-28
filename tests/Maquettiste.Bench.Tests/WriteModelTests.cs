@@ -239,7 +239,7 @@ public sealed class WriteModelTests
             Assert.Equal(view.Tables.Count, result.Tables.Count);
             Assert.True(view.Tables.Count > 0);
             Assert.Equal(
-                Json(view.Tables.Select(t => new TableSummary(t.Key, t.Name, t.Schema, t.Origin, t.EntityId, t.RelationId, t.IsJunction, t.IsLookup, t.Columns.Count))),
+                Json(view.Tables.Select(t => new TableSummary(t.Key, t.Name, t.Schema, t.RelationId, t.Columns.Count))),
                 Json(result.Tables));
             foreach (var table in view.Tables)
                 Assert.Equal(Json(table), Json((await tables.GetTableAsync(database.Id, table.Key, Ct)).Table));

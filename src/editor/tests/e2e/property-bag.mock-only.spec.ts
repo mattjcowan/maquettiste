@@ -38,7 +38,7 @@ const fileOf = (page: Page, name: string) =>
 const propertiesOf = async (page: Page, id: string) => (await documentOf(page, id))?.properties;
 
 async function openCustomersTable(page: Page) {
-  await page.goto("/database?mock=projected");
+  await page.goto("/database");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await page.getByTestId("database-table-customers").click();
   await expect(page.getByTestId("column-grid")).toBeVisible();
@@ -97,13 +97,12 @@ test("an entity's property bag: text by default, a number when chosen, declared 
   await expect(bag.getByLabel("Value of owner")).toHaveValue("finance");
 });
 
-test("a laid-out table edits from the inspector: its first property stores it as a file, a column takes a property and a tag", async ({ page }) => {
+test("a table edits from the inspector: its own property, a column takes a property and a tag", async ({ page }) => {
   const inspector = await openCustomersTable(page);
-  expect(await fileOf(page, "customers")).toBeUndefined();
   const tableSection = inspector.getByTestId("table-inspector-table");
-  await expect(inspector.getByTestId("table-inspector-path")).toHaveText("billing.customers · not stored as a table file yet");
+  await expect(inspector.getByTestId("table-inspector-path")).toContainText("customers.json");
 
-  // The table's own property: the first commit stores the table as a file, with it.
+  // The table's own property goes to its file.
   const tableBag = tableSection.getByTestId("property-bag");
   await tableBag.getByRole("button", { name: "Add property" }).click();
   await page.keyboard.type("tier");
@@ -111,7 +110,6 @@ test("a laid-out table edits from the inspector: its first property stores it as
   await page.keyboard.type("gold");
   await page.keyboard.press("Enter");
   await expect.poll(async () => (await fileOf(page, "customers"))?.properties).toEqual({ tier: "gold" });
-  await expect(page.getByText("customers is now stored as a table file.")).toBeVisible();
 
   // A column's property and tag go to that column's entry in the file.
   await page.getByTestId("column-grid").getByTestId("column-row-name").locator('[data-column="name"]').click();
@@ -134,25 +132,4 @@ test("a laid-out table edits from the inspector: its first property stores it as
   await inspector.getByRole("tab", { name: "JSON" }).click();
   await expect(inspector).toContainText('"tier": "gold"');
   await expect(inspector).toContainText('"owner": "finance"');
-});
-
-test("a laid-out table's JSON tab shows the table read-only, and Store as a table file makes the whole file", async ({ page }) => {
-  const inspector = await openCustomersTable(page);
-  await inspector.getByRole("tab", { name: "JSON" }).click();
-  const resolved = inspector.getByTestId("table-inspector-resolved-json");
-  await expect(resolved).toContainText("The table as resolved, read-only");
-  await expect(resolved).toContainText('"name": "customers"');
-
-  await resolved.getByTestId("table-inspector-store-file").click();
-  await expect(page.getByText("customers is now stored as a table file.")).toBeVisible();
-  await expect(inspector.getByTestId("table-inspector-resolved-json")).toHaveCount(0);
-  const file = await fileOf(page, "customers");
-  expect(file).toMatchObject({ kind: "table", name: "customers" });
-  expect(file?.columns?.length).toBeGreaterThan(1);
-  await inspector.getByRole("tab", { name: "JSON" }).click();
-  await expect(inspector).toContainText('"name": "customer_since"');
-
-  // Storing is one undo step.
-  await page.getByRole("button", { name: "Undo" }).click();
-  await expect.poll(() => fileOf(page, "customers")).toBeUndefined();
 });

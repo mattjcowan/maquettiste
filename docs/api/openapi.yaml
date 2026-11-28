@@ -608,7 +608,7 @@ paths:
         the command palette and every canvas start from this list.
 
         E5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it
-        changes exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e14`.
+        changes exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e15`.
 
         `?locale=<tag>` (a declared locale; the default locale is the same as none) fills `displayName` from that locale's fallback
         chain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per
@@ -931,7 +931,7 @@ paths:
                 enums:
                   summary: GET /api/model/resolved?scope=enums on the billing fixture
                   value:
-                    contract: 0.28.0
+                    contract: 0.29.0
                     schema: resolved-model.json
                     items:
                       - id: 01J92P0V05WQDH2GZG539D9VG1
@@ -958,7 +958,7 @@ paths:
                 entity:
                   summary: GET /api/model/resolved?scope=entities&limit=1&cursor=... (Product, two of its five attributes shown)
                   value:
-                    contract: 0.28.0
+                    contract: 0.29.0
                     schema: resolved-model.json
                     items:
                       - id: 01J92P0V0JR8BE8253SKT29ZG7
@@ -1040,22 +1040,10 @@ paths:
                         key:
                           attributes: [01J92P0V15PMP0E4P5DSNZVETR]
                           strategy: uuid-v7
-                          sequences: []
                         alternateKeys:
                           - { id: 01J92P0V160MQ5VBCRQV4WDHYW, name: sku, attributes: [01J92P0V17VC286G57N0QWE44Y] }
                         navigations: []
                         relations: [01J92P0V1CC98R0RRCAV73SGF4]
-                        mappings:
-                          - database: 01J92P0V1QRN2181XM2ZWE02W4
-                            table: 01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4
-                            inheritance: null
-                            discriminatorColumn: null
-                            discriminatorValue: null
-                            columns:
-                              - { attributePath: 01J92P0V15PMP0E4P5DSNZVETR, column: 01J92P0V15PMP0E4P5DSNZVETR }
-                              - { attributePath: 01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ, column: 01J92P0V1935QZTM8ZQ240DJ6Q.01J92P0V08P9BVJAPQ793XYNTQ }
-                        isPromoted: false
-                        promotedFrom: null
                         seeds: []
                         lifecycle: null
                         displayName: Product
@@ -2172,8 +2160,8 @@ paths:
         references; a required one makes the delete `invalid`, and the first diagnostic is the readable MQ2001 naming the referrer.
         `delete-dependents` also resolves required references in the same change: the referrer loses the smallest part that is
         valid without the reference (an attribute whose type is deleted, a diagram member, a key, a foreign key), or, when only
-        the whole referrer would do (a table, view, sequence or mapping of a deleted database; a relation, mapping or overlay of a
-        deleted entity), it is deleted with its own dependents, recursively. A deleted database's `databases.<name>` conventions
+        the whole referrer would do (a table, view, sequence or mapping of a deleted database; a relation mapping of a
+        deleted relation), it is deleted with its own dependents, recursively. A deleted database's `databases.<name>` conventions
         entry in `maquettiste.json` goes in the same change. `GET /api/model/elements/{id}/delete-plan` shows all of it first.
       x-maquettiste-role: editor
       x-maquettiste-engine: ModelStore.DeleteAsync(id, expectedHash, resolution, ChangeSource.Editor)
@@ -2594,7 +2582,7 @@ paths:
       description: >-
         An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the
         resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type
-        an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a
+        its table pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a
         validation reports what generation would. With `against`, the whole model is also compared with a model snapshot.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.ValidateAsync(scope)
@@ -3069,8 +3057,7 @@ paths:
       operationId: getMaterializeStatus
       summary: What can be materialized in one database
       description: |
-        What the database's materialize screens list (erratum E43): the entities with no binding to the database, each flagged
-        `projected` when the database still projects a table for it (by convention or a mapping element), and the database's
+        What the database's materialize screens list (erratum E43): the entities with no binding to the database, and the database's
         designed and imported tables and its views with the entity bindings that read or write each (`boundBy`; several entities
         on one table are told apart by their constants). Materialize with the batch operations `materialize-tables`,
         `materialize-entities` and `materialize-attributes` (`POST /api/model/batch`), after a look at `POST .../materialize/preview`. The MCP tool
@@ -3099,18 +3086,18 @@ paths:
       description: |
         Plans a materialize operation over the route's database and validates the result, writing nothing: the body is the batch
         operation without its database, `{ "op": "materialize-tables", "entities": [...], "schema"?: <schema id>, "hierarchy"?: <shape or root id to shape>, "listStorage"?: <choice or attribute id to choice> }` (a designed
-        table per entity with the shape its projection has, and a binding), `{ "op": "materialize-entities", "tables": [...],
+        table per entity and a binding), `{ "op": "materialize-entities", "tables": [...],
         "package": <package id> }` (an entity per table or view, bound to it, and a relation per foreign key between them) or
         `{ "op": "materialize-attributes", "entities": [...], "columns"?: [...] }` (per bound entity, an attribute per column of its
         binding's source that nothing in the binding names, or per column named for one entity, mapped to it) or
         `{ "op": "materialize-columns", "entities": [...], "attributes"?: [...] }` (per bound entity reading a table file, a column of
-        that table per attribute the binding leaves unmapped, shaped as the projection would make it, mapped to it). A refusal (an
+        that table per attribute the binding leaves unmapped, shaped from the attribute, mapped to it). A refusal (an
         entity or table already bound; for attributes, an entity with no binding, a query source, a column already mapped; for
         columns, a source that is not a table file, an attribute already mapped) is MQ4055 in `diagnostics`. The binding
         operations take the same route: `{ "op": "map-by-name", "entities": [...] }` (the attributes each binding leaves unmapped,
         mapped to the free columns of the same loose name) and `{ "op": "resync-binding", "entities": [...], "columns"?: [...],
         "keepNames"?: true }` (each binding whose source is a table file brought into step with it); both record provenance, read
-        files only, collect the binding rules (MQ4044 to MQ4054, MQ4087, MQ4088) from the conceptual layer and this database
+        files only, collect the binding rules (MQ4044 to MQ4053, MQ4087, MQ4088) from the conceptual layer and this database
         alone, and a refusal is MQ4089. The MCP tool `preview_materialize` answers the same.
       x-maquettiste-role: viewer
       x-maquettiste-engine: ModelStore.PlanMaterializeAsync(request)
@@ -3142,12 +3129,10 @@ paths:
       operationId: getDatabaseView
       summary: The resolved tables of one database
       description: |
-        The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
-        designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and
+        The physical model: every designed or imported table, its columns, keys, foreign keys and indexes, and
         every view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,
         view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
-        properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
-        overlay entry, has none, except the stereotypes a table's schema and package defaults give it. Columns, keys,
+        properties, generation hints). Columns, keys,
         foreign keys and indexes a stereotype contributes follow the table's own, keyed `<tableKey>.<memberId>`, with
         their `memberOrigin` (next-phase-2-design.md 3.1). The Database workspace draws table diagrams from it and an
         entity's Storage tab reads its binding sources' columns from it. A model with errors returns `view: null` and
@@ -3177,7 +3162,7 @@ paths:
       summary: The table list of one database, without columns
       description: |
         E5c: a projection of the resolved database for the explorer's Databases and Mappings sections, table-name search and
-        the coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.
+        the coverage line: every table's key, name, schema, relation and column count, without the columns.
         Unlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are
         left out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and
         shows it with a stale badge while a response is partial. Per model version the server validates the model once and
@@ -3205,7 +3190,7 @@ paths:
       - name: key
         in: path
         required: true
-        description: The table's key, as `TableSummary.key` (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`).
+        description: The table's key, as `TableSummary.key` (a table file's id).
         schema:
           type: string
     get:
@@ -3213,7 +3198,7 @@ paths:
       operationId: getDatabaseTable
       summary: One table of a database with its columns, keys and indexes
       description: |
-        E5f: one `TableView` (columns with `attributeId`, primary key, foreign keys, unique constraints, indexes) for a table's
+        E5f: one `TableView` (columns, primary key, foreign keys, unique constraints, indexes) for a table's
         children in the explorer and column-level "mapped by", without `/view`'s every table. A projection of the same
         per-version resolve as `/tables`: after the first call for a database and model version, a lookup. Like `/tables` it
         answers on a model with errors; `table` is null when no table of the database has the key or when the table is left
@@ -3660,8 +3645,7 @@ paths:
         reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage
         choice per database. `columns` lists the own and inherited columns of designed and imported tables that bindings map to
         attributes of the type (their bound type, next-phase-2-design.md 3.2, from bindings since 0.28.0), with their table,
-        database, domain, required, the effective storage choice in that database and the bound table; projected columns are
-        covered by their attributes.
+        database, domain, required, the effective storage choice in that database and the bound table.
       x-maquettiste-role: viewer
       responses:
         '200':
@@ -4993,8 +4977,7 @@ paths:
       operationId: previewTemplate
       summary: Render one unit against one element, with no writes
       description: |
-        The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`
-        for a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.
+        The Database workspace's DDL preview calls `sql-ddl`/`table` with a table file's id and `sql-ddl`/`schema` with a database id.
         The unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no
         files. An element outside the unit's scope (another kind than its `each`, one its selector does not return, an
         element for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders
@@ -7678,7 +7661,7 @@ components:
       enum: [int, string, embedded, table, json]
     RelationShape:
       type: string
-      enum: [foreign-key, junction, promoted]
+      enum: [foreign-key, junction]
     InheritanceStrategy:
       type: string
       enum: [tph, tpt, tpc]
@@ -8131,7 +8114,6 @@ components:
           $ref: '#/components/schemas/ElementKind'
         name:
           type: string
-          description: Empty for a table overlay without a name of its own.
         package:
           oneOf:
             - $ref: '#/components/schemas/Ulid'
@@ -8159,9 +8141,6 @@ components:
           description: The element's display name, when it has one (E5). Search matches it and the explorer shows it as the label.
         database:
           description: The owning database's id, on table, view, sequence, routine, database-type, sql-object, query, mapping and migration rows (E5).
-          $ref: '#/components/schemas/Ulid'
-        entity:
-          description: The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5).
           $ref: '#/components/schemas/Ulid'
         memberCount:
           type: integer
@@ -8318,6 +8297,14 @@ components:
             one. Left out otherwise.
           type: integer
           minimum: 1
+        boundTo:
+          description: |
+            On entity rows with bindings: per binding in file order, the table its writes go to, else its source (a table, view or query
+            id), distinct. Left out on entities without bindings and on other rows. The explorer's "Go to table" reads it: since 0.29.0
+            an entity has a table only through its binding.
+          type: array
+          items:
+            $ref: "#/components/schemas/Ulid"
         actors:
           description: |
             The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted
@@ -8933,10 +8920,7 @@ components:
         with a `subjects` list of one entry, with a new id, holding its `subject` and `boundAttribute`; a listed process
         already using `subjects`, or with no subject, is left as it is, and nothing to convert writes nothing). They expand into updates the same way, and a refusal is MQ9019 at
         `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional
-        `schema`, `hierarchy`, `listStorage`: a designed table per entity with the shape its projection has and a binding of the entity to it; `hierarchy` picks one table, a table per concrete entity or a table per type for each inheritance hierarchy, and `listStorage` a table of its own or a JSON column for each list attribute (the preview's `choices` lists both with their defaults); the overlay
-        folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the
-        committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the
-        materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the
+        `schema`, `hierarchy`, `listStorage`: a designed table per entity and a binding of the entity to it; `hierarchy` picks one table, a table per concrete entity or a table per type for each inheritance hierarchy, and `listStorage` a table of its own or a JSON column for each list attribute (the preview's `choices` lists both with their defaults); relation mappings name the foreign keys; optional `expectedHashes`: the hash the caller read of each element the
         preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported
         table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes`
         (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's
@@ -8944,7 +8928,7 @@ components:
         `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a
         column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported
         table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute
-        the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has
+        the binding leaves unmapped, shaped from the attribute, mapped to it; a column whose name the table has
         is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already
         bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left
         to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at
@@ -9113,7 +9097,7 @@ components:
             the request, or an object from a hierarchy's root entity id to its shape. `one-table`: one table for the whole
             hierarchy, with a type column; `per-concrete`: a table per concrete entity, with every attribute, inherited ones
             included; `per-type`: a table per entity, each derived table keyed by its base's table. Absent: each hierarchy
-            takes its default (the shape its entity mapping's `inheritance` gives, else one table).
+            takes its default (one table).
           oneOf:
             - $ref: '#/components/schemas/HierarchyShape'
             - type: object
@@ -9636,7 +9620,7 @@ components:
       allOf:
       - $ref: '#/components/schemas/ResolvedAnnotations'
       - type: object
-        required: [id, kind, name, package, isAbstract, base, derived, attributes, key, alternateKeys, navigations, relations, mappings, isPromoted, promotedFrom, seeds, lifecycle]
+        required: [id, kind, name, package, isAbstract, base, derived, attributes, key, alternateKeys, navigations, relations, seeds, lifecycle]
         properties:
           id:
             type: string
@@ -9678,14 +9662,6 @@ components:
             items:
               type: string
             description: The ids of the relations with an end at this entity.
-          mappings:
-            type: array
-            items:
-              $ref: '#/components/schemas/EntityMappingRecord'
-          isPromoted:
-            type: boolean
-          promotedFrom:
-            type: [string, 'null']
           seeds:
             type: array
             items:
@@ -10354,7 +10330,7 @@ components:
       x-engine-record: Maquettiste.Engine.KeyRecord
       description: An entity's primary key.
       type: object
-      required: [attributes, strategy, sequences]
+      required: [attributes, strategy]
       properties:
         attributes:
           type: array
@@ -10362,21 +10338,6 @@ components:
             type: string
         strategy:
           type: string
-        sequences:
-          type: array
-          items:
-            $ref: '#/components/schemas/KeySequenceRecord'
-    KeySequenceRecord:
-      x-engine-record: Maquettiste.Engine.KeySequenceRecord
-      description: The key sequence of an entity in one database.
-      type: object
-      required: [database, sequence]
-      properties:
-        database:
-          type: string
-        sequence:
-          type: string
-          description: As `SequenceView.id`.
     AlternateKeyRecord:
       x-engine-record: Maquettiste.Engine.AlternateKeyRecord
       description: An alternate key.
@@ -10421,37 +10382,6 @@ components:
             type: string
         isCollection:
           type: boolean
-    EntityMappingRecord:
-      x-engine-record: Maquettiste.Engine.EntityMappingRecord
-      description: An entity's mapping to one database.
-      type: object
-      required: [database, table, inheritance, discriminatorColumn, discriminatorValue, columns]
-      properties:
-        database:
-          type: string
-        table:
-          type: string
-          description: The table key, as `TableView.key`.
-        inheritance:
-          type: [string, 'null']
-        discriminatorColumn:
-          type: [string, 'null']
-        discriminatorValue: {}
-        columns:
-          type: array
-          items:
-            $ref: '#/components/schemas/ColumnMappingRecord'
-    ColumnMappingRecord:
-      x-engine-record: Maquettiste.Engine.ColumnMappingRecord
-      description: The column that stores an attribute path.
-      type: object
-      required: [attributePath, column]
-      properties:
-        attributePath:
-          type: string
-        column:
-          type: string
-          description: The column key, as `ColumnView.key`.
     RelationRecord:
       x-engine-record: Maquettiste.Engine.RelationRecord
       description: A resolved relation.
@@ -10552,13 +10482,13 @@ components:
         set for a relation with an end of several types, and for a mapping with constants or attribute columns; each is left out when
         empty, so a relation that uses none of them keeps today's record.
       type: object
-      required: [database, shape, foreignKey, junctionTable, promotedEntity]
+      required: [database, shape, foreignKey, junctionTable]
       properties:
         database:
           type: string
         shape:
           type: string
-          description: '`foreign-key`, `junction` or `promoted`. For a relation with an end of several types, `junction` when its links
+          description: '`foreign-key` or `junction`. For a relation with an end of several types, `junction` when its links
             live in link tables, else `foreign-key`.'
         foreignKey:
           type: [string, 'null']
@@ -10567,8 +10497,6 @@ components:
           type: [string, 'null']
           description: The junction table key; for a relation with an end of several types, the one link table that holds every link,
             and null for a table per type.
-        promotedEntity:
-          type: [string, 'null']
         links:
           type: array
           description: One entry per pair of targets, one per end, in target order (decision 39).
@@ -12843,8 +12771,8 @@ components:
         partial:
           type: boolean
           description: |
-            The model has errors, so tables whose owning elements have errors (the entity, the relation, the table file or
-            overlay, a mapping of the entity or relation, or the database itself) are left out, and the
+            The model has errors, so tables whose owning elements have errors (the entity, the relation, the table file,
+            a relation mapping, or the database itself) are left out, and the
             rest may change when the errors are fixed. False when the list is complete.
     DatabaseTableResult:
       x-engine-addition: E5f
@@ -12869,7 +12797,7 @@ components:
       x-engine-addition: E5c
       x-engine-record: Maquettiste.Engine.TableSummary
       type: object
-      required: [key, name, schema, origin, entityId, relationId, isJunction, isLookup, columnCount]
+      required: [key, name, schema, relationId, columnCount]
       properties:
         key:
           type: string
@@ -12878,23 +12806,10 @@ components:
           type: string
         schema:
           type: [string, 'null']
-        origin:
-          type: string
-          enum: [synthesized, designed, imported]
-        entityId:
-          oneOf:
-            - $ref: '#/components/schemas/Ulid'
-            - type: 'null'
         relationId:
           oneOf:
             - $ref: '#/components/schemas/Ulid'
             - type: 'null'
-        isJunction:
-          type: boolean
-        isLookup:
-          type: boolean
-          deprecated: true
-          description: Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse.
         columnCount:
           type: integer
           minimum: 0
@@ -12905,7 +12820,7 @@ components:
         One resolved database. The annotation members (`displayName` to `generation`) come from the database file, with no
         fallback for the names; `schemas` lists every schema, each with the annotations of its own entry in that file.
       type: object
-      required: [id, name, dialect, version, defaultSchema, tables, views, sequences, schemas, quoting, maxIdentifierLength, byConvention, packages,
+      required: [id, name, dialect, version, defaultSchema, tables, views, sequences, schemas, quoting, maxIdentifierLength,
         displayName, pluralName, description, stereotypes, tags, category, properties, generation]
       properties:
         id:
@@ -12963,15 +12878,6 @@ components:
         maxIdentifierLength:
           type: [integer, 'null']
           description: The effective identifier length limit (the dialect's when the file sets none), or null for none.
-        byConvention:
-          type: string
-          enum: [all, packages, none]
-          description: Which entities map here by convention, as the resolver applies it (a file without the member reads as `all`, or `packages` when it lists packages).
-        packages:
-          type: array
-          description: The packages whose entities map here by convention, in file order.
-          items:
-            $ref: '#/components/schemas/ConventionPackageView'
         displayName:
           type: [string, 'null']
           description: The display name the database file sets, or null; there is no fallback.
@@ -13118,49 +13024,26 @@ components:
           description: The generation hints by pack name or `*`.
           additionalProperties:
             $ref: '#/components/schemas/GenerationHintsView'
-    ConventionPackageView:
-      x-engine-record: Maquettiste.Engine.ConventionPackageView
-      type: object
-      required: [packageId, schema]
-      properties:
-        packageId:
-          $ref: '#/components/schemas/Ulid'
-        schema:
-          type: [string, 'null']
-          description: The schema name the package's conventional tables go to, or null for the default schema.
     TableView:
       x-engine-addition: E1
       x-engine-record: Maquettiste.Engine.TableView
       description: |
         One resolved table. The annotation members (`displayName` to `generation`) come from the table's own file: the
-        designed or imported table, or a synthesized table's overlay. A synthesized table without an overlay has none but
-        the stereotypes its schema and package defaults give it, with their default properties; it never takes its
-        entity's annotations, which `entityId` leads to. Members a stereotype contributes (next-phase-2-design.md 3.1)
+        designed or imported table. Members a stereotype contributes (next-phase-2-design.md 3.1)
         follow the own ones, keyed `<tableKey>.<memberId>`, each with its `memberOrigin`.
       type: object
-      required: [key, name, schema, origin, entityId, relationId, isJunction, isLookup, comment, columns, primaryKey, uniques, foreignKeys, indexes,
+      required: [key, name, schema, relationId, comment, columns, primaryKey, uniques, foreignKeys, indexes,
         displayName, pluralName, description, stereotypes, tags, category, properties, generation]
       properties:
         key:
           type: string
-          description: A table file's id, or a synthesized key such as `<entityId>@<databaseId>` (engine-design.md 7.3); the `elementId` for `sql-ddl`/`table` previews.
+          description: A table file's id; the `elementId` for `sql-ddl`/`table` previews.
         name:
           type: string
         schema:
           type: [string, 'null']
-        origin:
-          type: string
-          enum: [synthesized, designed, imported]
-        entityId:
-          type: [string, 'null']
         relationId:
           type: [string, 'null']
-        isJunction:
-          type: boolean
-        isLookup:
-          type: boolean
-          deprecated: true
-          description: Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse.
         comment:
           type: [string, 'null']
         columns:
@@ -13298,7 +13181,7 @@ components:
       properties:
         id:
           type: string
-          description: The sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`.
+          description: The sequence file's id.
         name:
           type: string
         schema:
@@ -13386,7 +13269,7 @@ components:
           enum: [invoker, definer]
         dependsOn:
           type: array
-          description: The ids (a synthesized table's key) of the tables, views, sequences, routines, database types and SQL objects its `dependsOn` names.
+          description: The ids of the tables, views, sequences, routines, database types and SQL objects its `dependsOn` names.
           items:
             type: string
         comment:
@@ -13767,7 +13650,7 @@ components:
             type: string
         writes:
           type: array
-          description: The ids (a synthesized table's key) of the tables a query written as SQL text writes, in file order; left out when none.
+          description: The ids of the tables a query written as SQL text writes, in file order; left out when none.
           items:
             type: string
         with:
@@ -13820,7 +13703,7 @@ components:
         uses:
           type: array
           description: >-
-            The ids (a synthesized table's key) of the tables, views, routines and database types the query reads; for a query
+            The ids of the tables, views, routines and database types the query reads; for a query
             written as SQL text, its `reads`, resolved, in file order.
           items:
             type: string
@@ -14624,7 +14507,7 @@ components:
     MaterializeEntityStatus:
       x-engine-record: Maquettiste.Engine.MaterializeEntityStatus
       type: object
-      required: [id, name, package, projected, table]
+      required: [id, name, package]
       properties:
         id:
           $ref: '#/components/schemas/Ulid'
@@ -14632,14 +14515,10 @@ components:
           type: string
         package:
           type: [string, 'null']
-        projected:
-          type: boolean
-        table:
-          type: [string, 'null']
     MaterializeSourceStatus:
       x-engine-record: Maquettiste.Engine.MaterializeSourceStatus
       type: object
-      required: [id, kind, name, schema, origin, boundBy]
+      required: [id, kind, name, schema, boundBy]
       properties:
         id:
           type: string
@@ -14650,8 +14529,6 @@ components:
           type: string
         schema:
           type: [string, 'null']
-        origin:
-          type: string
         boundBy:
           type: array
           items:
@@ -14740,15 +14617,14 @@ components:
       x-engine-record: Maquettiste.Engine.ColumnView
       description: |
         One resolved column. The annotation members (`displayName` to `generation`) come from the column's own entry in a table
-        file: a designed or extra column, or the overlay entry of a synthesized column. A synthesized column without an overlay
-        entry has none; it never takes its attribute's, which `attributeId` leads to.
+        file: a designed or extra column.
       type: object
-      required: [key, name, type, nativeType, length, precision, scale, nullable, defaultSql, identity, computed, attributeId, attributePath, isPrimaryKey, isForeignKey, isDiscriminator, position,
+      required: [key, name, type, nativeType, length, precision, scale, nullable, defaultSql, identity, computed, isPrimaryKey, isForeignKey, position,
         default, computedStored, sequenceId, collation, comment, displayName, pluralName, description, stereotypes, tags, category, properties, generation]
       properties:
         key:
           type: string
-          description: An attribute path, `discriminator`, `position`, `id`, or a column id.
+          description: A column id, or the keyed id of an inherited column.
         name:
           type: string
         type:
@@ -14771,15 +14647,9 @@ components:
           type: boolean
         computed:
           type: [string, 'null']
-        attributeId:
-          type: [string, 'null']
-        attributePath:
-          type: [string, 'null']
         isPrimaryKey:
           type: boolean
         isForeignKey:
-          type: boolean
-        isDiscriminator:
           type: boolean
         position:
           type: integer
@@ -14789,7 +14659,7 @@ components:
           type: boolean
         sequenceId:
           type: [string, 'null']
-          description: The id of the sequence that supplies values (a sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`).
+          description: The id of the sequence that supplies values (a sequence file's id).
         dbTypeId:
           description: The id of the database type the column uses (its file's `nativeType` names the type by id or name), or null. Always sent by this engine; optional for older servers.
           oneOf:
@@ -14839,15 +14709,14 @@ components:
         boundType:
           description: |
             Derived from bindings, like a table's bound-by list (0.28.0): the enum, reference type or scalar type of the attribute
-            the bindings map to the column, when they all agree; else null. A projected column has none: its attribute
-            (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in recordings made
+            the bindings map to the column, when they all agree; else null. `type` keeps the physical keyword. Always sent by this engine; absent in recordings made
             before.
           oneOf:
             - $ref: '#/components/schemas/TypeRecord'
             - type: 'null'
         sensitive:
           description: |
-            `pii` or `secret`: the column's own; else a projected column's attribute's own; else the strongest own value of the
+            `pii` or `secret`: the column's own; else the strongest own value of the
             attributes bindings map to it; null when none says. Always sent by this engine; absent in recordings made before.
           type: [string, 'null']
           enum: [pii, secret, null]
@@ -15068,8 +14937,7 @@ components:
           default: null
         elements:
           description: >-
-            Scoped generation: only the units of these elements, by id, never by name (a synthesized table's id is
-            `<entityId>@<databaseId>`); units that run once for the whole model never match. Values OR, and AND with
+            Scoped generation: only the units of these elements, by id, never by name (a table's id is its file's id); units that run once for the whole model never match. Values OR, and AND with
             `units`. `null` or an empty list: every element. A filter that selects no unit and no earlier output is the
             warning MQ6034.
           type: [array, 'null']

@@ -45,8 +45,7 @@ import { EdgeToggle, PanelToggle } from "@/app/panels";
 import { Splitter } from "@/components/ui/splitter";
 import { LIMITS } from "@/state/layout";
 import { ColumnPanel } from "./ColumnGrid";
-import { StoreTablesBanner } from "./StoreTablesBanner";
-import { shownTable } from "./storeTables";
+import { shownTable } from "./tableQueue";
 import { databaseTargetOf, ddlPreviewCaption, ddlPreviewTarget, emptyObjectUnitNote, NO_DDL_UNIT, type DdlObject } from "./ddlPreview";
 import { DATABASE_CREATE, DATABASE_CREATE_LABELS } from "@/explorer/databaseCreate";
 // The diagram designer (foreign keys by dragging, a picked key shown in the inspector, Delete, New table on the canvas, the
@@ -600,7 +599,6 @@ function DatabaseCanvas() {
             data-testid="database-canvas"
             data-layout={settledFor !== null && settledFor === layoutKey ? "settled" : "pending"}
           >
-            <StoreTablesBanner database={activeDatabase} tables={view.data?.view?.tables} />
             <MarkerDefs />
             {view.isPending ? <Spinner label="Resolving tables" /> : null}
             {scope.mode === "list" ? (

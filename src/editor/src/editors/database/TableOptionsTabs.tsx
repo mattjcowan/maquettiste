@@ -57,7 +57,7 @@ export function ExclusionsTab({ td }: { td: TableDoc }) {
   const dialect = useDialect(td);
   const doc = td.doc as Rec | undefined;
   if (!doc) return null;
-  const fixed = td.mode === "fixed";
+  const fixed = false;
   const columns = tableColumns(doc);
   const nameOf = (id: string) => columns.find((c) => c.id === id)?.name ?? id;
   const list = (doc.exclusions as Rec[] | undefined) ?? [];
@@ -270,7 +270,7 @@ export function StorageTab({ td }: { td: TableDoc }) {
   const vocab = useVocabularies("table");
   const doc = td.doc as Rec | undefined;
   if (!doc) return null;
-  const fixed = td.mode === "fixed";
+  const fixed = false;
   const tableName = td.table?.name ?? "table";
   const columns = tableColumns(doc);
   const nameOf = (id: string) => columns.find((c) => c.id === id)?.name ?? id;

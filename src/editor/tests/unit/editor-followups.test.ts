@@ -3,7 +3,7 @@
 // (model/vocabularies.ts) and the reference type menu (workspaces/reference-data/typeMenu.ts, explorer/menus.ts).
 import { describe, expect, it } from "vitest";
 import type { AttributeDoc, ElementSummary, ReferenceTypeDoc, SeedDoc } from "@/api/types";
-import { fieldSources, inHierarchy, inheritanceRows, relationMappingRows, virtualAttributes } from "@/editors/inheritance";
+import { fieldSources, inHierarchy, relationMappingRows, virtualAttributes } from "@/editors/inheritance";
 import { menuFor } from "@/explorer/menus";
 import { summaryFromDocument } from "@/model/model";
 import { marksLeavingScope } from "@/model/vocabularies";
@@ -21,22 +21,6 @@ describe("the Inheritance tab", () => {
     expect(inHierarchy(null, 0)).toBe(false);
     expect(inHierarchy("base", 0)).toBe(true);
     expect(inHierarchy(undefined, 2)).toBe(true);
-  });
-
-  it("reads the strategy from the root's mapping, then the database's, then the project's conventions, then tph", () => {
-    const rows = inheritanceRows({
-      databases: [...DBS, { id: "db3", name: "reports" }],
-      rootMappings: [{ database: "db1", inheritance: "tpt" }],
-      ownMappings: [{ database: "db1", discriminatorValue: "card" }],
-      conventions: { inheritance: "tpc" },
-      perDatabase: { archive: { inheritance: "tph" } },
-    });
-    expect(rows.map((r) => [r.databaseName, r.strategy, r.source, r.discriminatorValue])).toEqual([
-      ["main", "tpt", "mapping", "card"],
-      ["archive", "tph", "database", undefined],
-      ["reports", "tpc", "project", undefined],
-    ]);
-    expect(inheritanceRows({ databases: DBS, rootMappings: [], ownMappings: [] }).map((r) => r.source)).toEqual(["default", "default"]);
   });
 
   it("lists the attributes the entity's stereotypes add, in the entity's order, read-only", () => {
@@ -82,7 +66,7 @@ describe("the relationship editor's Mappings tab", () => {
       DBS,
       [
         { id: "m1", database: "db1", relation: "rel", shape: "junction" },
-        { id: "m2", database: "db2", relation: "other", shape: "promoted" },
+        { id: "m2", database: "db2", relation: "other", shape: "foreign-key" },
       ],
       (db) =>
         db === "db1"

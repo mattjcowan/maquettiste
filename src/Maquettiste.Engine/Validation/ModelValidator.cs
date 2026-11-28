@@ -44,7 +44,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// lowering one would let the file vanish from generation without an error.
     /// </summary>
     private static readonly FrozenSet<string> FixedSeverityRules =
-        new[] { "MQ1001", "MQ1002", "MQ1004", "MQ1006", "MQ1007", "MQ1009", "MQ4127", "MQ7012" }.ToFrozenSet(StringComparer.Ordinal);
+        new[] { "MQ1001", "MQ1002", "MQ1004", "MQ1006", "MQ1007", "MQ1009", "MQ4127", "MQ4145", "MQ4146", "MQ7012" }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>The walker of <see cref="TargetIds"/> (thread-safe; it caches metadata).</summary>
     private static readonly ReferenceWalker SelectionWalker = new();
@@ -495,11 +495,10 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// <summary>
     /// The files whose diagnostics can change with a document although they do not reference it: cross-file conflicts are reported
     /// on every file after the ordinally first, so the other participants must be validated with it. They are the files sharing a
-    /// scoped name (MQ3001) or a physical name (MQ4002), the other mappings of the same target and database and the other overlays of
-    /// the same synthesized table (MQ4004), for a table the first holder of each user-defined native type it uses and for a reference
+    /// scoped name (MQ3001) or a physical name (MQ4002), the other mappings of the same relation and database (MQ4004), for a table the first holder of each user-defined native type it uses and for a reference
     /// type or enum the tables whose native types carry its name (MQ4006, MQ4016), the other compositions of the same child (MQ3016),
-    /// the relations whose navigations land in the same inheritance hierarchy (MQ3009), an entity's descendants (MQ3007), and for a
-    /// mapping the relations and relation mappings whose foreign key binding depends on it (MQ4009, MQ4011); for a tag vocabulary or category tree every vocabulary and
+    /// the relations whose navigations land in the same inheritance hierarchy (MQ3009), an entity's descendants (MQ3007), for a
+    /// mapping its relation (MQ4115); for an entity the databases without byConvention (MQ4146); for a tag vocabulary or category tree every vocabulary and
     /// every element whose chain sees its scope (MQ2005, MQ2006, MQ2008, MQ3021), and for a package, when a domain vocabulary exists,
     /// every element under it (a move changes their chains); for a migration fact the facts of its database and the facts whose
     /// <c>after</c> links name it, in any database (MQ4104, MQ4105, MQ4107, MQ4111). Peers come from the document in scope: a deleted
@@ -609,28 +608,14 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
         }
 
-        // MQ4014 on a mapping depends on its database's schemas.
-        if (element is Database schemaOwner)
+        // MQ4146 on a database without byConvention depends on every entity's bindings.
+        if (element is Entity)
         {
-            foreach (var mapping in model.All<Mapping>())
+            foreach (var database in model.All<Database>())
             {
-                if (mapping.Schema is not null && string.Equals(mapping.Database, schemaOwner.Id, StringComparison.Ordinal) && model.GetDocument(mapping.Id) is { } peer)
+                if (database.ByConvention is null && model.GetDocument(database.Id) is { } peer)
                     yield return peer;
             }
-        }
-
-        // MQ4012 on an entity depends on every database's convention, on the entity's mappings and on the package chain.
-        if (element is Database || (element is Package && model.All<Database>().Any(d => d.ByConvention is null ? d.Packages.Count > 0 : d.ByConvention == ConventionMapping.Packages)))
-        {
-            foreach (var entity in model.All<Entity>())
-            {
-                if (model.GetDocument(entity.Id) is { } peer)
-                    yield return peer;
-            }
-        }
-        else if (element is Mapping { Entity: { } mappedEntity } && model.GetDocument(mappedEntity) is { Element: Entity } mappedDocument)
-        {
-            yield return mappedDocument;
         }
 
         // MQ4016 is reported on the first column of a user-defined native type with a count of every use; a reference type or
@@ -741,31 +726,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 foreach (var peer in LayerPeers(context, element.Id))
                     yield return peer;
                 break;
-            case Table table when ValidationContext.OverlayTarget(table) is { } overlayTarget:
-                foreach (var peer in context.OverlaysOf(overlayTarget))
-                    yield return peer;
-                break;
             case Mapping mapping:
-                if ((mapping.Entity ?? mapping.Relation) is { } target)
-                {
-                    foreach (var peer in context.MappingsOf(mapping.Database, target))
-                        yield return peer;
-                }
-
-                if (mapping.Relation is { } relationId && model.GetDocument(relationId) is { Element: Relation } relationDocument)
-                    yield return relationDocument; // MQ4011 on the relation file depends on whether a mapping exists
-                if (mapping.Entity is { } entityId)
-                {
-                    foreach (var reference in model.ReferencesTo(entityId))
-                    {
-                        if (model.GetDocument(reference.FromElementId) is not { Element: Relation relation } referrer)
-                            continue;
-                        yield return referrer;
-                        foreach (var peer in context.MappingsOf(mapping.Database, relation.Id))
-                            yield return peer;
-                    }
-                }
-
+                foreach (var peer in context.MappingsOf(mapping.Database, mapping.Relation))
+                    yield return peer;
+                if (model.GetDocument(mapping.Relation) is { Element: Relation } relationDocument)
+                    yield return relationDocument; // MQ4115 on the relation file depends on whether a mapping stores it
                 break;
             case Relation relation:
                 // A child end with several types reaches the compositions of every entity it covers (several-types-design.md decision 9).
@@ -820,7 +785,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// <summary>
     /// The files whose MQ4009 on <c>discriminatorValue</c> depends on what the ends with several types of the relations
     /// <paramref name="relevant"/> picks cover (several-types-design.md decision 42 and section 19.7): for each entity such an end covers, its
-    /// file when a binding sets <c>discriminatorValue</c>, and its mappings that set one. Worked out on one model; the store asks it of the
+    /// file when a binding sets <c>discriminatorValue</c>. Worked out on one model; the store asks it of the
     /// model before a change too, since an entity that loses coverage has its finding back. Nothing while no end has several types or no
     /// file sets <c>discriminatorValue</c>.
     /// </summary>
@@ -832,12 +797,6 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         if (!EndCoverage.Of(model).Any)
             yield break;
         var setters = new List<(string Entity, string File)>();
-        foreach (var mapping in model.All<Mapping>())
-        {
-            if (mapping is { Entity: { } entityId, DiscriminatorValue: not null })
-                setters.Add((entityId, mapping.Id));
-        }
-
         foreach (var entity in model.All<Entity>())
         {
             if (entity.Bindings.Any(b => b.DiscriminatorValue is not null))
@@ -908,8 +867,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         var model = context.Model;
         if (element is not (Entity or Package or Stereotype or Mapping or Database) || !EndCoverage.Of(model).Any)
             yield break;
-        var placement = element is Mapping or Database
-            || (element is Package && model.All<Database>().Any(d => d.ByConvention is null ? d.Packages.Count > 0 : d.ByConvention == ConventionMapping.Packages));
+        var placement = element is Mapping or Database;
         var carriers = element is Entity or Package or Stereotype;
         var linked = new List<Relation>();
         foreach (var relation in model.All<Relation>())
@@ -1078,7 +1036,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 {
                     foreach (var key in new[] { binding.Source, binding.Write?.Table })
                     {
-                        if (key is not null && model.Get<Table>(key) is { Origin: not TableOrigin.Synthesized })
+                        if (key is not null && model.Get<Table>(key) is not null)
                             tables.Add(key);
                     }
                 }
@@ -1178,30 +1136,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         if (schemas.Count == 0 && packages.Count == 0)
             yield break;
-        var routed = schemas.Count == 0 ? [] : model.All<Database>().Where(d => d.Schemas.Any(s => schemas.Contains(s.Id))).ToList();
         foreach (var doc in context.Documents)
         {
             var holder = model.HolderOf(doc.Element);
             if ((holder.Schema is { } schema && schemas.Contains(schema)) || (packages.Count > 0 && OnChain(model, holder.Package, packages)))
-            {
                 yield return doc;
-                continue;
-            }
-
-            foreach (var database in routed)
-            {
-                var tableSchema = doc.Element switch
-                {
-                    Entity entity => model.StereotypeDefaults.SchemaOf(database.Id, null, entity.Id),
-                    Relation relation => model.StereotypeDefaults.SchemaOf(database.Id, null, relation: relation.Id),
-                    _ => null,
-                };
-                if (tableSchema is not null && schemas.Contains(tableSchema))
-                {
-                    yield return doc;
-                    break;
-                }
-            }
         }
 
         static bool OnChain(ModelSnapshot model, string? packageId, HashSet<string> packages)
@@ -2100,8 +2039,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
     /// <summary>
     /// Applies <c>validation.rules</c>: a severity override, or <c>off</c>. MQ1xxx ignore <c>off</c>; the MQ1xxx errors that leave a
-    /// file out of the snapshot (MQ1001, MQ1002, MQ1004, MQ1006, MQ1007, MQ1009, MQ4127, a query key removed in 0.28.0, and MQ7012, a retired
-    /// option refused at load) ignore every setting.
+    /// file out of the snapshot (MQ1001, MQ1002, MQ1004, MQ1006, MQ1007, MQ1009, MQ4127, a query key removed in 0.28.0, MQ4145, a key removed in
+    /// 0.29.0, and MQ7012, a retired option refused at load) and MQ4146 (a database that laid out tables by convention) ignore every setting.
     /// </summary>
     internal static List<Diagnostic> ApplySettings(ProjectSettings settings, List<Diagnostic> diagnostics)
     {

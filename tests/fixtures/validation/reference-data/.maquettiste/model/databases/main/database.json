@@ -3,5 +3,6 @@
   "kind": "database",
   "id": "01JVRD00000000000000000001",
   "name": "main",
-  "dialect": "postgresql"
+  "dialect": "postgresql",
+  "byConvention": "none"
 }

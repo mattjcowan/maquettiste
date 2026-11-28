@@ -12,10 +12,10 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// The acceptance tests of stereotypes that contribute structure (next-phase-2-design.md section 3.1, task D14), each on a copy of the
 /// billing fixture with the sql-ddl pack. "AT1's copy": <c>audited</c> keeps its attributes and gains the columns <c>created_at</c> and
 /// <c>updated_at</c> and an index on <c>created_at</c>; schema <c>billing</c> lists it in <c>defaultStereotypes</c>; <c>notes</c>, which
-/// has its own <c>created_at</c>, excludes that member and the index on it. The shared fixture does not change.
+/// has its own <c>created_at</c>, excludes that member and the index on it; <c>customers</c>, <c>invoices</c> and <c>payments</c>, which
+/// have both columns of their own, exclude both members and the index. The shared fixture does not change.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class StereotypeMembersTests
 {
     private const string Audited = "01J92P0V25BX5TMQ8N9F6AJE61";
@@ -29,20 +29,18 @@ public sealed class StereotypeMembersTests
     private const string Main = E2ERepo.MainDatabaseId;
     private const string Customer = E2ERepo.CustomerId;
     private const string Invoice = E2ERepo.InvoiceId;
-    private const string InvoiceLine = "01J92P0V0GWFR78HZH0P8Z3GY7";
     private const string Payment = "01J92P0V0HEGSC6MW92CST5KA6";
-    private const string Product = E2ERepo.ProductId;
-    private const string Settles = "01J92P0V1DKHD5Q02DV6S5M53D";
     private const string CreatedAt = "01JC7AVD1TC0000000000000C1";
     private const string UpdatedAt = "01JC7AVD1TC0000000000000C2";
     private const string CreatedIndex = "01JC7AVD1TC0000000000000X1";
-    private const string OptOut = "01JC7AVD1TC0000000000000T1";
-    private const string ProductOverlay = "01JC7AVD1TC0000000000000T2";
+    private const string ProductsTable = "01M8EJPZN967ERTF2BPP3YM4QY";
+    private const string InvoiceLinesTable = "01M8EJPZN9VC241ZQY1P20V7D5";
+    private const string PaymentInvoiceTable = "01M8EJPZN9Y3HNXTC7V3Q7CP50";
 
     /// <summary>The seven tables of schema billing.</summary>
     private static readonly string[] BillingTables = ["customers", "invoice_lines", "invoices", "notes", "payment_invoice", "payments", "products"];
 
-    /// <summary>The tables of entities that carry <c>audited</c>: they store its attributes as columns and skip its members.</summary>
+    /// <summary>The tables with created_at and updated_at of their own: they exclude audited's members.</summary>
     private static readonly string[] Stored = ["customers", "invoices", "payments"];
 
     /// <summary>The tables that inherit both members and the index under AT1's copy.</summary>
@@ -51,8 +49,6 @@ public sealed class StereotypeMembersTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static string Keyed(string tableKey, string member) => tableKey + "." + member;
-
-    private static string Synthesized(string id) => id + "@" + Main;
 
     // ---- setup ----
 
@@ -89,6 +85,8 @@ public sealed class StereotypeMembersTests
         });
         EditOnDisk(repo, DatabasePath, "database.json", d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("audited"));
         EditOnDisk(repo, NotesPath, "table.json", t => t["excludes"] = new JsonArray(CreatedAt, CreatedIndex));
+        foreach (var name in new[] { "customers", "invoices", "payments" })
+            EditOnDisk(repo, TablesFolder + name + ".json", "table.json", t => t["excludes"] = new JsonArray(CreatedAt, UpdatedAt, CreatedIndex));
         return repo;
     }
 
@@ -98,24 +96,6 @@ public sealed class StereotypeMembersTests
         var node = JsonNode.Parse(File.ReadAllBytes(repo.Repo.PathOf(path)))!.AsObject();
         change(node);
         File.WriteAllBytes(repo.Repo.PathOf(path), TestServices.Json.Write(node, schema, path));
-    }
-
-    /// <summary>Writes an overlay of an entity's table in database main, holding the given keys besides its identity.</summary>
-    private static string Overlay(E2ERepo repo, string id, string entity, Action<JsonObject> keys)
-    {
-        var path = TablesFolder + id.ToLowerInvariant() + ".json";
-        var node = new JsonObject
-        {
-            ["$schema"] = "../../../../.schema/v1/table.json",
-            ["kind"] = "table",
-            ["id"] = id,
-            ["database"] = Main,
-            ["origin"] = "synthesized",
-            ["entity"] = entity,
-        };
-        keys(node);
-        File.WriteAllBytes(repo.Repo.PathOf(path), TestServices.Json.Write(node, "table.json", path));
-        return path;
     }
 
     // ---- reading ----
@@ -194,7 +174,6 @@ public sealed class StereotypeMembersTests
             var table = Table(main, name);
             Assert.All(table.Columns, c => Assert.Equal("own", c.MemberOrigin.Source));
             Assert.All(table.Indexes, i => Assert.Equal("own", i.MemberOrigin.Source));
-            Assert.NotNull(Column(table, "created_at")!.Attribute);
         }
 
         // products, invoice_lines and payment_invoice inherit both columns and the index, keyed by their table key.
@@ -211,9 +190,9 @@ public sealed class StereotypeMembersTests
             Assert.Equal((Keyed(table.Key, CreatedIndex), "schema-default"), (index.Id, index.MemberOrigin.Source));
         }
 
-        Assert.Equal(Synthesized(Product), Table(main, "products").Key);
-        Assert.Equal(Synthesized(InvoiceLine), Table(main, "invoice_lines").Key);
-        Assert.Equal(Synthesized(Settles), Table(main, "payment_invoice").Key);
+        Assert.Equal(ProductsTable, Table(main, "products").Key);
+        Assert.Equal(InvoiceLinesTable, Table(main, "invoice_lines").Key);
+        Assert.Equal(PaymentInvoiceTable, Table(main, "payment_invoice").Key);
 
         // notes keeps its own created_at and inherits updated_at, but not the index on the member it excludes.
         var notes = Table(main, "notes");
@@ -232,12 +211,12 @@ public sealed class StereotypeMembersTests
     public async Task Invoice_line_opts_out_in_one_line()
     {
         await using var repo = At1Copy();
-        Overlay(repo, OptOut, InvoiceLine, t => t["excludeStereotypes"] = new JsonArray("audited"));
+        EditOnDisk(repo, TablesFolder + "invoice-lines.json", "table.json", t => t["excludeStereotypes"] = new JsonArray("audited"));
 
         var main = await MainAsync(repo);
 
         var lines = Table(main, "invoice_lines");
-        Assert.Equal(Synthesized(InvoiceLine), lines.Key);
+        Assert.Equal(InvoiceLinesTable, lines.Key);
         Assert.Null(Column(lines, "created_at"));
         Assert.Null(Column(lines, "updated_at"));
         Assert.DoesNotContain(lines.Indexes, i => i.MemberOrigin.Source != "own");
@@ -248,7 +227,7 @@ public sealed class StereotypeMembersTests
             Assert.NotNull(Column(Table(main, name), "updated_at"));
         }
 
-        Assert.Equal(Keyed(Synthesized(Product), CreatedIndex), Assert.Single(Table(main, "products").Indexes, i => i.MemberOrigin.Source != "own").Id);
+        Assert.Equal(Keyed(ProductsTable, CreatedIndex), Assert.Single(Table(main, "products").Indexes, i => i.MemberOrigin.Source != "own").Id);
         var diagnostics = await ValidateCleanAsync(repo);
         Assert.DoesNotContain(diagnostics, d => d.Rule == "MQ2030");
     }
@@ -259,8 +238,8 @@ public sealed class StereotypeMembersTests
         await using var repo = At1Copy();
         var before = Column(Table(await MainAsync(repo), "products"), "created_at")!;
         var key = before.Key;
-        Assert.Equal(("01J92P0V0JR8BE8253SKT29ZG7@01J92P0V1QRN2181XM2ZWE02W4.01JC7AVD1TC0000000000000C1", false), (key, before.Nullable));
-        Overlay(repo, ProductOverlay, Product, t => t["redefines"] = new JsonArray(new JsonObject { ["member"] = CreatedAt, ["nullable"] = true }));
+        Assert.Equal(("01M8EJPZN967ERTF2BPP3YM4QY.01JC7AVD1TC0000000000000C1", false), (key, before.Nullable));
+        EditOnDisk(repo, TablesFolder + "products.json", "table.json", t => t["redefines"] = new JsonArray(new JsonObject { ["member"] = CreatedAt, ["nullable"] = true }));
         await repo.Store.RescanAsync(false, Ct);
 
         var created = Column(Table(await MainAsync(repo), "products"), "created_at")!;
@@ -275,10 +254,10 @@ public sealed class StereotypeMembersTests
         created = Column(Table(await MainAsync(repo), "products"), "created_at")!;
         Assert.Equal((key, true, "timestamptz(3)"), (created.Key, created.Nullable, created.NativeType));
 
-        // Removing the entry changes no key and no seed: the write touches the overlay and its migration facts only.
-        var saved = await repo.EditAsync(ProductOverlay, t => t.Remove("redefines"));
+        // Removing the entry changes no key and no seed: the write touches the table and its migration facts only.
+        var saved = await repo.EditAsync(ProductsTable, t => t.Remove("redefines"));
         var facts = (saved.Facts ?? []).Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
-        Assert.Equal([ProductOverlay], saved.Changes!.Changed.Select(c => c.Id).Where(id => !facts.Contains(id!)));
+        Assert.Equal([ProductsTable], saved.Changes!.Changed.Select(c => c.Id).Where(id => !facts.Contains(id!)));
         created = Column(Table(await MainAsync(repo), "products"), "created_at")!;
         Assert.Equal((key, false), (created.Key, created.Nullable));
         Assert.Empty(created.MemberOrigin.Redefined);
@@ -338,7 +317,7 @@ public sealed class StereotypeMembersTests
         }
 
         Assert.Equal(
-            new[] { Keyed(Notes, UpdatedAt), Keyed(Synthesized(InvoiceLine), UpdatedAt), Keyed(Synthesized(Product), UpdatedAt), Keyed(Synthesized(Settles), UpdatedAt) }
+            new[] { Keyed(Notes, UpdatedAt), Keyed(InvoiceLinesTable, UpdatedAt), Keyed(ProductsTable, UpdatedAt), Keyed(PaymentInvoiceTable, UpdatedAt) }
                 .Order(StringComparer.Ordinal),
             keys.Order(StringComparer.Ordinal));
         Assert.Equal(tables, TableFiles(repo));
@@ -359,13 +338,11 @@ public sealed class StereotypeMembersTests
         EditOnDisk(repo, AuditedPath, "stereotype.json", s => s["columns"] = new JsonArray(
             new JsonObject { ["id"] = CreatedAt, ["name"] = "created_at", ["type"] = "datetimeoffset", ["nullable"] = false },
             new JsonObject { ["id"] = UpdatedAt, ["name"] = "updated_at", ["type"] = "datetimeoffset" }));
-        await ApplyBatchAsync(repo, $$"""
-            [ { "op": "materialize-tables", "database": "{{Main}}", "entities": ["{{Customer}}", "{{Invoice}}", "{{InvoiceLine}}", "{{Payment}}", "{{Product}}"] } ]
-            """);
+        // invoices lists audited and has both columns of its own: it excludes both members.
+        EditOnDisk(repo, TablesFolder + "invoices.json", "table.json", t => t["excludes"] = new JsonArray(CreatedAt, UpdatedAt));
         await GenerateAsync(repo);
         var snapshot = await repo.Store.GetSnapshotAsync(Ct);
         Table File(ModelSnapshot model, string name) => model.All<Table>().Single(t => t.Name == name && t.Database == Main);
-        // invoices' overlay listed audited, which its entity's attributes realize: the designed table excludes both members.
         Assert.Equal(["audited"], File(snapshot, "invoices").Stereotypes);
         Assert.Equal([CreatedAt, UpdatedAt], File(snapshot, "invoices").Excludes);
         var untouched = new[] { "products", "invoice_lines" }.ToDictionary(n => n, n => snapshot.GetDocument(File(snapshot, n).Id)!.Hash);

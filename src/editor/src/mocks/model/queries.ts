@@ -1472,11 +1472,7 @@ function findColumn(source: RSource, name: string): { table?: ColumnView; view?:
   }
   if (target?.table) {
     const columns = target.table.columns;
-    const column =
-      columns.find((c) => c.name === name) ??
-      columns.find((c) => c.key === name) ??
-      columns.find((c) => c.attributeId === name) ??
-      loose(columns, (c) => c.name, name);
+    const column = columns.find((c) => c.name === name) ?? columns.find((c) => c.key === name) ?? loose(columns, (c) => c.name, name);
     return column ? { table: column } : {};
   }
   if (target?.view) {

@@ -188,15 +188,15 @@
   "files": [
     {
       "path": "README.md",
-      "size": 67374,
-      "hash": "5d7106655a11a06af0a83c8217f379d288e3ca853e8a90d43807a6b1524f6675",
+      "size": 65796,
+      "hash": "198421bebfc3cffe0a0f6bd023504464517b808bf22d879d5681bce1b467a7f6",
       "role": "other",
       "usedBy": []
     },
     {
       "path": "_data.scriban",
-      "size": 9889,
-      "hash": "d45dbba42a9e144dbbe4d28f1f7c7b905270b0fd8dd199c337785e939ec20313",
+      "size": 12030,
+      "hash": "793fb62b9c574474210a3be4dc350dd548d3fb01c65e66c799156a0be17c557c",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban",
@@ -218,8 +218,8 @@
     },
     {
       "path": "_lifecycle.scriban",
-      "size": 5906,
-      "hash": "90b82080fdb49d337ad0d75e113aaddde48a3c9e9db8050e83d2891f1642acf8",
+      "size": 5719,
+      "hash": "72d7941644fc8297b4767043609a166630b9b9c24e4ebfbe7b910f1413daee70",
       "role": "partial",
       "usedBy": [
         "include:seed.scriban"
@@ -227,8 +227,8 @@
     },
     {
       "path": "_migration.scriban",
-      "size": 118441,
-      "hash": "09ba77bb432ce92e6616356efae73a520c3e0d71ff8e1cb23d600950c310ecd7",
+      "size": 119107,
+      "hash": "55b3e2e532974e1e7f8f8bb7d1ed33d401ce18acba0162983ff8a96eeea4937a",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban"
@@ -254,8 +254,8 @@
     },
     {
       "path": "_reference.scriban",
-      "size": 36511,
-      "hash": "a8638047e42515f80e5bea4b7fe5b318d86f4f41004e1c6368d135fc1c7e337e",
+      "size": 22966,
+      "hash": "993173b39ae7dba54648cb56beff02566e73ff30fdcf48dec9c09c36dcfe974b",
       "role": "partial",
       "usedBy": [
         "include:migration.scriban",
@@ -266,8 +266,8 @@
     },
     {
       "path": "_sql.scriban",
-      "size": 27794,
-      "hash": "712e07f8875e1221962cd825dbc742f0f0eea3932516c28cfa651710f9a8ceee",
+      "size": 26270,
+      "hash": "5489c77295428398cd10041480ce1e61652878208e5a5799024941c9e8cc43a7",
       "role": "partial",
       "usedBy": [
         "include:database-type.scriban",
@@ -314,8 +314,8 @@
     },
     {
       "path": "migration.scriban",
-      "size": 23199,
-      "hash": "60c419d191aa2ed999f782459f1e51f38e323e04aa67569811174cda776c8df5",
+      "size": 23782,
+      "hash": "afeaf0256760c928037fca1bf1911eabf46271a76df3778cad1b6eb13942fd51",
       "role": "template",
       "usedBy": [
         "unit:migration"
@@ -375,8 +375,8 @@
     },
     {
       "path": "seed.scriban",
-      "size": 2596,
-      "hash": "84d84ebcc41415721059fc0af8ed6f6e1cb366c7b9b2a61ccaab67c1eab4316c",
+      "size": 2086,
+      "hash": "5ca30c24b10d75ccee26cd4f2cb5eca82a5a3770f672c3587c5bb33a595c7ede",
       "role": "template",
       "usedBy": [
         "unit:seed"
@@ -402,8 +402,8 @@
     },
     {
       "path": "table.scriban",
-      "size": 438,
-      "hash": "165c1ed878b4a31b6a37c277c05a1db983e1f4a5760cb0b8635ea7526e2b06f2",
+      "size": 435,
+      "hash": "2b177264aabfd0ca5e0e6acaf8ce59cdcfacc71e6528bcbddaa9bf022dfa20b5",
       "role": "template",
       "usedBy": [
         "unit:table"

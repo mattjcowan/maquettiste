@@ -10,10 +10,10 @@ namespace Maquettiste.Engine.Loading;
 /// run inside resolution (a table per entity, one per hierarchy or per concrete entity or per type, child tables, junction tables,
 /// foreign key columns, key sequences, constraint names and comments from the naming conventions), run only when someone asks for
 /// tables. It reads the resolved entities, relations and types of the model as it is, the effective conventions and type map of the
-/// database, the hints older mapping files and overlays give (read, never written), and the tables the database already has for
+/// database, what a relation mapping already says about a relation (read, never written), and the tables the database already has for
 /// entities outside the request. It writes nothing: the materializer turns the proposal into table files and bindings. For the same
-/// settings, every table has the shape the projection gives it (column names, types, nullability, keys, foreign keys with their
-/// actions, uniques, indexes, sequences, comments), so storing it changes no DDL.
+/// settings, every table has the shape the projection gave it before 0.29.0 (column names, types, nullability, keys, foreign keys with
+/// their actions, uniques, indexes, sequences, comments).
 /// </summary>
 internal sealed class TableDesigner
 {
@@ -24,9 +24,7 @@ internal sealed class TableDesigner
     private readonly IReadOnlyDictionary<string, string> _typeMap;
     private readonly string _dialect;
     private readonly Inflector _inflector;
-    private readonly Func<string, DesignEntityHints?> _entityHints;
     private readonly Func<string, DesignRelationHints?> _relationHints;
-    private readonly Func<string, Table?> _overlayOf;
     private readonly Func<string, DesignHierarchy> _shapeOf;
     private readonly Func<string, StorageKind?> _listStorage;
     private readonly Func<string, DesignTarget?> _outside;
@@ -45,16 +43,12 @@ internal sealed class TableDesigner
     /// <param name="model">The model as it is.</param>
     /// <param name="resolved">Its resolution (the entities, relations and types; the database's existing tables).</param>
     /// <param name="db">The database the tables go to.</param>
-    /// <param name="entityHints">An entity's hints from an older mapping file, by entity id.</param>
-    /// <param name="relationHints">A relation's hints from an older mapping file, by relation id.</param>
-    /// <param name="overlayOf">The overlay of a table by target (<c>entity:&lt;id&gt;</c>, <c>child:&lt;owner&gt;.&lt;attribute&gt;</c>,
-    /// <c>relation:&lt;id&gt;</c>), or <see langword="null"/>.</param>
+    /// <param name="relationHints">What a relation's mapping to the database says, by relation id.</param>
     /// <param name="shapeOf">The shape of a hierarchy, by its root entity's id.</param>
     /// <param name="listStorage">The storage the request asks for a list attribute (table or json), by attribute id, or <see langword="null"/>.</param>
     /// <param name="outside">The table the database already has for an entity outside the request, or <see langword="null"/>.</param>
-    public TableDesigner(ModelSnapshot model, ResolvedModel resolved, Database db, Func<string, DesignEntityHints?> entityHints,
-        Func<string, DesignRelationHints?> relationHints, Func<string, Table?> overlayOf, Func<string, DesignHierarchy> shapeOf,
-        Func<string, StorageKind?> listStorage, Func<string, DesignTarget?> outside)
+    public TableDesigner(ModelSnapshot model, ResolvedModel resolved, Database db, Func<string, DesignRelationHints?> relationHints,
+        Func<string, DesignHierarchy> shapeOf, Func<string, StorageKind?> listStorage, Func<string, DesignTarget?> outside)
     {
         _model = model;
         _resolved = resolved;
@@ -63,9 +57,7 @@ internal sealed class TableDesigner
         _typeMap = DialectTypeMaps.Effective(db.Dialect, model.Settings);
         _dialect = DialectTypeMaps.Name(db.Dialect);
         _inflector = new Inflector(model.Settings.Inflection);
-        _entityHints = entityHints;
         _relationHints = relationHints;
-        _overlayOf = overlayOf;
         _shapeOf = shapeOf;
         _listStorage = listStorage;
         _outside = outside;
@@ -87,9 +79,9 @@ internal sealed class TableDesigner
     {
         foreach (var entity in _resolved.Entities)
         {
-            if (entity.IsPromoted || !requested.Contains(entity.Id))
+            if (!requested.Contains(entity.Id))
                 continue;
-            var e = new DesignedEntity { Entity = entity, Hints = _entityHints(entity.Id) };
+            var e = new DesignedEntity { Entity = entity };
             _entities[entity.Id] = e;
             _entityOrder.Add(e);
         }
@@ -148,27 +140,14 @@ internal sealed class TableDesigner
             };
             if (!owns)
                 continue;
-            var overlay = _overlayOf("entity:" + p.Entity.Id);
-            var name = overlay is { Name.Length: > 0 } ? overlay.Name : TableNameFor(p.Entity.Name, ExplicitPlural(p.Entity.Id));
             var t = new DesignedTable
             {
                 Key = p.Entity.Id + "@" + _db.Id,
-                Name = name,
-                SchemaId = overlay?.Schema ?? p.Hints?.SchemaId ?? ConventionSchema(p.Entity.Id),
+                Name = TableNameFor(p.Entity.Name, ExplicitPlural(p.Entity.Id)),
                 Kind = DesignedTableKind.Entity,
                 Entity = p.Entity,
-                Overlay = overlay,
-                Comment = overlay?.Comment,
                 PackageId = _model.Get<Entity>(p.Entity.Id)?.Package,
             };
-            if (overlay is not null)
-            {
-                AddOverlayColumns(t, overlay);
-                AddConstraintFiles(t, overlay, primaryKey: false);
-                if (overlay.PrimaryKey is { Columns.Count: > 0 } overlayPk)
-                    t.Deferred.Add(() => { t.PrimaryKey.Clear(); t.PrimaryKey.AddRange(overlayPk.Columns); });
-            }
-
             AddTable(t);
             p.Table = t;
         }
@@ -187,66 +166,10 @@ internal sealed class TableDesigner
         }
     }
 
-    /// <summary>The schema a conventional entity table went to: the nearest convention package entry of the database that names one.</summary>
-    private string? ConventionSchema(string entityId) =>
-        DatabaseScope.SchemaFor(_model, _db, _model.Get<Entity>(entityId)?.Package, null);
-
     private void AddTable(DesignedTable t)
     {
         _tables.Add(t);
         _tablesByKey.TryAdd(t.Key, t);
-        if (t.Overlay is { } overlay)
-            _tablesByKey.TryAdd(overlay.Id, t);
-    }
-
-    private static void AddOverlayColumns(DesignedTable t, Table overlay)
-    {
-        foreach (var column in overlay.Columns)
-        {
-            if (column.Attribute is { } key)
-                t.OverlayColumns.TryAdd(key, column);
-        }
-    }
-
-    /// <summary>The constraints and indexes an overlay declares, as the projection added them (its checks move in as the file writes them).</summary>
-    private void AddConstraintFiles(DesignedTable t, Table overlay, bool primaryKey)
-    {
-        if (overlay.PrimaryKey is { } pk)
-        {
-            if (primaryKey && pk.Columns.Count > 0)
-            {
-                t.PrimaryKey.Clear();
-                t.PrimaryKey.AddRange(pk.Columns);
-            }
-
-            if (pk.Name is not null)
-                t.PrimaryKeyName = pk.Name;
-            if (pk.Clustered is not null)
-                t.PrimaryKeyClustered = pk.Clustered;
-        }
-
-        foreach (var unique in overlay.Uniques)
-            t.Uniques.Add(new DesignedUnique(unique.Columns, unique.Name, null, unique.Id, unique.NullsNotDistinct));
-        foreach (var fk in overlay.ForeignKeys)
-        {
-            t.ForeignKeys.Add(new DesignedForeignKey
-            {
-                Id = fk.Id, Name = fk.Name, Columns = fk.Columns, TargetFileKey = fk.ReferencesTable, TargetColumns = fk.ReferencesColumns,
-                OnDelete = ResolutionValues.Kebab(fk.OnDelete), OnUpdate = ResolutionValues.Kebab(fk.OnUpdate), OnDeleteColumns = fk.OnDeleteColumns,
-                Deferrable = ResolutionValues.Kebab(fk.Deferrable),
-            });
-        }
-
-        foreach (var index in overlay.Indexes)
-        {
-            var columns = index.Columns.Select(c => c.Column is null
-                ? new DesignedIndexColumn(null, c.Descending, c.Expression is null ? null : ForDialect(c.Expression), c.Length)
-                : new DesignedIndexColumn(c.Column, c.Descending, null, c.Length)).ToList();
-            if (columns.Any(c => c.Column is null && c.Expression is null))
-                continue;
-            t.Indexes.Add(new DesignedIndex(columns, index.Include, index.Where, index.Unique, ResolutionValues.Kebab(index.Method), index.Name, FromFile: true,
-                Id: index.Id));
-        }
     }
 
     private void AddEntityColumns(DesignedEntity p, DesignedTable t)
@@ -256,13 +179,13 @@ internal sealed class TableDesigner
         {
             case DesignHierarchy.OneTable:
                 foreach (var a in entity.Attributes)
-                    AddAttributeColumns(t, a, AttributeHintFor(p, a), p.KeyIds.Contains(a.Id), false, entity.Name);
+                    AddAttributeColumns(t, a, p.KeyIds.Contains(a.Id), false, entity.Name);
                 foreach (var d in Descendants(p))
                 {
                     foreach (var a in d.Entity.Attributes)
                     {
                         if (!t.ByKey.ContainsKey(a.Id) && !HasPathUnder(t, a.Id))
-                            AddAttributeColumns(t, a, AttributeHintFor(d, a), p.KeyIds.Contains(a.Id), true, entity.Name);
+                            AddAttributeColumns(t, a, p.KeyIds.Contains(a.Id), true, entity.Name);
                     }
                 }
 
@@ -274,13 +197,13 @@ internal sealed class TableDesigner
                 foreach (var a in entity.Attributes)
                 {
                     if (p.KeyIds.Contains(a.Id) || ReferenceEquals(a.DeclaringEntity, entity))
-                        AddAttributeColumns(t, a, AttributeHintFor(p, a), p.KeyIds.Contains(a.Id), false, entity.Name);
+                        AddAttributeColumns(t, a, p.KeyIds.Contains(a.Id), false, entity.Name);
                 }
 
                 break;
             default:
                 foreach (var a in entity.Attributes)
-                    AddAttributeColumns(t, a, AttributeHintFor(p, a), p.KeyIds.Contains(a.Id), false, entity.Name);
+                    AddAttributeColumns(t, a, p.KeyIds.Contains(a.Id), false, entity.Name);
                 break;
         }
 
@@ -296,10 +219,10 @@ internal sealed class TableDesigner
             };
             t.ForeignKeys.Add(fk);
             p.BaseForeignKey = fk;
-            // Its key columns follow the base table's, unless its own overlay pins them.
+            // Its key columns follow the base table's.
             foreach (var key in t.PrimaryKey)
             {
-                if (t.Resolve(key) is not { } column || baseTable.Resolve(key) is not { } referenced || PinsType(t.OverlayColumns.GetValueOrDefault(key)))
+                if (t.Resolve(key) is not { } column || baseTable.Resolve(key) is not { } referenced)
                     continue;
                 (column.Type, column.Length, column.Precision, column.Scale, column.NativeType) =
                     (referenced.Type, referenced.Length, referenced.Precision, referenced.Scale, referenced.NativeType);
@@ -337,17 +260,6 @@ internal sealed class TableDesigner
                 && (string.Equals(path, k.Id, StringComparison.Ordinal) || path.StartsWith(k.Id + ".", StringComparison.Ordinal))))
             .Select(c => c.Key);
 
-    private DesignAttributeHint? AttributeHintFor(DesignedEntity p, RAttribute a)
-    {
-        foreach (var hints in new[] { p.Hints, a.DeclaringEntity is { } d ? _entityHints(d.Id) : null, p.Root.Hints })
-        {
-            if (hints?.Attributes.TryGetValue(a.Id, out var found) == true)
-                return found;
-        }
-
-        return null;
-    }
-
     /// <summary>Identity or a sequence on the key column (engine-design.md section 7.5, D37).</summary>
     private void ApplyKeyGeneration(DesignedEntity p, DesignedTable t)
     {
@@ -356,7 +268,7 @@ internal sealed class TableDesigner
         var strategy = _model.Get<Entity>(p.Root.Entity.Id)?.Key?.Strategy;
         if (t.PrimaryKey.Count != 1 || t.Resolve(t.PrimaryKey[0]) is not { } column)
             return;
-        if (strategy == IdentityStrategy.DatabaseIdentity && !t.SequenceOverrides.ContainsKey(column.Key) && column.Sequence is null)
+        if (strategy == IdentityStrategy.DatabaseIdentity && column.Sequence is null)
         {
             column.Identity = true;
             return;
@@ -364,11 +276,6 @@ internal sealed class TableDesigner
 
         if (strategy != IdentityStrategy.Sequence || column.Identity)
             return;
-        if (t.SequenceOverrides.TryGetValue(column.Key, out var existing))
-        {
-            column.Sequence = new DesignedSequence { Key = existing, Name = "", Type = "int64", ExistingId = existing };
-            return;
-        }
 
         var key = p.Root.Entity.Id + ".sequence@" + _db.Id;
         if (!_sequences.TryGetValue(key, out var sequence))
@@ -425,18 +332,16 @@ internal sealed class TableDesigner
     // ---- attribute columns ------------------------------------------------------------------------------------------------------
 
     /// <summary>Adds the columns of one attribute (engine-design.md section 7.5) to a table.</summary>
-    private void AddAttributeColumns(DesignedTable t, RAttribute a, DesignAttributeHint? hint, bool isKey, bool forceNullable, string entityName)
+    private void AddAttributeColumns(DesignedTable t, RAttribute a, bool isKey, bool forceNullable, string entityName)
     {
-        if (hint is { Ignore: true })
-            return;
-        if (a.Derived is { Stored: false } && hint is null && !t.OverlayColumns.ContainsKey(a.Id))
-            return; // derived: not stored unless mapped or marked stored
+        if (a.Derived is { Stored: false })
+            return; // derived: not stored unless marked stored
         var nullable = !isKey && (forceNullable || !a.Required);
         var name = isKey
             ? Render(_conv.KeyColumn, ("attribute", a.Name), ("entity", entityName), ("table", t.Name))
             : ColumnName(a.Name);
-        var storage = a.Collection && _listStorage(a.Id) is { } asked ? asked : hint?.Storage;
-        AddValueColumns(t, a, a.Id, name, nullable, storage, hint?.Prefix ?? a.Name, 0);
+        var storage = a.Collection ? _listStorage(a.Id) : null;
+        AddValueColumns(t, a, a.Id, name, nullable, storage, a.Name, 0);
     }
 
     private void AddValueColumns(DesignedTable t, RAttribute a, string path, string name, bool nullable, StorageKind? storage, string prefix, int depth)
@@ -447,7 +352,7 @@ internal sealed class TableDesigner
             // pack made of a template-defined collection), or a JSON column when the request asks for one.
             if (a.Collection)
             {
-                // Only the request turns such a list into JSON: an older mapping's storage never did (the pack kept the list).
+                // Only the request turns such a list into JSON.
                 if (depth == 0 && _listStorage(a.Id) == StorageKind.Json)
                     AddColumn(t, path, name, "json", null, null, null, nullable, null, a, path);
                 else if (depth == 0 && !KnownStrategy(reference))
@@ -523,11 +428,10 @@ internal sealed class TableDesigner
         storage is StorageKind.Table or StorageKind.Json ? storage.Value
         : _conv.ValueObjectCollectionStorage == StorageKind.Json ? StorageKind.Json : StorageKind.Table;
 
-    /// <summary>The storage a list attribute gets when the request says nothing: its hint's, else the conventions'.</summary>
-    /// <param name="hint">The attribute's hint.</param>
+    /// <summary>The storage a list attribute gets when the request says nothing: the conventions'.</summary>
     /// <param name="referenceList">Whether it is a list of a reference type (a table of its own unless asked otherwise).</param>
-    public StorageKind DefaultListStorage(DesignAttributeHint? hint, bool referenceList) =>
-        referenceList ? StorageKind.Table : CollectionStorage(hint?.Storage);
+    public StorageKind DefaultListStorage(bool referenceList) =>
+        referenceList ? StorageKind.Table : CollectionStorage(null);
 
     /// <summary>Embedded value object: prefixed columns, recursively (keys <c>&lt;attr&gt;.&lt;member&gt;</c>); a containment cycle stops.</summary>
     private void Embed(DesignedTable t, RValueObject vo, string path, string prefix, bool nullable, int depth, List<RValueObject> outer)
@@ -592,7 +496,7 @@ internal sealed class TableDesigner
         // Shapes a binding cannot hold yet (retire-projection-design.md section 3): refused, never dropped.
         if (a.Owner is RRelation relation)
         {
-            _refusal ??= $"Attribute '{a.Name}' of relation '{relation.Name}' is stored in a table of its own, which no binding can hold yet: store it as JSON (listStorage json, or storage json on the relation's mapping), or leave the relation out.";
+            _refusal ??= $"Attribute '{a.Name}' of relation '{relation.Name}' is stored in a table of its own, which no binding can hold yet: store it as JSON (listStorage json), or leave the relation out.";
             return;
         }
 
@@ -604,30 +508,20 @@ internal sealed class TableDesigner
 
         var ownerId = owner.Entity?.Id ?? owner.Relation?.Id ?? owner.Key;
         var ownerName = owner.Entity?.Name ?? owner.Relation?.Name ?? owner.Name;
-        var overlay = _overlayOf("child:" + ownerId + "." + a.Id);
         var t = new DesignedTable
         {
             Key = ownerId + "." + a.Id + "@" + _db.Id,
-            Name = overlay is { Name.Length: > 0 } ? overlay.Name
-                : NamePattern.Render(_conv.ChildTable, new Dictionary<string, string>(StringComparer.Ordinal) { ["entity"] = ownerName, ["attribute"] = a.Name },
+            Name = NamePattern.Render(_conv.ChildTable, new Dictionary<string, string>(StringComparer.Ordinal) { ["entity"] = ownerName, ["attribute"] = a.Name },
                     _conv.TableCase, _conv.PluralTables ? _inflector : null, owner.Entity is { } ownerEntity ? ExplicitPlural(ownerEntity.Id) : null),
-            SchemaId = overlay?.Schema ?? owner.SchemaId,
+            SchemaId = owner.SchemaId,
             Kind = DesignedTableKind.Child,
             Entity = owner.Entity,
             Relation = owner.Relation,
             Attribute = a,
             Owner = owner,
             IsList = collection,
-            Overlay = overlay,
-            Comment = overlay?.Comment,
             PackageId = owner.PackageId,
         };
-        if (overlay is not null)
-        {
-            AddOverlayColumns(t, overlay);
-            AddConstraintFiles(t, overlay, primaryKey: true);
-        }
-
         AddTable(t);
         owner.Children.Add(t);
         var ownerKeys = new List<string>();
@@ -763,9 +657,8 @@ internal sealed class TableDesigner
     private static KeyColumnShape Shape(DesignedColumn c) => new(c.Key, c.Type, c.Length, c.Precision, c.Scale, c.NativeType, c.Scalar);
 
     /// <summary>
-    /// Adds a column (or returns the existing one with that key), with its overlay entry applied. A column that stores a custom scalar
-    /// type takes its native type for the dialect unless an overlay changes it; a foreign key column passes the referenced column as
-    /// <paramref name="follows"/> and takes its native type, unless its own overlay entry pins its type.
+    /// Adds a column (or returns the existing one with that key). A column that stores a custom scalar type takes its native type for the
+    /// dialect; a foreign key column passes the referenced column as <paramref name="follows"/> and takes its native type.
     /// </summary>
     private DesignedColumn AddColumn(DesignedTable t, string key, string name, string type, int? length, int? precision, int? scale, bool nullable,
         object? defaultValue, RAttribute? attribute, string? path, RReferenceType? reference = null, RScalarType? scalar = null, KeyColumnShape? follows = null)
@@ -786,29 +679,11 @@ internal sealed class TableDesigner
             AttributePath = path,
             ReferenceType = reference,
         };
-        if (t.OverlayColumns.TryGetValue(key, out var overlay))
-        {
-            c.Entry = overlay;
-            if (overlay.Name.Length > 0)
-                c.Name = overlay.Name;
-            if (overlay.Type is not null)
-                c.Type = overlay.Type;
-            c.Length = overlay.Length ?? c.Length;
-            c.Precision = overlay.Precision ?? c.Precision;
-            c.Scale = overlay.Scale ?? c.Scale;
-            c.Nullable = overlay.Nullable ?? c.Nullable;
-            ApplyColumnFile(t, c, overlay);
-            t.ByKey.TryAdd(overlay.Id, c);
-        }
-
         ApplyFacetDefaults(c);
         if (scalar is not null && !string.Equals(c.Type, scalar.Base, StringComparison.Ordinal))
             scalar = null;
         c.Scalar = scalar;
-        if (follows is not null && !PinsType(overlay))
-            c.NativeType = follows.NativeType;
-        else
-            c.NativeType = overlay?.NativeType ?? NativeType(c.Type, c.Length, c.Precision, c.Scale, scalar, c.FixedLength, c.Unicode);
+        c.NativeType = follows is not null ? follows.NativeType : NativeType(c.Type, c.Length, c.Precision, c.Scale, scalar, c.FixedLength, c.Unicode);
         t.Columns.Add(c);
         t.ByKey[key] = c;
         return c;
@@ -843,52 +718,6 @@ internal sealed class TableDesigner
         _ => "",
     };
 
-    /// <summary>Whether an overlay column entry pins the column's physical type: its type, length, precision, scale or native type.</summary>
-    private static bool PinsType(Column? entry) =>
-        entry is not null && (entry.Type is not null || entry.Length is not null || entry.Precision is not null || entry.Scale is not null || entry.NativeType is not null);
-
-    /// <summary>Applies the physical properties an overlay column entry sets.</summary>
-    private void ApplyColumnFile(DesignedTable t, DesignedColumn c, Column column)
-    {
-        c.Description = column.Description?.Text;
-        if (column.Default is { } value)
-            c.Default = ResolutionValues.Plain(value);
-        if (ForDialect(column.DefaultSql) is { } sql)
-            c.DefaultSql = sql;
-        switch (column.Generated)
-        {
-            case ColumnGeneration.Identity:
-                c.Identity = true;
-                c.Sequence = null;
-                c.IdentitySeed = column.Identity?.Seed;
-                c.IdentityIncrement = column.Identity?.Increment;
-                c.IdentityAlways = column.Identity?.Always ?? false;
-                break;
-            case ColumnGeneration.Sequence:
-                c.Identity = false;
-                if (column.Sequence is { } sequenceId)
-                {
-                    t.SequenceOverrides[c.Key] = sequenceId;
-                    c.Sequence = new DesignedSequence { Key = sequenceId, Name = "", Type = "int64", ExistingId = sequenceId };
-                }
-
-                break;
-        }
-
-        if (column.Computed is not null)
-        {
-            c.Computed = column.Computed;
-            c.ComputedStored = column.ComputedStored;
-        }
-
-        c.StableId |= column.StableId;
-        c.Collation = column.Collation ?? c.Collation;
-        c.Comment = column.Comment ?? c.Comment;
-        c.Unicode = column.Unicode ?? c.Unicode;
-        c.FixedLength |= column.FixedLength;
-        c.DefaultName = column.DefaultName ?? c.DefaultName;
-    }
-
     /// <summary>Fills a column's missing facets with the conventions' defaults; a range column takes none.</summary>
     private void ApplyFacetDefaults(DesignedColumn c)
     {
@@ -920,9 +749,6 @@ internal sealed class TableDesigner
             : DialectTypeMaps.RenderPattern(pattern, type, length, precision, scale, _conv);
     }
 
-    private string? ForDialect(IReadOnlyDictionary<string, string> values) =>
-        values.TryGetValue(_dialect, out var value) ? value : values.TryGetValue("*", out var any) ? any : null;
-
     // ---- relations --------------------------------------------------------------------------------------------------------------
 
     /// <summary>Where the rows of an end's entity live: a requested entity's table, or the table the database already has.</summary>
@@ -943,13 +769,13 @@ internal sealed class TableDesigner
 
     private void DesignRelation(RRelation rel)
     {
-        // A relation with an end of several types is stored only as its mapping describes; a promotion relation has no file.
+        // A relation with an end of several types is stored only as its mapping describes.
         if (_model.Get<Relation>(rel.Id) is not { } src || EndCoverage.HasSeveralTypes(src))
             return;
         if (!rel.Ends.All(e => e.Entity is { } entity && Placed(entity)) || !rel.Ends.Any(e => _entities.ContainsKey(e.Entity!.Id)))
             return;
         var hints = _relationHints(rel.Id);
-        if (hints is { Ignore: true } or { Stored: true })
+        if (hints is { Stored: true })
             return;
         // An abstract base stored as a table per concrete entity has no table: a relation that points at it has no binding form yet.
         if (rel.Ends.FirstOrDefault(e => _entities.TryGetValue(e.Entity!.Id, out var p) && p.Shape == DesignHierarchy.PerConcrete && p.Table is null) is { } end)
@@ -963,26 +789,25 @@ internal sealed class TableDesigner
             case RelationShape.ForeignKey:
                 DesignForeignKeyShape(rel, src, hints);
                 break;
-            case RelationShape.Promoted:
-                _notes.Add($"Relation '{rel.Name}' is stored as an entity of its own (promoted), which a designed table does not take: it is left as it is.");
-                break;
             default:
                 // A junction table joins entities whose tables are designed: each end in the request, or already bound.
-                if (rel.Ends.All(e => _entities.ContainsKey(e.Entity!.Id) || TargetOf(e.Entity!) is { ExistingProjected: false }))
-                    DesignJunction(rel, src, hints);
+                if (rel.Ends.All(e => _entities.ContainsKey(e.Entity!.Id) || TargetOf(e.Entity!) is not null))
+                    DesignJunction(rel, src);
                 break;
         }
     }
 
-    private RelationShape ShapeOf(RRelation rel, Relation src, DesignRelationHints? m)
+    /// <summary>
+    /// The relation's shape: a junction table for an n-ary or many-to-many relation; else the mapping's <c>shape</c>, else a junction table
+    /// for a relation that carries attributes, else a foreign key.
+    /// </summary>
+    private static RelationShape ShapeOf(RRelation rel, Relation src, DesignRelationHints? m)
     {
         var nary = rel.Ends.Count != 2 || src.RelationKind == RelationKind.NAry;
         var manyToMany = string.Equals(rel.Cardinality, "many-to-many", StringComparison.Ordinal);
-        if (m?.Shape == RelationShape.Promoted)
-            return RelationShape.Promoted;
         if (nary)
             return RelationShape.Junction;
-        var shape = m?.Shape ?? (rel.Attributes.Count > 0 ? _conv.RelationsWithAttributes : manyToMany ? RelationShape.Junction : RelationShape.ForeignKey);
+        var shape = m?.Shape ?? (rel.Attributes.Count > 0 || manyToMany ? RelationShape.Junction : RelationShape.ForeignKey);
         return shape == RelationShape.ForeignKey && manyToMany ? RelationShape.Junction : shape;
     }
 
@@ -1067,7 +892,7 @@ internal sealed class TableDesigner
             foreach (var a in rel.Attributes)
             {
                 var before = host.Columns.Count;
-                AddAttributeColumns(host, a, m?.Attributes.GetValueOrDefault(a.Id), false, true, rel.Name);
+                AddAttributeColumns(host, a, false, true, rel.Name);
                 foreach (var column in host.Columns.Skip(before))
                     attributeColumns.Add((column.AttributePath ?? column.Key, host, column));
             }
@@ -1102,27 +927,17 @@ internal sealed class TableDesigner
         return keys;
     }
 
-    private void DesignJunction(RRelation rel, Relation src, DesignRelationHints? m)
+    private void DesignJunction(RRelation rel, Relation src)
     {
-        var overlay = _overlayOf("relation:" + rel.Id);
-        var name = overlay is { Name.Length: > 0 } ? overlay.Name : JunctionName(rel);
+        var name = JunctionName(rel);
         var t = new DesignedTable
         {
             Key = rel.Id + "@" + _db.Id,
             Name = name,
-            SchemaId = overlay?.Schema,
             Kind = DesignedTableKind.Junction,
             Relation = rel,
-            Overlay = overlay,
-            Comment = overlay?.Comment,
             PackageId = src.Package,
         };
-        if (overlay is not null)
-        {
-            AddOverlayColumns(t, overlay);
-            AddConstraintFiles(t, overlay, primaryKey: true);
-        }
-
         AddTable(t);
         var surrogate = src.AllowDuplicates || src.Ends.Any(e => e.Ordered);
         if (surrogate)
@@ -1159,7 +974,7 @@ internal sealed class TableDesigner
         foreach (var a in rel.Attributes)
         {
             var before = t.Columns.Count;
-            AddAttributeColumns(t, a, m?.Attributes.GetValueOrDefault(a.Id), false, false, rel.Name);
+            AddAttributeColumns(t, a, false, false, rel.Name);
             foreach (var column in t.Columns.Skip(before))
                 attributeColumns.Add((column.AttributePath ?? column.Key, t, column));
         }
@@ -1354,7 +1169,6 @@ internal sealed class TableDesigner
     {
         foreach (var t in _tables)
         {
-            AddOverlayExtraColumns(t);
             FillComments(t);
             // What the sql-ddl pack read from the attribute moves into the column: a named default expression becomes its SQL default.
             foreach (var c in t.Columns)
@@ -1383,9 +1197,6 @@ internal sealed class TableDesigner
         {
             foreach (var fk in t.ForeignKeys)
             {
-                fk.Target ??= fk.TargetFileKey is { } fileKey
-                    ? _tablesByKey.TryGetValue(fileKey, out var designed) ? new DesignTarget { Designed = designed } : ExistingById(fileKey)
-                    : null;
                 var columns = fk.Columns.Select(t.Resolve).ToList();
                 if (fk.Target is null || columns.Count == 0 || columns.Any(c => c is null))
                     continue;
@@ -1437,62 +1248,19 @@ internal sealed class TableDesigner
         }
     }
 
-    /// <summary>A table the database already has, by its id (an overlay's foreign key to a designed table).</summary>
-    private DesignTarget? ExistingById(string id) =>
-        _resolved.Databases.FirstOrDefault(d => d.Id == _db.Id)?.Tables.FirstOrDefault(t => t.Key == id) is { } table
-            ? new DesignTarget
-            {
-                ExistingKey = table.Key, ExistingName = table.Name,
-                ExistingKeyColumns = [.. (table.PrimaryKey?.Columns ?? []).Select(c => new KeyColumnShape(c.Key, c.Type, c.Length, c.Precision, c.Scale, c.NativeType, null))],
-            }
-            : null;
-
     private static string Joined(IEnumerable<DesignedColumn> columns) => string.Join('_', columns.Select(c => c.Name));
 
-    /// <summary>Overlay columns that override no proposed column (<c>attribute</c> null): extra columns, appended in file order.</summary>
-    private void AddOverlayExtraColumns(DesignedTable t)
-    {
-        if (t.Overlay is null)
-            return;
-        foreach (var column in t.Overlay.Columns)
-        {
-            if (column.Attribute is not null || t.ByKey.ContainsKey(column.Id))
-                continue;
-            var c = new DesignedColumn
-            {
-                Key = column.Id,
-                Name = column.Name,
-                Type = column.Type ?? "string",
-                Subtype = BuiltinTypes.IsRange(column.Type) ? column.Subtype : null,
-                Length = column.Length,
-                Precision = column.Precision,
-                Scale = column.Scale,
-                Nullable = column.Nullable ?? true,
-                Entry = column,
-            };
-            ApplyColumnFile(t, c, column);
-            ApplyFacetDefaults(c);
-            c.NativeType = column.NativeType ?? (BuiltinTypes.IsRange(c.Type) && _typeMap.TryGetValue(DialectTypeMaps.RangeKey(c.Type, c.Subtype), out var range)
-                ? range : NativeType(c.Type, c.Length, c.Precision, c.Scale, null, c.FixedLength, c.Unicode));
-            t.Columns.Add(c);
-            t.ByKey[column.Id] = c;
-        }
-    }
-
     /// <summary>
-    /// The <c>comments</c> convention: with <c>descriptions</c>, a table without an explicit comment takes its overlay's description,
-    /// else the description of what it stores; a column its entry's description, else its attribute's.
+    /// The <c>comments</c> convention: with <c>descriptions</c>, a table takes the description of what it stores, a column its attribute's.
     /// </summary>
     private void FillComments(DesignedTable t)
     {
         if (_conv.Comments != CommentSource.Descriptions)
             return;
-        var overlayDescription = t.Overlay?.Description is { } d ? d.Text ?? (d.File is null ? null : _model.GetDocument(t.Overlay.Id)?.SidecarText) : null;
-        t.Comment ??= Text(overlayDescription)
-            ?? (t.Attribute is { } attribute && !t.IsReferenceList ? Text(OwnDescription(attribute))
-                : t.IsReferenceList ? null : Text(t.Entity?.Description) ?? Text(t.Relation?.Description));
+        t.Comment ??= t.Attribute is { } attribute && !t.IsReferenceList ? Text(OwnDescription(attribute))
+            : t.IsReferenceList ? null : Text(t.Entity?.Description) ?? Text(t.Relation?.Description);
         foreach (var column in t.Columns)
-            column.Comment ??= Text(column.Description) ?? (t.IsReferenceList ? null : Text(OwnDescription(column.Attribute)));
+            column.Comment ??= t.IsReferenceList ? null : Text(OwnDescription(column.Attribute));
 
         static string? Text(string? description) => string.IsNullOrWhiteSpace(description) ? null : description.Trim();
     }

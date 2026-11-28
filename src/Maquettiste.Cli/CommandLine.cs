@@ -21,7 +21,7 @@ internal sealed class CommandLine
         "--inputs", "--scenario", "--domain", "--use", "--subject", "--into", "--processes", "--entity",
         "--kind", "--package", "--tag", "--category", "--stereotype", "--query", "--ids", "--fields", "--scope", "--database", "--by",
         "--resolution", "--description", "--element", "--column", "--attribute", "--against", "--grant-read", "--unit", "--case",
-        "--at", "--text", "--on", "--site", "--values", "--hierarchy", "--list-storage",
+        "--at", "--text", "--on", "--site", "--values", "--hierarchy", "--list-storage", "--schema",
     };
 
     /// <summary>Options that are flags.</summary>

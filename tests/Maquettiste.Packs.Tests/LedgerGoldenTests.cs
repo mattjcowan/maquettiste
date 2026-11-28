@@ -19,8 +19,8 @@ internal static class LedgerFacts
     public const string Adopt = "01JFCT00000000000000000004";
     public const string Pending = "01JFCT00000000000000000005";
 
-    private const string Invoices = "01J92P0V0FJ23CGSNKM7P1W5V7@" + MainId;
-    private const string Customers = "01J92P0V0ETQKXXP951CMMNHH3@" + MainId;
+    private const string Invoices = "01J92P0V1T0J6RH4MY9H81NYB4";
+    private const string Customers = "01M8EJPZN867GR1CJR5ZERBJ0V";
 
     /// <summary>The rename of <c>invoices.invoice_no</c> to <c>number</c>: complete, so a build reaches it.</summary>
     public static void AddRename(PackRepo repo) => Add(repo, "main", Rename, $$"""
@@ -29,7 +29,7 @@ internal static class LedgerFacts
           "object": {
             "kind": "column",
             "table": "{{Invoices}}",
-            "key": "01J92P0V0R3VSP7D5238DTNZX1",
+            "key": "01J92P0V1VQAA9FW71PKYWWHKN",
             "schema": "billing",
             "tableName": "invoices",
             "name": "number"
@@ -49,7 +49,7 @@ internal static class LedgerFacts
           "object": {
             "kind": "column",
             "table": "{{Customers}}",
-            "key": "01J92P0V0P4MBJRM6QN6H0RSVP",
+            "key": "01M8EJPZN8BGJ7KV30184YH61V",
             "schema": "billing",
             "tableName": "customers",
             "name": "customer_since"
@@ -91,7 +91,7 @@ internal static class LedgerFacts
           "object": {
             "kind": "column",
             "table": "{{Invoices}}",
-            "key": "01J92P0V0WKRGKH7YBKA2V30NC",
+            "key": "01M8EJPZN8DNZMM57CDYT1P8DX",
             "schema": "billing",
             "tableName": "invoices",
             "name": "notes"
@@ -106,13 +106,16 @@ internal static class LedgerFacts
           }
         """);
 
-    /// <summary>A plain fact (a rename of a table that no build has reached) in another database of the dialects variant.</summary>
+    /// <summary>
+    /// A plain fact (a rename of a table that no build has reached) in another database of the dialects variant: its customers table,
+    /// which "Create tables…" designed there.
+    /// </summary>
     public static void AddTableRename(PackRepo repo, string database, string databaseId, string id) => Add(repo, database, id, $$"""
           "database": "{{databaseId}}",
           "fact": "rename",
           "object": {
             "kind": "table",
-            "key": "01J92P0V0ETQKXXP951CMMNHH3@{{databaseId}}",
+            "key": "{{CustomersIn(repo, databaseId)}}",
             "name": "customers"
           },
           "from": {
@@ -122,6 +125,10 @@ internal static class LedgerFacts
             "name": "customers"
           }
         """);
+
+    private static string CustomersIn(PackRepo repo, string databaseId) =>
+        (string)System.Text.Json.Nodes.JsonNode.Parse(repo.Read(".maquettiste/model/entities/customer.json"))!["bindings"]!.AsArray()
+            .Single(b => (string?)b!["database"] == databaseId)!["source"]!;
 
     private static void Add(PackRepo repo, string database, string id, string fields) =>
         repo.Write($".maquettiste/model/databases/{database}/migrations/open/{id.ToLowerInvariant()}.json",
@@ -133,7 +140,6 @@ internal static class LedgerFacts
 /// The migration ledger in sql-ddl's schema script (next-phase-1-design.md section 3.3): on PostgreSQL a script that reaches facts
 /// runs in one transaction with the ledger DDL and one row per fact it reaches; a model without facts writes what it always wrote.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class LedgerGoldenTests
 {
     [Fact]
@@ -225,10 +231,12 @@ public sealed class LedgerGoldenTests
         {
             var path = MigrationFiles.Of(repo, database, 1);
             var migration = repo.Read(path);
-            Assert.Contains("\n-- Facts: " + fact + "\n", migration, StringComparison.Ordinal);
+            // The golden's header names the facts it already has (local's: the rekey that adopted its lookup table); this one adds its own.
+            Assert.Matches("\n-- Facts: [^\n]*" + fact + "[^\n]*\n", migration);
             Assert.DoesNotContain(LedgerContract.DefaultSchema, migration, StringComparison.Ordinal);
             var golden = File.ReadAllText(Directory.GetFiles(Fixtures.Path("golden", "sql-ddl", "billing-dialects", database, "migrations")).Single());
-            Assert.Equal(golden.Replace("\n-- Facts: none\n", "\n-- Facts: " + fact + "\n", StringComparison.Ordinal), migration);
+            static string WithoutFacts(string text) => System.Text.RegularExpressions.Regex.Replace(text, "\n-- Facts: [^\n]*\n", "\n-- Facts: -\n");
+            Assert.Equal(WithoutFacts(golden), WithoutFacts(migration));
         }
     }
 

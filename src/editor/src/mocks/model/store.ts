@@ -1589,7 +1589,7 @@ export function summary(e: Entry): ElementSummary {
 }
 
 /** The index format hashed into the index tag; the engine's ModelReads.IndexFormat. */
-export const INDEX_FORMAT = "maquettiste-index/e11";
+export const INDEX_FORMAT = "maquettiste-index/e15";
 
 /** The E5 members of an index row, present only for the kinds that carry them (as the engine writes them). */
 function e5(json: Json): Partial<ElementSummary> {
@@ -1597,8 +1597,17 @@ function e5(json: Json): Partial<ElementSummary> {
   if (typeof json.displayName === "string") out.displayName = json.displayName;
   const kind = json.kind;
   if (DATABASE_MEMBER_KINDS.has(String(kind)) && typeof json.database === "string") out.database = json.database;
-  if ((kind === "table" || kind === "mapping") && typeof json.entity === "string") out.entity = json.entity;
   if (kind === "entity" && typeof json.base === "string") out.base = json.base;
+  // Per binding in file order, the table its writes go to, else its source, distinct (the engine's ElementSummary.BoundTo).
+  if (kind === "entity" && Array.isArray(json.bindings) && json.bindings.length) {
+    const ids: string[] = [];
+    for (const b of json.bindings as Json[]) {
+      const write = b.write as Json | undefined;
+      const id = write && write.none !== true && typeof write.table === "string" ? write.table : b.source;
+      if (typeof id === "string" && !ids.includes(id)) ids.push(id);
+    }
+    if (ids.length) out.boundTo = ids;
+  }
   if (kind === "seed") {
     if (typeof json.target === "string") out.target = json.target;
     out.rowCount = Array.isArray(json.rows) ? json.rows.length : 0;

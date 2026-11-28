@@ -320,8 +320,7 @@ difference in a facet a table may redefine (nullable, a default, a comment, a co
 `redefines` entry holding the table's value when `redefine` is true, and refuses the table otherwise. A member the table
 lacks joins its `excludes` when `excludeMissing` is true, and refuses the table otherwise; a table where nothing matches
 is skipped. An own column or constraint whose entry has a description, tags or other annotations the member lacks
-refuses the table too, so the fold never drops documentation: move it to the stereotype first. A synthesized table, a
-table that excludes the stereotype, and a table or stereotype that another operation of the batch writes are refused.
+refuses the table too, so the fold never drops documentation: move it to the stereotype first. A table that excludes the stereotype, and a table or stereotype that another operation of the batch writes are refused.
 Each refused table is one MQ4077 on the operation, and the batch writes nothing.
 
 **The rekey.** The ids changed and the database did not, so the write records one `rekey` fact per database and nothing

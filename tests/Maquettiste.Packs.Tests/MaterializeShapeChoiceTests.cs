@@ -12,12 +12,12 @@ namespace Maquettiste.Packs.Tests;
 /// "Create tables…" (materialize-tables) with its choices (retire-projection-design.md section 7): a hierarchy stored as one table, a
 /// table per concrete entity or a table per type (the <c>hierarchy</c> parameter), a list stored in a table of its own or a JSON column
 /// (<c>listStorage</c>), a many-to-many relation in a junction table with its relation mapping, the plan's choices, and the refusals.
-/// Over the billing model's dialects variant, where CreditNote derives from Invoice.
+/// Over the billing model's dialects variant before its tables are made, in its SQL Server database (<c>reporting</c>), where
+/// CreditNote derives from Invoice and no entity is bound yet.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class MaterializeShapeChoiceTests
 {
-    private const string Main = "01J92P0V1QRN2181XM2ZWE02W4";
+    private const string Main = "01J92P0V2A0000000000000001";
     private const string Customer = "01J92P0V0ETQKXXP951CMMNHH3";
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
     private const string CreditNote = "01J92P0V2C0000000000000001";
@@ -55,12 +55,9 @@ public sealed class MaterializeShapeChoiceTests
         }));
 
     [Fact]
-    public async Task One_table_is_the_default_the_root_names_the_type_column_and_a_mapping_code_moves_into_the_binding()
+    public async Task One_table_is_the_default_and_the_root_names_the_type_column()
     {
-        using var repo = PackRepo.BillingDialects();
-        repo.Write(".maquettiste/model/mappings/credit-note-in-main.json", $$"""
-            { "kind": "mapping", "id": "01K9MATER00000000000000010", "name": "CreditNote in main", "database": "{{Main}}", "entity": "{{CreditNote}}", "discriminatorValue": "CN" }
-            """);
+        using var repo = PackRepo.BillingDialectsWithoutTables();
 
         var (result, snapshot, errors, problems) = await ApplyAsync(repo, Op());
 
@@ -70,16 +67,15 @@ public sealed class MaterializeShapeChoiceTests
         var root = BindingOf(snapshot, Invoice);
         var derived = BindingOf(snapshot, CreditNote);
         Assert.Equal((invoices.Id, type.Id), (root.Source, root.DiscriminatorColumn));
-        Assert.Equal((invoices.Id, (string?)null, "\"CN\""), (derived.Source, derived.DiscriminatorColumn, derived.DiscriminatorValue?.GetRawText()));
+        Assert.Equal((invoices.Id, (string?)null), (derived.Source, derived.DiscriminatorColumn));
         Assert.Contains(root.Columns, c => c.Column == invoices.Columns.Single(x => x.Name == "reason").Id && c.Status == BindingColumnStatus.Ignored);
-        Assert.Null(snapshot.GetDocument("01K9MATER00000000000000010"));
         Assert.DoesNotContain(snapshot.All<Table>(), t => t.Name == "credit_notes");
     }
 
     [Fact]
     public async Task A_table_per_type_keys_the_derived_table_by_its_base_and_its_binding_names_the_base_foreign_key()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
         await using (var store = new ModelStore(repo.Repo.Options))
         {
             var plan = await store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", Main, [Customer, Invoice, CreditNote, InvoiceLine, Payment, Product])
@@ -91,11 +87,9 @@ public sealed class MaterializeShapeChoiceTests
             Assert.Equal(["Invoice", "CreditNote"], choice.Entities);
         }
 
-        var (result, snapshot, _, problems) = await ApplyAsync(repo, Op($$""","hierarchy":{"{{Invoice}}":"per-type"}"""));
+        var (result, snapshot, errors, problems) = await ApplyAsync(repo, Op($$""","hierarchy":{"{{Invoice}}":"per-type"}"""));
 
-        // Another shape than the projection's changes the database: the columns invoices no longer holds are drops to acknowledge.
-        Assert.Equal(SaveOutcome.Saved, result.Outcome);
-        Assert.All(problems.Split('\n'), p => Assert.Contains("needs acknowledge", p, StringComparison.Ordinal));
+        Assert.True(result.Outcome == SaveOutcome.Saved && errors == 0, problems);
         var invoices = TableNamed(snapshot, "invoices");
         var creditNotes = TableNamed(snapshot, "credit_notes");
         Assert.DoesNotContain(invoices.Columns, c => c.Name is "discriminator" or "reason");
@@ -111,7 +105,7 @@ public sealed class MaterializeShapeChoiceTests
     [Fact]
     public async Task A_table_per_concrete_entity_maps_every_attribute_and_an_abstract_base_gets_no_table()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
         repo.EditJson(".maquettiste/model/entities/credit-note.json", e => e["base"] = null);
         repo.Write(".maquettiste/model/entities/document.json", """
             { "kind": "entity", "id": "01K9MATER00000000000000020", "name": "Document", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "abstract": true,
@@ -142,15 +136,12 @@ public sealed class MaterializeShapeChoiceTests
     [InlineData("json")]
     public async Task A_list_goes_to_a_child_table_with_a_child_tables_entry_or_to_a_json_column(string? storage)
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
         AddPhoneNumbers(repo);
 
         var (result, snapshot, errors, problems) = await ApplyAsync(repo, Op(storage is null ? "" : $$""","listStorage":{"{{Phones}}":"{{storage}}"}"""));
 
-        // JSON instead of the table the projection made drops that table: a fact that needs its acknowledgement, as any drop does.
-        var expected = storage == "json" ? 1 : 0;
-        Assert.True(result.Outcome == SaveOutcome.Saved && errors == expected, problems);
-        Assert.True(expected == 0 || problems.Contains("The drop of table 'customers_phone_numbers' needs acknowledge", StringComparison.Ordinal), problems);
+        Assert.True(result.Outcome == SaveOutcome.Saved && errors == 0, problems);
         var customers = TableNamed(snapshot, "customers");
         var binding = BindingOf(snapshot, Customer);
         if (storage == "json")
@@ -174,13 +165,12 @@ public sealed class MaterializeShapeChoiceTests
     [Fact]
     public async Task A_many_to_many_relation_gets_a_designed_junction_table_and_its_mapping_names_it()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
 
         var (result, snapshot, errors, problems) = await ApplyAsync(repo, Op());
 
         Assert.True(result.Outcome == SaveOutcome.Saved && errors == 0, problems);
         var junction = TableNamed(snapshot, "payment_invoice");
-        Assert.Equal(TableOrigin.Designed, junction.Origin);
         var mapping = snapshot.All<Mapping>().Single(m => m.Database == Main && m.Relation == Settles);
         Assert.Equal(junction.Id, mapping.JunctionTable);
         Assert.Null(mapping.Shape);
@@ -190,7 +180,7 @@ public sealed class MaterializeShapeChoiceTests
     [Fact]
     public async Task A_hierarchy_is_named_whole_and_unknown_choices_are_refused()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
         await using var store = new ModelStore(repo.Repo.Options);
 
         async Task<string> Refusal(MaterializeRequest request)
@@ -222,7 +212,7 @@ public sealed class MaterializeShapeChoiceTests
     [Fact]
     public async Task A_reference_column_under_a_check_gets_the_check_the_pack_wrote_declared_by_the_table()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
 
         var (result, snapshot, errors, problems) = await ApplyAsync(repo, Op());
 
@@ -230,13 +220,14 @@ public sealed class MaterializeShapeChoiceTests
         var payments = TableNamed(snapshot, "payments");
         var method = payments.Columns.Single(c => c.Name == "method");
         var check = Assert.Single(payments.Checks, c => c.Name == "ck_payments_method_ref");
-        Assert.Equal((method.Id, "method IN ('card', 'transfer', 'cash')"), (check.Column, check.Expression["postgresql"]));
+        Assert.Equal(method.Id, check.Column);
+        Assert.Contains("method IN (", Assert.Single(check.Expression.Values), StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task A_reference_column_under_a_lookup_table_gets_a_foreign_key_into_the_lookup_table_now_designed_and_bound()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
 
         var (result, snapshot, errors, problems) = await ApplyAsync(repo, Op().Replace(Main, Local, StringComparison.Ordinal));
 
@@ -283,7 +274,7 @@ public sealed class MaterializeShapeChoiceTests
     [Fact]
     public async Task A_list_attribute_of_a_relation_kept_in_a_table_is_refused_by_name()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
         repo.EditJson(".maquettiste/model/relations/settles.json", r => r["attributes"]!.AsArray().Add(new JsonObject
         {
             ["id"] = "01K9MATER00000000000000050", ["name"] = "remarks", ["type"] = "string", ["length"] = 40, ["collection"] = true,
@@ -302,7 +293,7 @@ public sealed class MaterializeShapeChoiceTests
     [Fact]
     public async Task A_value_object_inside_a_list_item_is_embedded_in_the_child_table()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
         repo.Write(".maquettiste/model/types/price-line.json", """
             { "kind": "value-object", "id": "01K9MATER00000000000000060", "name": "PriceLine", "package": "01J92P0V01KDRN8GX5PGYCNKSX",
               "attributes": [ { "id": "01K9MATER00000000000000061", "name": "label", "type": "string", "length": 40 },
@@ -325,14 +316,11 @@ public sealed class MaterializeShapeChoiceTests
     [Fact]
     public async Task A_relation_attribute_on_a_foreign_key_is_named_in_the_relation_mapping()
     {
-        using var repo = PackRepo.BillingDialects();
-        // The relation keeps its foreign key in every database (a relation with attributes is a junction by convention).
-        foreach (var (db, n) in new[] { (Main, 1), ("01J92P0V2A0000000000000001", 2), (Local, 3) })
-        {
-            repo.Write($".maquettiste/model/mappings/places-{n}.json", $$"""
-                { "kind": "mapping", "id": "01K9MATER0000000000000007{{n}}", "name": "places {{n}}", "database": "{{db}}", "relation": "{{Places}}", "shape": "foreign-key" }
-                """);
-        }
+        using var repo = PackRepo.BillingDialectsWithoutTables();
+        // The relation keeps its foreign key (a relation with attributes is a junction unless its mapping says otherwise).
+        repo.Write(".maquettiste/model/mappings/places-reporting.json", $$"""
+            { "kind": "mapping", "id": "01K9MATER00000000000000072", "name": "places in reporting", "database": "{{Main}}", "relation": "{{Places}}", "shape": "foreign-key" }
+            """);
         repo.EditJson(".maquettiste/model/relations/places.json", r => r["attributes"] = new JsonArray(new JsonObject
         {
             ["id"] = "01K9MATER00000000000000070", ["name"] = "channel", ["type"] = "string", ["length"] = 20,

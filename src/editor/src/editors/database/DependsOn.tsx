@@ -24,9 +24,7 @@ export interface DependencyOption {
 }
 
 /**
- * The elements of a database an object may depend on (not itself), by kind then name. A table is named by its table name: a
- * file without a name of its own (one that adjusts a table the model lays out) takes the resolved table's name from
- * `tableNames` (by the laid-out key, `<owner>@<database>`), else its id; the database side never names an entity.
+ * The elements of a database an object may depend on (not itself), by kind then name. A table is named by its table name; the database side never names an entity.
  */
 export function dependencyOptions(
   rows: readonly { id: string; kind: string; name: string; database?: string | null; entity?: string | null; relation?: string | null }[],

@@ -9,24 +9,16 @@ using Maquettiste.Engine.Validation;
 namespace Maquettiste.Engine;
 
 /// <summary>One table of a database without its columns (E5c, explorer-redesign.md section 4.1).</summary>
-/// <param name="Key">As <see cref="TableView.Key"/>: a table file's id, or a synthesized key such as <c>&lt;entityId&gt;@&lt;databaseId&gt;</c>.</param>
+/// <param name="Key">As <see cref="TableView.Key"/>: the table file's id.</param>
 /// <param name="Name">The physical name.</param>
 /// <param name="Schema">The schema name, or <see langword="null"/>.</param>
-/// <param name="Origin"><c>synthesized</c>, <c>designed</c> or <c>imported</c>.</param>
-/// <param name="EntityId">The mapped entity's id, for an entity table.</param>
-/// <param name="RelationId">The relation's id, for a junction table.</param>
-/// <param name="IsJunction">Whether the table is a relation's junction table.</param>
-/// <param name="IsLookup">Always <see langword="false"/>: the enum lookup-table option is retired (MQ7012); kept for the contract.</param>
+/// <param name="RelationId">The id of the relation whose relation mapping names the table as its junction table, or <see langword="null"/>.</param>
 /// <param name="ColumnCount">The number of columns.</param>
 public sealed record TableSummary(
     string Key,
     string Name,
     string? Schema,
-    string Origin,
-    string? EntityId,
     string? RelationId,
-    bool IsJunction,
-    bool IsLookup,
     int ColumnCount);
 
 /// <summary>The result of <see cref="DatabaseTables.GetAsync"/> (E5c).</summary>
@@ -266,13 +258,7 @@ public sealed class DatabaseTables
             switch (snapshot.GetDocument(owner)?.Element)
             {
                 case Mapping mapping:
-                    AddIfSet(failed, mapping.Entity);
                     AddIfSet(failed, mapping.Relation);
-                    AddIfSet(failed, mapping.Table);
-                    break;
-                case Table table:
-                    AddIfSet(failed, table.Entity);
-                    AddIfSet(failed, table.Relation);
                     break;
             }
         }
@@ -286,30 +272,15 @@ public sealed class DatabaseTables
             set.Add(id);
     }
 
-    /// <summary>Whether a table has an owning element with errors: its entity, relation, table file, or the element its key names.</summary>
-    private static bool Fails(RTable table, HashSet<string> failed)
-    {
-        if (failed.Count == 0)
-            return false;
-        if (table.Entity is { } entity && failed.Contains(entity.Id))
-            return true;
-        if (table.Relation is { } relation && failed.Contains(relation.Id))
-            return true;
-        if (failed.Contains(table.Key))
-            return true;
-        var at = table.Key.IndexOf('@', StringComparison.Ordinal);
-        return at > 0 && failed.Contains(table.Key[..at]);
-    }
+    /// <summary>Whether a table has an owning element with errors: its table file, or the relation that names it as its junction table.</summary>
+    private static bool Fails(RTable table, HashSet<string> failed) =>
+        failed.Count > 0 && (failed.Contains(table.Key) || (table.Relation is { } relation && failed.Contains(relation.Id)));
 
     private static TableSummary Summarize(RTable table) => new(
         table.Key,
         table.Name,
         table.Schema,
-        table.Origin,
-        table.Entity?.Id,
         table.Relation?.Id,
-        table.IsJunction,
-        false, // the enum lookup-table option is retired (MQ7012)
         table.Columns.Count);
 
     private sealed record Prepared(DatabaseTablesResult Result, FrozenDictionary<string, TableView> Views);

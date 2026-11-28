@@ -27,7 +27,6 @@ test("the Inheritance tab follows the base entity, and New relationship… start
   await tab.click();
   const inheritance = invoice.getByTestId("editor-inheritance");
   await expect(inheritance.getByRole("button", { name: /Payment/ })).toBeVisible();
-  await expect(inheritance.getByTestId("editor-inheritance-strategies").locator("tbody tr").first()).toBeVisible();
 
   // The base entity lists Invoice among its derived entities.
   const payment = await openEntity(page, "Payment");

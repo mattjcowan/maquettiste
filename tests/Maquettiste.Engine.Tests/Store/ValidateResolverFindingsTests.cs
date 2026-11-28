@@ -11,7 +11,6 @@ namespace Maquettiste.Engine.Tests.Store;
 /// above all) join the report of <see cref="ModelStore.ValidateAsync"/>, which every host's validate goes through, positioned, scoped
 /// like the load diagnostics, and computed once per snapshot.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class ValidateResolverFindingsTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -35,7 +34,7 @@ public sealed class ValidateResolverFindingsTests
     }
 
     [Fact]
-    public async Task A_foreign_key_pinned_by_an_overlay_is_MQ4005_in_the_validation_report_with_its_file_pointer_and_position()
+    public async Task A_foreign_key_pinned_to_another_native_type_is_MQ4005_in_the_validation_report_with_its_file_pointer_and_position()
     {
         using var h = Pinned();
         await using var store = new ModelStore(h.Options);
@@ -51,7 +50,7 @@ public sealed class ValidateResolverFindingsTests
         Assert.True(report.HasErrors);
         Assert.Equal(1, report.Errors);
 
-        // Scoped like the load diagnostics: the overlay's own scope carries it, another element's does not.
+        // Scoped like the load diagnostics: the table's own scope carries it, another element's does not.
         var scoped = await store.ValidateAsync(new ValidationScope([BillingEdits.InvoiceOverlayId], IncludeReferrers: false), Ct);
         Assert.Contains(scoped.Diagnostics, x => x.Rule == "MQ4005");
         var other = await store.ValidateAsync(new ValidationScope(["01J92P0V0HEGSC6MW92CST5KA6"], IncludeReferrers: false), Ct);

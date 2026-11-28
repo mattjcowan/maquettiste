@@ -7,6 +7,9 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
 
 ## Implemented
 
+Projection (tables laid out from entities by conventions, entity mappings, overlays and promoted relations) was removed in 0.29.0. The
+notes below that describe it are kept as history of how the code got here.
+
 - `ModelResolver.ResolveAsync` (complete; `NotImplementedException`s removed). One `ResolveRun` per call: the conceptual layer
   (`ResolveRun.Conceptual.cs`), then one `DatabaseRun` per database (`DatabaseRun*.cs`), then dependency keys are frozen. Runs on
   the thread pool, observes the token between elements and databases, reports one `ProgressUpdate` per conceptual element and
@@ -14,32 +17,12 @@ The resolver (stage 3), the resolved model types (`RList<T>`, `RElement`, `REnti
 - Conceptual: packages (qualified names), scalar types, enums, value objects (with stereotype virtual attributes), entities
   (flattened attributes per section 7.2, key from the hierarchy root, alternate keys of every level), relations (ends, cardinality),
   navigations (on the entity opposite the end that names them; `REntity.Navigations` also lists inherited navigations, nearest
-  declaration wins), promoted entities and their two many-to-one relations `<relationId>.<endId>` (also listed in each end
-  entity's `Relations`).
-- Promoted entity key (S6 "an entity has identity and a key"; the design does not say which): with `AllowDuplicates` or an
-  ordered end, a synthesized attribute `id` (int64, strategy `database-identity`, id `<relationId>/id`) mapped to the junction's
-  surrogate `id` column; otherwise one synthesized attribute per end key attribute, named `{role}{Key}` camel-cased (`memberId`),
-  typed like the end's key attribute, strategy `application`, id `<relationId>/<endId>/<keyAttrId>`, mapped to the foreign key
-  column `<endId>.<keyAttrId>`. These attributes come first in `Attributes`/`OwnAttributes`, are `Required` and `Immutable`, and
-  appear in `REntityMapping.Columns` (their columns' `Attribute`/`AttributePath` point at them).
-- Physical, per database: scope by `Database.Packages` and `Mapping.Ignore`; entity tables with naming conventions (project ←
-  database overrides, section 2.4 patterns, plural tables: `{entity}` goes through the inflector as a whole, so whole-name
-  `inflection.plurals` entries apply, and an element's explicit `pluralName` wins for entity, child and lookup tables); TPH (root table, derived columns nullable, `discriminator` string(64),
-  values from `Mapping.DiscriminatorValue` else the entity name), TPT (own attributes, PK also FK to the base table, cascade),
-  TPC (concrete tables with every inherited attribute and inherited foreign keys, no table for abstract entities); key identity
-  (`database-identity`) and sequences (overlay-named, else synthesized `<entityId>.sequence@<databaseId>` named by
-  `sequenceName`); enum storage `int` / `string` / `lookup` (lookup table `id`, `code`, `name`, rows, unique code, FK);
-  value objects `embedded` (recursive, `valueObjectColumn`, `AttributeMapping.Prefix`), `table` (child table keyed by the owner
-  key), `json`; collections as child tables (owner FK + `position`) or `json`; derived attributes stored only when mapped
-  (an `AttributeMapping` or an overlay column) or marked `derived.stored: true`;
-  relations per SPEC Section 7's default table (one-to-one FK + unique in the dependent table, one-to-many FK on the many side,
-  many-to-many junction with composite key, relations with attributes to a junction or a promoted entity by
-  `relationsWithAttributes`, n-ary junction, surrogate `id` and `position` for duplicates and ordered ends); `Mapping.Shape`,
-  `ForeignKeyEnd`, `ForeignKey`, `JunctionTable` + `Ends`, `PromotedName`, `Table` + `AttributeMapping.Column` bindings;
-  table overlays (renames, schema, comment, column overrides including native type, nullability, defaults, generation, extra
-  columns, PK name, uniques, foreign keys, checks, indexes) merged over entity, child, junction, promoted and lookup tables;
-  designed and imported tables, views (body for the dialect, else `*`) and sequences passed through; constraint names from the
-  patterns; entity mappings (column mappings across TPT tables and child tables) and join paths per navigation; MQ4001 for every
+  declaration wins).
+- Physical, per database (since 0.29.0, retire-projection-design.md section 9): the engine lays out no table from an entity. Every
+  table is a designed or imported table file; an entity has rows in a database only through its binding, which places it on its
+  binding's write (else source) table for relations; a relation is stored only as its relation mapping says, on a designed foreign
+  key or a designed junction table (MQ4011 otherwise); designed and imported tables, views (body for the dialect, else `*`) and
+  sequences passed through; constraint names from the patterns; join paths per navigation; MQ4001 for every
   identifier over `MaxIdentifierLength` (dialect default: pg 63, sqlserver 128, mysql 64, oracle 128, sqlite none),
   measured as `DialectInfo.IdentifierLength` does (UTF-8 bytes on pg and oracle, characters elsewhere), and MQ4068 for
   index and constraint names that collide in a namespace of `DialectInfo.NameSpaces` (`CheckNames`), honouring

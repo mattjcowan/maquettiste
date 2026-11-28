@@ -19,7 +19,10 @@ public sealed class ModelSnapshotTests
         var places = b.Relation("places", customer, invoice, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many, fromRole: "customer", toNavigation: "invoices");
         b.Stereotype("audited").Attr("createdAt", "datetimeoffset", a => a.Required());
         var main = b.Database("main", Dialect.PostgreSql);
-        b.Mapping(main, invoice).Storage("status", StorageKind.String);
+        var customers = b.Table("customers", main).Column("id", "uuid", nullable: false).Column("name", "string").PrimaryKey("id").Binds(customer);
+        var invoices = b.Table("invoices", main).Column("id", "uuid", nullable: false).Column("status", "string").Column("customer_id", "uuid")
+            .PrimaryKey("id").ForeignKey(customers, "customer_id").Binds(invoice);
+        b.Mapping(main, places).ForeignKey(((Table)b.BuildElements().First(e => e.Id == invoices.Id)).ForeignKeys[0].Id);
         return new Sample(b.Build(), customer, invoice, places, status, billing);
     }
 
@@ -65,8 +68,11 @@ public sealed class ModelSnapshotTests
         Assert.All(toPackage, r => Assert.Equal("package", r.Field));
 
         var fromMapping = s.Model.ReferencesFrom(s.Model.All<Mapping>().Single().Id);
-        Assert.Contains(fromMapping, r => r.Field == "attribute" && r.ToId == s.Invoice.AttrId("status"));
+        Assert.Contains(fromMapping, r => r.Field == "relation" && r.ToId == s.Places.Id);
         Assert.Contains(fromMapping, r => r.Field == "database");
+
+        var fromBinding = s.Model.ReferencesFrom(s.Invoice.Id);
+        Assert.Contains(fromBinding, r => r.Field == "attribute" && r.ToId == s.Invoice.AttrId("status") && r.JsonPointer.StartsWith("/bindings/0/", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -137,18 +143,9 @@ public sealed class ModelSnapshotTests
     public void Physical_keys_are_indexed_by_their_id_segments()
     {
         var b = new ModelBuilder(seed: 3);
-        var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("number", "string");
         var main = b.Database("main", Dialect.PostgreSql);
         var customer = b.Table("customer", main).Column("id", "uuid", nullable: false).PrimaryKey("id");
         var order = b.Table("order", main).Column("id", "uuid").Column("customer_id", "uuid").ForeignKey(customer, "customer_id").Index(false, "customer_id");
-        var overlay = b.Table("invoice", main).OverlayFor(invoice).Overlay(invoice.AttrId("number"), name: "invoice_no");
-        var keyed = new Table
-        {
-            Id = b.NewId(), Name = "audit", Database = main.Id,
-            Columns = [new Column { Id = b.NewId(), Name = "invoice_id", Type = "uuid" }],
-            ForeignKeys = [new ForeignKey { Id = b.NewId(), Columns = ["x"], ReferencesTable = invoice.Id + "@" + main.Id, ReferencesColumns = [invoice.AttrId("id")] }],
-        };
-        b.Add(keyed);
         var model = b.Build();
 
         // A designed table's foreign key that targets another table is a referrer of that table (deleting it reports the FK).
@@ -156,12 +153,6 @@ public sealed class ModelSnapshotTests
         // Constraint and index column lists refer to the table's own column ids.
         Assert.Contains(model.ReferencesTo(order.ColumnId("customer_id")), r => r.JsonPointer == "/indexes/0/columns/0/column");
         Assert.Contains(model.ReferencesTo(customer.ColumnId("id")), r => r.JsonPointer == "/primaryKey/columns/0");
-        // An overlay column's attribute key refers to the attribute it overrides.
-        Assert.Contains(model.ReferencesTo(invoice.AttrId("number")), r => r.FromElementId == overlay.Id && r.Field == "attribute");
-        // A synthesized table key <entityId>@<databaseId> refers to both ids; non-id segments are no reference.
-        Assert.Contains(model.ReferencesTo(invoice.Id), r => r.FromElementId == keyed.Id && r.JsonPointer == "/foreignKeys/0/referencesTable");
-        Assert.Contains(model.ReferencesTo(main.Id), r => r.FromElementId == keyed.Id && r.JsonPointer == "/foreignKeys/0/referencesTable");
-        Assert.DoesNotContain(model.ReferencesFrom(keyed.Id), r => r.ToId == "x");
     }
 
     [Fact]
@@ -518,16 +509,13 @@ public sealed class ModelSnapshotTests
         var (plain, invoice, _) = Sample();
         var before = plain.Build().ReferrersHash(invoice.Id);
 
-        var (withMapping, invoice2, main2) = Sample();
-        withMapping.Mapping(main2, invoice2).Storage("number", StorageKind.Json);
-        var (withOverlay, invoice3, main3) = Sample();
-        withOverlay.Table("invoice", main3).OverlayFor(invoice3);
+        var (withRelation, invoice2, _) = Sample();
+        withRelation.Relation("bills", withRelation.Entity("Customer").Key("id", "uuid"), invoice2);
         var (withDiagram, invoice4, _) = Sample();
         withDiagram.Add(new Diagram { Id = withDiagram.NewId(), Name = "overview", Members = [new DiagramMember { Element = invoice4.Id, X = 10 }] });
 
         Assert.Equal(invoice.Id, invoice2.Id);
-        Assert.NotEqual(before, withMapping.Build().ReferrersHash(invoice.Id));
-        Assert.NotEqual(before, withOverlay.Build().ReferrersHash(invoice.Id));
+        Assert.NotEqual(before, withRelation.Build().ReferrersHash(invoice.Id));
         Assert.Equal(before, withDiagram.Build().ReferrersHash(invoice.Id));
         Assert.Equal(before, plain.Build().ReferrersHash(invoice.Id));
     }

@@ -53,12 +53,6 @@ internal static class ReferenceBindingRules
                 continue;
             }
 
-            if (table.Origin == TableOrigin.Synthesized)
-            {
-                report.Add("MQ7117", $"Table '{table.Name}' is a projected table's overlay: bind a table file of the database (store the table as a file first).", pointer + "/table", binding.Id);
-                continue;
-            }
-
             CheckBinding(context, type, binding, MemberRules.WithMembers(context.Model, table), pointer, report);
         }
     }
@@ -70,7 +64,7 @@ internal static class ReferenceBindingRules
         foreach (var binding in type.Bindings)
         {
             if (!databases.Add(binding.Database) || context.Model.GetDocument(binding.Table)?.Element is not Table table
-                || !string.Equals(table.Database, binding.Database, StringComparison.Ordinal) || table.Origin == TableOrigin.Synthesized)
+                || !string.Equals(table.Database, binding.Database, StringComparison.Ordinal))
                 continue;
             yield return (binding, MemberRules.WithMembers(context.Model, table));
         }

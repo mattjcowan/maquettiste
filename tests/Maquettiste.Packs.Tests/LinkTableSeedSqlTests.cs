@@ -35,12 +35,12 @@ public sealed class LinkTableSeedSqlTests
         {
             var lower = name.ToLowerInvariant();
             repo.Write($".maquettiste/model/entities/{lower}.json", $$"""
-                {"kind":"entity","id":"{{entity}}","name":"{{name}}","package":"{{Id(1)}}","key":{"attributes":["{{key}}"]},"attributes":[{"id":"{{key}}","name":"id","type":"uuid"}]}
+                {"kind":"entity","id":"{{entity}}","name":"{{name}}","package":"{{Id(1)}}","key":{"attributes":["{{key}}"]},"attributes":[{"id":"{{key}}","name":"id","type":"uuid"}],
+                 "bindings":[{"id":"{{Id(entity == Id(10) ? 16 : 26)}}","database":"{{Id(2)}}","source":"{{table}}","fields":[{"attribute":"{{key}}","column":"{{column}}"}]}]}
                 """);
             repo.Write($".maquettiste/model/databases/main/tables/{lower}s.json", $$"""
                 {"kind":"table","id":"{{table}}","name":"{{lower}}s","database":"{{Id(2)}}","columns":[{"id":"{{column}}","name":"id","type":"uuid","nullable":false}],"primaryKey":{"columns":["{{column}}"]} }
                 """);
-            repo.Write($".maquettiste/model/mappings/{lower}-in-main.json", $$"""{"kind":"mapping","id":"{{Id(entity == Id(10) ? 16 : 26)}}","name":"{{lower}}","database":"{{Id(2)}}","entity":"{{entity}}","table":"{{table}}"}""");
             repo.Write($".maquettiste/model/seeds/{lower}/{lower}s.json", $$"""
                 {"kind":"seed","id":"{{seed}}","name":"{{lower}}s","target":"{{entity}}","columns":["{{key}}"],"rows":[{"id":"{{row}}","values":["{{value}}"]}]}
                 """);
@@ -85,11 +85,11 @@ public sealed class LinkTableSeedSqlTests
         await repo.GenerateCleanlyAsync();
         Golden.AssertMatches(Fixtures.Path("golden", "sql-ddl", "link-table-seeds", shared ? "shared" : "one"), repo.PathOf("db"));
         var seed = string.Concat(Directory.EnumerateFiles(repo.PathOf("db"), "seed*.sql", SearchOption.AllDirectories).Order(StringComparer.Ordinal).Select(File.ReadAllText));
-        Assert.Contains("INSERT INTO public.part_links (part_id, tool_id, rel_code) VALUES\n    ('0193a3c2-0000-7000-8000-000000000001', '0193a3c2-0000-7000-8000-000000000002', 'U')\nON CONFLICT DO NOTHING;",
+        Assert.Contains("INSERT INTO public.part_links (part_id, tool_id, rel_code) VALUES\n    ('0193a3c2-0000-7000-8000-000000000001', '0193a3c2-0000-7000-8000-000000000002', 'U')\nON CONFLICT (part_id, tool_id, rel_code) DO NOTHING;",
             seed, StringComparison.Ordinal);
         if (shared)
         {
-            Assert.Contains("INSERT INTO public.part_links (part_id, tool_id, rel_code) VALUES\n    ('0193a3c2-0000-7000-8000-000000000001', '0193a3c2-0000-7000-8000-000000000002', 'S')\nON CONFLICT DO NOTHING;",
+            Assert.Contains("INSERT INTO public.part_links (part_id, tool_id, rel_code) VALUES\n    ('0193a3c2-0000-7000-8000-000000000001', '0193a3c2-0000-7000-8000-000000000002', 'S')\nON CONFLICT (part_id, tool_id, rel_code) DO NOTHING;",
                 seed, StringComparison.Ordinal);
         }
     }

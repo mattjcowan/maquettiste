@@ -13,7 +13,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// built-in rule.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class DeclaredRuleAcceptanceTests
 {
     private const string Rule = "x/audited-tables-have-updated-at";
@@ -30,7 +29,7 @@ public sealed class DeclaredRuleAcceptanceTests
         var error = Assert.Single(report.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         Assert.Equal((Rule, NotesFile, "", "Table notes carries audited but has no updated_at column."),
             (error.Rule, error.FilePath, error.JsonPointer, error.Message));
-        // The invoice register carries audited too and gets updated_at from Invoice's virtual attribute.
+        // The invoice register carries audited too and has an updated_at column of its own.
         Assert.Single(report.Diagnostics, d => d.Rule == Rule);
 
         var run = await repo.RunAsync();
@@ -41,10 +40,11 @@ public sealed class DeclaredRuleAcceptanceTests
     [Fact]
     public async Task An_updated_at_inherited_from_audited_satisfies_the_rule()
     {
+        // The invoice register has an updated_at column of its own, so it leaves the contributed one out.
         await using var repo = await AuditedNotesAsync((AuditedPath, node => node["columns"] = new JsonArray(new JsonObject
         {
             ["id"] = UpdatedAtColumnId, ["name"] = "updated_at", ["type"] = "datetimeoffset", ["nullable"] = true,
-        })));
+        })), ("model/databases/main/tables/invoices.json", node => node["excludes"] = new JsonArray(UpdatedAtColumnId)));
         var report = await ValidateAsync(repo);
         Assert.DoesNotContain(report.Diagnostics, d => d.Rule == Rule);
         Assert.False(report.HasErrors, Show(report));

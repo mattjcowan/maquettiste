@@ -25,11 +25,11 @@ const queryDoc = (page: Page, name: string) =>
     return doc?.json ?? null;
   }, name);
 
-const INVOICES_TABLE = "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4";
+const INVOICES_TABLE = "01J92P0V1T0J6RH4MY9H81NYB4";
 const BILLING = "01J92P0V01KDRN8GX5PGYCNKSX";
 
 test("a recursive named query: build it, see WITH RECURSIVE and WITH, a misplaced repeating part shows its finding", async ({ page }) => {
-  await page.goto("/database?mock=projected");
+  await page.goto("/database");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await page.getByTestId("database-new-menu").click();
   await page.getByTestId("database-new-query").click();
@@ -121,7 +121,7 @@ test("a recursive named query: build it, see WITH RECURSIVE and WITH, a misplace
 });
 
 test("a binding over a hand-written query that changes data says so under the source picker", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
+  await openEditor(page, "/");
   const saved = await page.evaluate(
     async ({ pkg, table }) => {
       const post = async (body: unknown) =>

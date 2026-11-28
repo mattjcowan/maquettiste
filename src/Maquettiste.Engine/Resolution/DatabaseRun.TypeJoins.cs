@@ -193,17 +193,13 @@ internal static class TypeJoinPaths
 /// <summary>Join paths of relations with an end of several types (several-types-design.md decision 48, section 19.8 step 3).</summary>
 internal sealed partial class DatabaseRun
 {
-    private readonly Dictionary<string, SortedDictionary<string, IReadOnlyList<RJoinPath>>> _typeJoinsByEntity = new(StringComparer.Ordinal);
-
-    /// <summary>The placements with rows in each table (a TPT entity in each table of its chain), built on first use.</summary>
+    /// <summary>The placements with rows in each table, built on first use.</summary>
     private Dictionary<RTable, List<Placement>>? _rowsByTable;
 
     /// <summary>
     /// Step 3 for every relation stored as <see cref="TypeLinks"/>: each navigation's paths per pair (<see cref="RNavigation.TypeJoins"/>, and
-    /// <see cref="RNavigation.Joins"/> when there is exactly one: way 5's path to the shared table, or a single pair's), and per entity with an
-    /// entity mapping, the paths from the target that stands for it (<see cref="REntityMapping.Joins"/> when there is one, or way 5's;
-    /// <see cref="REntityMapping.TypeJoins"/> when the navigation leads to an end with several types, or there are several, as from an end
-    /// over an abstract TPC root). Does nothing in a database with no such relation.
+    /// <see cref="RNavigation.Joins"/> when there is exactly one: way 5's path to the shared table, or a single pair's). Does nothing in a
+    /// database with no such relation.
     /// </summary>
     private void BuildTypeJoins()
     {
@@ -234,7 +230,6 @@ internal sealed partial class DatabaseRun
                 // Exactly one path: way 5's, or a single pair's (decision 48).
                 if ((shared ?? (paths.Count == 1 ? paths[0] : null)) is { } one)
                     _run.SetJoin(navigation, _db.Name, one);
-                AddEntityTypeJoins(stored[i].TypeLinks!, navigation, pairs, shared, keys);
             }
         }
     }
@@ -274,48 +269,6 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>
-    /// For each entity with an entity mapping that holds the navigation: the paths from the target that stands for it (itself, else its nearest
-    /// base among the from end's targets).
-    /// </summary>
-    private void AddEntityTypeJoins(TypeLinks links, RNavigation navigation, List<TypeJoinPaths.PairPath> pairs, RJoinPath? shared,
-        IReadOnlyList<string> keys)
-    {
-        var fromEnd = links.Ends.FirstOrDefault(e => ReferenceEquals(e.End, navigation.From));
-        if (fromEnd is null || pairs.Count == 0)
-            return;
-        foreach (var (entityId, _) in _mappingByEntity.OrderBy(m => m.Key, StringComparer.Ordinal))
-        {
-            if (!_placements.TryGetValue(entityId, out var placement)
-                || !_run.InheritedNavigations(entityId).Any(n => ReferenceEquals(n, navigation)))
-                continue;
-            var target = placement;
-            while (target is not null && !fromEnd.Targets.Contains(target))
-                target = target.Base;
-            if (target is null)
-                continue;
-            var own = pairs.Where(p => ReferenceEquals(p.From, target)).Select(p => p.Path).ToList();
-            if (own.Count == 0)
-                continue;
-            // The entity's own path when there is one: its single pair's, or way 5's one path to the shared table.
-            if ((own.Count == 1 ? own[0] : shared) is { } one)
-                Map(_joinsByEntity, entityId).TryAdd(navigation.Name, one);
-            if (navigation.To.HasSeveralTypes || own.Count > 1)
-                Map(_typeJoinsByEntity, entityId).TryAdd(navigation.Name, new KeyedList<RJoinPath>(own, keys));
-        }
-
-        static SortedDictionary<string, TValue> Map<TValue>(Dictionary<string, SortedDictionary<string, TValue>> byEntity, string entityId)
-        {
-            if (!byEntity.TryGetValue(entityId, out var map))
-            {
-                map = new SortedDictionary<string, TValue>(StringComparer.Ordinal);
-                byEntity[entityId] = map;
-            }
-
-            return map;
-        }
-    }
-
-    /// <summary>
     /// What picks <paramref name="target"/>'s rows in <paramref name="table"/> (decision 48), when the table holds rows of an entity the target
     /// doesn't stand for (<see cref="StandsFor(TypeLinkEnd, HashSet{string}, Placement)"/>: itself and its covered derived entities whose rows
     /// are in its table): see <see cref="PickRows"/>. Empty when the table holds the rows of those entities only, or when nothing picks them
@@ -342,26 +295,12 @@ internal sealed partial class DatabaseRun
     private List<RColumnCondition>? PickRows(Placement target, RTable table, List<Placement> stands, DependencySet? keys)
     {
         var rows = stands.Where(p => !p.Entity.IsAbstract).ToList();
-        if (!target.Bound && _discriminators.TryGetValue(table.Key, out var discriminator))
-        {
-            var values = new List<object?>();
-            foreach (var p in rows)
-            {
-                values.Add(ResolutionValues.Plain(p.Mapping?.DiscriminatorValue) ?? p.Entity.Name);
-                keys?.Element(p.Entity.Id);
-                if (p.Mapping is { } mapping)
-                    keys?.Element(mapping.Id);
-            }
-
-            return values.Count == 0 ? [] : [new RColumnCondition { Column = discriminator, Values = [.. values.Distinct().OrderBy(Text, StringComparer.Ordinal)] }];
-        }
-
         if (rows.Count == 0)
             return [];
         var each = new List<List<RColumnCondition>>(rows.Count);
         foreach (var p in rows)
         {
-            if (!p.ViaBinding || !_bindingByEntity.TryGetValue(p.Entity.Id, out var bound))
+            if (!_bindingByEntity.TryGetValue(p.Entity.Id, out var bound))
                 return null;
             // The type column the binding names or inherits tells its rows apart as a constant does: the column holds its code.
             var owner = TypeColumnOwner(p.Entity);
@@ -402,31 +341,17 @@ internal sealed partial class DatabaseRun
         var map = new Dictionary<RTable, List<Placement>>(ReferenceEqualityComparer.Instance);
         foreach (var p in _placementOrder)
         {
-            if (p.Table is null)
-                continue;
-            foreach (var t in TablesOf(p))
+            if (!map.TryGetValue(p.Table.Table, out var list))
             {
-                if (!map.TryGetValue(t.Table, out var list))
-                {
-                    list = [];
-                    map[t.Table] = list;
-                }
-
-                list.Add(p);
+                list = [];
+                map[p.Table.Table] = list;
             }
+
+            list.Add(p);
         }
 
         _rowsByTable = map;
         return map;
     }
 
-    /// <summary>Publishes each entity mapping's <see cref="REntityMapping.TypeJoins"/>.</summary>
-    private void PublishEntityTypeJoins()
-    {
-        foreach (var (entityId, joins) in _typeJoinsByEntity)
-        {
-            if (_mappingByEntity.TryGetValue(entityId, out var mapping))
-                mapping.TypeJoins = joins.ToImmutableSortedDictionary(StringComparer.Ordinal);
-        }
-    }
 }

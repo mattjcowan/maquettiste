@@ -12,14 +12,14 @@ using Dapper;
 
 namespace App.Model.Billing;
 
-/// <summary>Reads and writes <see cref="CustomerNote"/> rows in customer_notes (database local, sqlite).</summary>
+/// <summary>Reads and writes <see cref="CustomerNote"/> rows through its binding to table customer_notes (database local, sqlite).</summary>
 public partial interface ICustomerNoteRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<CustomerNote?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<CustomerNote>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CustomerNote>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(CustomerNote entity, CancellationToken cancellationToken = default);
@@ -34,40 +34,44 @@ public partial interface ICustomerNoteRepository
 /// <summary>The Dapper implementation of <see cref="ICustomerNoteRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class CustomerNoteRepository(IDbConnection connection, IDbTransaction? transaction = null) : ICustomerNoteRepository
 {
-    private const string Columns = """
-        id AS Id,
-        customer_id AS CustomerId,
-        body AS Body,
-        created_at AS CreatedAt
+    private const string SelectSql = """
+        SELECT t.id AS id, t.customer_id AS customerId, t.body AS body, t.created_at AS createdAt
+        FROM customer_notes t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM customer_notes WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM customer_notes ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.customer_id AS customerId, t.body AS body, t.created_at AS createdAt
+        FROM customer_notes t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO customer_notes (id, customer_id, body, created_at)
-        VALUES (@Id, @CustomerId, @Body, @CreatedAt)
+        VALUES (@id, @customerId, @body, @createdAt)
         """;
 
     private const string UpdateSql = """
-        UPDATE customer_notes SET customer_id = @CustomerId, body = @Body, created_at = @CreatedAt
-        WHERE id = @Id
+        UPDATE customer_notes SET customer_id = @customerId, body = @body
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM customer_notes WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM customer_notes
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<CustomerNote?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<CustomerNote>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CustomerNote>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -90,31 +94,31 @@ public partial class CustomerNoteRepository(IDbConnection connection, IDbTransac
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of customer_notes, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table customer_notes as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public Guid CustomerId { get; set; }
-        public string Body { get; set; } = default!;
-        public DateTimeOffset? CreatedAt { get; set; }
+        public Guid id { get; set; }
+        public Guid customerId { get; set; }
+        public string body { get; set; } = default!;
+        public DateTimeOffset? createdAt { get; set; }
 
         public static CustomerNote ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            CustomerId = row.CustomerId,
-            Body = row.Body,
-            CreatedAt = row.CreatedAt,
+            Id = row.id,
+            CustomerId = row.customerId,
+            Body = row.body,
+            CreatedAt = row.createdAt,
         };
 
         public static Row From(CustomerNote entity) => new()
         {
-            Id = entity.Id,
-            CustomerId = entity.CustomerId,
-            Body = entity.Body,
-            CreatedAt = entity.CreatedAt,
+            id = entity.Id,
+            customerId = entity.CustomerId,
+            body = entity.Body,
+            createdAt = entity.CreatedAt,
         };
     }
 }

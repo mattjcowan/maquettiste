@@ -2,50 +2,29 @@ using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Resolution;
 
-/// <summary>A table under construction in one database run: columns by key, pending constraints, overlay and dependencies.</summary>
+/// <summary>A table under construction in one database run: its file, columns by key, pending constraints and dependencies.</summary>
 internal sealed class TableBuild
 {
-    public TableBuild(DependencyKeyCache keys, RTable table, Table? source, Table? overlay, string sourceElementId)
+    public TableBuild(DependencyKeyCache keys, RTable table, Table source)
     {
         Deps = new DependencySet(keys);
         Table = table;
         Source = source;
-        Overlay = overlay;
-        SourceElementId = sourceElementId;
-        table.FileId = source?.Id ?? overlay?.Id;
-        if (overlay is not null)
-        {
-            foreach (var column in overlay.Columns)
-            {
-                if (column.Attribute is { } key)
-                    OverlayColumns.TryAdd(key, column);
-            }
-        }
+        table.FileId = source.Id;
     }
 
     public RTable Table { get; }
 
-    /// <summary>The designed or imported table file, when the table is one.</summary>
-    public Table? Source { get; }
+    /// <summary>The table file.</summary>
+    public Table Source { get; }
 
-    /// <summary>The overlay file of a synthesized table.</summary>
-    public Table? Overlay { get; }
-
-    /// <summary>The element diagnostics about the table point at (entity, relation, enum or table id).</summary>
-    public string SourceElementId { get; }
-
-    public bool IsDesigned => Source is not null;
+    /// <summary>The element diagnostics about the table point at: the table file's id.</summary>
+    public string SourceElementId => Source.Id;
 
     public List<RColumn> Columns { get; } = [];
 
-    /// <summary>Columns by key, and by overlay or designed column id.</summary>
+    /// <summary>Columns by key (a column id, or the keyed id of an inherited column).</summary>
     public Dictionary<string, RColumn> ByKey { get; } = new(StringComparer.Ordinal);
-
-    /// <summary>Overlay columns by the synthesized column key they override.</summary>
-    public Dictionary<string, Column> OverlayColumns { get; } = new(StringComparer.Ordinal);
-
-    /// <summary>Sequence ids named by overlay columns (<c>generated: sequence</c>), by column key.</summary>
-    public Dictionary<string, string> SequenceOverrides { get; } = new(StringComparer.Ordinal);
 
     public List<string> PrimaryKey { get; } = [];
 
@@ -77,19 +56,11 @@ internal sealed class TableBuild
     /// <summary>The exclusion constraints the table file declares.</summary>
     public List<ExclusionConstraint> Exclusions { get; } = [];
 
-    /// <summary>Child tables of this table, in creation order.</summary>
-    public List<TableBuild> Children { get; } = [];
-
-    /// <summary>Work that needs the primary key (child tables), run once the table's attribute columns exist.</summary>
-    public List<Action> Deferred { get; } = [];
-
     public DependencySet Deps { get; }
 
     /// <summary>
     /// What the table's effective stereotype set is built from (next-phase-2-design.md section 3.1): its file's holder
-    /// (<see cref="ModelSnapshot.HolderOf"/>), or for a table without a file the one the resolver builds by ids (its entity's or
-    /// relation's package, its schema by <c>StereotypeDefaults.SchemaOf</c>, a child table's from its owner's). Set by
-    /// <c>DatabaseRun.AddTable</c>.
+    /// (<see cref="ModelSnapshot.HolderOf"/>). Set by <c>DatabaseRun.AddTable</c>.
     /// </summary>
     public StereotypeHolder Holder { get; set; } = null!;
 
@@ -157,10 +128,10 @@ internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> colu
     /// <summary>Whether the key resolved to real columns and a real target.</summary>
     public bool Resolved { get; set; }
 
-    /// <summary>The designed table or overlay file that declares the key; <see langword="null"/> for a synthesized key.</summary>
+    /// <summary>The table file that declares the key.</summary>
     public string? FileId { get; init; }
 
-    /// <summary>The key's id in its file, or an inherited key's keyed id; <see langword="null"/> for a synthesized key.</summary>
+    /// <summary>The key's id in its file, or an inherited key's keyed id.</summary>
     public string? Id { get; init; }
 
     /// <summary>
@@ -170,12 +141,11 @@ internal sealed class ForeignKeySpec(TableBuild host, IReadOnlyList<string> colu
     public (string MemberId, AppliedStereotype From)? Inherited { get; init; }
 }
 
-/// <summary>Where an entity's rows live in one database.</summary>
-internal sealed class Placement(REntity entity, Entity source, Mapping? mapping)
+/// <summary>Where a bound entity's rows live in one database: its binding's write (else source) table.</summary>
+internal sealed class Placement(REntity entity, Entity source)
 {
     public REntity Entity { get; } = entity;
     public Entity Source { get; } = source;
-    public Mapping? Mapping { get; } = mapping;
 
     /// <summary>The in-scope hierarchy root.</summary>
     public Placement Root { get; set; } = null!;
@@ -185,20 +155,8 @@ internal sealed class Placement(REntity entity, Entity source, Mapping? mapping)
 
     public List<Placement> Derived { get; } = [];
 
-    /// <summary>The hierarchy's strategy, or <see langword="null"/> outside a hierarchy.</summary>
-    public InheritanceStrategy? Strategy { get; set; }
-
-    /// <summary>The table holding the entity's key row (the table a foreign key references); <see langword="null"/> for a TPC abstract entity.</summary>
-    public TableBuild? Table { get; set; }
-
-    /// <summary>Whether the entity is bound to a designed or imported table (<c>Mapping.Table</c>, or a binding: <see cref="ViaBinding"/>).</summary>
-    public bool Bound { get; set; }
-
-    /// <summary>
-    /// Whether the placement comes from the entity's binding to the database (erratum E43): the entity is never projected, its
-    /// table is the binding's write (else source) table for the foreign keys of relations, and it has no entity mapping.
-    /// </summary>
-    public bool ViaBinding { get; set; }
+    /// <summary>The table holding the entity's rows: its binding's write table, else its source table.</summary>
+    public TableBuild Table { get; set; } = null!;
 
     /// <summary>The key attribute ids of the hierarchy root.</summary>
     public HashSet<string> KeyIds { get; } = new(StringComparer.Ordinal);

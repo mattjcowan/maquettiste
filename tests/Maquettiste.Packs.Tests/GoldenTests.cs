@@ -158,7 +158,6 @@ public sealed class CultureCollection;
 
 /// <summary>Both packs give the same bytes whatever the culture of the generating process.</summary>
 [Collection(nameof(CultureCollection))]
-[UsesProjectedFixtures]
 public sealed class CultureTests
 {
     [Theory]

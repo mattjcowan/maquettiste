@@ -38,7 +38,6 @@ type Json = Record<string, unknown>;
 const SHAPE_LABELS: Record<RelationShape, string> = {
   "foreign-key": "Foreign key",
   junction: "Junction table",
-  promoted: "Promoted to an entity",
 };
 
 type RelationMappingDoc = RelationMappingLike & StorageMapping & { foreignKey?: string; junctionTable?: string; ends?: { end: string; foreignKey?: string }[] };
@@ -48,8 +47,8 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
   const lookup = indexLookup(index.data);
   const databases = databasesOf(index.data);
   const ends = json.ends ?? [];
-  // A relation's mapping has no entity in the index: read those few documents and keep the ones for this relation.
-  const candidates = lookup.ofKind("mapping").filter((m) => !m.entity);
+  // A mapping is a relation's: read the mapping documents and keep the ones for this relation.
+  const candidates = lookup.ofKind("mapping");
   const mappingDocs = useElements(candidates.map((m) => m.id));
   const mappings = candidates
     .map((m): RelationMappingDoc => ({
@@ -77,19 +76,8 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
         withBases.add(at);
   const wantedEntities = severalMode ? [...withBases] : [...new Set(ends.map(endEntity).filter(Boolean))];
   const entityDocs = useElements(wantedEntities);
-  // An entity is bound to a table by a binding on its document, or by an entity mapping file with a `table` (the engine reads both; a binding wins).
-  const entityMapRows = lookup.ofKind("mapping").filter((m) => !!m.entity && wantedEntities.includes(m.entity));
-  const entityMapDocs = useElements(entityMapRows.map((m) => m.id));
-  const mappedTable = (entity: string, database: string): string | null => {
-    for (const row of entityMapRows) {
-      if (row.entity !== entity || row.database !== database) continue;
-      const doc = entityMapDocs.byId.get(row.id)?.json as Json | undefined;
-      if (doc && doc.ignore !== true && typeof doc.table === "string") return doc.table;
-    }
-    return null;
-  };
-  const boundIn = (entity: string, database: string) =>
-    boundTableOf(entityDocs.byId.get(entity)?.json as Json | undefined, database) ?? mappedTable(entity, database);
+  // An entity is bound to a table by a binding on its document.
+  const boundIn = (entity: string, database: string) => boundTableOf(entityDocs.byId.get(entity)?.json as Json | undefined, database);
   const bound = databases.map((d) => ends.map((e) => boundIn(endEntity(e), d.id)));
   const severalTables = severalMode ? databases.flatMap((d) => [...withBases].map((en) => boundIn(en, d.id))) : [];
   const junctions = mappings.map((m) => m.junctionTable).filter((t): t is string => !!t);
@@ -155,7 +143,7 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
                 roleOf={(endId) => ends.find((e) => e.id === endId)?.role ?? endId}
                 mapping={mapping}
                 change={(mutate) => change((j) => mutate(j as unknown as StorageMapping))}
-                loading={mappingsLoading || tableDocs.pending || entityDocs.pending || entityMapDocs.pending}
+                loading={mappingsLoading || tableDocs.pending || entityDocs.pending}
                 tableOf={tableOf}
                 boundTable={(entity) => boundIn(entity, d.id)}
                 sharedBound={(entity) => {
@@ -169,7 +157,7 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
                 entityName={(entity) => lookup.nameOf(entity) ?? entity}
                 linkTables={lookup
                   .ofKind("table")
-                  .filter((t) => t.database === d.id && !t.entity)
+                  .filter((t) => t.database === d.id)
                   .map((t) => ({ id: t.id, name: t.name }))}
                 attributes={columnAttributes}
               />
@@ -208,7 +196,7 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
               <JunctionPicker
                 dom={`${id}-${d.id}`}
                 databaseName={d.name}
-                tables={lookup.ofKind("table").filter((t) => t.database === d.id && !t.entity)}
+                tables={lookup.ofKind("table").filter((t) => t.database === d.id)}
                 junction={tableOf(mapping?.junctionTable)}
                 value={mapping?.junctionTable ?? ""}
                 ends={ends.map((e) => ({ id: e.id, label: `${lookup.nameOf(endEntity(e)) ?? endEntity(e)} (${e.role})` }))}
@@ -396,10 +384,9 @@ function OlderShape({ mapping }: { mapping: RelationMappingDoc | null }) {
   return (
     <div className="flex flex-col gap-1" data-testid="relation-storage-unbound">
       <p className="text-12 text-secondary">Bind both ends to a table to name the foreign key.</p>
-      {mapping?.ignore === true ? <p className="text-13">Left out of this database.</p> : null}
       {shape ? (
         <p className="text-12" data-testid="relation-storage-older-shape">
-          {`Shape (an older mapping, read only): ${SHAPE_LABELS[shape]}${shape === "promoted" && mapping?.promotedName ? ` (${mapping.promotedName})` : ""}`}
+          {`Shape (read only): ${SHAPE_LABELS[shape]}`}
         </p>
       ) : null}
     </div>

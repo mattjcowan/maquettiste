@@ -3,7 +3,8 @@
 What the audience sees, in three even parts, inside a partner team's existing TypeScript/Node repository:
 
 1. **The editor** (7 min): from an empty model, a Shop domain, an OrderStatus enum, Customer, Product, Order and
-   OrderLine, relations with cardinality, a diagram and a database with its live DDL.
+   OrderLine, relations with cardinality, a diagram, then a database whose tables **Create tables…** makes from the
+   entities, with its live DDL.
 2. **The CLI** (7 min): `init`, the model as JSON files, `generate` with the built-in `sql-ddl` pack and with a custom
    TypeScript pack (`samples/typescript-pack`), a parameter change, a template change, `--check` as the CI gate,
    `--watch` while editing in the editor.
@@ -14,6 +15,12 @@ walkthrough was rehearsed end to end on a Linux (WSL2, amd64, Docker Engine) mac
 built from this tree: first on 2026-09-28, then again on 2026-09-29 after the editor was rebuilt, from an empty model,
 with every CLI and MCP step run from the image. The timings in [Rehearsal record](#rehearsal-record) come from there.
 Steps marked **(not verified on a Mac)** ran only on Linux; steps marked **(not verified)** did not run at all.
+
+Since 0.29.0 the engine makes no tables on its own: a database holds only the tables in it, and an entity is stored
+where it is bound to one of them. **Create tables…** makes a table per entity and binds the entity to it. Steps 1.6,
+1.7, 2.7, 2.8, 3.3 and 3.4 follow that flow. Their command-line side was run again on 2026-11-27 with the CLI built
+from this tree (not the image; see [CLI re-check for 0.29.0](#cli-re-check-for-0290-2026-11-27)). Their editor clicks
+were not rehearsed **(not verified)**.
 
 Throughout, `MQ` is your clone of the Maquettiste repository and `REPO` is the partner team's repository:
 
@@ -132,19 +139,23 @@ current domain (the row you right-clicked, else the selected element's domain), 
 | --- | --- | --- |
 | 1.1 (45 s) | Point at the rail, the top bar (project name, git branch, "Go to element or run a command", Ctrl+K), and the first-run panel **Start the model**. Click **New domain**: Name `Shop`, Parent domain "None (a top-level domain)", **Create**. | The DOMAIN MODEL explorer shows **Shop** "empty"; the domain opens as a centre tab with **General**, **Tags** and **Categories**, the inspector on the right; Problems says "No problems"; toast "Created Shop." |
 | 1.2 (45 s) | Right-click **Shop** › **New enum**. Name `OrderStatus` (Domain already Shop), **Create**. On its **Members** tab click **Add member** four times and fill Name and Code: `Pending`/`pending`, `Paid`/`paid`, `Shipped`/`shipped`, `Cancelled`/`cancelled` (Tab goes Name, Value, Code). | The enum tab (Members, Code generation, References), Values 0 to 3 filled in; Shop › Enums › OrderStatus in the explorer; "Saved". The codes are what the TypeScript pack writes in part 2. |
-| 1.3 (2.5 min) | Right-click **Shop** › **New entity**, Name `Customer`, **Create**. It opens on its **Attributes** tab with the key `id` (uuid). Click **Add attribute**: the new row is already editing Name. Type `email`, Tab, Enter (opens the Type list), `string`, Enter, Tab, Enter, `200`, Tab (Len), Tab, Tab (past Prec and Scale), Space (ticks Req); with no length, Tab four times from Type to Req. Add `name` (string, Len 120, Req). Then `Order` (right-click the **Entities** folder › **New entity** does the same): `number` (string, 20, Req), `status` (type `OrderStatus`, Req), `placedAt` (`datetimeoffset`, Req). `OrderLine`: `quantity` (`int32`, Req), `unitPrice` (`decimal`, Prec 12, Scale 2, Req). `Product`: `sku` (string, 40, not required), `price` (`decimal`, 12, 2, Req). | Each entity is a centre tab (Attributes, Relationships, Indexes, Mappings, Seed data, References, Code generation) and a file under `.maquettiste/model/entities/`. The grid's hint reads "Enter edits · Tab moves · Ctrl+Enter adds · Ctrl+Delete removes"; the Type list has sections (Built-in, Enums, Reference data, ...) and typing filters it. Shop › Entities shows 4. |
+| 1.3 (2.5 min) | Right-click **Shop** › **New entity**, Name `Customer`, **Create**. It opens on its **Attributes** tab with the key `id` (uuid). Click **Add attribute**: the new row is already editing Name. Type `email`, Tab, Enter (opens the Type list), `string`, Enter, Tab, Enter, `200`, Tab (Len), Tab, Tab (past Prec and Scale), Space (ticks Req); with no length, Tab four times from Type to Req. Add `name` (string, Len 120, Req). Then `Order` (right-click the **Entities** folder › **New entity** does the same): `number` (string, 20, Req), `status` (type `OrderStatus`, Req), `placedAt` (`datetimeoffset`, Req). `OrderLine`: `quantity` (`int32`, Req), `unitPrice` (`decimal`, Prec 12, Scale 2, Req). `Product`: `sku` (string, 40, not required), `price` (`decimal`, 12, 2, Req). | Each entity is a centre tab (Attributes, Relationships, Indexes, Storage, Inheritance, Revisions, Copy, Seed data, References, Code generation) and a file under `.maquettiste/model/entities/`. The grid's hint reads "Enter edits · Tab moves · Ctrl+Enter adds · Ctrl+Delete removes"; the Type list has sections (Built-in, Enums, Reference data, ...) and typing filters it. Shop › Entities shows 4. |
 | 1.4 (45 s) | Right-click **Shop** › **New diagram**, Name `Shop overview`, **Create**. The canvas opens and the sidebar switches to the **Diagrams** explorer. Click the **Domain model** rail icon, click **Customer**, **Shift+click** **Product** (selects the four), right-click › **Add to diagram**. Click **Auto-layout**. | Toast "Added 4 elements to Shop overview."; four cards with their attributes (`status` shows `OrderStatus`, `price` `decimal(12,2)`). The picker above the canvas shows **Shop overview** (it also lists "All of Shop"). |
 | 1.5 (1.25 min) | Click the Customer card, **Shift+click** Order, **New relation** (canvas toolbar). In "New relation: Customer → Order": Name `places`; Customer end Min 1, Max 1; Order end Role `orders` (Min 0, Max `*` are the defaults); On delete of the Customer: restrict (the default); **Create relation**. Then Order + OrderLine: `contains`, Kind **composition**, Order end 1..1, OrderLine end Role `lines`, On delete: **cascade**. Then Product + OrderLine: `refersTo`, Product end 1..1. **Auto-layout**. | Edges labelled places, contains and refersTo with `1` and `*` at the ends; Shop › Relationships lists the three. (Right-click Shop › **New relationship** also works, with From entity and To entity pickers but no cardinality: set that in its editor.) |
-| 1.6 (1 min) | Click the **Databases** rail icon (fourth): the empty explorer offers **New database**. Name `main`, **Map domains by convention**: **Pick domains**, tick **Shop**, Dialect `postgresql`, **Create** (with None, the default, the database starts empty: say that entities become tables only where you map them). Re-check on the Mac. In the inspector set **Default schema** to `shop`, Tab. Right-click **main** › **Expand all**, then double-click table **orders**. | "main · 4 tables · 4 entities mapped", then main › shop › Tables (customers, order_lines, orders, products). The Database screen: a Tables list, the table diagram, and the **DDL preview** of `shop.orders` with `customer_id uuid NOT NULL` and `CONSTRAINT fk_orders_customer_id FOREIGN KEY (customer_id) REFERENCES shop.customers (id) ON DELETE RESTRICT`. |
+| 1.6 (30 s) | Click the **Databases** rail icon (fourth): the empty explorer offers **New database**. Name `main`, Schemas `shop`, Dialect `postgresql`, **Create** **(not verified)**. | The database starts empty. Say so: the entities are the domain, the tables are the database, and an entity is stored only where it is bound to a table. |
+| 1.7 (30 s) | Click the **Domain model** rail icon, right-click **Shop** › **Create tables…**. Database `main`; leave Schema on "Each table's own"; **Create 4 tables**. Then right-click **Order** › **Go to table** **(not verified)**. | The plan lists four tables (customers, orders, order_lines, products), three relation mappings that name the foreign keys, and four bindings. Go to table switches to the Databases side and shows table **orders** in the inspector. Double-click **orders** in the explorer (main › shop › Tables) to open it on the Database screen: its **DDL preview** shows `customer_id uuid NOT NULL` and `CONSTRAINT fk_orders_customer_id FOREIGN KEY (customer_id) REFERENCES shop.customers (id) ON DELETE RESTRICT`. The tables are now yours to edit. |
 
 If the Database screen says "No databases" right after 1.6's **Create** (an image older than the fix of known issue 2), click **main** in the explorer.
+**Create tables…** is also on one entity's menu, and on the entity's **Storage** tab. The CLI does the same:
+`maquettiste model materialize tables --database main Customer Product Order OrderLine` (add `--dry-run` to see the plan first).
 Optional if time allows: select the Order card and open the inspector's **JSON** tab (the file path
 `.maquettiste/model/entities/order.json`, ids everywhere, `status` as `{ "ref": ... }`).
 
 ### Fallback: the model without the editor
 
 If the editor misbehaves, or time runs short, write the same model as files and through the editor's API. On the empty
-model of step 3, first the domain, the diagram, the enum and the database (canonical form, so no MQ1003 warnings):
+model of step 3, first the domain, the diagram, the enum and the database (canonical form, so no MQ1003 warnings). The
+database says `"byConvention": "none"`: it holds only the tables you create in it.
 
 ```zsh
 mkdir -p .maquettiste/model/{packages,diagrams,enums,databases/main}
@@ -208,7 +219,6 @@ cat > .maquettiste/model/databases/main/database.json <<'EOF'
   "id": "01K6DEMS000000000000000008",
   "name": "main",
   "dialect": "postgresql",
-  "byConvention": "all",
   "version": "16",
   "defaultSchema": "shop",
   "schemas": [
@@ -216,7 +226,8 @@ cat > .maquettiste/model/databases/main/database.json <<'EOF'
       "id": "01K6DEMS000000000000000009",
       "name": "shop"
     }
-  ]
+  ],
+  "byConvention": "none"
 }
 EOF
 maquettiste validate                     # Validation passed: 0 errors, 0 warnings, 0 infos.
@@ -257,7 +268,15 @@ http.request({ hostname: '127.0.0.1', port, path: '/api/model/batch', method: 'P
 }).end(body);
 EOF
 node /tmp/seed-shop.mjs 8080            # 200 {"outcome":"saved",...}
+maquettiste model materialize tables --database main Customer Product Order OrderLine
+maquettiste validate                     # Validation passed: 0 errors, 0 warnings, 0 infos.
 ```
+
+The `materialize` line is **Create tables…** (1.7): it prints four `create table` lines, three `create mapping` lines and
+four `change entity ... (binds entity ... to table ...)` lines, then `Materialized: 11 changed or created, 0 deleted.` The
+tables land in `.maquettiste/model/databases/main/tables/`. On 2026-11-27 the files above and the batch the script sends
+were checked with the CLI (`maquettiste model apply` with the same operations); the script itself was not run against the
+editor **(not verified)**.
 
 Use it only on a model without these entities (after a reset), otherwise the batch is refused for duplicate names and
 nothing is written. Without the editor at all, Claude Code over MCP (part 3) can create the same model from the prompt
@@ -273,8 +292,8 @@ nothing is written. Without the editor at all, Claude Code over MCP (part 3) can
 | 2.4 (1.5 min) | Install the custom pack, then register it (below). `maquettiste generate --progress none`, `cat src/generated/order.ts src/generated/order.schema.ts`, `npx tsc --noEmit` | `A src/generated/customer.ts` ... `A src/generated/index.ts`, `order-status.ts`, four `*.schema.ts` (1.35 s); `K db/main/migrations/0001-<key>.sql` means the migration is kept (written once, yours; nothing renders for it while the schema has not changed). `order.ts` has `status: OrderStatus`, `customerId: string`, `customer?: Customer`, `lines?: OrderLine[]`. `tsc` prints nothing (0.8 s). |
 | 2.5 (45 s) | Set a parameter (below), `maquettiste format`, `maquettiste generate --progress none`, `cat src/generated/order-status.ts` | `formatted .maquettiste/maquettiste.json` (the hand edit back in canonical form; skip it and `generate` warns MQ1003). Then `M src/generated/order-status.ts`: `export const OrderStatus = { Pending: 'pending', ... } as const;`. Mention `"zod": false` removes the four schema files (`D ...schema.ts`). |
 | 2.6 (45 s) | Edit one template line (below) and `maquettiste generate --progress none`, `git diff --stat` | `M` for the four entity files only ("0 added, 4 modified, 0 deleted, 12 unchanged"): every attribute is now `readonly`. |
-| 2.7 (1 min) | `maquettiste generate --check --progress none; echo $?` then, in the editor, change Customer `name` Len 120 to 150 (Ctrl+P, `Customer`, Enter; double-click the Len cell of `name`, `150`, Enter), and run the check again | First `Outcome: Succeeded`, `0`. Then `Drift: the output on disk does not match the model; run maquettiste generate (exit 2).` with `A db/main/migrations/0002-<key>.sql`, `M db/main/schema.sql`, `M db/main/shop/tables/customers.sql`, `M src/generated/customer.schema.ts`, an `error MQ6018` line (the schema snapshot of database 'main' is stale: the next `generate` writes it), and `2`. This is the CI gate. (A hand edit of a generated file gives `MQ6009 Hand edit` and exit 3.) |
-| 2.8 (1 min) | Second tab: `maquettiste generate --watch --progress none`. In the editor, on Customer's Attributes tab, **Add attribute** `phone` (string, Len 40). Ctrl+C when done. | `[watch] initial run: ...` with the pending drift applied, then after the edit `M src/generated/customer.ts`, `M src/generated/customer.schema.ts`, `A db/main/migrations/0003-<key>.sql`, `M db/...` within half a second of the save (0.36 s measured). |
+| 2.7 (1.25 min) | `maquettiste generate --check --progress none; echo $?`. Then, in the editor, widen the column: Databases › main › shop › Tables › **customers**, double-click the Len cell of `name`, `150`, Enter. Back in the terminal, `maquettiste binding resync --database main Customer`, then run the check again. | First `Outcome: Succeeded`, `0`. After the edit, Problems shows `warning MQ4087` on Customer: the column its binding maps changed. `resync` prints `Re-synced: 1 changed.`: Customer's `name` is now Len 150 too. The check then prints `Drift: the output on disk does not match the model; run maquettiste generate (exit 2).` with `A db/main/migrations/0002-<key>.sql`, `M db/main/schema.sql`, `M db/main/shop/tables/customers.sql`, `M src/generated/customer.schema.ts`, an `error MQ6018` line (the schema snapshot of database 'main' is stale: the next `generate` writes it), and `2`. This is the CI gate. Say it: the table leads, and the binding carries the change to the entity. Changing only the entity's Len changes only `customer.schema.ts`. (A hand edit of a generated file gives `MQ6009 Hand edit` and exit 3.) |
+| 2.8 (1 min) | Second tab: `maquettiste generate --watch --progress none`. In the editor, on Customer's Attributes tab, **Add attribute** `phone` (string, Len 40). Then on its **Storage** tab, **Add columns for the unmapped attributes**. Ctrl+C when done. | `[watch] initial run: ...` with the pending drift applied. After the new attribute, `M src/generated/customer.ts` and `M src/generated/customer.schema.ts`, with `warning MQ4058: No field maps phone`. After **Add columns**, `A db/main/migrations/0003-<key>.sql` (`ALTER TABLE shop.customers ADD COLUMN phone varchar(40) NULL;`), `M db/main/schema.sql` and `M db/main/shop/tables/customers.sql`. The CLI's `maquettiste model materialize columns --database main Customer` does the same. (The watch timing, 0.36 s, was measured before 0.29.0.) |
 
 Commands for 2.4 (copy the pack, then replace `.maquettiste/maquettiste.json`; `name` is the one `init` gave in step 3):
 
@@ -358,15 +377,17 @@ partner's model.
 | --- | --- | --- |
 | 3.1 (45 s) | `maquettiste init --mcp --docker mattjcowan/maquettiste:0.10.1 --skill`, then `cat .mcp.json` | `created .mcp.json (server maquettiste: /bin/sh -c export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.docker/bin"; mkdir -p .maquettiste/.cache; exec docker run -i --rm --user 0:0 -v "$(pwd -P):/repo" -w /repo -e MAQUETTISTE_CACHE_DIR=/repo/.maquettiste/.cache/cli mattjcowan/maquettiste:0.10.1 maquettiste mcp 2>>.maquettiste/.cache/mcp.log)`, `created .claude/skills/maquettiste-modeling/SKILL.md`, and no other file. The file registers `{"type": "stdio", "command": "/bin/sh", "args": ["-c", "<that line>"]}` (the quotes in the line written as `\"`): Claude Code runs the server in the editor's own image over the repository (the image then runs it as you), with the same model and write path as the editor; the line finds `docker` even when Claude Code was started from the desktop, and the server's messages go to `.maquettiste/.cache/mcp.log`. (With the .NET tool fallback, drop `--docker ...`: `init --mcp` then writes `{"type": "stdio", "command": "maquettiste", "args": ["mcp"]}`.) |
 | 3.2 (30 s) | `claude`, approve the project server `maquettiste` when asked, type `/mcp` | maquettiste connected, 46 tools (get_model_index, get_element, create_element, apply_batch, validate, plan, get_plan_diff, apply_plan, reference_type_usage, get_translations, ...). |
-| 3.3 (2 min) | Prompt: `Add a Shipment entity related to Order (an order has many shipments) with carrier, an optional trackingNumber, shippedAt and a status enum ShipmentStatus (Preparing, InTransit, Delivered). Then validate and generate.` | About 50 s. Claude sends one `apply_batch` (the enum ShipmentStatus, the entity Shipment, a composition `ships` from Order to many Shipments), then `validate`, `plan`, `apply_plan`. Files: `A src/generated/shipment.ts`, `shipment-status.ts`, `shipment.schema.ts`, `M src/generated/order.ts` (`shipments?: Shipment[]`), `M index.ts`, `A db/main/shop/tables/shipments.sql`, `A db/main/migrations/000N-<key>.sql` with `CREATE TABLE shop.shipments ... REFERENCES shop.orders (id) ON DELETE RESTRICT` (the default; add "cascade on delete" to the prompt for CASCADE). The editor shows Shipment in the explorer without a reload; **Add related** on Order puts it on the diagram. |
-| 3.4 (1.5 min) | Prompt: `What would change in the generated code and the database scripts if Product.sku became required? Do not change the model; answer in at most 8 lines.` | About 20 s. In rehearsal: `product.ts` drops the `?` on `sku`, `product.schema.ts` drops `.optional()`, `schema.sql` and `products.sql` get `sku varchar(40) NOT NULL`, the existing migrations stay and the next one (`0005-<key>.sql`, named correctly) adds `ALTER TABLE ... ALTER COLUMN sku SET NOT NULL`, with a warning about existing NULL rows; the model is unchanged. |
+| 3.3 (2 min) | Prompt: `Add a Shipment entity related to Order (an order has many shipments) with carrier, an optional trackingNumber, shippedAt and a status enum ShipmentStatus (Preparing, InTransit, Delivered). Create its table in database main, then validate and generate.` **(not verified)** | Claude sends an `apply_batch` (the enum ShipmentStatus, the entity Shipment, a composition `ships` from Order to many Shipments), creates the table (the batch operation `materialize-tables`, which is **Create tables…**), then `validate`, `plan`, `apply_plan`. Files: `A src/generated/shipment.ts`, `shipment-status.ts`, `shipment.schema.ts`, `M src/generated/order.ts` (`shipments?: Shipment[]`), `M index.ts`, `M db/main/schema.sql`, `A db/main/shop/tables/shipments.sql`, `A db/main/migrations/0004-<key>.sql` with `CREATE TABLE shop.shipments ... REFERENCES shop.orders (id) ON DELETE RESTRICT` (the default; add "cascade on delete" to the prompt for CASCADE). Without "Create its table", Shipment gets its TypeScript files and no table. The editor shows Shipment in the explorer without a reload; **Add related** on Order puts it on the diagram. |
+| 3.4 (1.5 min) | Prompt: `What would change in the generated code and the database scripts if Product.sku became required? Do not change the model; answer in at most 8 lines.` **(not verified)** | The right answer since 0.29.0: `product.ts` drops the `?` on `sku` and `product.schema.ts` drops `.optional()`. The database scripts do not change: the `products` table is designed on its own, so its `sku` column stays `NULL` until the column itself is made required (then the next migration adds `ALTER TABLE ... ALTER COLUMN sku SET NOT NULL`). The model is unchanged. |
 | 3.5 (optional) | `npx tsc --noEmit` | Still compiles with the new Shipment types. |
 
 What was verified for part 3 (2026-09-29, from the image): `init --mcp --skill` keeping the Docker-form entry, the
-server's `initialize`, `tools/list` (39 tools) and `validate` over `docker run -i`, and prompts 3.3 and 3.4 word for word
-as headless Claude Code runs through this `.mcp.json` (`claude -p '<prompt>' --mcp-config .mcp.json --allowedTools
-mcp__maquettiste`): 50 s and 20 s, and `tsc` passed afterwards. The interactive session (approving the server, `/mcp`)
-was not run **(not verified)**; it uses the same file.
+server's `initialize`, `tools/list` (39 tools) and `validate` over `docker run -i`, and the prompts of that day as
+headless Claude Code runs through this `.mcp.json` (`claude -p '<prompt>' --mcp-config .mcp.json --allowedTools
+mcp__maquettiste`). Those prompts predate 0.29.0: their timings (50 s and 20 s) and Claude's answers are removed above,
+because they no longer hold. On 2026-11-27 the model changes and files of 3.3 and 3.4 were checked with the CLI (the same
+batch, `model materialize tables`, `generate`); Claude was not run. The interactive session (approving the server,
+`/mcp`) was not run **(not verified)**; it uses the same file.
 
 Commands for 3.1. `--docker` registers the container command in `.mcp.json`, started through `/bin/sh`: no script and no
 absolute path, since the shell Claude Code starts in `$REPO` mounts `$(pwd -P)`, the real path of that folder, so the file is
@@ -472,6 +493,28 @@ Engine - Community", not Docker Desktop), so it behaves like Linux, not like the
   checked against reference types. Every CLI command ran through the function of B2 (bash, same body).
 
 ## Rehearsal record
+
+### CLI re-check for 0.29.0, 2026-11-27
+
+Linux (WSL2, amd64), the CLI built from this tree (`maquettiste 0.29.0`), not the image, in a fresh folder with a
+`package.json` named `partner-service`. The editor was not used: each editor step was done by the CLI command or file edit
+that has the same effect. `tsc` was not run (no `node_modules`).
+
+| Step | Result | Time |
+| --- | --- | --- |
+| `init`, then the fallback files and `validate` | 0 errors, 0 warnings | 0.3 s / 0.8 s |
+| The seed batch through `model apply` (4 entities, 3 relations) | 7 written | 0.7 s |
+| 1.7 `model materialize tables --database main Customer Product Order OrderLine` | 4 tables, 3 mappings, 4 bindings; `validate` 0 errors | 1.1 s |
+| 2.3 `generate` sql-ddl | 7 files; `orders.sql` as in 2.3 | 1.4 s |
+| 2.4 `generate` with the TypeScript pack | 10 more files, migration kept | 1.3 s |
+| 2.7 only the entity's Len 120 to 150, `generate --check` | exit 2, only `customer.schema.ts` | 1.9 s |
+| 2.7 the column's Len to 150, `binding resync`, `generate --check` | MQ4087 before the resync; exit 2 with migration 0002, `schema.sql`, `customers.sql`, `customer.schema.ts`, MQ6018 | 1.1 s / 1.4 s |
+| 2.8 attribute `phone`, `generate`; then `model materialize columns` and `generate` | `customer.ts` and `customer.schema.ts` with MQ4058; then migration 0003 with `ADD COLUMN phone varchar(40) NULL` | 1.6 s / 1.4 s |
+| 3.3's change as a batch, `model materialize tables --database main Shipment`, `generate` | 8 files as listed in 3.3; migration 0004 with `CREATE TABLE shop.shipments` and the foreign key to `shop.orders` | 1.0 s / 0.9 s / 1.5 s |
+| 3.4's change (`sku` required), `generate --check` | exit 2, only `product.ts` and `product.schema.ts` | 1.5 s |
+
+The rehearsals below predate 0.29.0. Their steps 1.6, 2.7, 2.8, 3.3 and 3.4 followed the old flow, where the engine laid
+out tables by convention.
 
 ### Re-rehearsal, 2026-09-29
 

@@ -20,14 +20,9 @@ internal sealed partial class ResolveRun
     private readonly Dictionary<string, RCategory> _categories = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<RNavigation>> _navigations = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<RRelation>> _relationsByEntity = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, SortedDictionary<string, REntityMapping>> _entityMappings = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SortedDictionary<string, REntityBinding>> _entityBindings = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SortedDictionary<string, RRelationMapping>> _relationMappings = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, SortedDictionary<string, RSequence>> _keySequences = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Database, string Element), Mapping> _mappings = [];
-    private readonly Dictionary<string, REntity> _promoted = new(StringComparer.Ordinal);
-    private readonly List<RRelation> _promotedRelations = [];
-    private readonly Dictionary<string, List<(RAttribute Attribute, string ColumnKey)>> _promotedKeys = new(StringComparer.Ordinal);
     private List<RPackage> _packageOrder = [];
     private List<RValueObject> _valueObjectOrder = [];
     private List<REnum> _enumOrder = [];
@@ -54,10 +49,10 @@ internal sealed partial class ResolveRun
 
     private IReadOnlyList<string> MappingKeysOf(string id) => _mappingKeysByTarget.TryGetValue(id, out var keys) ? keys : [];
 
-    /// <summary>Resolved entities (promoted ones excluded) in section 7.1 order.</summary>
+    /// <summary>Resolved entities in section 7.1 order.</summary>
     public IReadOnlyList<REntity> EntityOrder => _entityOrder;
 
-    /// <summary>Resolved relations (promotion relations excluded) in section 7.1 order.</summary>
+    /// <summary>Resolved relations in section 7.1 order.</summary>
     public IReadOnlyList<RRelation> RelationOrder => _relationOrder;
 
     private Dictionary<string, List<(RRelation Relation, REnd End)>>? _relationsByEndId;
@@ -127,8 +122,8 @@ internal sealed partial class ResolveRun
     /// as a derived entity's instances carry them too.
     /// </summary>
     /// <remarks>
-    /// Memoized: every database and the finishing pass ask for every entity. Adding a navigation (promotion does, during the
-    /// database runs) clears the memo, so a list is never stale. Safe from the parallel finishing pass, which adds none.
+    /// Memoized: every database and the finishing pass ask for every entity. Safe from the parallel finishing pass, which adds no
+    /// navigation.
     /// </remarks>
     public IReadOnlyList<RNavigation> InheritedNavigations(string entityId)
     {
@@ -143,32 +138,8 @@ internal sealed partial class ResolveRun
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<RNavigation>> _inheritedNavigations = new(StringComparer.Ordinal);
 
-    /// <summary>The membership keys of every entity and relation list (promotion can add entities and relations).</summary>
+    /// <summary>The membership keys of every entity and relation list.</summary>
     public IReadOnlyList<string> EntityMembership => _entityMembership;
-
-    /// <summary>Records an entity's mapping in a database.</summary>
-    public void SetEntityMapping(REntity entity, string database, REntityMapping mapping)
-    {
-        mapping.TemplateDefined = TemplateDefinedOf(entity.Attributes, database, entity.Id);
-        lock (_databaseMaps)
-            Map(_entityMappings, entity.Id)[database] = mapping;
-        AddTemplateCollections(mapping.Database, mapping.Table, mapping.TemplateDefined);
-    }
-
-    /// <summary>
-    /// Lists a mapping's template-defined collections on its database with their owner table (<see cref="RDatabase.TemplateCollections"/>),
-    /// which a partial run publishes nowhere else.
-    /// </summary>
-    private static void AddTemplateCollections(RDatabase? database, RTable? owner, IReadOnlyList<RAttribute> attributes)
-    {
-        if (database is null || owner is null || attributes.Count == 0)
-            return;
-        lock (database.TemplateCollections)
-        {
-            foreach (var attribute in attributes)
-                database.TemplateCollections.Add((owner, attribute));
-        }
-    }
 
     /// <summary>Records an entity's binding to a database (erratum E43).</summary>
     public void SetEntityBinding(REntity entity, string database, REntityBinding binding)
@@ -180,10 +151,8 @@ internal sealed partial class ResolveRun
     /// <summary>Records a relation's mapping in a database.</summary>
     public void SetRelationMapping(RRelation relation, string database, RRelationMapping mapping)
     {
-        mapping.TemplateDefined = TemplateDefinedOf(relation.Attributes, database, relation.Id);
         lock (_databaseMaps)
             Map(_relationMappings, relation.Id)[database] = mapping;
-        AddTemplateCollections(mapping.JunctionTable?.Database, mapping.JunctionTable, mapping.TemplateDefined);
     }
 
     /// <summary>Records a navigation's join path in a database.</summary>
@@ -203,13 +172,6 @@ internal sealed partial class ResolveRun
             (navigation.PendingTypeJoins ??= new SortedDictionary<string, IReadOnlyList<RJoinPath>>(StringComparer.Ordinal))[database] = paths;
     }
 
-    /// <summary>Records a key sequence of an entity in a database.</summary>
-    public void SetKeySequence(REntity entity, string database, RSequence sequence)
-    {
-        lock (_databaseMaps)
-            Map(_keySequences, entity.Id)[database] = sequence;
-    }
-
     private static SortedDictionary<string, T> Map<T>(Dictionary<string, SortedDictionary<string, T>> maps, string id)
     {
         if (!maps.TryGetValue(id, out var map))
@@ -225,9 +187,7 @@ internal sealed partial class ResolveRun
     {
         foreach (var mapping in Model.All<Mapping>().OrderBy(m => m.Id, StringComparer.Ordinal))
         {
-            var target = mapping.Entity ?? mapping.Relation;
-            if (target is null)
-                continue;
+            var target = mapping.Relation;
             _mappings.TryAdd((mapping.Database, target), mapping);
             ListOf(_mappingKeysByTarget, target).Add(Keys.Element(mapping.Id));
         }
@@ -319,27 +279,6 @@ internal sealed partial class ResolveRun
     private IReadOnlyList<string> ComputeEntityMembership()
     {
         var keys = new DependencySet(Keys).Add("k:entity").Add("k:relation").Add("k:mapping").Add(Conventions);
-        // What of the relation mappings can promote a relation, as one key rather than every relation mapping file's (a model with a
-        // mapping per relation put tens of thousands of keys on every entity's relation list). Always recorded: an entity mapping file that
-        // becomes a promoted relation mapping under the same id moves no kind set and no other key the lists record.
-        keys.Add(Planning.PromotionNaming.Key);
-
-        var promotesByConvention = EffectiveConventions.AnyPromotes(Settings);
-        if (promotesByConvention)
-        {
-            foreach (var relation in _relationSources.Keys)
-                keys.Element(relation);
-        }
-
-        // A promoted entity exists only while its relation resolves in some database, which needs both ends placed there: every
-        // entity mapping (ignore) and database file (packages) can add or remove it.
-        if (promotesByConvention || Model.All<Mapping>().Any(m => m.Relation is not null && m.Shape == RelationShape.Promoted))
-        {
-            foreach (var mapping in Model.All<Mapping>())
-                keys.Element(mapping.Id);
-            keys.AddRange(DatabaseKeys);
-        }
-
         return keys.ToList();
     }
 
@@ -973,7 +912,7 @@ internal sealed partial class ResolveRun
         // Every entity is finished on its own (in parallel: each writes only its own members and dependency set). The join paths of
         // the navigations they list are published once afterwards (a navigation can be inherited by several entities; each would
         // publish the same paths).
-        var targets = _entities.Values.Concat(_promoted.Values).Where(r => r.Id.Length > 0).ToList();
+        var targets = _entities.Values.Where(r => r.Id.Length > 0).ToList();
         var listed = new List<RNavigation>[targets.Count];
         ForEach(targets.Count, i => listed[i] = FinishEntity(targets[i], derivedByBase));
         foreach (var navigations in listed)
@@ -1003,7 +942,7 @@ internal sealed partial class ResolveRun
             }
         }
 
-        var relations = _relations.Values.Concat(_promotedRelations).ToList();
+        var relations = _relations.Values.ToList();
         ForEach(relations.Count, i =>
         {
             var r = relations[i];
@@ -1057,7 +996,7 @@ internal sealed partial class ResolveRun
         return list;
     }
 
-    /// <summary>Finishes one entity's navigations, relations, derived entities, mappings and key sequences; returns its navigations.</summary>
+    /// <summary>Finishes one entity's navigations, relations, derived entities and bindings; returns its navigations.</summary>
     private List<RNavigation> FinishEntity(REntity r, Dictionary<REntity, List<REntity>> derivedByBase)
     {
         var deps = DepsOf(r);
@@ -1066,23 +1005,19 @@ internal sealed partial class ResolveRun
         r.Navigations = new RList<RNavigation>(navigations, naming.Count == 0 ? deps.ToList() : new DependencySet(Keys).AddRange(deps.ToList()).AddRange(naming).ToList());
         var relations = _relationsByEntity.TryGetValue(r.Id, out var list) ? Sorted(list) : [];
 
-        // Promotion adds relations (<relationId>.<endId>) to each end entity, so the list also depends on what decides promotion. An end that
-        // names a stereotype or any entity adds relations as carriers and entities change (several-types-design.md section 7).
+        // An end that names a stereotype or any entity adds relations as carriers and entities change (several-types-design.md section 7).
         r.Relations = new RList<RRelation>(relations, relations.Count == 0 && naming.Count == 0 ? deps.ToList()
             : new DependencySet(Keys).AddRange(deps.ToList()).AddRange(relations.Count == 0 ? [] : _entityMembership).AddRange(naming).ToList());
         r.Derived = new RList<REntity>(derivedByBase.TryGetValue(r, out var derivedList) ? derivedList : [], [Keys.Referrers(r.Id)]);
-        r.Mappings = _entityMappings.TryGetValue(r.Id, out var mappings) ? SortedMap(mappings) : ImmutableSortedDictionary<string, REntityMapping>.Empty;
         r.Bindings = _entityBindings.TryGetValue(r.Id, out var bindings) ? SortedMap(bindings) : ImmutableSortedDictionary<string, REntityBinding>.Empty;
         foreach (var check in r.Checks)
             check.Bindings = new RList<REntityBinding>(check.ListedBy, [Keys.Element(r.Id), .. DatabaseKeys]);
-        if (r.Key is { } key && _keySequences.TryGetValue(r.Id, out var sequences))
-            key.Sequences = SortedMap(sequences);
         return navigations;
     }
 
-    private List<REntity> SortedEntities() => Sorted(_entityOrder.Concat(_promoted.Values));
+    private List<REntity> SortedEntities() => Sorted(_entityOrder);
 
-    private List<RRelation> SortedRelations() => Sorted(_relationOrder.Concat(_promotedRelations));
+    private List<RRelation> SortedRelations() => Sorted(_relationOrder);
 
     private static List<T> ListOf<T>(Dictionary<string, List<T>> lists, string id)
     {
@@ -1396,168 +1331,4 @@ internal sealed partial class ResolveRun
             Rules = [.. (scalar?.Rules ?? []).Concat(own?.Rules ?? []).Distinct(StringComparer.Ordinal)],
         };
     }
-
-    /// <summary>Creates the promoted entity of a relation (once, shared by every database that promotes it).</summary>
-    public REntity Promote(RRelation relation, string? promotedName)
-    {
-        if (_promoted.TryGetValue(relation.Id, out var existing))
-            return existing;
-        var name = promotedName ?? Casing.Pascal(string.Join('_', relation.Ends.Select(e => e.OneEntity.Name)));
-        var entity = new REntity
-        {
-            Id = relation.Id,
-            Name = name,
-            DisplayName = name,
-            PluralName = Inflector.Pluralize(name),
-            Description = relation.Description,
-            Tags = relation.Tags,
-            Category = relation.Category,
-            Stereotypes = relation.Stereotypes,
-            Properties = relation.Properties,
-            Generation = relation.Generation,
-            Package = relation.Package,
-            IsPromoted = true,
-            PromotedFrom = relation,
-        };
-        var deps = DepsOf(entity).AddRange(DepsOf(relation).ToList()).Add(InflectionKey);
-        var source = _relationSources[relation.Id];
-
-        // The key (S6 "an entity has identity and a key"): a surrogate id when duplicates are allowed or an end is ordered (the
-        // junction's `id` column), else one attribute per end key attribute (the foreign key columns of the composite key).
-        var keyAttributes = new List<(RAttribute Attribute, string ColumnKey)>();
-        var surrogate = source.AllowDuplicates || source.Ends.Any(e => e.Ordered);
-        if (surrogate)
-        {
-            keyAttributes.Add((KeyAttribute(entity, relation.Id + "/id", "id", new RType { Kind = "builtin", Name = "int64", Builtin = "int64" }, null, null, null, deps), "id"));
-        }
-        else
-        {
-            foreach (var end in relation.Ends)
-            {
-                foreach (var ka in end.OneEntity.Key?.Attributes ?? RList<RAttribute>.Empty)
-                {
-                    var keyName = Casing.Camel(end.Role + "_" + ka.Name);
-                    var attribute = KeyAttribute(entity, relation.Id + "/" + end.Id + "/" + ka.Id, keyName, ka.Type, ka.Length, ka.Precision, ka.Scale, deps);
-                    DepsOf(attribute).AddRange(DepsOf(end.OneEntity).ToList());
-                    keyAttributes.Add((attribute, end.Id + "." + ka.Id));
-                }
-            }
-        }
-
-        _promotedKeys[entity.Id] = keyAttributes;
-        var relationAttributes = relation.Attributes.Select(a =>
-        {
-            var copy = MakeAttribute(source.Attributes.FirstOrDefault(x => string.Equals(x.Id, a.Id, StringComparison.Ordinal))
-                    ?? StereotypesOf(source).SelectMany(s => s.Attributes).First(x => string.Equals(x.Id, a.Id, StringComparison.Ordinal)),
-                entity, entity.Package, entity, false, null, source.Id);
-            copy.IsVirtual = a.IsVirtual;
-            copy.FromStereotype = a.FromStereotype;
-            return copy;
-        }).ToList();
-        var attributes = keyAttributes.Select(k => k.Attribute).Concat(relationAttributes).ToList();
-        SetOrder(attributes);
-        entity.Attributes = new RList<RAttribute>(attributes, deps.ToList());
-        entity.OwnAttributes = new RList<RAttribute>(attributes, deps.ToList());
-        entity.Key = new RKey
-        {
-            Attributes = new RList<RAttribute>(keyAttributes.Select(k => k.Attribute), deps.ToList()),
-            Strategy = surrogate ? "database-identity" : "application",
-        };
-        foreach (var (attribute, _) in keyAttributes)
-            Register(attribute);
-
-        // Two many-to-one relations whose ids are <relationId>.<endId> (section 7.4), navigable from the promoted entity.
-        foreach (var end in relation.Ends)
-        {
-            var id = relation.Id + "." + end.Id;
-            var r = new RRelation
-            {
-                Id = id,
-                Name = end.Role,
-                DisplayName = end.Role,
-                PluralName = Inflector.Pluralize(end.Role),
-                Package = relation.Package,
-                RelationKind = "association",
-                Cardinality = "one-to-many",
-            };
-            DepsOf(r).AddRange(deps.ToList());
-            var principal = new REnd
-            {
-                Id = id + ".principal", Entity = end.Entity, Role = end.Role, Navigation = end.Role, Min = 1, Max = "1", IsMany = false,
-                OnDelete = string.Equals(end.OnDelete, "restrict", StringComparison.Ordinal) ? "restrict" : "cascade",
-            };
-            var dependent = new REnd
-            {
-                Id = id + ".dependent", Entity = entity, Role = Casing.Camel(name), Min = 0, Max = "*", IsMany = true, OnDelete = "none",
-            };
-            principal.Opposite = dependent;
-            dependent.Opposite = principal;
-            DepsOf(principal).AddRange(deps.ToList());
-            DepsOf(dependent).AddRange(deps.ToList());
-            r.Ends = new RList<REnd>([principal, dependent], deps.ToList());
-            var navigation = new RNavigation
-            {
-                Id = id + "." + dependent.Id + "." + principal.Id,
-                Name = end.Role,
-                Relation = r,
-                From = dependent,
-                To = principal,
-                Target = end.Entity,
-                IsCollection = false,
-            };
-            DepsOf(navigation).AddRange(deps.ToList());
-            ListOf(_navigations, entity.Id).Add(navigation);
-            _inheritedNavigations.Clear();
-            ListOf(_relationsByEntity, entity.Id).Add(r);
-            if (!ReferenceEquals(end.Entity, entity))
-                ListOf(_relationsByEntity, end.OneEntity.Id).Add(r);
-            _promotedRelations.Add(r);
-            Register(r);
-            Register(principal);
-            Register(dependent);
-            Register(navigation);
-        }
-
-        _promoted[relation.Id] = entity;
-        Register(entity);
-        return entity;
-    }
-
-    /// <summary>A key attribute synthesized for a promoted entity.</summary>
-    private RAttribute KeyAttribute(REntity entity, string id, string name, RType type, int? length, int? precision, int? scale, DependencySet deps)
-    {
-        var a = new RAttribute
-        {
-            Id = id,
-            Name = name,
-            DisplayName = name,
-            PluralName = Inflector.Pluralize(name),
-            Package = entity.Package,
-            Owner = entity,
-            DeclaringEntity = entity,
-            Type = type,
-            Required = true,
-            Immutable = true,
-            Length = length,
-            Precision = precision,
-            Scale = scale,
-        };
-        DepsOf(a).AddRange(deps.ToList());
-        return a;
-    }
-
-    /// <summary>
-    /// The key attributes of a promoted entity with the key of the column each one maps to in the promoted table (<c>id</c>, or
-    /// <c>&lt;endId&gt;.&lt;keyAttrId&gt;</c>); empty for any other entity.
-    /// </summary>
-    public IReadOnlyList<(RAttribute Attribute, string ColumnKey)> PromotedKeys(string entityId) =>
-        _promotedKeys.TryGetValue(entityId, out var keys) ? keys : [];
-
-    /// <summary>The promotion relation of an end of a promoted relation.</summary>
-    public RRelation PromotionRelation(RRelation relation, REnd end) =>
-        _promotedRelations.First(r => string.Equals(r.Id, relation.Id + "." + end.Id, StringComparison.Ordinal));
-
-    /// <summary>The navigation of a promoted entity towards an end entity.</summary>
-    public RNavigation PromotionNavigation(RRelation promotionRelation) =>
-        _navigations[promotionRelation.Ends[1].OneEntity.Id].First(n => ReferenceEquals(n.Relation, promotionRelation));
 }

@@ -12,7 +12,6 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// a baseline model instead (next-phase-1-design.md section 3.1), which leave them alone; and the migration facts each diff renders,
 /// which the saved snapshot lists (section 3.2).
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class SchemaSnapshotTests
 {
     private const string SnapshotPath = ".maquettiste/snapshots/main.json";
@@ -37,7 +36,7 @@ public sealed class SchemaSnapshotTests
         Assert.True(f.Repo.Exists(".maquettiste/snapshots/main.json"));
         Assert.Equal(RunOutcome.Succeeded, (await f.RunAsync(GenerationMode.Check)).Outcome);
 
-        await f.WriteModelAsync(b => Models.Shop(b, extra: (m, _, _) => m.Entity("Order").Key("id", "uuid")));
+        await f.WriteModelAsync(b => Models.Shop(b, extra: (m, _, main) => m.Table("orders", main).Column("id", "uuid", nullable: false).PrimaryKey("id")));
         var snapshot = f.Repo.ReadFile(".maquettiste/snapshots/main.json");
         var check = await f.RunAsync(GenerationMode.Check);
         Assert.Equal(RunOutcome.Drift, check.Outcome);
@@ -61,8 +60,8 @@ public sealed class SchemaSnapshotTests
         Action<ModelBuilder>[] models =
         [
             b => Models.Shop(b),
-            b => Models.Shop(b, extra: (m, _, _) => m.Entity("Order").Key("id", "uuid")),
-            b => Models.Shop(b, extra: (m, _, _) => m.Entity("Order").Key("id", "uuid").Attr("note", "string")),
+            b => Models.Shop(b, extra: (m, _, main) => m.Table("orders", main).Column("id", "uuid", nullable: false).PrimaryKey("id")),
+            b => Models.Shop(b, extra: (m, _, main) => m.Table("orders", main).Column("id", "uuid", nullable: false).Column("note", "string").PrimaryKey("id")),
         ];
         var revision = 0;
         foreach (var model in models)
@@ -114,7 +113,7 @@ public sealed class SchemaSnapshotTests
         await using var repo = DiffRepo();
         await repo.ApplyAsync(); // the committed snapshot, revision 1
         var baseline = (await new SnapshotLibrary(repo.Store).CreateAsync(new SnapshotCreateRequest("Base"), Ct)).Id;
-        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.CustomerId, AddNickname)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.CustomersTableId, AddNickname)).Outcome);
         await repo.ApplyAsync(); // revision 2, which holds the new column
         Assert.StartsWith("revisions 1 2\n", repo.Repo.ReadFile(DiffPath), StringComparison.Ordinal);
         var committed = repo.Repo.ReadFile(SnapshotPath);
@@ -145,45 +144,12 @@ public sealed class SchemaSnapshotTests
     }
 
     [Fact]
-    public async Task Generate_against_a_baseline_after_materialize_plans_no_drop()
-    {
-        await using var repo = DiffRepo();
-        using var copy = new TempRepo();
-        E2ERepo.CopyTree(repo.Repo.ModelRoot, copy.ModelRoot); // the baseline: a folder that holds another copy of the project
-
-        // invoice stored as a table file: its table and columns take the file's ids, and the write records one rekey fact.
-        var parsed = repo.Store.ParseBatch(Encoding.UTF8.GetBytes(new JsonObject
-        {
-            ["operations"] = new JsonArray(new JsonObject
-            {
-                ["op"] = "materialize-tables", ["database"] = E2ERepo.MainDatabaseId, ["entities"] = new JsonArray(E2ERepo.InvoiceId),
-            }),
-        }.ToJsonString()));
-        var stored = await repo.Store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
-        var rekey = Assert.Single(stored.Facts!, f => f.Fact == "rekey").Id;
-        var aliases = repo.Repo.ReadFile(SnapshotPath); // materialize records its aliases in the committed snapshot
-
-        var service = new GenerationService(repo.Store, repo.Options) { AllowFolderBaselines = true };
-        var run = await service.RunAsync(new GenerationRequest { Against = copy.RepoRoot, Jobs = 2 }, null, Ct);
-        E2ERepo.AssertOutcome(RunOutcome.Succeeded, run);
-        var diff = repo.Repo.ReadFile(DiffPath);
-        Assert.StartsWith("revisions 0 ", diff, StringComparison.Ordinal);
-        foreach (var kind in new[] { "table added", "table dropped", "column added", "column dropped" })
-            Assert.DoesNotContain(kind, diff, StringComparison.Ordinal);
-        // The baseline lacks the rekey fact, so it renders; the diff starts from the baseline's own state.
-        Assert.Contains("fact " + rekey + " rekey complete", diff, StringComparison.Ordinal);
-        Assert.Equal(12, Line(diff, "states ").Split(' ')[1].Length);
-        Assert.Equal(aliases, repo.Repo.ReadFile(SnapshotPath)); // a run against a baseline leaves the committed snapshot alone
-    }
-
-    [Fact]
     public async Task Plan_against_then_apply_plan_uses_the_same_baseline()
     {
         await using var repo = DiffRepo();
         using var copy = new TempRepo();
         E2ERepo.CopyTree(repo.Repo.ModelRoot, copy.ModelRoot);
-        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.CustomerId, AddNickname)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.CustomersTableId, AddNickname)).Outcome);
         var service = new GenerationService(repo.Store, repo.Options) { AllowFolderBaselines = true };
 
         // The stored request holds the text, and the apply opens the baseline again from it.
@@ -216,13 +182,25 @@ public sealed class SchemaSnapshotTests
         await repo.ApplyAsync(); // revision 1, no facts
         Assert.Empty(SnapshotFacts(repo));
 
-        // One write renames Customer's name column (a complete rename) and drops customerSince (a pending drop), which is then held.
-        var edited = await repo.EditAsync(E2ERepo.CustomerId, n =>
+        // One write renames the customers table's name column (a complete rename) and drops customer_since (a pending drop), which is
+        // then held. The binding lets go of the dropped column in the same write.
+        var customer = (await repo.Store.GetElementAsync(E2ERepo.CustomerId, Ct))!;
+        var table = (await repo.Store.GetElementAsync(E2ERepo.CustomersTableId, Ct))!;
+        var customerJson = JsonNode.Parse(customer.Json.GetRawText())!.AsObject();
+        var fields = customerJson["bindings"]![0]!["fields"]!.AsArray();
+        fields.Remove(fields.Single(f => (string?)f!["column"] == E2ERepo.CustomerSinceColumnId));
+        var tableJson = JsonNode.Parse(table.Json.GetRawText())!.AsObject();
+        var columns = tableJson["columns"]!.AsArray();
+        columns.Single(c => (string?)c!["id"] == E2ERepo.CustomerNameColumnId)!["name"] = "full_name";
+        columns.Remove(columns.Single(c => (string?)c!["id"] == E2ERepo.CustomerSinceColumnId));
+        var batch = repo.Store.ParseBatch(Encoding.UTF8.GetBytes(new JsonObject
         {
-            var attributes = n["attributes"]!.AsArray();
-            attributes[1]!["name"] = "fullName";
-            attributes.RemoveAt(3);
-        });
+            ["operations"] = new JsonArray(
+                new JsonObject { ["op"] = "update", ["id"] = E2ERepo.CustomerId, ["expectedHash"] = customer.Hash, ["element"] = customerJson },
+                new JsonObject { ["op"] = "update", ["id"] = E2ERepo.CustomersTableId, ["expectedHash"] = table.Hash, ["element"] = tableJson }),
+        }.ToJsonString()));
+        var edited = await repo.Store.ApplyBatchAsync(batch.Batch!, ChangeSource.Editor, Ct);
+        Assert.True(edited.Outcome == SaveOutcome.Saved, string.Join("; ", edited.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
         var rename = Assert.Single(edited.Facts!, f => f.Fact == "rename").Id;
         var drop = Assert.Single(edited.Facts!, f => f.Fact == "drop").Id;
         await EditFactAsync(repo, drop, n => n["held"] = true);
@@ -254,7 +232,7 @@ public sealed class SchemaSnapshotTests
         // A fact gone from the model leaves the list when the snapshot is next written.
         var document = await repo.Store.GetElementAsync(rename, Ct);
         Assert.Equal(SaveOutcome.Saved, (await repo.Store.DeleteAsync(rename, document!.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct)).Outcome);
-        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.CustomerId, AddNickname)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.CustomersTableId, AddNickname)).Outcome);
         await repo.ApplyAsync();
         Assert.Equal([drop], SnapshotFacts(repo));
     }
@@ -287,44 +265,11 @@ public sealed class SchemaSnapshotTests
 
         // Rendered, the fact is in the snapshot's list: the next diff is empty again and starts where this one ended.
         await AssertSnapshotCurrentAsync(repo);
-        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.CustomerId, AddNickname)).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await repo.EditAsync(E2ERepo.CustomersTableId, AddNickname)).Outcome);
         await repo.ApplyAsync();
         var next = Line(repo.Repo.ReadFile(DiffPath), "states ").Split(' ');
         Assert.Equal(state[2], next[1]);
         Assert.NotEqual(state[2], next[2]);
-    }
-
-    [Fact]
-    public async Task Generate_after_materialize_with_only_a_rekey_fact_plans_no_drop()
-    {
-        await using var repo = DiffRepo();
-        await repo.ApplyAsync(); // revision 1: invoice is a projected table under its synthesized key
-        var parsed = repo.Store.ParseBatch(Encoding.UTF8.GetBytes(new JsonObject
-        {
-            ["operations"] = new JsonArray(new JsonObject
-            {
-                ["op"] = "materialize-tables", ["database"] = E2ERepo.MainDatabaseId, ["entities"] = new JsonArray(E2ERepo.InvoiceId),
-            }),
-        }.ToJsonString()));
-        var stored = await repo.Store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
-        var rekey = Assert.Single(stored.Facts!, f => f.Fact == "rekey").Id;
-
-        // Without the aliases materialize recorded, only the rekey fact reads the snapshot under today's keys.
-        var snapshot = JsonNode.Parse(repo.Repo.ReadFile(SnapshotPath))!.AsObject();
-        Assert.True(snapshot.Remove("aliases"));
-        repo.Repo.WriteFile(SnapshotPath, snapshot.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) + "\n");
-
-        var planned = await repo.Service.PlanAsync(new GenerationRequest { Jobs = 2 }, null, Ct);
-        Assert.Equal(RunOutcome.Succeeded, planned.Outcome);
-        Assert.Equal(RunOutcome.Succeeded, (await repo.Service.ApplyAsync(planned.Plan!.Id, null, Ct)).Outcome);
-        var diff = repo.Repo.ReadFile(DiffPath);
-        Assert.StartsWith("revisions 1 2\n", diff, StringComparison.Ordinal);
-        Assert.Contains("fact " + rekey + " rekey complete", diff, StringComparison.Ordinal);
-        foreach (var kind in new[] { "table added", "table dropped", "column added", "column dropped" })
-            Assert.DoesNotContain(kind, diff, StringComparison.Ordinal);
-        Assert.Equal([rekey], SnapshotFacts(repo));
-        await AssertSnapshotCurrentAsync(repo);
     }
 
     /// <summary>Check mode finds the committed snapshot current (no MQ6018); the diff file itself changes after every apply.</summary>
@@ -347,9 +292,9 @@ public sealed class SchemaSnapshotTests
         Assert.True(result.Facts is null or { Count: 0 }, "editing a fact records none");
     }
 
-    private static string CustomerKey => E2ERepo.CustomerId + "@" + E2ERepo.MainDatabaseId;
+    private const string CustomerKey = E2ERepo.CustomersTableId;
 
-    private static void AddNickname(JsonObject customer) => customer["attributes"]!.AsArray().Add(new JsonObject
+    private static void AddNickname(JsonObject customers) => customers["columns"]!.AsArray().Add(new JsonObject
     {
         ["id"] = NicknameId, ["name"] = "nickname", ["type"] = "string", ["length"] = 40,
     });

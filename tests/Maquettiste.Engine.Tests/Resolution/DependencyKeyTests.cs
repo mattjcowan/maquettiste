@@ -9,7 +9,7 @@ namespace Maquettiste.Engine.Tests.Resolution;
 
 /// <summary>
 /// Dependency keys (engine-design.md sections 7 and 11, D38): every resolved object derived from an entity or relation lists
-/// <c>r:&lt;id&gt;</c>, so a mapping, overlay or relation created after a unit was rendered changes that unit's input hash.
+/// <c>r:&lt;id&gt;</c>, so a binding, mapping or relation created after a unit was rendered changes that unit's input hash.
 /// </summary>
 public sealed class DependencyKeyTests
 {
@@ -28,55 +28,6 @@ public sealed class DependencyKeyTests
         var db = b.Database("main", Dialect.PostgreSql);
         b.Settings(s => s with { Conventions = new Conventions { EnumStorage = StorageKind.String } });
         return new Fixture(b, customer, invoice, places, status, tags, db);
-    }
-
-    [Fact]
-    public void Entities_relations_and_navigations_list_referrer_keys_of_what_they_derive_from()
-    {
-        var f = Create();
-        var mapping = f.B.Mapping(f.Db, f.Invoice);
-        var model = ResolutionKit.Resolve(f.B);
-        var invoice = model.Entity("Invoice");
-        Assert.Contains($"e:{f.Invoice.Id}", invoice.Dependencies);
-        Assert.Contains($"r:{f.Invoice.Id}", invoice.Dependencies);
-        Assert.Contains($"e:{mapping.Id}", invoice.Dependencies);
-        Assert.Contains($"e:{f.Db.Id}", invoice.Dependencies);
-        Assert.Contains("s:conventions", invoice.Dependencies);
-
-        var places = model.Relation("places");
-        Assert.Contains($"r:{f.Places.Id}", places.Dependencies);
-        Assert.Contains($"r:{f.Customer.Id}", places.Dependencies);
-        Assert.Contains($"r:{f.Invoice.Id}", places.Dependencies);
-
-        var navigation = model.Entity("Customer").Navigations.Single(n => n.Name == "invoices");
-        Assert.Contains($"r:{f.Places.Id}", navigation.Dependencies);
-        Assert.Contains($"r:{f.Customer.Id}", navigation.Dependencies);
-        Assert.Contains($"r:{f.Invoice.Id}", navigation.Dependencies);
-        Assert.Equal(invoice.Dependencies.Order(StringComparer.Ordinal), invoice.Dependencies);
-        Assert.Equal(invoice.Dependencies.Distinct(StringComparer.Ordinal).Count(), invoice.Dependencies.Count);
-    }
-
-    [Fact]
-    public void Synthesized_tables_and_their_columns_list_entity_relation_and_enum_referrer_keys()
-    {
-        var f = Create();
-        var model = ResolutionKit.Resolve(f.B);
-        var db = model.Db("main");
-
-        var invoices = db.Table("invoices");
-        Assert.Contains($"r:{f.Invoice.Id}", invoices.Dependencies);
-        Assert.Contains($"r:{f.Places.Id}", invoices.Dependencies);     // it holds the relation's foreign key
-        Assert.Contains($"r:{f.Customer.Id}", invoices.Dependencies);   // the key type comes from the principal
-        Assert.Contains("s:conventions", invoices.Dependencies);
-        Assert.Contains("s:typeMaps", invoices.Dependencies);
-        Assert.Contains("s:inflection", invoices.Dependencies);
-        Assert.All(invoices.Columns, c => Assert.Same(invoices.Dependencies, c.Dependencies));
-        Assert.Equal(invoices.Dependencies, invoices.Columns.MembershipKeys);
-
-        var junction = db.Tables.Single(t => t.IsJunction);
-        Assert.Contains($"r:{f.Tags.Id}", junction.Dependencies);
-        Assert.Contains($"r:{f.Invoice.Id}", junction.Dependencies);
-        Assert.Contains($"r:{f.Customer.Id}", junction.Dependencies);
     }
 
     [Fact]
@@ -230,76 +181,10 @@ public sealed class DependencyKeyTests
     }
 
     [Fact]
-    public void A_mapping_overlay_or_relation_created_later_changes_the_referrer_hash_the_resolved_objects_list()
-    {
-        var f = Create();
-        var before = f.B.Build();
-        var resolved = ResolutionKit.Resolve(before);
-        var key = $"r:{f.Invoice.Id}";
-        Assert.Contains(key, resolved.Entity("Invoice").Dependencies);
-        Assert.Contains(key, resolved.Db("main").Table("invoices").Dependencies);
-        var hashBefore = before.ReferrersHash(f.Invoice.Id);
-
-        var withMapping = Create();
-        withMapping.B.Mapping(withMapping.Db, withMapping.Invoice).Storage("status", StorageKind.String);
-        Assert.NotEqual(hashBefore, withMapping.B.Build().ReferrersHash(f.Invoice.Id));
-
-        var withOverlay = Create();
-        withOverlay.B.Table("", withOverlay.Db).OverlayFor(withOverlay.Invoice).Overlay(withOverlay.Invoice.AttrId("status"), name: "state");
-        Assert.NotEqual(hashBefore, withOverlay.B.Build().ReferrersHash(f.Invoice.Id));
-
-        var withRelation = Create();
-        withRelation.B.Relation("follows", withRelation.Invoice, withRelation.Invoice);
-        Assert.NotEqual(hashBefore, withRelation.B.Build().ReferrersHash(f.Invoice.Id));
-    }
-
-    [Fact]
-    public void Entity_lists_record_what_can_promote_a_relation_rather_than_every_relation_mapping()
-    {
-        // A model with a mapping per relation put every relation mapping file's key on every entity's relation list. The lists record
-        // pm:relation-mappings instead: it moves when a relation mapping's shape (or its relation, database, ignore flag or promoted name)
-        // changes, not when the mapping names another foreign key or is renamed.
-        var f = Create();
-        var mappingId = f.B.NewId();
-        f.B.Add(new Mapping { Id = mappingId, Name = "places", Database = f.Db.Id, Relation = f.Places.Id });
-        var before = f.B.Build();
-        var model = ResolutionKit.Resolve(before);
-        Assert.Contains(PromotionNaming.Key, model.Entities.MembershipKeys);
-        Assert.Contains(PromotionNaming.Key, model.Entity("Customer").Relations.MembershipKeys);
-        Assert.DoesNotContain($"e:{mappingId}", model.Entities.MembershipKeys);
-        Assert.DoesNotContain($"e:{mappingId}", model.Entity("Customer").Relations.MembershipKeys);
-        var hasher = new DependencyHasher(before, model, new PackSet([], []), new Dictionary<string, SchemaDiffResult>());
-        Assert.Equal(PromotionNaming.Hash(before), hasher.CurrentHash(PromotionNaming.Key));
-
-        var renamed = Tests.Model.StereotypeDefaultsTests.Rebuild(f.B, e => e is Mapping m && m.Id == mappingId ? m with { Name = "places in main" } : e);
-        Assert.Equal(PromotionNaming.Hash(before), PromotionNaming.Hash(renamed));
-        var promoted = Tests.Model.StereotypeDefaultsTests.Rebuild(f.B, e => e is Mapping m && m.Id == mappingId ? m with { Shape = RelationShape.Promoted } : e);
-        Assert.NotEqual(PromotionNaming.Hash(before), PromotionNaming.Hash(promoted));
-
-        // Once a mapping promotes, the lists also record every mapping and database file, as before.
-        Assert.Contains($"e:{mappingId}", ResolutionKit.Resolve(promoted).Entities.MembershipKeys);
-
-        // A model without relation mappings records the key too: a mapping file can become a promoted relation mapping under its id.
-        Assert.Contains(PromotionNaming.Key, ResolutionKit.Resolve(Create().B).Entities.MembershipKeys);
-    }
-
-    [Fact]
-    public void Promoted_entities_and_their_tables_list_the_relation_referrer_key()
-    {
-        var f = Create();
-        f.B.Add(new Mapping { Id = f.B.NewId(), Name = "tags", Database = f.Db.Id, Relation = f.Tags.Id, Shape = RelationShape.Promoted });
-        var model = ResolutionKit.Resolve(f.B);
-        var promoted = model.Entities.Single(e => e.IsPromoted);
-        Assert.Contains($"r:{f.Tags.Id}", promoted.Dependencies);
-        Assert.Contains($"r:{f.Tags.Id}", promoted.Mappings["main"].Table.Dependencies);
-    }
-
-    [Fact]
     public void A_package_that_gains_a_default_list_re_renders_its_members()
     {
         // next-phase-2-design.md section 3.1: a resolved object whose holder has a package lists the e: key of every package on that
-        // package's chain, own first, so a package that gains its first default list changes the input hash of its members' units,
-        // a table without a file included (its holder's package is its entity's).
+        // package's chain, own first, so a package that gains its first default list changes the input hash of its members' units.
         var b = new ModelBuilder(seed: 71);
         b.Stereotype("audited");
         var billing = b.Package("Billing");
@@ -309,12 +194,8 @@ public sealed class DependencyKeyTests
         var before = b.Build();
         var resolved = ResolutionKit.Resolve(before);
         var entity = resolved.Entity("Invoice");
-        var table = resolved.Db("main").Table("invoices");
-        foreach (var dependencies in new[] { entity.Dependencies, table.Dependencies })
-        {
-            Assert.Contains($"e:{invoices.Id}", dependencies);
-            Assert.Contains($"e:{billing.Id}", dependencies);
-        }
+        Assert.Contains($"e:{invoices.Id}", entity.Dependencies);
+        Assert.Contains($"e:{billing.Id}", entity.Dependencies);
 
         Assert.Contains($"e:{billing.Id}", resolved.Packages.Single(p => p.Name == "Invoices").Dependencies);
         Assert.DoesNotContain(resolved.Packages.Single(p => p.Name == "Billing").Dependencies, k => k == $"e:{invoices.Id}");
@@ -327,7 +208,6 @@ public sealed class DependencyKeyTests
         var hashAfter = new DependencyHasher(after, resolvedAfter, new PackSet([], []), none);
         Assert.Equal(hashBefore.CurrentHash($"e:{invoice.Id}"), hashAfter.CurrentHash($"e:{invoice.Id}"));
         Assert.NotEqual(hashBefore.InputHash("unit", entity.Dependencies), hashAfter.InputHash("unit", entity.Dependencies));
-        Assert.NotEqual(hashBefore.InputHash("unit", table.Dependencies), hashAfter.InputHash("unit", table.Dependencies));
     }
 
     [Fact]
@@ -399,25 +279,4 @@ public sealed class DependencyKeyTests
         Assert.Equal([$"r:{f.Customer.Id}"], model.Entity("Customer").Derived.MembershipKeys);
     }
 
-    [Fact]
-    public void Referrer_keys_are_present_for_every_synthesized_object_kind()
-    {
-        var f = Create();
-        var model = ResolutionKit.Resolve(f.B);
-        foreach (var table in model.Db("main").Tables)
-        {
-            var sources = new List<string>();
-            if (table.Entity is { } e)
-                sources.Add(e.Id);
-            if (table.Relation is { } r)
-                sources.Add(r.Id);
-            Assert.NotEmpty(sources);
-            Assert.All(sources, id => Assert.Contains("r:" + id, table.Dependencies));
-        }
-
-        Assert.All(model.Entities, e => Assert.Contains("r:" + e.Id, e.Dependencies));
-        Assert.All(model.Relations, r => Assert.Contains("r:" + r.Id, r.Dependencies));
-        Assert.All(model.Entities.SelectMany(e => e.Navigations), n => Assert.Contains("r:" + n.Relation.Id, n.Dependencies));
-        Assert.IsType<RDatabase>(model.Find(f.Db.Id));
-    }
 }

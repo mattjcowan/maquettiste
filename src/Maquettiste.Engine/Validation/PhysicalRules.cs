@@ -5,16 +5,12 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// Physical rules on table, view and sequence files (MQ4001 to MQ4008, MQ4010, MQ4016, MQ4056, MQ4057, MQ4059, MQ4060, MQ7124, the table case
-/// of MQ7125, and MQ3013, MQ3017, MQ3019 on designed columns).
-/// These rules see only what files state: names produced by conventions for synthesized tables, columns and constraints are not
-/// checked against the identifier limit here (they need the resolver's casing and inflection; see README, open contract gap).
+/// Physical rules on table, view and sequence files (MQ4001 to MQ4003, MQ4005, MQ4006, MQ4008, MQ4010, MQ4016, MQ4056, MQ4057, MQ4059,
+/// MQ4060, MQ7124, the table case of MQ7125, and MQ3013, MQ3017, MQ3019 on designed columns). These rules see only what files state:
+/// constraint names a convention gives are checked by the resolver (MQ4001, MQ4068).
 /// </summary>
 internal static class PhysicalRules
 {
-    /// <summary>Column keys that are not attribute or end ids (engine-design.md section 7.3).</summary>
-    private static readonly string[] SpecialColumnKeys = ["id", "position", "discriminator"];
-
     /// <summary>Checks an identifier against the database's limit (MQ4001).</summary>
     /// <param name="database">The database.</param>
     /// <param name="limit">The limit, or <see langword="null"/> for none.</param>
@@ -45,7 +41,6 @@ internal static class PhysicalRules
         var model = context.Model;
         var database = model.Get<Database>(table.Database);
         var limit = database is null ? null : DialectInfo.IdentifierLimit(database);
-        var overlay = table.Origin == TableOrigin.Synthesized;
 
         CheckPhysicalName(context, table, "Table", report);
         CheckSameDatabase(context, table.Database, table.Schema, report);
@@ -63,18 +58,8 @@ internal static class PhysicalRules
                 CheckIdentifierLength(database, limit, table.Indexes[i].Name, "Index", Ptr.At("/indexes", i) + "/name", table.Indexes[i].Id, report);
         }
 
-        // MQ4004: two overlay files for one synthesized table.
-        if (ValidationContext.OverlayTarget(table) is { } target)
-        {
-            var overlays = context.OverlaysOf(target);
-            if (overlays.Length > 1 && overlays[0] != report.Document)
-                report.Add("MQ4004", $"Synthesized table '{target}' already has the overlay {overlays[0].Path}; one overlay file per synthesized table.", "");
-            CheckOverlayTarget(context, table, report);
-        }
-
         // Columns.
         var columnIds = new HashSet<string>(StringComparer.Ordinal);
-        var overlayKeys = new Dictionary<string, int>(StringComparer.Ordinal);
         var names = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < table.Columns.Count; i++)
         {
@@ -83,8 +68,7 @@ internal static class PhysicalRules
             columnIds.Add(column.Id);
             BuiltinRules.CheckCommon(context, column, pointer, "column", report);
 
-            if (column.Name.Length > 0 || column.Attribute is null)
-                BuiltinRules.CheckLabel(column.Name, "column", pointer + "/name", column.Id, report);
+            BuiltinRules.CheckLabel(column.Name, "column", pointer + "/name", column.Id, report);
             if (column.Name.Length > 0 && !names.TryAdd(column.Name, i))
             {
                 report.Add("MQ4003", string.Create(CultureInfo.InvariantCulture, $"Column name '{column.Name}' is already used at index {names[column.Name]}."), pointer + "/name", column.Id);
@@ -97,30 +81,18 @@ internal static class PhysicalRules
                     CheckNativeType(context, database, table, i, native, pointer, report);
             }
 
-            if (column.Attribute is { } key)
-            {
-                if (!overlay)
-                    report.Add("MQ4007", $"Column '{column.Name}' overrides column key '{key}', but only a synthesized table's overlay has column keys.", pointer + "/attribute", column.Id);
-                else if (!IsValidColumnKey(context, table, key))
-                    report.Add("MQ4007", $"Column key '{key}' does not name a column of the synthesized table.", pointer + "/attribute", column.Id);
-                else if (!overlayKeys.TryAdd(key, i))
-                    report.Add("MQ4003", string.Create(CultureInfo.InvariantCulture, $"Column key '{key}' is already overridden at index {overlayKeys[key]}."), pointer + "/attribute", column.Id);
-            }
-
             CheckColumnValues(context, database, column, pointer, report);
             CheckStableId(column, pointer, $"Column '{column.Name}'", report);
             if (column.Sequence is { } sequenceId && model.Get<Sequence>(sequenceId) is { } sequence && sequence.Database != table.Database)
                 report.Add("MQ2002", $"Column '{column.Name}' uses sequence '{sequence.Name}' of another database.", pointer + "/sequence", column.Id);
         }
 
-        // The members the table inherits from its stereotypes (next-phase-2-design.md section 3.1): for an overlay the candidate set, since
-        // which stereotypes its synthesized table skips is the resolver's to know (it reports what an overlay names of those).
+        // The members the table inherits from its stereotypes (next-phase-2-design.md section 3.1).
         var members = TableMembers.Of(model, table);
-        if (!overlay)
-            CheckInheritedNames(table, members, names, report);
+        CheckInheritedNames(table, members, names, report);
 
         // MQ4008: constraints and indexes name existing columns, own or inherited (by keyed id); a bare member id gets the keyed form.
-        bool Resolves(string key) => columnIds.Contains(key) || overlayKeys.ContainsKey(key) || (overlay && IsValidColumnKey(context, table, key)) || members.HasColumn(key);
+        bool Resolves(string key) => columnIds.Contains(key) || members.HasColumn(key);
         string Hint(string key) => MemberRules.KeyedHint(members, key);
 
         if (table.PrimaryKey is { } primaryKey)
@@ -144,8 +116,7 @@ internal static class PhysicalRules
         var withMembers = MemberRules.WithMembers(model, table);
         for (var i = 0; i < table.ForeignKeys.Count; i++)
             CheckForeignKey(context, table, withMembers, i, Resolves, Hint, report);
-        if (!overlay)
-            CheckStableIdKey(context, table, withMembers, report);
+        CheckStableIdKey(context, table, withMembers, report);
         for (var i = 0; i < table.Checks.Count; i++)
         {
             if (table.Checks[i].Column is { } checkColumn && !Resolves(checkColumn))
@@ -158,8 +129,7 @@ internal static class PhysicalRules
 
     /// <summary>
     /// MQ7124 (next-phase-2-design.md section 3.4): <c>stableId</c> on a column that is not of type <c>uuid</c>, or whose value the
-    /// database fills (identity, sequence, generated, computed). An overlay entry that states no type keeps its projected column's,
-    /// which a file does not show; the resolver gives such a column no stable id unless it is a uuid.
+    /// database fills (identity, sequence, generated, computed). A column that states no type is a string column.
     /// </summary>
     /// <param name="column">The column: of a table file, or a stereotype's member.</param>
     /// <param name="pointer">The column's pointer.</param>
@@ -169,8 +139,8 @@ internal static class PhysicalRules
     {
         if (!column.StableId)
             return;
-        var type = column.Type ?? (column.Attribute is null ? "string" : null);
-        if (type is not null and not "uuid")
+        var type = column.Type ?? "string";
+        if (type is not "uuid")
             report.Add("MQ7124", $"{what} takes a stable id but is a {type} column: a stable id is a uuid. Make the column uuid, or clear stableId.", pointer + "/stableId", column.Id);
         else if (FilledBy(column) is { } how)
             report.Add("MQ7124", $"{what} takes a stable id, but the database fills its value ({how}): clear stableId, or let the engine give the value instead.", pointer + "/stableId", column.Id);
@@ -566,8 +536,7 @@ internal static class PhysicalRules
 
     /// <summary>
     /// MQ4003 on a designed or imported table file for an inherited column whose name an own column, or a column an earlier stereotype
-    /// gives, already uses; the finding goes where the member's fix belongs (<see cref="MemberRules.PointerOf"/>). A synthesized table's
-    /// names are the resolver's.
+    /// gives, already uses; the finding goes where the member's fix belongs (<see cref="MemberRules.PointerOf"/>).
     /// </summary>
     private static void CheckInheritedNames(Table table, TableMemberSet members, Dictionary<string, int> own, Report report)
     {
@@ -669,7 +638,7 @@ internal static class PhysicalRules
                 report.Add("MQ4065", $"Foreign key '{name}' has a period and ON UPDATE {ResolutionActionName(fk.OnUpdate)}: a period key takes no action but no-action.", pointer + "/onUpdate", fk.Id);
         }
 
-        if (referenced is null || referenced.Origin == TableOrigin.Synthesized)
+        if (referenced is null)
             return;
         bool? temporal = fk.ReferencesColumns.Count == 0
             ? referenced.PrimaryKey?.WithoutOverlaps
@@ -705,47 +674,26 @@ internal static class PhysicalRules
         CheckColumnList(fk.Columns, pointer + "/columns", "Foreign key", fk.Id, resolves, report, hint: hint);
         CheckOnDeleteColumns(fk, pointer, report);
 
-        // The referenced table: a table file id, or a synthesized table key. A designed or imported one is read with its inherited
-        // columns and keys, which a foreign key references by keyed id.
+        // The referenced table: a table file id, read with its inherited columns and keys, which a foreign key references by keyed id.
         var referenced = model.Get<Table>(fk.ReferencesTable) is { } file ? MemberRules.WithMembers(model, file) : null;
         CheckPeriod(fk, pointer, referenced, report);
-        if (referenced is null && !IsSynthesizedTableKey(model, fk.ReferencesTable))
+        if (referenced is null)
         {
-            report.Add("MQ2001", $"Foreign key references table '{fk.ReferencesTable}', which is neither a table file nor a synthesized table key.", pointer + "/referencesTable", fk.Id);
+            report.Add("MQ2001", $"Foreign key references table '{fk.ReferencesTable}', which is not a table file.", pointer + "/referencesTable", fk.Id);
             return;
         }
 
-        // Referenced columns, when the referenced table's columns are known.
-        if (referenced is { Origin: not TableOrigin.Synthesized })
+        var ids = ColumnsById(referenced);
+        for (var i = 0; i < fk.ReferencesColumns.Count; i++)
         {
-            var ids = ColumnsById(referenced);
-            for (var i = 0; i < fk.ReferencesColumns.Count; i++)
-            {
-                if (!ids.ContainsKey(fk.ReferencesColumns[i]))
-                    report.Add("MQ4008", $"Foreign key references column '{fk.ReferencesColumns[i]}', which is not a column of table '{referenced.Name}'.{MemberRules.KeyedHint(TableMembers.Of(model, model.Get<Table>(referenced.Id)!), fk.ReferencesColumns[i])}",
-                        Ptr.At(pointer + "/referencesColumns", i), fk.Id);
-            }
+            if (!ids.ContainsKey(fk.ReferencesColumns[i]))
+                report.Add("MQ4008", $"Foreign key references column '{fk.ReferencesColumns[i]}', which is not a column of table '{referenced.Name}'.{MemberRules.KeyedHint(TableMembers.Of(model, model.Get<Table>(referenced.Id)!), fk.ReferencesColumns[i])}",
+                    Ptr.At(pointer + "/referencesColumns", i), fk.Id);
+        }
 
-            if (table.Origin != TableOrigin.Synthesized)
-                CheckForeignKeyTypes(withMembers, fk, pointer, referenced, ids, report);
-            if (fk.ReferencesColumns.All(ids.ContainsKey))
-                CheckReferencedKey(model, fk, pointer, referenced, ids, report);
-        }
-        else
-        {
-            var target = referenced;
-            for (var i = 0; i < fk.ReferencesColumns.Count; i++)
-            {
-                var key = fk.ReferencesColumns[i];
-                // An inherited column of a synthesized table is named by its keyed id: the overlay's candidate members say whether it
-                // can be there; without an overlay, any stereotype's column can (the resolver reports one the table does not inherit).
-                var ok = target is not null
-                    ? target.Columns.Any(c => c.Id == key || c.Attribute == key) || IsValidColumnKey(context, target, key) || TableMembers.Of(model, target).HasColumn(key)
-                    : IsValidColumnKeySegments(model, key) || IsStereotypeColumnKey(model, fk.ReferencesTable, key);
-                if (!ok)
-                    report.Add("MQ4008", $"Foreign key references column key '{key}', which does not name a column of the referenced table.", Ptr.At(pointer + "/referencesColumns", i), fk.Id);
-            }
-        }
+        CheckForeignKeyTypes(withMembers, fk, pointer, referenced, ids, report);
+        if (fk.ReferencesColumns.All(ids.ContainsKey))
+            CheckReferencedKey(model, fk, pointer, referenced, ids, report);
     }
 
     /// <summary>
@@ -857,138 +805,6 @@ internal static class PhysicalRules
     });
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Table, Dictionary<string, Column>> ColumnIds = new();
-
-    /// <summary>Whether a column key is <c>&lt;tableKey&gt;.&lt;memberId&gt;</c> where the member is a column of a stereotype.</summary>
-    private static bool IsStereotypeColumnKey(ModelSnapshot model, string tableKey, string key) =>
-        ContributedMembers.TryParse(key, out var holder, out var member) && string.Equals(holder, tableKey, StringComparison.Ordinal)
-        && model.TryGetEntry(member, out var entry) && entry.Kind == "column" && model.Get<Stereotype>(entry.OwnerId) is not null;
-
-    /// <summary>Whether a key is a synthesized table key: <c>&lt;entity, relation or enum id&gt;@&lt;database id&gt;</c>, or an entity's
-    /// child table <c>&lt;entity id&gt;.&lt;attribute id&gt;@&lt;database id&gt;</c>.</summary>
-    /// <param name="model">The snapshot.</param>
-    /// <param name="key">The key.</param>
-    /// <returns><see langword="true"/> for a synthesized table key.</returns>
-    internal static bool IsSynthesizedTableKey(ModelSnapshot model, string key)
-    {
-        var at = key.IndexOf('@', StringComparison.Ordinal);
-        if (at <= 0 || model.Get<Database>(key[(at + 1)..]) is null)
-            return false;
-        var target = key[..at].Split('.');
-        if (target.Length == 1)
-            return model.Get<Entity>(target[0]) is not null || model.Get<Relation>(target[0]) is not null || model.Get<EnumType>(target[0]) is not null;
-        return target.Length == 2 && model.Get<Entity>(target[0]) is not null
-            && model.TryGetEntry(target[1], out var entry) && entry.Kind == "attribute";
-    }
-
-    private static void CheckOverlayTarget(ValidationContext context, Table table, Report report)
-    {
-        if (table.Entity is not { } entityId || table.Attribute is not { } attributeId || context.Model.Get<Entity>(entityId) is not { } entity)
-            return;
-        var attribute = context.Flatten(entity).FirstOrDefault(a => a.Attribute.Id == attributeId)?.Attribute;
-        if (attribute is null)
-            report.Add("MQ4007", $"Overlay names attribute '{attributeId}', which is not an attribute of entity '{entity.Name}'.", "/attribute");
-        else if (AttributeRules.Resolve(context.Model, attribute.Type).ValueObject is null && !attribute.Collection)
-            report.Add("MQ4007", $"Attribute '{attribute.Name}' of entity '{entity.Name}' has no child table: it is neither a value object nor a collection.", "/attribute");
-    }
-
-    /// <summary>
-    /// Whether a column key can name a column of a synthesized table (engine-design.md section 7.3). The first segment must fit
-    /// the table's target: an attribute of the entity (own, inherited or virtual) or an end of a relation that touches it, an
-    /// attribute or end of the relation for a junction, a member attribute of the value object for a child table; later segments
-    /// must be attributes; <c>id</c>, <c>position</c>, <c>discriminator</c>, <c>code</c> and <c>name</c> are always allowed.
-    /// </summary>
-    /// <param name="context">The validation context.</param>
-    /// <param name="table">The synthesized table's overlay.</param>
-    /// <param name="key">The column key.</param>
-    /// <returns><see langword="true"/> when it can resolve.</returns>
-    public static bool IsValidColumnKey(ValidationContext context, Table table, string key)
-    {
-        var model = context.Model;
-        var segments = key.Split('.');
-        if (segments.Length == 1 && SpecialColumnKeys.Contains(segments[0], StringComparer.Ordinal))
-            return true;
-        if (!IsValidColumnKeySegments(model, key))
-            return false;
-        var first = segments[0];
-        if (!model.TryGetEntry(first, out var entry))
-            return false;
-        if (table.Relation is { } relationId)
-        {
-            return model.Get<Relation>(relationId) is { } relation
-                && (relation.Ends.Any(e => e.Id == first) || relation.Attributes.Any(a => a.Id == first));
-        }
-
-        if (table.Entity is not { } entityId || model.Get<Entity>(entityId) is not { } entity)
-            return false;
-        if (entry.Kind == "end")
-            return EndTouches(context, first, entity);
-        if (table.Attribute is { } attributeId)
-        {
-            // Child table: the owner's key columns, or members of the contained value object.
-            var owner = context.Flatten(entity).FirstOrDefault(a => a.Attribute.Id == attributeId)?.Attribute;
-            if (owner is not null && AttributeRules.Resolve(model, owner.Type).ValueObject is { } vo && vo.Attributes.Any(a => a.Id == first))
-                return true;
-            return entity.Key?.Attributes.Contains(first, StringComparer.Ordinal) == true || context.Flatten(entity).Any(a => a.Attribute.Id == first);
-        }
-
-        return context.Flatten(entity).Any(a => a.Attribute.Id == first) || DerivedAttributes(context, entity).Contains(first);
-    }
-
-    private static HashSet<string> DerivedAttributes(ValidationContext context, Entity entity)
-    {
-        // TPH: the root table also holds the attributes of every derived entity.
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var doc in context.Documents)
-        {
-            if (doc.Element is Entity derived && derived.Id != entity.Id && Inherits(context.Model, derived, entity.Id))
-            {
-                foreach (var attribute in context.Flatten(derived))
-                    ids.Add(attribute.Attribute.Id);
-            }
-        }
-
-        return ids;
-    }
-
-    private static bool Inherits(ModelSnapshot model, Entity entity, string ancestorId)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var current = entity.Base; current is not null && seen.Add(current); current = model.Get<Entity>(current)?.Base)
-        {
-            if (current == ancestorId)
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool EndTouches(ValidationContext context, string endId, Entity entity)
-    {
-        // A relation with an end of several types touches no table in part 1, which stores nothing for it (several-types-design.md decision 22).
-        if (context.Model.GetDocument(endId)?.Element is not Relation relation || EndCoverage.HasSeveralTypes(relation))
-            return false;
-        var lineage = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
-        for (var current = entity.Base; current is not null && lineage.Add(current);)
-            current = context.Model.Get<Entity>(current)?.Base;
-        return relation.Ends.Any(e => e.SingleEntity is { } entityId && lineage.Contains(entityId));
-    }
-
-    private static bool IsValidColumnKeySegments(ModelSnapshot model, string key)
-    {
-        var segments = key.Split('.');
-        for (var i = 0; i < segments.Length; i++)
-        {
-            var segment = segments[i];
-            if (segments.Length == 1 && SpecialColumnKeys.Contains(segment, StringComparer.Ordinal))
-                return true;
-            if (!model.TryGetEntry(segment, out var entry))
-                return false;
-            if (i == 0 ? entry.Kind is not ("attribute" or "end") : entry.Kind != "attribute")
-                return false;
-        }
-
-        return segments.Length > 0;
-    }
 
     private static void CheckPhysicalName(ValidationContext context, Element element, string what, Report report)
     {

@@ -12,7 +12,7 @@
   {
     "rule": "MQ4004",
     "severity": "error",
-    "message": "'places' is already mapped to this database by .maquettiste/model/mappings/places-again.json; one mapping per element and database.",
+    "message": "'places' is already mapped to this database by .maquettiste/model/mappings/places-again.json; one mapping per relation and database.",
     "elementId": "01JMAP00000000000000000005",
     "filePath": ".maquettiste/model/mappings/places-in-main.json",
     "jsonPointer": "/relation",

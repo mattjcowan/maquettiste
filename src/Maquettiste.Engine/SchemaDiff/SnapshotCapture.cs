@@ -221,11 +221,6 @@ internal static class SnapshotCapture
         ComputedStored = column.ComputedStored,
         Collation = column.Collation,
         Comment = column.Comment,
-        // A projected reference column. A column of a table file has none, whatever the bindings map to it: binding an entity never
-        // changes storage, so it never changes what a snapshot captures.
-        ReferenceType = column.ReferenceType?.Id,
-        Strategy = column.ReferenceType is not null ? column.Strategy : null,
-        ReferenceTable = column.ReferenceBinding?.Table.Key,
     };
 
     private static SnapshotSequence CaptureSequence(RSequence sequence) => new()

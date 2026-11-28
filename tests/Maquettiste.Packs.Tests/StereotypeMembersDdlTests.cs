@@ -150,7 +150,6 @@ public sealed partial class StereotypeMembersDdlTests
             ["name"] = name,
             ["database"] = Id(1),
             ["schema"] = Id(2),
-            ["origin"] = "designed",
         };
         if (inherited && owner)
         {

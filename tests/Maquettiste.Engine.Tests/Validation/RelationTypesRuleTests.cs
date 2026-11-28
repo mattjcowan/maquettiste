@@ -21,7 +21,7 @@ public sealed class RelationTypesRuleTests
     private static readonly string[] NewRules = ["MQ3041", "MQ3042", "MQ3043", "MQ4115"];
 
     private static string Database(string extra = "") =>
-        $$"""{"kind":"database","id":"{{Main}}","name":"main","dialect":"postgresql"{{extra}}}""";
+        $$"""{"kind":"database","id":"{{Main}}","name":"main","dialect":"postgresql","byConvention":"none"{{extra}}}""";
 
     private static string RelationWith(string far, string id = "01JRXN00000000000000000990", string kind = "association", string farMax = "1",
         string navigation = "", string nearMax = "\"*\"") =>
@@ -237,40 +237,59 @@ public sealed class RelationTypesRuleTests
         {
             h.Write("model/databases/main/database.json", Database());
             h.Write("model/mappings/attached.json", $$"""{"kind":"mapping","id":"01JMAP00000000000000000901","name":"attached in main","database":"{{Main}}","relation":"{{AttachedTo}}","shape":"junction","foreignKeyEnd":"{{AttachedEnd}}"}""");
-            h.Write("model/mappings/concerns.json", $$"""{"kind":"mapping","id":"01JMAP00000000000000000902","name":"concerns in main","database":"{{Main}}","relation":"{{Concerns}}","ignore":true}""");
         });
         Assert.Equal(
         [
             ("/shape", "Relation 'AttachedTo' has an end with several types, so a mapping of it doesn't take 'shape'; its 'ends' entries say how it is stored. Remove it."),
             ("/foreignKeyEnd", "Relation 'AttachedTo' has an end with several types, so a mapping of it doesn't take 'foreignKeyEnd'; its 'ends' entries say how it is stored. Remove it."),
         ], Of(found, "MQ4009", "/mappings/attached"));
-        Assert.Empty(Of(found, "MQ4009", "/mappings/concerns"));
+    }
+
+    // An entity is placed in a database by a binding there: a table with an id column, and the entity bound to it by its key.
+    private const string Comments = "01JTAB00000000000000000951", Parts = "01JTAB00000000000000000952", Documents = "01JTAB00000000000000000953";
+    private const string CommentKey = "01JATT00000000000000000981", ItemKey = "01JATT00000000000000000911", DocumentKey = "01JATT00000000000000000951";
+
+    private static void WriteTable(LoaderHarness h, string id, string name) =>
+        h.Write($"model/databases/main/tables/{name}.json", $$"""
+            {"kind":"table","id":"{{id}}","name":"{{name}}","database":"{{Main}}","columns":[{"id":"01JCMN{{id[6..]}}","name":"id","type":"uuid"}]}
+            """);
+
+    private static string BoundTo(string entityJson, string table, string key) =>
+        entityJson.TrimEnd()[..^1] + $$""","bindings":[{"id":"01JBND{{table[6..]}}","database":"{{Main}}","source":"{{table}}","fields":[{"attribute":"{{key}}","column":"id"}]}]}""";
+
+    private static void Place(LoaderHarness h, string file, string table, string tableName, string key)
+    {
+        WriteTable(h, table, tableName);
+        h.Write($"model/entities/{file}.json", BoundTo(h.Read($"model/entities/{file}.json"), table, key));
     }
 
     [Fact]
     public async Task MQ4115_says_a_database_stores_nothing_where_every_end_has_a_placed_type()
     {
-        // Every entity is placed by convention: each relation with an end of several types is reported, at that end, as info; the one-type
+        // Comment and Part are bound to main: each relation with an end of several types is reported, at that end, as info; the one-type
         // OnPart is stored as today.
-        var found = await ValidateAsync(h => h.Write("model/databases/main/database.json", Database()));
+        var found = await ValidateAsync(h =>
+        {
+            h.Write("model/databases/main/database.json", Database());
+            Place(h, "comment", Comments, "comments", CommentKey);
+            Place(h, "part", Parts, "parts", ItemKey);
+        });
         Assert.Equal([("/ends/1", "Relation 'AttachedTo' has an end with several types, so database 'main' stores nothing for it.")], Of(found, "MQ4115", "/relations/attached-to"));
         Assert.Single(Of(found, "MQ4115", "/relations/concerns"));
         Assert.Single(Of(found, "MQ4115", "/relations/tagged"));
         Assert.Empty(Of(found, "MQ4115", "/relations/on-part"));
         Assert.All(found.Where(d => d.Rule == "MQ4115"), d => Assert.Equal(DiagnosticSeverity.Info, d.Severity));
 
-        // An ignore mapping says the team doesn't want it there; with no placed type of an end (Part and Assembly mapped away), nothing.
-        var ignored = await ValidateAsync(h =>
+        // With no bound type at an end (neither Part nor Assembly bound), nothing; Concerns still has Document, which carries approvable.
+        var unplaced = await ValidateAsync(h =>
         {
             h.Write("model/databases/main/database.json", Database());
-            h.Write("model/mappings/attached.json", $$"""{"kind":"mapping","id":"01JMAP00000000000000000901","name":"attached in main","database":"{{Main}}","relation":"{{AttachedTo}}","ignore":true}""");
-            h.Write("model/mappings/part.json", $$"""{"kind":"mapping","id":"01JMAP00000000000000000903","name":"part in main","database":"{{Main}}","entity":"{{Part}}","ignore":true}""");
-            h.Write("model/mappings/purchased.json", $$"""{"kind":"mapping","id":"01JMAP00000000000000000904","name":"purchased in main","database":"{{Main}}","entity":"{{PurchasedPart}}","ignore":true}""");
-            h.Write("model/mappings/assembly.json", $$"""{"kind":"mapping","id":"01JMAP00000000000000000905","name":"assembly in main","database":"{{Main}}","entity":"{{Assembly}}","ignore":true}""");
+            Place(h, "comment", Comments, "comments", CommentKey);
+            Place(h, "document", Documents, "documents", DocumentKey);
         });
-        Assert.Empty(Of(ignored, "MQ4115", "/relations/attached-to"));
-        Assert.Empty(Of(ignored, "MQ4115", "/relations/tagged"));
-        Assert.Single(Of(ignored, "MQ4115", "/relations/concerns")); // Document still placed
+        Assert.Empty(Of(unplaced, "MQ4115", "/relations/attached-to"));
+        Assert.Empty(Of(unplaced, "MQ4115", "/relations/tagged"));
+        Assert.Single(Of(unplaced, "MQ4115", "/relations/concerns"));
     }
 
     [Fact]
@@ -281,7 +300,7 @@ public sealed class RelationTypesRuleTests
         {
             h.Write("model/databases/main/database.json", Database());
             h.Write("model/databases/main/tables/comments.json", $$"""
-                {"kind":"table","id":"{{Table}}","name":"comments","database":"{{Main}}","origin":"designed",
+                {"kind":"table","id":"{{Table}}","name":"comments","database":"{{Main}}",
                  "columns":[{"id":"01JCMN00000000000000000901","name":"id","type":"uuid"},{"id":"01JCMN00000000000000000902","name":"attached_id","type":"uuid"}]}
                 """);
             h.Write("model/entities/comment.json", EntityFile(Comment, "Comment", attributes: $$"""
@@ -307,7 +326,7 @@ public sealed class RelationTypesRuleTests
             foreach (var (id, name, second) in new[] { (Tools, "tools", "comment_id"), (Parts, "parts", "note"), (Comments, "comments", "text") })
             {
                 h.Write($"model/databases/main/tables/{name}.json", $$"""
-                    {"kind":"table","id":"{{id}}","name":"{{name}}","database":"{{Main}}","origin":"designed",
+                    {"kind":"table","id":"{{id}}","name":"{{name}}","database":"{{Main}}",
                      "columns":[{"id":"{{id[..^3]}}A{{id[^2..]}}","name":"id","type":"uuid"},{"id":"{{id[..^3]}}B{{id[^2..]}}","name":"{{second}}","type":"uuid"}]}
                     """);
             }
@@ -366,37 +385,48 @@ public sealed class RelationTypesRuleTests
     // ---- stale findings ----
 
     [Fact]
-    public async Task MQ4115_comes_and_goes_with_mapping_database_and_settings_saves()
+    public async Task MQ4115_comes_and_goes_with_binding_database_and_settings_saves()
     {
-        var (h, store) = await OpenAsync(h => h.Write("model/databases/main/database.json", Database(""","byConvention":"none" """)));
+        var (h, store) = await OpenAsync(h =>
+        {
+            h.Write("model/databases/main/database.json", Database());
+            WriteTable(h, Comments, "comments");
+            WriteTable(h, Parts, "parts");
+            WriteTable(h, Documents, "documents");
+        });
         using var _ = h;
         await using var __ = store;
         static bool Reported(SaveResult saved, string relation) =>
             saved.Diagnostics.Any(d => d.Rule == "MQ4115" && d.ElementId is { } id && id.StartsWith("01JEND", StringComparison.Ordinal)
                 && (d.FilePath ?? "").Contains(relation, StringComparison.Ordinal));
+        Task<SaveResult> SaveEntityAsync(string id, string json) =>
+            store.SaveAsync(id, Encoding.UTF8.GetBytes(json), store.Current!.GetDocument(id)!.Hash, ChangeSource.Editor, Ct);
 
-        // A mapping places a carrier (Document) and Comment: Concerns now has a placed type at each end.
-        var comment = await store.CreateAsync(Encoding.UTF8.GetBytes($$"""{"kind":"mapping","id":"01JMAP00000000000000000910","name":"comment in main","database":"{{Main}}","entity":"{{Comment}}"}"""),
-            ChangeSource.Editor, Ct);
+        // Bindings place Comment and a carrier (Document): Concerns now has a placed type at each end.
+        var comment = await SaveEntityAsync(Comment, BoundTo(h.Read("model/entities/comment.json"), Comments, CommentKey));
         Assert.Equal(SaveOutcome.Saved, comment.Outcome);
         Assert.False(Reported(comment, "/relations/concerns"));
-        var document = await store.CreateAsync(Encoding.UTF8.GetBytes($$"""{"kind":"mapping","id":"01JMAP00000000000000000911","name":"document in main","database":"{{Main}}","entity":"{{Document}}"}"""),
-            ChangeSource.Editor, Ct);
+        var documentJson = h.Read("model/entities/document.json");
+        var document = await SaveEntityAsync(Document, BoundTo(documentJson, Documents, DocumentKey));
+        Assert.Equal(SaveOutcome.Saved, document.Outcome);
         Assert.True(Reported(document, "/relations/concerns"), string.Join(" | ", document.Diagnostics.Select(d => d.Rule + " " + d.FilePath)));
 
-        // The mapping set to ignore: it goes.
-        var ignored = await store.SaveAsync("01JMAP00000000000000000911", Encoding.UTF8.GetBytes($$"""{"kind":"mapping","id":"01JMAP00000000000000000911","name":"document in main","database":"{{Main}}","entity":"{{Document}}","ignore":true}"""),
-            store.Current!.GetDocument("01JMAP00000000000000000911")!.Hash, ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Saved, ignored.Outcome);
-        Assert.False(Reported(ignored, "/relations/concerns"));
+        // The binding removed: it goes.
+        var unbound = await SaveEntityAsync(Document, documentJson);
+        Assert.Equal(SaveOutcome.Saved, unbound.Outcome);
+        Assert.False(Reported(unbound, "/relations/concerns"));
 
-        // The database's convention places everything: every such relation is reported on the database save.
+        // Part bound: AttachedTo and Tagged are reported on the entity save, and on a database save, which checks every such relation.
+        var part = await SaveEntityAsync(Part, BoundTo(h.Read("model/entities/part.json"), Parts, ItemKey));
+        Assert.Equal(SaveOutcome.Saved, part.Outcome);
+        Assert.True(Reported(part, "/relations/attached-to"));
+        Assert.True(Reported(part, "/relations/tagged"));
         var database = JsonNode.Parse(h.Read("model/databases/main/database.json"))!;
-        database["byConvention"] = "all";
-        var all = await store.SaveAsync(Main, Encoding.UTF8.GetBytes(database.ToJsonString()), store.Current!.GetDocument(Main)!.Hash, ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Saved, all.Outcome);
-        Assert.True(Reported(all, "/relations/attached-to"));
-        Assert.True(Reported(all, "/relations/tagged"));
+        database["description"] = "The main database.";
+        var saved = await store.SaveAsync(Main, Encoding.UTF8.GetBytes(database.ToJsonString()), store.Current!.GetDocument(Main)!.Hash, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+        Assert.True(Reported(saved, "/relations/attached-to"));
+        Assert.True(Reported(saved, "/relations/tagged"));
 
         // Settings that make the info an error refuse the save, which the whole-model check of a settings save finds.
         var text = JsonNode.Parse(h.Read("maquettiste.json"))!;
@@ -411,7 +441,8 @@ public sealed class RelationTypesRuleTests
     {
         var (h, store) = await OpenAsync(h =>
         {
-            h.Write("model/databases/main/database.json", Database(""","byConvention":"none" """));
+            h.Write("model/databases/main/database.json", Database());
+            h.Write("model/mappings/on-part.json", $$"""{"kind":"mapping","id":"01JMAP00000000000000000910","name":"on part in main","database":"{{Main}}","relation":"{{OnPart}}"}""");
             h.Write("model/relations/concerns.json", RelationFile(Concerns, "Concerns", "01JEND00000000000000000921", "concernedBy",
                 "toolNo", ConcernsEnd, $$""" "types":[{"entity":"{{Part}}"},{"stereotype":"approvable"}] """, "concerns", "concerns", "1"));
         });
@@ -431,9 +462,6 @@ public sealed class RelationTypesRuleTests
         Assert.Equal([Concerns], Relations(Approvable));
         Assert.Equal([Concerns], Relations(Tool));
         Assert.Equal([AttachedTo, Concerns, Tagged], Relations(PurchasedPart));
-        var mapping = await store.CreateAsync(Encoding.UTF8.GetBytes($$"""{"kind":"mapping","id":"01JMAP00000000000000000910","name":"comment in main","database":"{{Main}}","entity":"{{Comment}}"}"""),
-            ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Saved, mapping.Outcome);
         Assert.Superset(new HashSet<string>([AttachedTo, Concerns, Tagged]), Relations("01JMAP00000000000000000910").ToHashSet());
         Assert.Superset(new HashSet<string>([AttachedTo, Concerns, Tagged]), Relations(Main).ToHashSet());
     }

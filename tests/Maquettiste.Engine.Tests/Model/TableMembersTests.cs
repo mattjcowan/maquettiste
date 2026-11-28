@@ -41,10 +41,9 @@ public sealed class TableMembersTests
         b.Add(audited);
         var notes = b.Table("notes", main).Column("body", "text").Stereotype("audited").Edit(editNotes ?? (t => t));
         var product = b.Entity("Product").Key("id", "uuid");
-        var products = b.Table("products", main).OverlayFor(product).Stereotype("audited").Edit(editProducts ?? (t => t));
-        b.Mapping(main, product);
+        var products = b.Table("products", main).Column("id", "uuid", nullable: false).PrimaryKey("id").Stereotype("audited").Edit(editProducts ?? (t => t)).Binds(product);
         var model = b.Build();
-        return new Fixture(model, audited, model.Get<Table>(notes.Id)!, model.Get<Table>(products.Id)!, product.Id + "@" + main.Id, customers.Id);
+        return new Fixture(model, audited, model.Get<Table>(notes.Id)!, model.Get<Table>(products.Id)!, products.Id, customers.Id);
     }
 
     private static string Keyed(string tableKey, string id) => tableKey + "." + id;
@@ -113,7 +112,7 @@ public sealed class TableMembersTests
     }
 
     [Fact]
-    public void An_overlay_uses_the_synthesized_table_key()
+    public void A_redefined_member_is_keyed_by_the_table_key()
     {
         // The builder's ids repeat from one build to the next, so a first build names the member the second one redefines.
         var created = Build().Audited.Columns[0];
@@ -131,7 +130,7 @@ public sealed class TableMembersTests
         Assert.Equal("CURRENT_TIMESTAMP", column.Member.DefaultSql["*"]);
         Assert.Equal([f.ProductsKey + "." + created.Id], set.Indexes[0].Member.Columns.Select(c => c.Column));
 
-        // The resolver's form with the same inputs gives the same set; with a skip the overlay's set loses that stereotype.
+        // The resolver's form with the same inputs gives the same set; with a skip the table's set loses that stereotype.
         var effective = f.Model.EffectiveStereotypes(f.Products);
         Assert.Same(set, TableMembers.Of(f.Model, f.ProductsKey, effective, f.Products.Redefines, f.Products.Excludes, new HashSet<string>()));
         Assert.True(TableMembers.Of(f.Model, f.ProductsKey, effective, f.Products.Redefines, f.Products.Excludes, new HashSet<string>(["audited"])).IsEmpty);
@@ -190,7 +189,7 @@ public sealed class TableMembersTests
     [Fact]
     public void The_design_examples_validate_against_the_schemas()
     {
-        // next-phase-2-design.md section 3.1: the audited and child-row stereotypes, and the overlay and table entries of the examples.
+        // next-phase-2-design.md section 3.1: the audited and child-row stereotypes, and the table entries of the examples.
         const string audited = """
             { "kind": "stereotype", "id": "01J92P0V25BX5TMQ8N9F6AJE61", "key": "audited", "name": "Audited",
               "appliesTo": ["entity", "table", "column"],

@@ -27,10 +27,7 @@ internal static class BillingModel
 {
     private static readonly Lazy<Task<ResolvedModel>> Resolved = new(() => LoadAsync(Fixtures.Path("models", "billing")));
 
-    // The projected copy, for a class with UsesProjectedFixtures (temporary, see that attribute).
-    private static readonly Lazy<Task<ResolvedModel>> Projected = new(() => LoadAsync(Fixtures.Path("models", "billing-projected")));
-
-    public static Task<ResolvedModel> GetAsync() => Fixtures.UsesProjectedFixtures() ? Projected.Value : Resolved.Value;
+    public static Task<ResolvedModel> GetAsync() => Resolved.Value;
 
     private static async Task<ResolvedModel> LoadAsync(string repoRoot)
     {

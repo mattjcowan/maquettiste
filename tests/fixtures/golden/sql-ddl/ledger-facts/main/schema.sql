@@ -123,7 +123,7 @@ CREATE TABLE billing.payment_invoice (
 CREATE VIEW billing.outstanding_invoices AS
 select id, number, issued_on from billing.invoices where status = 'I';
 
-INSERT INTO migration_ledger.applied_fact (fact_id, content_hash, applied_by) VALUES ('01JFCT00000000000000000001', '774d91e1690c8322a4cfa4e57f9613bd05be46b67bc6553608868c707e47466f', 'sql-ddl') ON CONFLICT (fact_id) DO NOTHING;
-INSERT INTO migration_ledger.applied_fact (fact_id, content_hash, applied_by) VALUES ('01JFCT00000000000000000002', 'b432a32f686cd6329fbb518646188ca2ecbfe6b9c75166cf39d639a5834a11d9', 'sql-ddl') ON CONFLICT (fact_id) DO NOTHING;
+INSERT INTO migration_ledger.applied_fact (fact_id, content_hash, applied_by) VALUES ('01JFCT00000000000000000001', '8c94be31d326bc6cd8697e8e49c5c0639a929cfeaad77adbd9e115fc08436df8', 'sql-ddl') ON CONFLICT (fact_id) DO NOTHING;
+INSERT INTO migration_ledger.applied_fact (fact_id, content_hash, applied_by) VALUES ('01JFCT00000000000000000002', 'cf64d459e4bc2f36352e1a517ac64bb9717f6ff2a52419251d8d7e892c25ce49', 'sql-ddl') ON CONFLICT (fact_id) DO NOTHING;
 
 COMMIT;

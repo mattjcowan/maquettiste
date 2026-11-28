@@ -12,10 +12,9 @@ namespace Maquettiste.Engine.Tests.Validation;
 
 /// <summary>Suppressions apply (next-phase-2-design.md section 5.6): to the validator's, the resolver's and the checks' findings, after
 /// severities, with MQ5020 for an entry nothing matched.</summary>
-[UsesProjectedFixtures]
 public sealed class SuppressionTests
 {
-    private const string InvoiceOverlayColumn = "/columns/0";
+    private const string InvoicesFirstColumn = "/columns/0";
     private const string TenantedPath = "model/vocabularies/stereotypes/tenanted.json";
     private const string TenantColumnId = "01K6BNE0000000000000000002";
 
@@ -103,19 +102,27 @@ public sealed class SuppressionTests
     [Fact]
     public async Task Resolver_and_check_findings_are_suppressed_too()
     {
-        const string longId = "01K6BNE0000000000000000030";
-        var longName = "a" + new string('b', 70);
-        await using var repo = await CreateAsync([EveryTableRule], null,
-            ("model/entities/customer.json", node =>
+        const string prefers = "01K6BNE0000000000000000030";
+        await using var repo = await CreateAsync([EveryTableRule], null, (NotesPath, Suppress(("x/every-table", null))));
+        // A relation between two bound entities that no relation mapping stores: the resolver reports it without a pointer, and the whole
+        // element accepts it.
+        Write(repo, "model/relations/prefers.json", $$"""
             {
-                node["attributes"]!.AsArray().Add(new JsonObject { ["id"] = longId, ["name"] = longName, ["type"] = "string" });
-                // The resolver reports a conventional column name on the entity, without a pointer: the whole element accepts it.
-                Suppress(("MQ4001", null))(node);
-            }),
-            (NotesPath, Suppress(("x/every-table", null))));
+              "kind": "relation",
+              "id": "{{prefers}}",
+              "name": "prefers",
+              "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+              "suppressions": [{ "rule": "MQ4011", "reason": "Accepted: not stored yet." }],
+              "ends": [
+                { "id": "01K6BNE0000000000000000031", "entity": "{{E2ERepo.ProductId}}", "role": "product", "max": 1 },
+                { "id": "01K6BNE0000000000000000032", "entity": "{{E2ERepo.CustomerId}}", "role": "customers" }
+              ]
+            }
+            """);
+        await repo.RestartAsync();
         var report = await ValidateAsync(repo);
-        Assert.False(report.Diagnostics.Any(d => d.Rule == "MQ4001"), Show(report));
-        Assert.Contains(report.Suppressed, s => s.Finding.Rule == "MQ4001" && s.ElementId == E2ERepo.CustomerId);
+        Assert.False(report.Diagnostics.Any(d => d.Rule == "MQ4011"), Show(report));
+        Assert.Contains(report.Suppressed, s => s.Finding.Rule == "MQ4011" && s.ElementId == prefers);
         Assert.Contains(report.Suppressed, s => s.Finding.Rule == "x/every-table" && s.ElementId == NotesId);
         Assert.DoesNotContain(report.Diagnostics, d => d.Rule == "MQ5020");
         // Positioned as reported findings are: a finding with a pointer gets its line.
@@ -196,7 +203,7 @@ public sealed class SuppressionTests
             var report = await repo.Store.ValidateAgainstAsync(baseline, Ct);
             Assert.DoesNotContain(report.Diagnostics, d => d.Rule is "MQ4102" or "MQ5020");
             var moved = Assert.Single(report.Suppressed);
-            Assert.Equal(("MQ4102", InvoiceOverlayColumn, "/suppressions/0"), (moved.Finding.Rule, moved.Finding.JsonPointer, moved.JsonPointer));
+            Assert.Equal(("MQ4102", InvoicesFirstColumn, "/suppressions/0"), (moved.Finding.Rule, moved.Finding.JsonPointer, moved.JsonPointer));
         }
 
         // Without the baseline nothing matches the entry.

@@ -8,11 +8,8 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Validation;
 
 /// <summary>The rules on an element's suppressions (next-phase-2-design.md section 5.6): MQ5018 and MQ5019, judged per element.</summary>
-[UsesProjectedFixtures]
 public sealed class SuppressionRuleTests
 {
-    private const string TenantedPath = "model/vocabularies/stereotypes/tenanted.json";
-    private const string TenantColumnId = "01K6BNE0000000000000000002";
 
     private static List<string> At(ValidationReport report, string rule) =>
         [.. report.Diagnostics.Where(d => d.Rule == rule).Select(d => d.FilePath + " " + d.JsonPointer).Order(StringComparer.Ordinal)];
@@ -69,30 +66,6 @@ public sealed class SuppressionRuleTests
         await repo.RestartAsync();
         var report = await ValidateAsync(repo);
         Assert.Equal([".maquettiste/" + InvoicePath + " /suppressions/2/member"], At(report, "MQ5019"));
-    }
-
-    [Fact]
-    public async Task A_member_may_be_the_keyed_id_of_a_synthesized_tables_member()
-    {
-        await using var repo = await CreateAsync([], null,
-            (RegisterPath, Carry("tenanted").Then(Suppress(("MQ2022", E2ERepo.InvoiceId + "@" + E2ERepo.MainDatabaseId + "." + TenantColumnId),
-                ("MQ2022", NotesId + "." + TenantColumnId)))),
-            (NotesPath, Carry("tenanted").Then(Suppress(("MQ2022", NotesId + "." + TenantColumnId), ("MQ2022", NotesId + "." + BodyColumnId)))));
-        Write(repo, TenantedPath, $$"""
-            {
-              "$schema": "../../../.schema/v1/stereotype.json",
-              "kind": "stereotype",
-              "id": "01K6BNE0000000000000000001",
-              "key": "tenanted",
-              "name": "Tenanted",
-              "appliesTo": ["table"],
-              "columns": [{ "id": "{{TenantColumnId}}", "name": "tenant_id", "type": "uuid", "nullable": true }]
-            }
-            """);
-        await repo.RestartAsync();
-        var report = await ValidateAsync(repo);
-        // The register's keyed id is its table key (entity@database) and the member; another table's keyed id is not the register's.
-        Assert.Equal([".maquettiste/" + RegisterPath + " /suppressions/1/member", NotesFile + " /suppressions/1/member"], At(report, "MQ5019"));
     }
 
     [Fact]

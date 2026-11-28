@@ -206,7 +206,7 @@ export function typeStorageRun(docs: ReadonlyMap<string, Json>, view: DatabaseVi
   for (const m of all)
     if (m.kind === "mapping" && m.database === view.id && typeof m.relation === "string" && !mappingsOf.has(m.relation)) mappingsOf.set(m.relation, m);
   const severalRelations = relations.filter((r) => arr(r.ends).some((e) => docEndHasSeveralTypes(e as EndDocLike)));
-  const withConstants = [...mappingsOf.values()].filter((m) => arr(m.constants).length > 0 && m.ignore !== true);
+  const withConstants = [...mappingsOf.values()].filter((m) => arr(m.constants).length > 0);
   if (!severalRelations.length && !withConstants.length) return empty;
 
   const dbId = view.id;
@@ -226,7 +226,7 @@ export function typeStorageRun(docs: ReadonlyMap<string, Json>, view: DatabaseVi
   const fkOf = new Map<string, FkSpec>();
   const tableDocs = new Map(all.filter((d) => d.kind === "table" && d.database === dbId).map((d) => [str(d.id), d]));
   for (const d of all)
-    if (d.kind === "table" && d.database === dbId && d.origin !== "synthesized") {
+    if (d.kind === "table" && d.database === dbId) {
       const table = tableByKey.get(str(d.id));
       if (table)
         for (const fk of arr(d.foreignKeys))
@@ -249,7 +249,6 @@ export function typeStorageRun(docs: ReadonlyMap<string, Json>, view: DatabaseVi
   const render = (pattern: string, tokens: Record<string, string>) => renderName(pattern, tokens, columnCase);
 
   // ---------------------------------------------------------------- placements (the engine's ComputePlacements)
-  const entityMapping = new Map(all.filter((d) => d.kind === "mapping" && d.database === dbId && typeof d.entity === "string").map((d) => [str(d.entity), d]));
   const chainOf = (id: string): string[] => {
     const doc = docs.get(id);
     return doc ? coverage.chain(doc) : [id];
@@ -267,15 +266,7 @@ export function typeStorageRun(docs: ReadonlyMap<string, Json>, view: DatabaseVi
       const key = write && typeof write === "object" && typeof write.table === "string" ? write.table : str(binding.source);
       const table = tableByKey.get(key);
       if (table) placements.set(id, { id, entity, table, base: null, strategy: null, bound: true, viaBinding: true, binding });
-      continue;
     }
-    const mapping = entityMapping.get(id);
-    if (mapping?.ignore === true) continue;
-    const bound = mapping && typeof mapping.table === "string" ? tableByKey.get(mapping.table) : undefined;
-    const table = bound ?? view.tables.find((t) => t.entityId === id && !t.relationId) ?? null;
-    if (!table && entity.abstract !== true) continue;
-    if (!table) continue;
-    placements.set(id, { id, entity, table, base: null, strategy: null, bound: bound !== undefined, viaBinding: false });
   }
   const placementList = [...placements.values()];
   for (const p of placementList) {
@@ -297,8 +288,7 @@ export function typeStorageRun(docs: ReadonlyMap<string, Json>, view: DatabaseVi
   }
   for (const p of placementList) {
     if (!inHierarchy.has(p)) continue;
-    const root = rootOf(p);
-    const own = entityMapping.get(root.id)?.inheritance ?? conventions.inheritance ?? "tph";
+    const own = conventions.inheritance ?? "tph";
     p.strategy = own === "tpt" || own === "tpc" ? own : "tph";
   }
   // A TPH entity the engine makes keeps its rows in the root's table.
@@ -321,10 +311,10 @@ export function typeStorageRun(docs: ReadonlyMap<string, Json>, view: DatabaseVi
     return false;
   };
 
-  // The code of an entity in the database (decision 42): the binding's discriminatorValue when it has one, else its mapping's, else its name.
+  // The code of an entity in the database (decision 42): the binding's discriminatorValue when it has one, else its name.
   const codeOf = (entity: Json): string | number => {
     const binding = arr(entity.bindings).find((b) => b.database === dbId);
-    const value = binding ? binding.discriminatorValue : entityMapping.get(str(entity.id))?.discriminatorValue;
+    const value = binding?.discriminatorValue;
     if (value === undefined || value === null) return str(entity.name);
     if (typeof value === "string") return value;
     if (typeof value === "number" && Number.isInteger(value)) return value;
@@ -462,7 +452,7 @@ export function typeStorageRun(docs: ReadonlyMap<string, Json>, view: DatabaseVi
     const several = relationEnds.some((e) => docEndHasSeveralTypes(e as EndDocLike));
     const mapping = mappingsOf.get(str(relation.id));
     if (!several) {
-      if (mapping && mapping.ignore !== true && typeof mapping.junctionTable === "string") {
+      if (mapping && typeof mapping.junctionTable === "string") {
         markLinkTable(
           relation,
           mapping,
@@ -495,7 +485,7 @@ export function typeStorageRun(docs: ReadonlyMap<string, Json>, view: DatabaseVi
     // A relation is listed in the database when each end has a covered entity placed there.
     if (!ends.every((e) => [...e.covered].some((id) => placements.has(id)))) continue;
     let links: Links | null = null;
-    if (mapping && mapping.ignore !== true && storesRelation(mapping)) {
+    if (mapping && storesRelation(mapping)) {
       const linkTable =
         typeof mapping.junctionTable === "string" && tableDocs.get(mapping.junctionTable)?.origin !== "synthesized"
           ? tableByKey.get(mapping.junctionTable)

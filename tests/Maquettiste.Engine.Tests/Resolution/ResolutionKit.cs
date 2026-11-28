@@ -53,11 +53,10 @@ internal static partial class ResolutionKit
         foreach (var e in model.Entities)
         {
             sb.Append("entity ").Append(e.Name).Append(" plural=").Append(e.PluralName).Append(" package=").Append(e.Package?.QualifiedName ?? "-")
-                .Append(" abstract=").Append(V(e.IsAbstract)).Append(" base=").Append(e.Base?.Name ?? "-").Append(" promoted=").Append(V(e.IsPromoted))
+                .Append(" abstract=").Append(V(e.IsAbstract)).Append(" base=").Append(e.Base?.Name ?? "-")
                 .Append(" stereotypes=").Append(string.Join(',', e.Stereotypes.Select(s => s.Key))).Append('\n');
             if (e.Key is { } key)
-                sb.Append("  key ").Append(string.Join(',', key.Attributes.Select(a => a.Name))).Append(' ').Append(key.Strategy)
-                    .Append(string.Concat(key.Sequences.Select(s => $" seq[{s.Key}]={s.Value.Name}"))).Append('\n');
+                sb.Append("  key ").Append(string.Join(',', key.Attributes.Select(a => a.Name))).Append(' ').Append(key.Strategy).Append('\n');
             foreach (var a in e.Attributes)
             {
                 sb.Append("  attr ").Append(a.Order).Append(' ').Append(a.Name).Append(": ").Append(a.Type.Kind).Append(' ').Append(a.Type.Name)
@@ -69,14 +68,12 @@ internal static partial class ResolutionKit
             foreach (var n in e.Navigations)
                 sb.Append("  nav ").Append(n.Name).Append(" -> ").Append(n.Target?.Name ?? string.Join('|', n.Targets.Select(t => t.Name))).Append(n.IsCollection ? "[]" : "").Append(" via ")
                     .Append(n.Relation.Name).Append('\n');
-            foreach (var (db, m) in e.Mappings)
+            foreach (var (db, b) in e.Bindings)
+                sb.Append("  binding ").Append(db).Append(" source=").Append(b.SourceName).Append('\n');
+            foreach (var n in e.Navigations)
             {
-                sb.Append("  mapping ").Append(db).Append(" table=").Append(m.Table.Name).Append(" inheritance=").Append(m.Inheritance ?? "-")
-                    .Append(" discriminator=").Append(m.DiscriminatorColumn?.Name ?? "-").Append('=').Append(V(m.DiscriminatorValue)).Append('\n');
-                foreach (var c in m.Columns)
-                    sb.Append("    ").Append(L(c.AttributePath)).Append(" -> ").Append(c.Column.Table.Name).Append('.').Append(c.Column.Name).Append('\n');
-                foreach (var (nav, path) in m.Joins)
-                    sb.Append("    join ").Append(nav).Append(": ").Append(Join(path)).Append('\n');
+                foreach (var (db, path) in n.Joins)
+                    sb.Append("    join ").Append(n.Name).Append('@').Append(db).Append(": ").Append(Join(path)).Append('\n');
             }
         }
 
@@ -88,8 +85,7 @@ internal static partial class ResolutionKit
             {
                 sb.Append("  mapping ").Append(db).Append(' ').Append(m.Shape)
                     .Append(m.ForeignKey is { } fk ? " fk=" + fk.Name : "")
-                    .Append(m.JunctionTable is { } j ? " junction=" + j.Name : "")
-                    .Append(m.PromotedEntity is { } p ? " promoted=" + p.Name : "").Append('\n');
+                    .Append(m.JunctionTable is { } j ? " junction=" + j.Name : "").Append('\n');
             }
         }
 
@@ -101,15 +97,14 @@ internal static partial class ResolutionKit
                 .Append(Annotations(db, V)).Append('\n');
             foreach (var t in db.Tables)
             {
-                sb.Append("  table ").Append(t.Schema is null ? "" : t.Schema + ".").Append(t.Name).Append(" key=").Append(L(t.Key)).Append(' ').Append(t.Origin)
-                    .Append(t.Entity is { } te ? " entity=" + te.Name : "").Append(t.Relation is { } tr ? " relation=" + tr.Name : "")
-                    .Append(t.IsJunction ? " junction" : "").Append(Annotations(t, V)).Append(Facts(t.FormerNames, t.Since, L)).Append('\n');
+                sb.Append("  table ").Append(t.Schema is null ? "" : t.Schema + ".").Append(t.Name).Append(" key=").Append(L(t.Key))
+                    .Append(t.Relation is { } tr ? " relation=" + tr.Name : "").Append(Annotations(t, V)).Append(Facts(t.FormerNames, t.Since, L)).Append('\n');
                 foreach (var c in t.Columns)
                 {
                     sb.Append("    ").Append(c.Position).Append(' ').Append(c.Name).Append(' ').Append(c.Type)
                         .Append(c.Length is { } l ? "(" + l + ")" : "").Append(c.Precision is { } pr ? $"[{pr},{V(c.Scale)}]" : "")
                         .Append(" native=").Append(c.NativeType).Append(c.Nullable ? " null" : " not-null")
-                        .Append(c.IsPrimaryKey ? " pk" : "").Append(c.IsForeignKey ? " fk" : "").Append(c.IsDiscriminator ? " discriminator" : "")
+                        .Append(c.IsPrimaryKey ? " pk" : "").Append(c.IsForeignKey ? " fk" : "")
                         .Append(c.Identity ? " identity" : "").Append(c.Sequence is { } s ? " seq=" + s.Name : "")
                         .Append(c.Default is { } d ? " default=" + V(d) : "").Append(" key=").Append(L(c.Key)).Append(Annotations(c, V))
                         .Append(Facts(c.FormerNames, c.Since, L)).Append(c.Conversion is { } cv ? " conversion=" + L(cv.FactId) : "").Append('\n');
@@ -310,7 +305,7 @@ internal static partial class ResolutionKit
                     break;
                 case Table table:
                     foreach (var c in table.Columns)
-                        labels[c.Id] = "col:" + (c.Name.Length > 0 ? c.Name : c.Attribute ?? c.Id);
+                        labels[c.Id] = "col:" + (c.Name.Length > 0 ? c.Name : c.Id);
                     break;
             }
         }

@@ -233,7 +233,7 @@ public sealed class ModelStoreBatchTests
         var batch = new ModelBatch(
         [
             new BatchOperation(BatchOp.Update, customer.Element.Id, customer.Hash, Element(BillingStore.Edit(customer, n => n["displayName"] = "Client"))),
-            new BatchOperation(BatchOp.Create, null, null, Element($"{{\"kind\":\"mapping\",\"name\":\"Customer in main\",\"database\":\"{db}\",\"entity\":\"{customer.Element.Id}\"}}")),
+            new BatchOperation(BatchOp.Create, null, null, Element($"{{\"kind\":\"mapping\",\"name\":\"places in main\",\"database\":\"{db}\",\"relation\":\"{Billing.IdOf(store.Current, "relation", "places")}\",\"foreignKey\":\"01M8EJPZNMYYNR51WCGPX2KQEG\"}}")),
         ]);
         await Assert.ThrowsAsync<IOException>(() => store.ApplyBatchAsync(batch, ChangeSource.Editor, Ct));
 

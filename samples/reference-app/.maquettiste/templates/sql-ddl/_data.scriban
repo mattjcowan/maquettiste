@@ -6,7 +6,7 @@
 # removes the table's rows it does not hold. An entity seed through its binding writes the binding's tables (with table per type the
 # bases' tables first, and a row per list item in each child table); a relation seed with an end bound here writes rows of its junction
 # table, or, stored on a foreign key, updates the dependent's rows, setting the key and the relation's attribute columns (inserting
-# nothing). Entity and relation seeds of a database that projects the entity are written by seed_statements.
+# nothing).
 # A table seed's foreign-key entry names its row by that row's key; where the database fills the referenced value (identity,
 # sequence, a default), the column is written as a lookup of that row on PostgreSQL, and rows of one table that look up rows of the
 # same table go in one INSERT per dependency level, so each lookup sees the rows before it. Elsewhere such a cell is NULL with a

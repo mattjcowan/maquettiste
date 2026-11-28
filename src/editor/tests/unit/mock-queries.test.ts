@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { setupServer } from "msw/node";
 import { MockBackend } from "@/mocks/backend";
-import { billingProjectedSeed } from "@/mocks/model/seed";
+import { billingSeed } from "@/mocks/model/seed";
 import { statefulHandlers } from "@/mocks/handlers";
 import { queryClassName, resolveQueries } from "@/mocks/model/queries";
 import { quoteIdentifier, renderQuery, sqlLiteral } from "@/mocks/model/querySql";
@@ -20,7 +20,9 @@ type Json = Record<string, unknown>;
 const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
 const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
 const INVOICE = "01J92P0V0FJ23CGSNKM7P1W5V7";
-const INVOICES_TABLE = `${INVOICE}@${MAIN}`;
+const INVOICES_TABLE = "01J92P0V1T0J6RH4MY9H81NYB4";
+const CUSTOMERS_TABLE = "01M8EJPZN867GR1CJR5ZERBJ0V";
+const INVOICE_CUSTOMER_COLUMN = "01M8EJPZN80NTY1M4QZCPKETNX";
 const OUTSTANDING_INVOICES = "01J92P0V1YZ4YP352KD1A50FXS";
 const BY_CUSTOMER = "01K6QRY0000000000000000001";
 const REVENUE = "01K6QRY0000000000000000002";
@@ -52,8 +54,8 @@ const GOLDEN = {
   ].join("\n"),
 };
 
-/** The billing model with its tables projected from the entities: the queries below name entities as sources. */
-const projected = () => new MockBackend({ seed: billingProjectedSeed() });
+/** The billing model: the queries below name its table files as sources. */
+const projected = () => new MockBackend({ seed: billingSeed() });
 
 const resolvedView = (backend: MockBackend) => backend.generation.databaseView(MAIN)!.view!;
 
@@ -179,7 +181,7 @@ describe("the billing queries", () => {
       id: "01K6QRY0000000000000000010",
       name: "Report",
       parameters: [{ name: "take", type: "int32" }],
-      from: { source: CUSTOMER, alias: "c" },
+      from: { source: CUSTOMERS_TABLE, alias: "c" },
       joins: [
         {
           source: INVOICES_TABLE,
@@ -227,8 +229,6 @@ describe("the billing queries", () => {
 describe("the query rules", () => {
   it("each reports its finding at the offending node, as the engine does", () => {
     const backend = projected();
-    const other = "01K6QDB0000000000000000001";
-    expect(backend.model.create({ kind: "database", id: other, name: "other", dialect: "postgresql" }).outcome).toBe("saved");
     const id = addQuery(backend, {
       id: "01K6QRY0000000000000000011",
       name: "Broken",
@@ -237,9 +237,9 @@ describe("the query rules", () => {
         { name: "word", type: "int32" },
         { name: "odd", type: CUSTOMER },
       ],
-      from: { source: CUSTOMER, alias: "c" },
+      from: { source: CUSTOMERS_TABLE, alias: "c" },
       joins: [
-        { source: `${INVOICE}@${other}`, alias: "x" },
+        { source: "ghost", alias: "x" },
         { source: OUTSTANDING_INVOICES, alias: "c" },
         { source: "nowhere", alias: "n" },
       ],
@@ -277,9 +277,7 @@ describe("the query rules", () => {
       expect(findings).toContainEqual(expected);
     const diagnostics = backend.model.validate().diagnostics.filter((d) => d.elementId === id);
     const message = (rule: string, pointer: string) => diagnostics.find((d) => d.rule === rule && d.jsonPointer === pointer)?.message;
-    expect(message("MQ4021", "/joins/0/source")).toBe(
-      `Query 'Broken' reads '${INVOICE}@${other}', which is entity 'Invoice', which has no table in database 'main'.`,
-    );
+    expect(message("MQ4021", "/joins/0/source")).toBe("Query 'Broken' reads 'ghost', which is no table or view of database 'main'.");
     expect(message("MQ4021", "/joins/2/source")).toBe("Query 'Broken' reads 'nowhere', which is no table or view of database 'main'.");
     expect(message("MQ4023", "/select/0/expression/column")).toBe("Query 'Broken' names column 'nope' of 'c' (table 'customers'), which has no such column.");
     expect(message("MQ4030", "/paging/limit")).toBe(
@@ -406,9 +404,7 @@ describe("GET /api/model/queries/{id}/sql", () => {
 });
 
 describe("the rules the review added (MQ4034 to MQ4043), as the engine reports them", () => {
-  const CUSTOMERS = `${CUSTOMER}@${MAIN}`;
-  const CUSTOMER_ID = "01J92P0V0KGPC29TQQG8R57EBM";
-  const CUSTOMER_END = "01J92P0V1EHF7PB28CZJG9C5SN";
+  const CUSTOMERS = CUSTOMERS_TABLE;
   const QUERY = "01K6QRY0000000000000000077";
 
   /** Binds one query (and any extra documents) against the mock's resolved view, with the view's dialect overridden. */
@@ -579,7 +575,7 @@ describe("the rules the review added (MQ4034 to MQ4043), as the engine reports t
           from: { source: CUSTOMERS, alias: "c" },
           where: {
             and: [
-              { op: "eq", left: { column: "c.id" }, right: { column: `i.${CUSTOMER_END}.${CUSTOMER_ID}` } },
+              { op: "eq", left: { column: "c.id" }, right: { column: `i.${INVOICE_CUSTOMER_COLUMN}` } },
               { op: "ne", left: { column: "c.name" }, right: { value: "two\nlines" } },
             ],
           },
@@ -616,7 +612,7 @@ describe("the rules the review added (MQ4034 to MQ4043), as the engine reports t
 });
 
 describe("queries written as SQL text", () => {
-  const CUSTOMERS = `${CUSTOMER}@${MAIN}`;
+  const CUSTOMERS = CUSTOMERS_TABLE;
   const QUERY = "01K6QRY0000000000000000088";
   const TEXT = "SELECT i.id, i.number FROM billing.invoices i WHERE i.customer_id = :customerId AND i.status = :status;\n";
   const base = (extra: Json = {}): Json => ({
@@ -668,22 +664,6 @@ describe("queries written as SQL text", () => {
       .generation.databaseView(MAIN)!
       .view!.queries!.map((q) => q.name);
     expect(names).toContain("InvoicesByCustomer");
-  });
-
-  it("reads and writes accept an entity id (its table in this database), and uses holds the reads only", () => {
-    const { found, view } = bind(
-      base({
-        reads: [INVOICE],
-        writes: [INVOICE],
-        parameters: [
-          { name: "customerId", type: "uuid" },
-          { name: "status", type: "string" },
-        ],
-      }),
-    );
-    expect(found).toEqual([]);
-    expect(view.uses).toEqual([INVOICES_TABLE]);
-    expect(view.writes).toEqual([INVOICES_TABLE]);
   });
 
   it("rewrites the placeholders in each style, numbering $n by first appearance, and falls back to the * text", () => {
@@ -795,15 +775,15 @@ describe("queries written as SQL text", () => {
     );
     const refs = backend.model.references(QUERY);
     expect(refs).toBeDefined();
-    const refused = backend.model.deletePlan([INVOICE], "refuse");
+    const refused = backend.model.deletePlan([INVOICES_TABLE], "refuse");
     expect(refused.outcome).toBe("referenced");
     expect(refused.refused.map((r) => r.id)).toContain(QUERY);
     for (const resolution of ["remove-references", "delete-dependents"] as const) {
-      const plan = backend.model.deletePlan([INVOICE], resolution);
+      const plan = backend.model.deletePlan([INVOICES_TABLE], resolution);
       expect(plan.deletes.map((d) => d.id)).not.toContain(QUERY);
       expect(plan.clears.filter((c) => c.id === QUERY)).toEqual([]);
       expect(plan.removes.filter((c) => c.id === QUERY).map((c) => c.pointer)).toEqual(expect.arrayContaining(["/reads/0", "/writes/0"]));
-      expect(plan.warnings.map((w) => w.message)).toEqual(["Query InvoicesOf's SQL text may still name entity Invoice; check the text."]);
+      expect(plan.warnings.map((w) => w.message)).toEqual(["Query InvoicesOf's SQL text may still name table invoices; check the text."]);
     }
   });
 });

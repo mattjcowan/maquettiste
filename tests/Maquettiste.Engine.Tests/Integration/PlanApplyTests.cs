@@ -10,7 +10,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// stale when an input or a planned path changed after planning.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class PlanApplyTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -19,7 +18,7 @@ public sealed class PlanApplyTests
     public async Task A_plan_writes_nothing_serves_per_file_diffs_and_applies_by_id()
     {
         await using var repo = await CheckTests.AppliedAsync();
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var tree = repo.Tree();
 
         var planned = await repo.Service.PlanAsync(new GenerationRequest { Jobs = 2 }, null, Ct);
@@ -69,7 +68,7 @@ public sealed class PlanApplyTests
     public async Task Apply_is_stale_when_an_input_changed_after_planning()
     {
         await using var repo = await CheckTests.AppliedAsync();
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var plan = (await repo.Service.PlanAsync(new GenerationRequest(), null, Ct)).Plan!;
         await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 160);
         var tree = repo.Tree();
@@ -87,7 +86,7 @@ public sealed class PlanApplyTests
     public async Task Apply_is_stale_when_a_planned_path_or_a_protected_region_was_edited_after_planning()
     {
         await using var repo = await CheckTests.AppliedAsync();
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var first = (await repo.Service.PlanAsync(new GenerationRequest(), null, Ct)).Plan!;
         repo.Repo.WriteFile("db/e2e/entities/customer.txt", "edited by hand\n");
 
@@ -134,7 +133,7 @@ public sealed class PlanApplyTests
     public async Task A_dry_run_lists_diffs_and_writes_nothing()
     {
         await using var repo = await CheckTests.AppliedAsync();
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var tree = repo.Tree();
         var times = repo.WriteTimes();
 

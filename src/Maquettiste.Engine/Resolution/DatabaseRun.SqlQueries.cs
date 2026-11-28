@@ -148,7 +148,7 @@ internal sealed partial class DatabaseRun
             if (other is not null && other != run._db.Id)
                 return $"is {element!.KindName} '{element.Name}' of database '{run._run.Model.Get<Database>(other)?.Name ?? other}', not of '{run._db.Name}'";
             if (element is Entity entity)
-                return $"is entity '{entity.Name}', which has no table in database '{run._db.Name}'";
+                return $"is entity '{entity.Name}', not a table: name the table it is bound to";
             if (element is not null)
                 return $"is {element.KindName} '{element.Name}', not {allowed}";
             return $"is no {(tablesOnly ? "table" : "table, view, routine, sequence or database type")} of database '{run._db.Name}'";

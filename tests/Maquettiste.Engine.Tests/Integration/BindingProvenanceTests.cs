@@ -10,13 +10,10 @@ namespace Maquettiste.Engine.Tests.Integration;
 
 /// <summary>
 /// The acceptance tests of bindings that record their provenance and drift (next-phase-2-design.md section 3.3, task D36), each on a copy
-/// of the billing fixture. <c>materialize-tables</c> stores Invoice's table in <c>main</c>, keeping its overlay's id (the overlay file
-/// <c>tables/01j92p0v1t0j6rh4my9h81nyb4.json</c> becomes <c>tables/invoices.json</c>), and binds Invoice to
-/// it with provenance; a change to that table is then drift that validation reports and one re-sync catches up with. The shared fixture
-/// does not change.
+/// of the billing fixture, where Invoice is bound to the table <c>invoices</c> in <c>main</c> with provenance; a change to that table is
+/// then drift that validation reports and one re-sync catches up with. The shared fixture does not change.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class BindingProvenanceTests
 {
     private const string Main = E2ERepo.MainDatabaseId;
@@ -43,14 +40,12 @@ public sealed class BindingProvenanceTests
 
     // ---- setup ----
 
-    /// <summary>A billing copy where <c>materialize-tables</c> has stored Invoice's table and bound Invoice to it with provenance.</summary>
-    private static async Task<E2ERepo> MaterializedAsync()
+    /// <summary>A billing copy, where Invoice is bound to its table with provenance.</summary>
+    private static async Task<E2ERepo> BoundAsync()
     {
         var repo = E2ERepo.Create(demo: false);
-        AssertSaved(await ApplyAsync(repo, $$"""{ "op": "materialize-tables", "database": "{{Main}}", "entities": ["{{Invoice}}"] }"""));
         var snapshot = await repo.Store.GetSnapshotAsync(Ct);
-        Assert.Equal(TableOrigin.Designed, snapshot.Get<Table>(InvoiceTable)!.Origin);
-        Assert.Equal(InvoiceTablePath, snapshot.GetDocument(InvoiceTable)!.Path); // the overlay's file, renamed after its table
+        Assert.Equal(InvoiceTablePath, snapshot.GetDocument(InvoiceTable)!.Path);
         var binding = Assert.Single(snapshot.Get<Entity>(Invoice)!.Bindings);
         Assert.Equal(InvoiceTable, binding.Source);
         Assert.NotNull(binding.Provenance);
@@ -96,7 +91,7 @@ public sealed class BindingProvenanceTests
     [Fact]
     public async Task A_new_invoice_column_is_drift_and_one_resync_maps_it()
     {
-        await using var repo = await MaterializedAsync();
+        await using var repo = await BoundAsync();
         var entityBytes = repo.Repo.ReadFile(InvoicePath);
 
         await repo.EditAsync(InvoiceTable, t => t["columns"]!.AsArray().Add(new JsonObject { ["id"] = DueOn, ["name"] = "due_on", ["type"] = "date" }));
@@ -136,7 +131,7 @@ public sealed class BindingProvenanceTests
     {
         foreach (var keepNames in new[] { false, true })
         {
-            await using var repo = await MaterializedAsync();
+            await using var repo = await BoundAsync();
             var number = (await repo.Store.GetSnapshotAsync(Ct)).Get<Table>(InvoiceTable)!.Columns.Single(c => c.Name == "number").Id;
             await repo.EditAsync(InvoiceTable, t => t["columns"]!.AsArray().OfType<JsonObject>().Single(c => (string?)c["name"] == "number")["name"] = "invoice_number");
 

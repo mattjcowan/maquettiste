@@ -3,7 +3,7 @@
 // distinct and, at the top, paging) and Parameters. Each gesture is one `update` (one save, one undo step).
 import { Fragment, useState } from "react";
 import { ArrowDown, ArrowUp, KeyRound, Plus, Trash2 } from "lucide-react";
-import type { DatabaseView, Diagnostic, ElementSummary, QueryView } from "@/api/types";
+import type { DatabaseView, Diagnostic, QueryView } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/menu";
 import { EmptyState, SectionTitle } from "@/components/ui/misc";
@@ -32,7 +32,6 @@ import {
   type ScopeAlias,
   type SourceOption,
   type Subquery,
-  type TableFileRow,
 } from "@/model/queryTree";
 import { facetProblem, setFacet, type TypeFacet } from "./databaseDocs";
 import { CommitInput } from "./fields";
@@ -43,10 +42,9 @@ import { TypeSelect, useDatabaseTypes } from "./TypedRowsGrid";
 /** Edits a query body (the query, or a named query's part) as one gesture. */
 export type BodyUpdate = (mutate: (body: Subquery) => void) => void;
 
-/** What the sections read besides the body: the resolved database, its table files, and the query's environment. */
+/** What the sections read besides the body: the resolved database and the query's environment. */
 export interface QueryContext {
   view: DatabaseView | null;
-  files: readonly TableFileRow[];
   /** The query's parameters, routines and dialect; `scope` is replaced per body. */
   env: QueryEnv;
   /** The aliases of the queries around this body. */
@@ -64,13 +62,6 @@ function Problem({ text }: { text: string | null }) {
       {text}
     </p>
   ) : null;
-}
-
-/** The index's table files of a database (a synthesized table's overlay names its entity), for reading a source id. */
-export function tableFiles(rows: readonly ElementSummary[] | undefined, database: string): TableFileRow[] {
-  return (rows ?? [])
-    .filter((r) => r.kind === "table" && r.database === database)
-    .map((r) => ({ id: r.id, entity: r.entity ?? null, relation: (r as { relation?: string | null }).relation ?? null }));
 }
 
 // ------------------------------------------------------------------ sources
@@ -103,7 +94,7 @@ export function SourcesSection({ body, update, q, label }: { body: Subquery; upd
   const named = q.named ?? [];
   const joins = body.joins ?? [];
   const [problem, setProblem] = useState<string | null>(null);
-  const scopeUpTo = (n: number) => scopeOf({ from: body.from, joins: joins.slice(0, n) }, q.view, q.files, q.outer, q.named);
+  const scopeUpTo = (n: number) => scopeOf({ from: body.from, joins: joins.slice(0, n) }, q.view, q.outer, q.named);
   const aliases = [body.from, ...joins].map((s, i) => s.alias ?? scopeUpTo(i + 1)[i]?.alias ?? s.source);
   const sourceSelect = (value: string, aria: string, onPick: (v: string) => void) => {
     const listed = (o: SourceOption) => (
@@ -114,7 +105,7 @@ export function SourcesSection({ body, update, q, label }: { body: Subquery; upd
     return (
       <select aria-label={aria} className={`${cellSelect} w-56 font-sans`} value={value} onChange={(e) => onPick(e.target.value)}>
         {options.some((o) => o.value === value) || named.some((o) => o.value === value) ? null : (
-          <option value={value}>{sourceLabel(findSource(q.view, value, q.files, named)) ?? `${value || "(pick a source)"}`}</option>
+          <option value={value}>{sourceLabel(findSource(q.view, value, named)) ?? `${value || "(pick a source)"}`}</option>
         )}
         {named.length ? (
           <>
@@ -175,8 +166,8 @@ export function SourcesSection({ body, update, q, label }: { body: Subquery; upd
         <span className="w-12 text-12 font-medium text-secondary">From</span>
         {sourceSelect(body.from.source, `${label} from source`, (v) =>
           update((b) => {
-            const before = findSource(q.view, b.from.source, q.files, named);
-            const after = findSource(q.view, v, q.files, named);
+            const before = findSource(q.view, b.from.source, named);
+            const after = findSource(q.view, v, named);
             b.from = { ...b.from, source: v };
             // The columns read through the from alias follow to the same-named column of the new source, when it has one: pointing a
             // query at another table (or a named query) does not leave its fields reading the old table's column keys.
@@ -222,8 +213,8 @@ export function SourcesSection({ body, update, q, label }: { body: Subquery; upd
               </select>
               {sourceSelect(j.source, `${label} join ${i + 1} source`, (v) =>
                 update((b) => {
-                  const before = findSource(q.view, b.joins![i].source, q.files, named);
-                  const after = findSource(q.view, v, q.files, named);
+                  const before = findSource(q.view, b.joins![i].source, named);
+                  const after = findSource(q.view, v, named);
                   b.joins![i] = { ...b.joins![i], source: v };
                   // As for the from source: the columns read through this join's alias follow to the same-named column of the new source.
                   if (before && after) retargetColumns(b, aliases[i + 1], columnOptions(before), columnOptions(after));
@@ -317,7 +308,7 @@ export function SelectSection({
 }) {
   const select = body.select ?? [];
   const [problem, setProblem] = useState<string | null>(null);
-  const scope = scopeOf(body, q.view, q.files, q.outer, q.named);
+  const scope = scopeOf(body, q.view, q.outer, q.named);
   const env: QueryEnv = { ...q.env, scope };
   const own = scope.filter((s) => !s.outer);
   const typeOf = (f: Field) => {
@@ -483,7 +474,7 @@ function MoveButtons({ noun, first, last, move }: { noun: string; first: boolean
 // ------------------------------------------------------------------ filter
 
 export function FilterSection({ body, update, q, label }: { body: Subquery; update: BodyUpdate; q: QueryContext; label: string }) {
-  const env: QueryEnv = { ...q.env, scope: scopeOf(body, q.view, q.files, q.outer, q.named) };
+  const env: QueryEnv = { ...q.env, scope: scopeOf(body, q.view, q.outer, q.named) };
   return (
     <div className="flex flex-col gap-1" data-testid="query-filter">
       <p className="text-12 text-secondary">
@@ -524,7 +515,7 @@ export function GroupOrderSection({
   /** The query's paging (the top level only), with its own update. */
   paging?: { value: QueryDoc["paging"]; update: (mutate: (doc: QueryDoc) => void) => void };
 }) {
-  const env: QueryEnv = { ...q.env, scope: scopeOf(body, q.view, q.files, q.outer, q.named) };
+  const env: QueryEnv = { ...q.env, scope: scopeOf(body, q.view, q.outer, q.named) };
   const groupBy = body.groupBy ?? [];
   const orderBy = body.orderBy ?? [];
   const blank = (): Expression => (firstColumn(env) ? { column: firstColumn(env)! } : { value: 1 });

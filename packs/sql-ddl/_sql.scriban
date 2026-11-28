@@ -173,38 +173,6 @@ func sqlite_rowid(t)
   ret t.primary_key.columns[0].identity
 end
 
-# The SQL expression for a named attribute default expression (now, today, new-uuid), or "" when the dialect has none. MySQL takes
-# an expression default in parentheses, and CURRENT_TIMESTAMP with the column's fractional seconds.
-func default_expression(expr, c, db)
-  $d = db.dialect
-  if expr == "now"
-    if $d == "sqlserver"
-      ret c.type == "datetimeoffset" ? "SYSDATETIMEOFFSET()" : "SYSUTCDATETIME()"
-    else if $d == "mysql" && c.precision && c.precision > 0
-      ret "CURRENT_TIMESTAMP(" + c.precision + ")"
-    end
-    ret "CURRENT_TIMESTAMP"
-  else if expr == "today"
-    if $d == "sqlserver"
-      ret "CAST(SYSUTCDATETIME() AS date)"
-    else if $d == "mysql"
-      ret "(CURRENT_DATE)"
-    end
-    ret "CURRENT_DATE"
-  else if expr == "new-uuid"
-    if $d == "postgresql"
-      ret "gen_random_uuid()"
-    else if $d == "sqlserver"
-      ret "NEWID()"
-    else if $d == "mysql"
-      ret "(UUID())"
-    else if $d == "oracle"
-      ret "SYS_GUID()"
-    end
-  end
-  ret ""
-end
-
 # MySQL: whether a column's type is a text, blob or json type, whose literal default must be written as an expression in
 # parentheses (MySQL 8.0.13 and later; MariaDB takes both) and whose index needs a key prefix length.
 func mysql_blob(c)
@@ -212,8 +180,7 @@ func mysql_blob(c)
   ret ($t | string.contains "text") || ($t | string.contains "blob") || ($t | string.starts_with "json")
 end
 
-# The default clause of a column without the DEFAULT keyword, or "": per-dialect SQL, then a literal, then a sequence, then a
-# named default expression of the attribute.
+# The default clause of a column without the DEFAULT keyword, or "": per-dialect SQL, then a literal, then a sequence.
 func default_sql(c, db)
   if c.default_sql
     ret c.default_sql
@@ -233,9 +200,6 @@ func default_sql(c, db)
       ret qn(c.sequence.schema, c.sequence.name, db) + ".NEXTVAL"
     end
     ret ""
-  end
-  if c.attribute && c.attribute.default_expression
-    ret default_expression(c.attribute.default_expression, c, db)
   end
   ret ""
 end
@@ -338,15 +302,9 @@ func native_type_name(rt)
   ret (snake rt.name) + "_t"
 end
 
-# The SQL type of a column: the enum type for a projected reference column (type "reference") realized as "native" on
-# PostgreSQL (unless its type is bound to a table of the database, whose code column it then holds), else type_of (for a projected
-# reference column, the code's type). A column of a table file keeps the type it states, whatever the bindings map to it.
+# The SQL type of a column: type_of. A column keeps the type its table states, whatever the bindings map to it.
 func column_type(c)
-  $d = c.table.database.dialect
-  if c.type == "reference" && c.reference_type && $d == "postgresql" && !c.reference_binding && ref_realization(c.strategy) == "native"
-    ret q(native_type_name(c.reference_type), c.table.database)
-  end
-  ret type_of c $d
+  ret type_of c c.table.database.dialect
 end
 
 # One column definition, without indentation or trailing comma.

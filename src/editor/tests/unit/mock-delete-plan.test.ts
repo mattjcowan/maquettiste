@@ -5,10 +5,11 @@
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
 import type { MockModel } from "@/mocks/model/store";
-import { billingProjectedSeed } from "@/mocks/model/seed";
+import { billingSeed } from "@/mocks/model/seed";
 
 const PRODUCT = "01J92P0V0JR8BE8253SKT29ZG7";
 const REFERS_TO = "01J92P0V1CC98R0RRCAV73SGF4";
+const REFERS_TO_MAPPING = "01M8EJPZP47YMVP6NE06X8GK1S";
 const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
 const MONEY = "01J92P0V0304M76KA84NE4D1TE";
 
@@ -16,14 +17,17 @@ const hash = (model: MockModel, id: string) => model.get(id)!.hash;
 
 describe("mock delete plan", () => {
   it("plans an entity's delete both ways and deletes its relation with it", () => {
-    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
+    const model = new MockBackend({ seed: billingSeed() }).model;
     const clear = model.deletePlan([PRODUCT], "remove-references");
     expect(clear.outcome).toBe("invalid");
     expect(clear.refused.map((r) => [r.name, r.pointer, r.rule])).toEqual([["refers to", "/ends/1/entity", "MQ2001"]]);
 
     const plan = model.deletePlan([PRODUCT], "delete-dependents");
     expect(plan.outcome).toBe("saved");
-    expect(plan.deletes.map((d) => [d.id, d.because])).toEqual([[REFERS_TO, "needs entity Product"]]);
+    expect(plan.deletes.map((d) => [d.id, d.because])).toEqual([
+      [REFERS_TO, "needs entity Product"],
+      [REFERS_TO_MAPPING, "needs relation refers to"],
+    ]);
     expect(plan.removes.map((r) => r.what)).toEqual(["member Product"]);
 
     const refused = model.delete(PRODUCT, hash(model, PRODUCT), "remove-references");
@@ -33,16 +37,18 @@ describe("mock delete plan", () => {
 
     const deleted = model.delete(PRODUCT, hash(model, PRODUCT), "delete-dependents");
     expect(deleted.outcome).toBe("saved");
-    expect(deleted.changes!.deleted.sort()).toEqual([PRODUCT, REFERS_TO].sort());
+    expect(deleted.changes!.deleted.sort()).toEqual([PRODUCT, REFERS_TO, REFERS_TO_MAPPING].sort());
     expect(deleted.changes!.changed.map((c) => c.kind)).toEqual(["diagram"]);
   });
 
   it("deletes a database with its tables, views, sequences, routines, database types, SQL objects, queries and mappings, and removes attributes a deleted type typed", () => {
-    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
+    const model = new MockBackend({ seed: billingSeed() }).model;
     const plan = model.deletePlan([MAIN], "delete-dependents");
     expect(plan.deletes.map((d) => d.kind).sort()).toEqual([
       "database-type",
       "database-type",
+      "mapping",
+      "mapping",
       "mapping",
       "mapping",
       "query",
@@ -52,6 +58,11 @@ describe("mock delete plan", () => {
       "routine",
       "sequence",
       "sql-object",
+      "table",
+      "table",
+      "table",
+      "table",
+      "table",
       "table",
       "table",
       "view",
@@ -66,7 +77,7 @@ describe("mock delete plan", () => {
   });
 
   it("takes the resolution on a batch delete and plans several elements at once", () => {
-    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
+    const model = new MockBackend({ seed: billingSeed() }).model;
     const both = model.deletePlan([PRODUCT, REFERS_TO], "delete-dependents");
     expect(both.ids).toEqual([PRODUCT, REFERS_TO]);
     const result = model.batch({

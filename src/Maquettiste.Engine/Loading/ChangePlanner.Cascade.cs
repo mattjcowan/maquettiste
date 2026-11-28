@@ -158,7 +158,7 @@ internal sealed partial class ChangePlanner
             {
                 var drop = new CascadeOp(holder, true, reference, index);
                 List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != holder && !IsUnder(o.Pointer, holder)), drop];
-                if (TryOps(referrer, dropped, narrow, out _) is null)
+                if (TryOps(referrer, dropped, out _) is null)
                 {
                     Commit(referrerId, dropped);
                     foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -190,7 +190,7 @@ internal sealed partial class ChangePlanner
 
             var part = whole ? rightPart.Entry : reference.JsonPointer;
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -210,7 +210,7 @@ internal sealed partial class ChangePlanner
         {
             var part = Remaining(referrer.Json, pointPart.List, ops) <= 1 ? pointPart.Entry : reference.JsonPointer;
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -237,7 +237,7 @@ internal sealed partial class ChangePlanner
 
             var part = last ? namedPart.List : namedPart.Item;
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 return;
@@ -250,7 +250,7 @@ internal sealed partial class ChangePlanner
         {
             var part = Remaining(referrer.Json, notBy.List, ops) <= 1 ? notBy.List : notBy.Entry;
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 return;
@@ -272,7 +272,7 @@ internal sealed partial class ChangePlanner
             }
 
             List<CascadeOp> dropped = [.. ops.Where(o => !parts.Any(part => o.Pointer == part || IsUnder(o.Pointer, part))), .. parts.Select(part => new CascadeOp(part, true, reference, index))];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 return;
@@ -285,7 +285,7 @@ internal sealed partial class ChangePlanner
         {
             var part = Remaining(referrer.Json, notice.List, ops) <= 1 ? notice.List : notice.Entry;
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 return;
@@ -298,7 +298,7 @@ internal sealed partial class ChangePlanner
         {
             var part = Remaining(referrer.Json, expected.Map, ops) <= 1 ? expected.Map : reference.JsonPointer;
             List<CascadeOp> cleared = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, false, reference, index)];
-            if (TryOps(referrer, cleared, narrow, out _) is null)
+            if (TryOps(referrer, cleared, out _) is null)
             {
                 Commit(referrerId, cleared);
                 return;
@@ -313,7 +313,7 @@ internal sealed partial class ChangePlanner
             if (referrer.Element is Table or Operation && reference.Field == "member" && RedefinesEntry(reference.JsonPointer) is { } entry)
             {
                 List<CascadeOp> next = [.. ops.Where(o => o.Pointer != entry && !IsUnder(o.Pointer, entry)), new CascadeOp(entry, true, reference, index)];
-                if (TryOps(referrer, next, narrow, out _) is null)
+                if (TryOps(referrer, next, out _) is null)
                 {
                     Commit(referrerId, next);
                     return;
@@ -333,7 +333,7 @@ internal sealed partial class ChangePlanner
         {
             var drop = new CascadeOp(bindingPart, true, reference, index);
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != bindingPart && !IsUnder(o.Pointer, bindingPart)), drop];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -352,7 +352,7 @@ internal sealed partial class ChangePlanner
         if (referrer.Element is Entity && RevisionsPart(reference.JsonPointer) is { } revisionsPart)
         {
             var next = RevisionsOps(referrer.Json, revisionsPart, reference, index, ops);
-            if (TryOps(referrer, next, narrow, out _) is null)
+            if (TryOps(referrer, next, out _) is null)
             {
                 Commit(referrerId, next);
                 return;
@@ -365,7 +365,7 @@ internal sealed partial class ChangePlanner
         if (referrer.Element is Entity && CopyPart(reference.JsonPointer) is { } copyPart)
         {
             var next = CopyOps(referrer.Json, copyPart, reference, index, ops);
-            if (TryOps(referrer, next, narrow, out _) is null)
+            if (TryOps(referrer, next, out _) is null)
             {
                 Commit(referrerId, next);
                 return;
@@ -383,7 +383,7 @@ internal sealed partial class ChangePlanner
                 part = "/subjects";
             var drop = new CascadeOp(part, true, reference, index);
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), drop];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -402,7 +402,7 @@ internal sealed partial class ChangePlanner
         if (referrer.Element is Relation && EndTypeEntry(reference.JsonPointer) is { } endType && Remaining(referrer.Json, endType.List, ops) > 1)
         {
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != endType.Item && !IsUnder(o.Pointer, endType.Item)), new CascadeOp(endType.Item, true, reference, index)];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 return;
@@ -426,7 +426,7 @@ internal sealed partial class ChangePlanner
                     next = [.. next.Where(o => o.Pointer != list && !IsUnder(o.Pointer, list)), new CascadeOp(list, true, reference, index)];
                 if (!EntryKeepsWay(referrer.Json, endsPart.Entry, next))
                     losesMeaning = true;
-                else if (TryOps(referrer, next, narrow, out _) is null)
+                else if (TryOps(referrer, next, out _) is null)
                 {
                     Commit(referrerId, next);
                     return;
@@ -442,7 +442,7 @@ internal sealed partial class ChangePlanner
                 }
 
                 List<CascadeOp> whole = [.. ops.Where(o => o.Pointer != endsPart.Entry && !IsUnder(o.Pointer, endsPart.Entry)), new CascadeOp(endsPart.Entry, true, reference, index)];
-                if (TryOps(referrer, whole, narrow, out _) is null)
+                if (TryOps(referrer, whole, out _) is null)
                 {
                     Commit(referrerId, whole);
                     return;
@@ -457,7 +457,7 @@ internal sealed partial class ChangePlanner
         {
             var drop = new CascadeOp(setEntry, true, reference, index);
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != setEntry && !IsUnder(o.Pointer, setEntry)), drop];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -477,7 +477,7 @@ internal sealed partial class ChangePlanner
         {
             var drop = new CascadeOp(callPart, true, reference, index);
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != callPart && !IsUnder(o.Pointer, callPart)), drop];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -526,7 +526,7 @@ internal sealed partial class ChangePlanner
         {
             var drop = new CascadeOp(objectPart, true, reference, index);
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != objectPart && !IsUnder(o.Pointer, objectPart)), drop];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -544,7 +544,7 @@ internal sealed partial class ChangePlanner
         if (referrer.Element is Query { IsSqlText: true } && SqlTextEntry(reference.JsonPointer))
         {
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != reference.JsonPointer), new CascadeOp(reference.JsonPointer, true, reference, index)];
-            if (TryOps(referrer, dropped, narrow, out _) is null)
+            if (TryOps(referrer, dropped, out _) is null)
             {
                 Commit(referrerId, dropped);
                 return;
@@ -567,7 +567,7 @@ internal sealed partial class ChangePlanner
         else
         {
             var clear = new CascadeOp(reference.JsonPointer, false, reference, index);
-            var reason = TryOps(referrer, [.. ops, clear], narrow, out widening);
+            var reason = TryOps(referrer, [.. ops, clear], out widening);
             if (reason is null)
             {
                 Commit(referrerId, [.. ops, clear]);
@@ -597,7 +597,7 @@ internal sealed partial class ChangePlanner
                 var part = JsonPointer.Build(segments[..k]);
                 var remove = new CascadeOp(part, true, reference, index);
                 List<CascadeOp> next = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), remove];
-                if (TryOps(referrer, next, narrow, out _) is not null)
+                if (TryOps(referrer, next, out _) is not null)
                     continue;
                 Commit(referrerId, next);
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
@@ -676,7 +676,7 @@ internal sealed partial class ChangePlanner
                     }
                 }
 
-                if (next.Count > ops.Count && TryOps(referrer, next, true, out _) is null)
+                if (next.Count > ops.Count && TryOps(referrer, next, out _) is null)
                     Commit(scenarioId, next);
             }
         }
@@ -704,7 +704,7 @@ internal sealed partial class ChangePlanner
         }
 
         List<CascadeOp> next = [.. ops, new CascadeOp(reference.JsonPointer, false, reference, index)];
-        var node = ApplyOps(referrer, next, mode == DeleteResolution.DeleteDependents, out var failure, out _);
+        var node = ApplyOps(referrer, next, out var failure, out _);
         var reason = node is null
             ? failure
             : XRefRemovalProblem(referrer.Element, node, [reference.JsonPointer]) is { } problem
@@ -1430,10 +1430,10 @@ internal sealed partial class ChangePlanner
             : null;
 
     /// <summary>Applies the edits to a copy of the referrer; null when it is valid after them, else why not.</summary>
-    private string? TryOps(Working referrer, IReadOnlyList<CascadeOp> ops, bool narrow, out bool widening)
+    private string? TryOps(Working referrer, IReadOnlyList<CascadeOp> ops, out bool widening)
     {
         widening = false;
-        var node = ApplyOps(referrer, ops, narrow, out var failure, out widening);
+        var node = ApplyOps(referrer, ops, out var failure, out widening);
         if (node is null)
             return failure;
         return Read(node, KindInfo.Get(referrer.Element.Kind), null, new ChangeOutcome()) is not null
@@ -1441,7 +1441,7 @@ internal sealed partial class ChangePlanner
             : "the reference is required, so it cannot be cleared.";
     }
 
-    private static JsonObject? ApplyOps(Working referrer, IReadOnlyList<CascadeOp> ops, bool narrow, out string? failure, out bool widening)
+    private static JsonObject? ApplyOps(Working referrer, IReadOnlyList<CascadeOp> ops, out string? failure, out bool widening)
     {
         failure = null;
         widening = false;
@@ -1471,7 +1471,7 @@ internal sealed partial class ChangePlanner
                 continue;
             }
 
-            if (RemoveAt(node, op.Pointer, referrer.Element.Kind, narrow, out var wide) is { } reason)
+            if (RemoveAt(node, op.Pointer, referrer.Element.Kind, out var wide) is { } reason)
             {
                 failure = reason;
                 widening = wide;
@@ -1629,7 +1629,7 @@ internal sealed partial class ChangePlanner
                 continue;
             var index = ops.Min(o => o.Index);
             var outcome = outcomes[index];
-            var node = ApplyOps(referrer, ops, narrow: true, out var failure, out _);
+            var node = ApplyOps(referrer, ops, out var failure, out _);
             var repoPath = _paths.ToRepoPath(referrer.ModelPath);
             var info = KindInfo.Get(referrer.Element.Kind);
             if (node is null || Read(node, info, repoPath, outcome) is not { } element)
@@ -1827,7 +1827,7 @@ internal sealed partial class ChangePlanner
 
     private string NameOf(Element element) => ReadableName(_snapshot, element);
 
-    /// <summary>A readable name for an element: its name, else its display name, else (a synthesized table) its entity's name.</summary>
+    /// <summary>A readable name for an element: its name, else its display name, else its id.</summary>
     /// <param name="snapshot">The model the element is in.</param>
     /// <param name="element">The element.</param>
     /// <returns>The name.</returns>
@@ -1837,8 +1837,6 @@ internal sealed partial class ChangePlanner
             return element.Name;
         if (!string.IsNullOrEmpty(element.DisplayName))
             return element.DisplayName;
-        if (element is Table { Entity: { } entity } && snapshot.Get<Element>(entity) is { } owner)
-            return owner.Name + " table";
         return element.Id;
     }
 

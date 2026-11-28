@@ -98,11 +98,12 @@ public static class TimePreview
             var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
             var database = snapshot.All<Database>().First(d => d.Name == "main");
             var status = (await store.GetMaterializeStatusAsync(database.Id, ct).ConfigureAwait(false))!;
-            // Materialize does not write inheritance hierarchies' tables yet (MQ4055): those entities stay projected.
+            // The flat entities not yet bound to the database get designed tables; hierarchies are left as they are.
             var all = snapshot.All<Entity>().ToList();
             var bases = all.Select(e => e.Base).OfType<string>().ToHashSet(StringComparer.Ordinal);
             var flat = all.Where(e => e.Base is null && !bases.Contains(e.Id)).Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
-            var ids = status.Entities.Where(e => e.Projected && flat.Contains(e.Id)).Select(e => e.Id).ToList();
+            var bound = all.Where(e => e.Bindings.Any(b => b.Database == database.Id)).Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+            var ids = status.Entities.Where(e => !bound.Contains(e.Id) && flat.Contains(e.Id)).Select(e => e.Id).ToList();
             var stored = 0;
             foreach (var chunk in ids.Chunk(500))
             {

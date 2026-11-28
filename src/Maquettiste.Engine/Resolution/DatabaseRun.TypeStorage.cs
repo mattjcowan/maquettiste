@@ -64,9 +64,9 @@ internal sealed partial class DatabaseRun
             return;
         TypeLinks? links = null;
         RRelationMapping? result = null;
-        if (m is { Ignore: false } && (m.JunctionTable is not null || m.Ends.Count > 0))
+        if (m is not null && (m.JunctionTable is not null || m.Ends.Count > 0))
         {
-            var linkTable = m.JunctionTable is { } junctionId && _tables.TryGetValue(junctionId, out var designed) && designed.IsDesigned ? designed : null;
+            var linkTable = m.JunctionTable is { } junctionId ? _tables.GetValueOrDefault(junctionId) : null;
             if ((m.JunctionTable is null || linkTable is not null) && TypeItemsFit(m, ends, covered))
             {
                 links = new TypeLinks { Mapping = m, LinkTable = linkTable, Ends = ends };
@@ -150,23 +150,16 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>
-    /// Whether a placement's rows are also in a base's table: the same table; for an entity bound by a binding, a base whose table its
-    /// <c>baseForeignKey</c> chain joins (table per type, retire-projection-design.md section 4); otherwise TPT (the base holds the base row,
-    /// also for designed tables bound with it), or TPH for a table the engine makes.
+    /// Whether a placement's rows are also in a base's table: the same table, or a base whose table its binding's <c>baseForeignKey</c> chain
+    /// joins (table per type, retire-projection-design.md section 4).
     /// </summary>
     private bool SharesRowsWith(Placement p, Placement b) =>
-        ReferenceEquals(b.Table, p.Table)
-        || (p.ViaBinding ? UpperLevels(p.Entity).Exists(l => ReferenceEquals(l, b.Entity)) : SharesBaseRows(p));
-
-    /// <summary>
-    /// Whether a placement the engine places by a mapping has its rows also in its base's table: TPT (the base holds the base row, also for
-    /// designed tables bound with it), or TPH for a table the engine makes; a bound TPH entity shares its base's rows only through the same table.
-    /// </summary>
-    private static bool SharesBaseRows(Placement p) => p.Strategy == InheritanceStrategy.Tpt || (!p.Bound && p.Strategy == InheritanceStrategy.Tph);
+        ReferenceEquals(b.Table, p.Table) || UpperLevels(p.Entity).Exists(l => ReferenceEquals(l, b.Entity));
 
     private bool DerivesFrom(string entityId, REntity type)
     {
-        for (var e = _run.EntityById(entityId)?.Base; e is not null; e = e.Base)
+        var steps = 0;
+        for (var e = _run.EntityById(entityId)?.Base; e is not null && steps++ < MaxDepth; e = e.Base)
         {
             if (ReferenceEquals(e, type))
                 return true;
@@ -325,7 +318,6 @@ internal sealed partial class DatabaseRun
         if (_linkTables.Exists(x => ReferenceEquals(x.Table, table) && ReferenceEquals(x.Relation, rel)))
             return;
         table.Table.Relation ??= rel;
-        table.Table.IsJunction = true;
         table.Deps.AddRange(_run.DepsOf(rel).ToList());
         _linkTables.Add((rel, mapping, table, null, true));
     }
@@ -683,12 +675,11 @@ internal sealed partial class DatabaseRun
     // ---- codes -------------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// The type code of an entity in this database (decision 42): its binding's <c>discriminatorValue</c>, else its mapping's, else its name;
-    /// read from the files. A number is an integer code.
+    /// The type code of an entity in this database (decision 42): its binding's <c>discriminatorValue</c>, else its name; read from the files.
+    /// A number is an integer code.
     /// </summary>
     private object CodeOf(REntity entity) =>
-        CodeValue(_bindingByEntity.TryGetValue(entity.Id, out var bound) ? bound.Binding.DiscriminatorValue : _run.MappingOf(_db.Id, entity.Id)?.DiscriminatorValue)
-        ?? entity.Name;
+        CodeValue(_bindingByEntity.TryGetValue(entity.Id, out var bound) ? bound.Binding.DiscriminatorValue : null) ?? entity.Name;
 
     /// <summary>
     /// The code a <c>discriminatorValue</c> gives (decision 42), the one rule the run and MQ4119 (<see cref="Migrations.TypeCodeCheck"/>) share: a
@@ -774,7 +765,7 @@ internal sealed partial class DatabaseRun
         return list;
     }
 
-    private static string PhysicalTypeOf(RColumn c) => c.Type == "reference" && c.CodeType is { } code ? code : c.Type;
+    private static string PhysicalTypeOf(RColumn c) => c.Type;
 
     private static string? CodeMisfit(RColumn column, object code)
     {
@@ -840,12 +831,6 @@ internal sealed partial class DatabaseRun
                 if (!link)
                     Refuse(m, at, $"Column '{NamedColumn(columnId)}' for attribute '{attribute.Name}' isn't in table '{tables[0].Table.Name}', which holds the links of relation '{rel.Name}'.");
                 continue; // MQ4009 for a link table
-            }
-
-            if (link && column.Attribute is null)
-            {
-                column.Attribute = attribute;
-                column.AttributePath = attribute.Id;
             }
 
             list.Add(new RRelationAttributeColumn { Attribute = attribute, Column = column });
@@ -1015,12 +1000,10 @@ internal sealed partial class DatabaseRun
     /// </summary>
     private bool RowsNotToldApart(TypeLinkEnd e, HashSet<string> covered, Placement target)
     {
-        var table = target.Table!;
+        var table = target.Table;
         var stands = StandsFor(e, covered, target);
         if (!_placementOrder.Exists(p => ReferenceEquals(p.Table, table) && !stands.Contains(p)))
             return false;
-        if (target.Strategy == InheritanceStrategy.Tph && !target.Bound)
-            return false; // the discriminator
         return PickRows(target, table.Table, stands, keys: null) is null;
     }
 

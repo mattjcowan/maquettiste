@@ -76,6 +76,32 @@ public sealed class UnitPlannerTests
     }
 
     [Fact]
+    public async Task Where_database_matches_the_entities_bound_there_and_their_attributes()
+    {
+        // Since 0.29.0 an entity is in a database through its binding (before, through its entity mapping, which bound entities lacked).
+        var b = new ModelBuilder(seed: 29);
+        var customer = b.Entity("Customer").Key("id", "uuid").Attr("name", "string");
+        b.Entity("Draft").Key("id", "uuid").Attr("note", "string");
+        var main = b.Database("main", Dialect.PostgreSql);
+        b.Database("archive", Dialect.PostgreSql);
+        b.Table("customers", main).Column("id", "uuid", nullable: false).Column("name", "string").PrimaryKey("id").Binds(customer);
+        var model = Resolve(b.Build());
+
+        async Task<string[]> Planned(string scope, string database)
+        {
+            var packs = new PackSet([Pack("p", [Unit("u", scope, new UnitWhere { Database = database })])], []);
+            var plan = await new UnitPlanner(Options).PlanAsync(model, packs, new ScriptSandboxFactory(), null, Ct);
+            Assert.Empty(plan.Diagnostics);
+            return [.. plan.Units.Select(u => u.Element switch { REntity e => e.Name, RAttribute a => ((RElement)a.Owner).Name + "." + a.Name, _ => "?" }).Order(StringComparer.Ordinal)];
+        }
+
+        Assert.Equal(["Customer"], await Planned("each entity", "main"));
+        Assert.Equal(["Customer.id", "Customer.name"], await Planned("each attribute", "main"));
+        Assert.Empty(await Planned("each entity", "archive"));
+        Assert.Empty(await Planned("each attribute", "archive"));
+    }
+
+    [Fact]
     public async Task Where_database_on_tables_and_model_units()
     {
         var plan = await Plan(new PackSet([Pack("p", [Unit("t", "each table", new UnitWhere { Database = "main", NotTags = ["external"] }),
@@ -305,10 +331,12 @@ public sealed class UnitPlannerTests
         });
         b.Add(new Table
         {
-            Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = customer.Id, Name = "clients",
+            Id = b.NewId(), Database = main.Id, Name = "clients", Columns = [new Column { Id = b.NewId(), Name = "id", Type = "uuid" }],
             Generation = new Dictionary<string, GenerationHints> { ["p"] = new() { Skip = true } },
         });
+        b.Table("orders", main).Column("id", "uuid");
         _ = order;
+        _ = customer;
         var model = Resolve(b.Build());
         Assert.Equal(["clients", "legacy", "orders"], model.Databases.Single().Tables.Select(t => t.Name).Order(StringComparer.Ordinal));
 
@@ -316,57 +344,23 @@ public sealed class UnitPlannerTests
         var plan = await new UnitPlanner(Options).PlanAsync(model, packs, new ScriptSandboxFactory(), null, Ct);
 
         Assert.Empty(plan.Diagnostics);
-        // "*" drops the designed table for every pack; "p" drops the overlaid synthesized table for pack p only.
+        // "*" drops the legacy table for every pack; "p" drops the clients table for pack p only.
         Assert.Equal(["orders"], plan.Units.Where(u => u.Pack.Name == "p").Select(u => ((RTable)u.Element!).Name));
         Assert.Equal(["clients", "orders"], plan.Units.Where(u => u.Pack.Name == "q").Select(u => ((RTable)u.Element!).Name).Order(StringComparer.Ordinal));
     }
 
     [Fact]
-    public async Task A_table_file_package_wins_over_its_entitys()
-    {
-        // next-phase-1-design.md section 4.3: a table's own package wins; a table without one is in its entity's.
-        var b = new ModelBuilder(seed: 6);
-        var sales = b.Package("Sales");
-        var catalog = b.Package("Catalog");
-        var customer = b.Entity("Customer", sales).Key("id", "uuid");
-        b.Entity("Order", sales).Key("id", "uuid");
-        var main = b.Database("main", Dialect.PostgreSql);
-        b.Add(new Table { Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = customer.Id, Name = "clients", Package = catalog.Id });
-        b.Add(new Table { Id = b.NewId(), Name = "legacy", Database = main.Id, Package = catalog.Id, Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int" }] });
-        b.Add(new Table { Id = b.NewId(), Name = "loose", Database = main.Id, Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int" }] });
-        var model = Resolve(b.Build());
-        var packages = model.Databases.Single().Tables.ToDictionary(t => t.Name, t => t.Package?.Name, StringComparer.Ordinal);
-        Assert.Equal("Catalog", packages["clients"]);
-        Assert.Equal("Sales", packages["orders"]);
-        Assert.Equal("Catalog", packages["legacy"]);
-        Assert.Null(packages["loose"]);
-
-        var packs = new PackSet([Pack("p", [Unit("c", "each table", new UnitWhere { Packages = ["Catalog"] }),
-            Unit("s", "each table", new UnitWhere { Packages = ["Sales"] }), Unit("n", "each table", new UnitWhere { NotPackages = ["Sales", "Catalog"] })])], []);
-        var plan = await new UnitPlanner(Options).PlanAsync(model, packs, new ScriptSandboxFactory(), null, Ct);
-
-        Assert.Empty(plan.Diagnostics);
-        string[] Tables(string unit) => [.. plan.Units.Where(u => u.Unit.Id == unit).Select(u => ((RTable)u.Element!).Name).Order(StringComparer.Ordinal)];
-        Assert.Equal(["clients", "legacy"], Tables("c"));
-        Assert.Equal(["orders"], Tables("s"));
-        Assert.Equal(["loose"], Tables("n"));
-    }
-
-    [Fact]
     public async Task Where_stereotypes_matches_a_table_that_a_schema_default_reaches()
     {
-        // next-phase-2-design.md section 3.1: the filter reads the resolved table's stereotypes, so a synthesized table without a file
-        // that a schema default reaches is selected, and a table the default does not reach is not.
+        // next-phase-2-design.md section 3.1: the filter reads the resolved table's stereotypes, so a table that carries none of its own
+        // and that a schema default reaches is selected, and a table the default does not reach is not.
         var b = new ModelBuilder(seed: 7);
         b.Stereotype("audited").AppliesTo("table");
-        var billing = b.Package("Billing");
-        b.Entity("Invoice", billing).Key("id", "uuid");
-        var customer = b.Entity("Customer", billing).Key("id", "uuid");
         var main = b.Database("main", Dialect.PostgreSql);
         var sales = main.Schema("sales");
         var common = main.Schema("public");
-        main.Package(billing, sales);
-        b.Mapping(main, customer).Schema(common);
+        b.Table("invoices", main).Column("id", "uuid").Edit(t => t with { Schema = sales });
+        b.Table("customers", main).Column("id", "uuid").Edit(t => t with { Schema = common });
         b.Table("ledger", main).Column("id", "uuid").Edit(t => t with { Schema = sales });
         var model = Resolve(Defaults.Rebuild(b, e => Defaults.SchemaDefaults(e, sales, "audited")));
 

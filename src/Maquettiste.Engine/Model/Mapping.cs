@@ -4,8 +4,10 @@ using System.Text.Json.Serialization;
 namespace Maquettiste.Engine.Model;
 
 /// <summary>
-/// Binds one entity or relation to one database (<c>model/mappings/</c>; SPEC section 10). One per (database, entity or relation);
-/// duplicates are MQ4004. Exactly one of <see cref="Entity"/> and <see cref="Relation"/> is set.
+/// Says how one relation is stored in one database (<c>model/mappings/</c>; SPEC section 10): the foreign key or the junction table that
+/// holds its links. One per (database, relation); duplicates are MQ4004. The entity half of a mapping (its <c>entity</c>, <c>table</c>,
+/// <c>schema</c>, <c>ignore</c>, <c>inheritance</c>, <c>discriminatorValue</c>, <c>promotedName</c> and an attribute's <c>storage</c>,
+/// <c>prefix</c> and <c>ignore</c>) was removed in 0.29.0 with projection: a file that still has one does not load (MQ4145).
 /// </summary>
 public sealed record Mapping : Element, IPackaged
 {
@@ -22,35 +24,14 @@ public sealed record Mapping : Element, IPackaged
     [ElementRef(ElementKind.Database)]
     public required string Database { get; init; }
 
-    /// <summary>The id of the mapped entity.</summary>
-    [ElementRef(ElementKind.Entity)]
-    public string? Entity { get; init; }
-
     /// <summary>The id of the mapped relation.</summary>
     [ElementRef(ElementKind.Relation)]
-    public string? Relation { get; init; }
+    public required string Relation { get; init; }
 
-    /// <summary>For an entity: the id of a designed or imported table to bind to instead of synthesizing one.</summary>
-    [ElementRef(ElementKind.Table)]
-    public string? Table { get; init; }
-
-    /// <summary>For an entity: the id of the database schema its conventional table goes to (erratum E26).</summary>
-    [ElementRef(IndexKinds = ["schema"])]
-    public string? Schema { get; init; }
-
-    /// <summary>Whether the element is not stored in this database.</summary>
-    public bool Ignore { get; init; }
-
-    /// <summary>The inheritance strategy; set on the hierarchy root only.</summary>
-    public InheritanceStrategy? Inheritance { get; init; }
-
-    /// <summary>The discriminator value; defaults to the entity name.</summary>
-    public JsonElement? DiscriminatorValue { get; init; }
-
-    /// <summary>Per-attribute mapping options.</summary>
+    /// <summary>The relation's attributes and the columns that store them.</summary>
     public IReadOnlyList<AttributeMapping> Attributes { get; init; } = [];
 
-    /// <summary>For a relation: overrides the SPEC section 7 default shape.</summary>
+    /// <summary>The shape: a foreign key or a junction table; absent, a named <see cref="JunctionTable"/> means a junction, else a foreign key.</summary>
     public RelationShape? Shape { get; init; }
 
     /// <summary>For a one-to-one relation tie: the id of the end whose table holds the foreign key.</summary>
@@ -58,9 +39,8 @@ public sealed record Mapping : Element, IPackaged
     public string? ForeignKeyEnd { get; init; }
 
     /// <summary>
-    /// For a foreign-key shape whose dependent end is bound to a designed or imported table (<see cref="Table"/> on that entity's
-    /// mapping): the id of the existing foreign key in that table that realizes the relation. The resolver binds the relation to it
-    /// instead of synthesizing foreign-key columns (MQ4011 when both ends are bound to such tables and this is missing).
+    /// For a foreign-key shape: the id of the existing foreign key in the dependent end's table that realizes the relation (MQ4011 when it
+    /// is missing).
     /// </summary>
     [ElementRef(IndexKinds = ["key"])]
     public string? ForeignKey { get; init; }
@@ -81,12 +61,9 @@ public sealed record Mapping : Element, IPackaged
     /// reads and a value on every link it inserts (several-types-design.md decision 44).
     /// </summary>
     public IReadOnlyList<MappingConstant> Constants { get; init; } = [];
-
-    /// <summary>For a promoted shape: the generated entity's name; defaults to pascal(entity1 + entity2).</summary>
-    public string? PromotedName { get; init; }
 }
 
-/// <summary>How one attribute maps to storage.</summary>
+/// <summary>The column that stores one relation attribute.</summary>
 public sealed record AttributeMapping
 {
     /// <summary>The id of the attribute.</summary>
@@ -94,20 +71,11 @@ public sealed record AttributeMapping
     public required string Attribute { get; init; }
 
     /// <summary>
-    /// The id of a column in the bound designed or imported table; on a relation mapping with a designed junction table, a column of the
-    /// table that holds every link (several-types-design.md decision 45).
+    /// The id of the column: with a designed junction table, a column of the table that holds every link (several-types-design.md
+    /// decision 45); on the foreign-key shape, a column of the table that holds the foreign key.
     /// </summary>
     [ElementRef(IndexKinds = ["column"])]
     public string? Column { get; init; }
-
-    /// <summary>How an enum or value object attribute is stored.</summary>
-    public StorageKind? Storage { get; init; }
-
-    /// <summary>The column prefix for an embedded value object.</summary>
-    public string? Prefix { get; init; }
-
-    /// <summary>Whether the attribute is not stored.</summary>
-    public bool Ignore { get; init; }
 }
 
 /// <summary>
@@ -194,40 +162,6 @@ public sealed record MappingConstant
     public JsonElement? Value { get; init; }
 }
 
-/// <summary>An inheritance mapping strategy.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<InheritanceStrategy>))]
-public enum InheritanceStrategy
-{
-    /// <summary>Table per hierarchy, with a discriminator column: <c>tph</c>.</summary>
-    [JsonStringEnumMemberName("tph")] Tph,
-
-    /// <summary>Table per type: <c>tpt</c>.</summary>
-    [JsonStringEnumMemberName("tpt")] Tpt,
-
-    /// <summary>Table per concrete type: <c>tpc</c>.</summary>
-    [JsonStringEnumMemberName("tpc")] Tpc,
-}
-
-/// <summary>How an enum or value object is stored.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<StorageKind>))]
-public enum StorageKind
-{
-    /// <summary>Enum as its integer value: <c>int</c>.</summary>
-    [JsonStringEnumMemberName("int")] Int,
-
-    /// <summary>Enum as its code or name: <c>string</c>.</summary>
-    [JsonStringEnumMemberName("string")] String,
-
-    /// <summary>Value object as prefixed columns: <c>embedded</c>.</summary>
-    [JsonStringEnumMemberName("embedded")] Embedded,
-
-    /// <summary>Value object in its own (child) table: <c>table</c>.</summary>
-    [JsonStringEnumMemberName("table")] Table,
-
-    /// <summary>Value object as one JSON column: <c>json</c>.</summary>
-    [JsonStringEnumMemberName("json")] Json,
-}
-
 /// <summary>The physical shape of a relation.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<RelationShape>))]
 public enum RelationShape
@@ -237,7 +171,4 @@ public enum RelationShape
 
     /// <summary>A junction table: <c>junction</c>.</summary>
     [JsonStringEnumMemberName("junction")] Junction,
-
-    /// <summary>A generated association entity: <c>promoted</c>.</summary>
-    [JsonStringEnumMemberName("promoted")] Promoted,
 }

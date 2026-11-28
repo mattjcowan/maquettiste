@@ -42,19 +42,16 @@ public sealed class PlainHelperTests
         """;
 
     /// <summary>
-    /// A PostgreSQL database <c>main</c> with the synthesized table <c>customers</c> of entity <c>Customer</c> (columns <c>id</c>,
-    /// <c>email</c> and <c>name</c>, each with its attribute) and a designed table <c>notes</c>.
+    /// A PostgreSQL database <c>main</c> with the table <c>customers</c> that entity <c>Customer</c> is bound to (columns <c>id</c>,
+    /// <c>email</c> and <c>name</c>) and a table <c>notes</c>.
     /// </summary>
     private static ResolvedModel Model()
     {
         var b = new ModelBuilder(seed: 559);
         var customer = b.Entity("Customer").Key("id", "uuid").Attr("email", "string", a => a.Length(254)).Attr("name", "string").Tag("core");
         var main = b.Database("main", Dialect.PostgreSql);
-        b.Add(new Table
-        {
-            Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = customer.Id,
-            Columns = [new Column { Id = b.NewId(), Attribute = customer.AttrId("email"), DisplayName = "E-mail" }],
-        });
+        b.Table("customers", main).Column("id", "uuid", nullable: false).Column("email", "string", length: 254).Column("name", "string").PrimaryKey("id")
+            .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "email" ? c with { DisplayName = "E-mail" } : c)] }).Binds(customer);
         b.Table("notes", main).Column("id", "int64", nullable: false).Column("body", "text").PrimaryKey("id");
         return ResolutionKit.Resolve(b);
     }
@@ -71,7 +68,7 @@ public sealed class PlainHelperTests
         using var pool = Scripts.Pool(Walker + """
             maquettiste.helper('proxied', (x) => JSON.stringify(walk(x, 0)));
             maquettiste.helper('plain', (x) => JSON.stringify(walk(x, 0)), { plain: true });
-            maquettiste.helper('stubs', (t) => JSON.stringify([Object.keys(t.columns[0].attribute), t.columns[0].attribute, t.database.tables.map(s => Object.keys(s).join())]), { plain: true });
+            maquettiste.helper('stubs', (t) => JSON.stringify(t.database.tables.map(s => Object.keys(s).join())), { plain: true });
             maquettiste.helper('shared', (t, again) => [t === again, t.columns[0].table === t.columns[1].table, t.columns[0].table === t].join(), { plain: true });
             """);
         var model = Model();
@@ -86,11 +83,8 @@ public sealed class PlainHelperTests
         Assert.Equal(Call(pool, "proxied", null, model.Entity("Customer")), Call(pool, "plain", null, model.Entity("Customer")));
         Assert.Equal(Call(pool, "proxied", null, (object)model.Db("main").Tables.ToList()), Call(pool, "plain", null, (object)model.Db("main").Tables.ToList()));
 
-        // table.columns[0].attribute is a stub with only its id and kind, and so is every table the hop-1 database lists.
-        var attribute = customers.Columns[0].Attribute!;
-        Assert.Equal(
-            $$"""[["id","kind"],{"id":"{{attribute.Id}}","kind":"attribute"},["id,kind","id,kind"]]""",
-            Call(pool, "stubs", null, customers));
+        // Every table the hop-1 database lists is a stub with only its id and kind.
+        Assert.Equal("""["id,kind","id,kind"]""", Call(pool, "stubs", null, customers));
 
         // One copy per object and hop in a call: the table given twice is one object, and the columns' table is one hop-2 stub.
         Assert.Equal("true,true,false", Call(pool, "shared", null, customers, customers));
@@ -107,10 +101,10 @@ public sealed class PlainHelperTests
 
         Call(pool, "nothing", reads, customers);
 
-        // The helper reads nothing, yet everything copied at hops 0 and 1 is recorded: the table, its columns, its entity and its
-        // database, and the lists copied with them.
+        // The helper reads nothing, yet everything copied at hops 0 and 1 is recorded: the table, its columns and its database, and
+        // the lists copied with them.
         var recorded = reads.Keys.ToHashSet(StringComparer.Ordinal);
-        IResolvedObject[] copied = [customers, .. customers.Columns, customers.Entity!, main];
+        IResolvedObject[] copied = [customers, .. customers.Columns, main];
         foreach (var item in copied)
             Assert.Superset(item.Dependencies.ToHashSet(StringComparer.Ordinal), recorded);
         Assert.Superset(customers.Columns.MembershipKeys.ToHashSet(StringComparer.Ordinal), recorded);
@@ -129,7 +123,7 @@ public sealed class PlainHelperTests
     public void A_plain_copy_has_no_proxy_functions_and_refuses_the_model()
     {
         using var pool = Scripts.Pool("""
-            const shape = (t) => [typeof t.hasStereotype, typeof t.hasTag, Object.isFrozen(t), Array.isArray(t.columns), Object.isFrozen(t.columns), t.entity.tags.join()].join();
+            const shape = (t) => [typeof t.hasStereotype, typeof t.hasTag, Object.isFrozen(t), Array.isArray(t.columns), Object.isFrozen(t.columns), t.database.dialect].join();
             maquettiste.helper('plain', shape, { plain: true });
             maquettiste.helper('proxied', shape);
             maquettiste.helper('count', (m) => m.entities.length, { plain: true });
@@ -138,7 +132,7 @@ public sealed class PlainHelperTests
         var model = Model();
         var customers = model.Db("main").Table("customers");
 
-        Assert.Equal("undefined,undefined,true,true,true,core", Call(pool, "plain", null, customers));
+        Assert.Equal("undefined,undefined,true,true,true,postgresql", Call(pool, "plain", null, customers));
         Assert.StartsWith("function,function,", (string)Call(pool, "proxied", null, customers)!, StringComparison.Ordinal);
         var write = Assert.Throws<ScriptErrorException>(() => Call(pool, "write", null, customers));
         Assert.Contains("TypeError", write.Diagnostic.Message, StringComparison.Ordinal);

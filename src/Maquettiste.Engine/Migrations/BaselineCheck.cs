@@ -384,38 +384,27 @@ internal static class BaselineCheck
     }
 
     /// <summary>
-    /// Where a table is described: its file, a derived table's overlay when the overlay names it, else the entity or relation it
-    /// derives from (whose name the table's follows).
+    /// Where a table is described: its file; for a key a baseline taken before 0.29.0 gave a laid-out table
+    /// (<c>&lt;entityId&gt;@&lt;databaseId&gt;</c>), the entity or relation it was laid out from.
     /// </summary>
     private static (string ElementId, string? Pointer)? LocateTable(ModelSnapshot model, Database database, string key)
     {
-        if (model.GetDocument(key)?.Element is Table table)
+        if (model.GetDocument(key)?.Element is Table table && string.Equals(table.Database, database.Id, StringComparison.Ordinal))
             return (table.Id, "/name");
         var at = key.IndexOf('@', StringComparison.Ordinal);
         if (at <= 0)
             return null;
-        var target = key[..at];
-        var overlay = Overlay(model, database, target);
-        if (overlay is { Name.Length: > 0 })
-            return (overlay.Id, "/name");
-        var source = target.Split('.')[0];
-        if (model.GetDocument(source) is { } document)
-            return (document.Element.Id, "/name");
-        return overlay is null ? null : (overlay.Id, null);
+        return model.GetDocument(key[..at].Split('.')[0]) is { } document ? (document.Element.Id, "/name") : null;
     }
 
-    /// <summary>Where a column is described: its entry in a designed table or an overlay, else the attribute it stores.</summary>
+    /// <summary>Where a column is described: its entry in its table file, else the element its key names.</summary>
     private static (string ElementId, string? Pointer)? LocateColumn(ModelSnapshot model, Database database, string tableKey, string columnKey)
     {
-        var file = model.GetDocument(tableKey)?.Element as Table;
-        var at = tableKey.IndexOf('@', StringComparison.Ordinal);
-        file ??= at > 0 ? Overlay(model, database, tableKey[..at]) : null;
-        if (file is not null)
+        if (model.GetDocument(tableKey)?.Element is Table file && string.Equals(file.Database, database.Id, StringComparison.Ordinal))
         {
             for (var i = 0; i < file.Columns.Count; i++)
             {
-                var column = file.Columns[i];
-                if (string.Equals(column.Id, columnKey, StringComparison.Ordinal) || string.Equals(column.Attribute, columnKey, StringComparison.Ordinal))
+                if (string.Equals(file.Columns[i].Id, columnKey, StringComparison.Ordinal))
                     return (file.Id, "/columns/" + i.ToString(CultureInfo.InvariantCulture));
             }
         }
@@ -425,12 +414,6 @@ internal static class BaselineCheck
             return (entry.OwnerId, entry.JsonPointer);
         return null;
     }
-
-    /// <summary>The overlay of a derived table in a database: <c>entity</c>, <c>entity.attribute</c> (a child table) or <c>relation</c>.</summary>
-    private static Table? Overlay(ModelSnapshot model, Database database, string target) =>
-        model.All<Table>().Where(t => string.Equals(t.Database, database.Id, StringComparison.Ordinal))
-            .FirstOrDefault(t => string.Equals(t.Entity is { } entity ? (t.Attribute is { } attribute ? entity + "." + attribute : entity) : t.Relation, target,
-                StringComparison.Ordinal));
 
     /// <summary>
     /// MQ4112 (next-phase-2-design.md section 3.5): the reference codes and names changed since the baseline that a value map must record

@@ -19,7 +19,7 @@ public partial interface ILocalInvoicesByCustomerQuery
 }
 
 /// <summary>One row of query LocalInvoicesByCustomer.</summary>
-public sealed partial record LocalInvoicesByCustomerRow(Guid Id, string Number, DateOnly IssuedOn, int Status, string? Notes, DateTimeOffset CreatedAt, Guid CustomerId, decimal? TotalAmount, string? TotalCurrency);
+public sealed partial record LocalInvoicesByCustomerRow(Guid Id, string Number, DateOnly IssuedOn, global::App.Model.Billing.InvoiceStatus Status, string? Notes, DateTimeOffset CreatedAt, Guid CustomerId, decimal? TotalAmount, string? TotalCurrency);
 
 /// <summary>The Dapper implementation of <see cref="ILocalInvoicesByCustomerQuery"/> (database local, sqlite).</summary>
 /// <remarks>
@@ -55,6 +55,6 @@ public partial class LocalInvoicesByCustomerQuery(IDbConnection mq_connection, I
         public decimal? totalAmount { get; set; }
         public string? totalCurrency { get; set; }
 
-        public LocalInvoicesByCustomerRow ToItem() => new(id, number, issuedOn, status, notes, createdAt, customerId, totalAmount, totalCurrency);
+        public LocalInvoicesByCustomerRow ToItem() => new(id, number, issuedOn, (global::App.Model.Billing.InvoiceStatus)status, notes, createdAt, customerId, totalAmount, totalCurrency);
     }
 }

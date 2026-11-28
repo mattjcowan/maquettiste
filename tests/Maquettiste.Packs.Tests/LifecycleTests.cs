@@ -6,7 +6,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Packs.Tests;
 
 /// <summary>The packs across runs: incremental runs, <c>--check</c>, migrations, protected regions and owned files.</summary>
-[UsesProjectedFixtures]
 public sealed class LifecycleTests
 {
     private static readonly FileChangeKind[] Writes = [FileChangeKind.Added, FileChangeKind.Modified, FileChangeKind.Deleted, FileChangeKind.HandEdited, FileChangeKind.Conflict, FileChangeKind.OrphanedOwned];
@@ -74,6 +73,11 @@ public sealed class LifecycleTests
             since["type"] = "string";
             since["length"] = 10;
         });
+        ModelChanges.EditCustomerSince(repo, column =>
+        {
+            column["type"] = "string";
+            column["length"] = 10;
+        });
         await repo.GenerateCleanlyAsync();
 
         var pg = MigrationFiles.Read(repo, "main", 2);
@@ -87,13 +91,9 @@ public sealed class LifecycleTests
         using var repo = PackRepo.BillingDialects();
         await repo.GenerateCleanlyAsync();
 
-        // A new id for the same attribute (as when a generator derives ids from names that changed): the diff sees a dropped
-        // column and an added column with the same name, and the migration must drop first or the ADD fails.
-        repo.EditJson(".maquettiste/model/entities/customer.json", customer =>
-        {
-            var since = customer["attributes"]!.AsArray().First(a => (string?)a!["name"] == "customerSince")!;
-            since["id"] = "01KZZZZZZZZZZZZZZZZZZZZZZZ";
-        });
+        // A new id for the same column (as when a generator derives ids from names that changed): the diff sees a dropped column and
+        // an added column with the same name, and the migration must drop first or the ADD fails.
+        ModelChanges.EditCustomerSince(repo, _ => { }, newId: "01KZZZZZZZZZZZZZZZZZZZZZZZ");
         await repo.GenerateCleanlyAsync();
 
         var pg = MigrationFiles.Read(repo, "main", 2);
@@ -147,10 +147,8 @@ public sealed class LifecycleTests
         AssertBefore(sqlite, "ALTER TABLE \"_mq_new_invoice_lines\" RENAME TO invoice_lines;", "COMMIT;");
         AssertBefore(sqlite, "ALTER TABLE \"_mq_new_customers\" RENAME TO customers;", "CREATE INDEX ix_customers_region ON customers (region);");
         Assert.DoesNotContain("review by hand", sqlite, StringComparison.Ordinal);
-        // The new reference row reaches the lookup table through the seed's idempotent upsert, and the CHECKs elsewhere.
-        var localSeed = repo.Read("db/local/seed.sql");
-        Assert.Contains("('voucher', 'Voucher')\nON CONFLICT (code) DO UPDATE SET label = excluded.label;", localSeed, StringComparison.Ordinal);
-        Assert.Contains("CHECK (method IN ('card', 'transfer', 'cash', 'voucher'));", repo.Read("db/main/seed.sql"), StringComparison.Ordinal);
+        // The new reference row reaches the type's table in local through the seed.
+        Assert.Contains("('voucher', 'Voucher')", repo.Read("db/local/seed.sql"), StringComparison.Ordinal);
 
         // Dropping a column with a default: SQL Server needs its default constraint dropped first.
         ModelChanges.RemovePriority(repo);
@@ -263,7 +261,7 @@ public sealed class LifecycleTests
         var repository = repo.Read("src/Generated/Model/Billing/InvoiceRepository.g.cs");
         Assert.Contains("namespace Acme.Billing.Billing;", repository, StringComparison.Ordinal);
         Assert.Contains("OUTPUT INSERTED", repo.Read("src/Generated/Model/Billing/PaymentRepository.g.cs"), StringComparison.Ordinal);
-        Assert.Contains("OFFSET @Skip ROWS FETCH NEXT @Take ROWS ONLY", repository, StringComparison.Ordinal);
+        Assert.Contains("OFFSET @mq_skip ROWS FETCH NEXT @mq_take ROWS ONLY", repository, StringComparison.Ordinal);
         Assert.True(File.Exists(repo.PathOf("src/Generated/Partials/Billing/Invoice.cs")));
         Assert.True(File.Exists(repo.PathOf("src/Generated/Model/Billing/Invoice.g.cs")));
         Assert.True(File.Exists(repo.PathOf("src/Generated/Model/DapperTypeHandlers.g.cs")));

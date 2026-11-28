@@ -50,16 +50,8 @@ public sealed class DatabaseObjectTests
             Fields = [new DatabaseTypeField { Name = "street", Type = "string", Length = 200 }, new DatabaseTypeField { Name = "contact", Type = ids.MainType }],
         });
         b.Add(new DatabaseType { Id = ids.LocalType, Name = "email_address", Database = local.Id, TypeKind = DatabaseTypeKind.Domain, Base = "string", Length = 254 });
-        b.Add(new Table
-        {
-            Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = customer.Id,
-            Columns = [new Column { Id = b.NewId(), Attribute = customer.AttrId("email"), NativeType = ids.MainType }],
-        });
-        b.Add(new Table
-        {
-            Id = b.NewId(), Database = local.Id, Origin = TableOrigin.Synthesized, Entity = customer.Id,
-            Columns = [new Column { Id = b.NewId(), Attribute = customer.AttrId("email"), NativeType = "email_address" }],
-        });
+        b.Table("customers", main).Column("id", "uuid", nullable: false).Column("email", "string", nativeType: ids.MainType).PrimaryKey("id").Binds(customer);
+        b.Table("customers", local).Column("id", "uuid", nullable: false).Column("email", "string", nativeType: "email_address").PrimaryKey("id").Binds(customer);
         var routine = new Routine
         {
             Id = ids.Routine, Name = "customer_count", Database = main.Id, Schema = crm,
@@ -237,43 +229,6 @@ public sealed class DatabaseObjectTests
         Assert.Equal(["citext (main)", "customers_audit (main)"], Names("object"));
         Assert.Equal(["email_address (local)"], Names("local-type"));
         Assert.Equal(["crm.email_address (main)"], Names("tagged"));
-    }
-
-    [Fact]
-    public void A_foreign_key_column_follows_the_database_type_of_the_key_it_references()
-    {
-        var b = new ModelBuilder(seed: 92);
-        var customer = b.Entity("Customer").Key("id", "uuid").Attr("name", "string");
-        var order = b.Entity("Order").Key("id", "uuid");
-        var places = b.Relation("places", customer, order, fromMax: MaxCardinality.One, fromMin: 1, fromRole: "customer", toRole: "order");
-        var main = b.Database("main", Dialect.PostgreSql);
-        var typeId = b.NewId();
-        b.Add(new DatabaseType { Id = typeId, Name = "customer_key", Database = main.Id, TypeKind = DatabaseTypeKind.Domain, Base = "uuid" });
-        var keyTable = b.NewId();
-        b.Add(new Table
-        {
-            Id = keyTable, Database = main.Id, Origin = TableOrigin.Synthesized, Entity = customer.Id,
-            Columns = [new Column { Id = b.NewId(), Attribute = customer.AttrId("id"), NativeType = typeId }],
-        });
-        var db = ResolutionKit.Resolve(b).Db("main");
-
-        var domain = Assert.Single(db.Types);
-        var key = db.Table("customers").Column("id");
-        Assert.Same(domain, key.DbType);
-        var fk = db.Table("orders").Column("customer_id");
-        Assert.Same(domain, fk.DbType);
-        Assert.Equal(domain.NativeName, fk.NativeType);
-        Assert.Contains("e:" + typeId, db.Table("orders").Dependencies);
-
-        // An overlay that pins the foreign key column's own type keeps the physical side free (MQ4005 compares the two).
-        b.Add(new Table
-        {
-            Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = order.Id,
-            Columns = [new Column { Id = b.NewId(), Attribute = places.EndIds[0] + "." + customer.AttrId("id"), NativeType = "uuid" }],
-        });
-        var pinned = ResolutionKit.Resolve(b).Db("main").Table("orders").Column("customer_id");
-        Assert.Null(pinned.DbType);
-        Assert.Equal("uuid", pinned.NativeType);
     }
 
     [Fact]

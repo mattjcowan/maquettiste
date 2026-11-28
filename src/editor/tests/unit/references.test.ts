@@ -46,7 +46,6 @@ const rows: ElementSummary[] = [
   }),
   row("DIAG", "diagram", "Billing overview", { package: "BILLING" }),
   row("MAIN", "database", "main"),
-  row("MAP", "mapping", "Order mapping", { entity: "ORDER", database: "MAIN" }),
 ];
 const byId = new Map(rows.map((r) => [r.id, r]));
 
@@ -54,7 +53,7 @@ describe("where used (3.3)", () => {
   it("answers from the index's related fields, in the server's shape", () => {
     const refs = indexReferences("ORDER", rows);
     const keys = refs.map((r) => `${r.fromElementId}${r.jsonPointer}`).sort();
-    expect(keys).toEqual(["BILLS/ends/1/entity", "HAS/ends/0/entity", "MAP/entity", "SPECIAL/base"]);
+    expect(keys).toEqual(["BILLS/ends/1/entity", "HAS/ends/0/entity", "SPECIAL/base"]);
     expect(
       indexReferences("ORDERS", rows)
         .map((r) => r.fromElementId)
@@ -83,7 +82,7 @@ describe("where used (3.3)", () => {
   it("groups by kind in folder order, then by domain, Not in a domain last, and drops duplicates", () => {
     const refs = indexReferences("ORDER", rows);
     const list = groupReferences([...refs, refs[0]], byId);
-    expect(referenceCount(list)).toBe(4);
+    expect(referenceCount(list)).toBe(3);
     const shape = list.map((r) => (r.type === "reference" ? `  ${r.label}` : r.type === "domain" ? ` ${r.label} (${r.count})` : `${r.label} (${r.count})`));
     expect(shape).toEqual([
       "Entities (1)",
@@ -94,9 +93,6 @@ describe("where used (3.3)", () => {
       "  bills · end 2 → entity",
       " Orders (1)",
       "  has · end 1 → entity",
-      "Customised mappings (1)",
-      " Not in a domain (1)",
-      "  Order mapping → entity",
     ]);
     const first = list.find((r) => r.type === "reference");
     expect(first?.type === "reference" && first.elementId).toBe("SPECIAL");

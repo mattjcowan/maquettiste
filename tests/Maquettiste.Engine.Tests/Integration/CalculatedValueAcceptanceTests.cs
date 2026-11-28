@@ -96,10 +96,7 @@ public sealed class CalculatedValueAcceptanceTests
              "key": {"attributes": ["01J92P0VZZ0000000000000010"]},
              "attributes": [{"id": "01J92P0VZZ0000000000000010", "name": "id", "type": "uuid", "required": true}]}
             """);
-        // Kept out of the main database, so its conventional table does not take the name of Invoice's: only the rule finds the clash.
-        await repo.CreateElementAsync($$"""
-            {"kind": "mapping", "name": "InvoiceArchive in main", "database": "{{E2ERepo.MainDatabaseId}}", "entity": "{{archive.Id}}", "ignore": true}
-            """);
+        // It is bound to no table: only the rule finds the clash.
         var report = await repo.Store.ValidateAsync(ValidationScope.All, Ct);
         var shared = report.Diagnostics.Where(d => d.Rule == "x/public-names-unique").ToList();
         Assert.Equal(2, shared.Count);

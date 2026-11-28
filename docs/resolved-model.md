@@ -2,7 +2,7 @@
 
 <!-- Generated from the engine's record types by the engine tests; do not edit. -->
 
-**Contract 0.28.0.** This page describes what Maquettiste 0.28.0 answers when you read the resolved model: the model as
+**Contract 0.29.0.** This page describes what Maquettiste 0.29.0 answers when you read the resolved model: the model as
 code generation sees it, with names, types, keys, tables and processes worked out. Until version 1 the contract is the
 Maquettiste release and is not frozen: any release may change it, and this page changes with it.
 
@@ -34,7 +34,7 @@ A page (API and MCP):
 
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
-| `contract` | string | never | The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release. Always `0.28.0`. |
+| `contract` | string | never | The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release. Always `0.29.0`. |
 | `schema` | string | never | The file name of the JSON Schema that describes the page: `resolved-model.json`. A project holds it in `.maquettiste/.schema/v1/`; `GET /api/model/resolved/schema` and the MCP tool `get_schema` (`resolved-model`) return it. Always `resolved-model.json`. |
 | `items` | list of record (by `kind`) | never | The records of the page, ordered by kind, then name, then id (ordinal); migration facts by database name, then applied order. Each record has `id`, `kind` and `name`, and `kind` says which record it is. |
 | `next` | string | can be null | The cursor of the next page, or null on the last one. |
@@ -138,9 +138,6 @@ A resolved entity: its attributes resolved (inherited ones included and marked),
 | `alternateKeys` | list of [alternateKeyRecord](#alternatekeyrecord) | never | The alternate keys. |
 | `navigations` | list of [navigationRecord](#navigationrecord) | never | The navigations to related entities. |
 | `relations` | list of string | never | The ids of the relations with an end at this entity. |
-| `mappings` | list of [entityMappingRecord](#entitymappingrecord) | never | One mapping per database the entity is mapped to (not ignored in), by database name. |
-| `isPromoted` | boolean | never | Whether the entity is a promoted relation. |
-| `promotedFrom` | string | can be null | The promoted relation's id. Null when not set. |
 | `seeds` | list of string | never | The ids of the seeds that hold its rows. |
 | `lifecycle` | string | can be null | The id of the process that is its lifecycle. Null when not set. |
 | `displayName` | string | never | The display name (the name when none is set). |
@@ -280,16 +277,6 @@ An entity's primary key.
 | --- | --- | --- | --- |
 | `attributes` | list of string | never | The key attributes' ids, in key order. |
 | `strategy` | string | never | `application`, `identity`, `sequence`,... |
-| `sequences` | list of [keySequenceRecord](#keysequencerecord) | never | For the `sequence` strategy, the key sequence per database. |
-
-### keySequenceRecord
-
-The key sequence of an entity in one database.
-
-| Field | Type | Null | Meaning |
-| --- | --- | --- | --- |
-| `database` | string | never | The database's id. |
-| `sequence` | string | never | The sequence's id or synthesized key, as `sequenceView.id`. |
 
 ### alternateKeyRecord
 
@@ -315,28 +302,6 @@ A navigation from an entity across a relation.
 | `target` | string | can be null | The id of the entity it leads to; null when it leads to an end with several types. |
 | `isCollection` | boolean | never | Whether it leads to many. |
 | `targets` | list of string | left out when not set | The types of the end it leads to, as entity ids, when that end has several types; left out of the JSON otherwise. |
-
-### entityMappingRecord
-
-An entity's mapping to one database.
-
-| Field | Type | Null | Meaning |
-| --- | --- | --- | --- |
-| `database` | string | never | The database's id. |
-| `table` | string | never | The table's key, as `tableView.key`. |
-| `inheritance` | string | can be null | The inheritance strategy, or null. |
-| `discriminatorColumn` | string | can be null | The discriminator column's key. Null when not set. |
-| `discriminatorValue` | any | can be null | The discriminator value. Null when not set. |
-| `columns` | list of [columnMappingRecord](#columnmappingrecord) | never | Which column stores each attribute path. |
-
-### columnMappingRecord
-
-The column that stores an attribute path.
-
-| Field | Type | Null | Meaning |
-| --- | --- | --- | --- |
-| `attributePath` | string | never | The attribute path (a value object's members are dotted). |
-| `column` | string | never | The column's key, as `columnView.key`. |
 
 ### entityBindingRecord
 
@@ -701,10 +666,9 @@ A relation's mapping to one database.
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
 | `database` | string | never | The database's id. |
-| `shape` | string | never | `foreign-key`, `junction` or `promoted`. |
+| `shape` | string | never | `foreign-key` or `junction`. |
 | `foreignKey` | string | can be null | The foreign key's name, for the `foreign-key` shape. Null otherwise. |
 | `junctionTable` | string | can be null | The junction table's key, for the `junction` shape. Null otherwise. |
-| `promotedEntity` | string | can be null | The promoted entity's id, for the `promoted` shape. Null otherwise. |
 | `links` | list of [relationLinkRecord](#relationlinkrecord) | left out when not set | For a relation with an end of several types: one entry per pair of targets; for a one-type relation whose designed link table's mapping writes constants or attribute columns, its one link; left out when empty. |
 | `constants` | list of [relationConstantRecord](#relationconstantrecord) | left out when not set | The link table's columns with a fixed value; left out when empty. |
 | `attributes` | list of [relationAttributeColumnRecord](#relationattributecolumnrecord) | left out when not set | The relation attributes' columns in the table that holds every link; left out when empty. |
@@ -1755,15 +1719,13 @@ A resolved database: the database view (`databaseView`) with its kind.
 | `schemas` | list of [schemaView](#schemaview) | never | Every schema, as `databaseView.schemas`. |
 | `quoting` | string | never | `always`, `reserved` or `never`. |
 | `maxIdentifierLength` | integer | can be null | The effective identifier length limit, or null for none. |
-| `byConvention` | string | never | Which entities map here by convention: `all`, `packages` or `none` (the effective value). |
-| `packages` | list of [conventionPackageView](#conventionpackageview) | never | The packages whose entities map here by convention, with the schema their tables go to. |
 | `displayName` | string | can be null | The display name the database file sets, or null (no fallback). |
 | `pluralName` | string | can be null | The plural name the database file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 
 ### tableView
@@ -1772,27 +1734,23 @@ One resolved table (resolved objects reference each other, so they are flattened
 
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
-| `key` | string | never | The table key: a table file's id, or a synthesized key such as `<entityId>@<databaseId>`. |
+| `key` | string | never | The table key: the table file's id. |
 | `name` | string | never | The physical name. |
 | `schema` | string | can be null | The schema name, or null. |
-| `origin` | string | never | `synthesized`, `designed` or `imported`. |
-| `entityId` | string | can be null | The mapped entity's id, for an entity table. Null otherwise. |
-| `relationId` | string | can be null | The relation's id, for a junction table. Null otherwise. |
-| `isJunction` | boolean | never | Whether the table is a relation's junction table. |
-| `isLookup` | boolean | never | Always false: the enum lookup-table option is retired (MQ7012); kept for the contract. |
+| `relationId` | string | can be null | The id of the relation whose relation mapping names the table as its junction table, or null. |
 | `comment` | string | can be null | The comment. Null when not set. |
 | `columns` | list of [columnView](#columnview) | never | The columns, by position. |
 | `primaryKey` | [keyView](#keyview) | can be null | The primary key, or null. |
 | `uniques` | list of [keyView](#keyview) | never | Unique constraints. |
 | `foreignKeys` | list of [foreignKeyView](#foreignkeyview) | never | Foreign keys. |
 | `indexes` | list of [indexView](#indexview) | never | Indexes. |
-| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
+| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback). |
 | `pluralName` | string | can be null | The plural name the table's file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 | `boundBy` | list of [boundByView](#boundbyview) | never | The entity bindings that read or write the table: the entities that materialize from it. |
 | `referenceBindings` | list of [referenceBindingView](#referencebindingview) | never | The reference types whose rows the table holds. |
@@ -1803,7 +1761,7 @@ One resolved column.
 
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
-| `key` | string | never | The column key: an attribute path, `discriminator`, `position`, `id`, or a column id. |
+| `key` | string | never | The column key: a column id, or the keyed id of an inherited column. |
 | `name` | string | never | The physical name. |
 | `type` | string | never | The built-in type keyword. |
 | `nativeType` | string | never | The dialect's type, such as `varchar(120)`. |
@@ -1814,19 +1772,16 @@ One resolved column.
 | `defaultSql` | string | can be null | The default SQL expression for the dialect, or null when the column has no default. |
 | `identity` | boolean | never | Whether the column is an identity column. |
 | `computed` | string | can be null | The computed expression. Null when not set. |
-| `attributeId` | string | can be null | The id of the attribute the column stores, if any. Null otherwise. |
-| `attributePath` | string | can be null | The attribute path the column stores, if any. Null otherwise. |
 | `isPrimaryKey` | boolean | never | Whether the column is part of the primary key. |
 | `isForeignKey` | boolean | never | Whether the column is part of a foreign key. |
-| `isDiscriminator` | boolean | never | Whether the column is a TPH discriminator. |
 | `position` | integer | never | The 0-based position in the table. |
 | `default` | any | can be null | The literal default, as a plain value, or null. |
 | `computedStored` | boolean | never | Whether a computed value is stored. |
-| `sequenceId` | string | can be null | The id (or synthesized key) of the sequence that supplies values, or null. |
+| `sequenceId` | string | can be null | The id of the sequence that supplies values, or null. |
 | `dbTypeId` | string | can be null | The id of the database type the column uses (its file's `nativeType` names it), or null. |
 | `collation` | string | can be null | The collation, or null. |
 | `comment` | string | can be null | The comment, or null. |
-| `displayName` | string | can be null | The display name the column's own entry sets (a designed or extra column, or a synthesized column's overlay entry), or null; a synthesized column never takes its attribute's, which `attributeId` leads to. |
+| `displayName` | string | can be null | The display name the column's own entry sets, or null. |
 | `pluralName` | string | can be null | The plural name the column's own entry sets, or null. |
 | `description` | string | can be null | The description the column's own entry sets, or null. |
 | `stereotypes` | list of string | never | As `tableView.stereotypes`, from the column's own entry. |
@@ -1834,8 +1789,8 @@ One resolved column.
 | `category` | string | can be null | As `tableView.category`, from the column's own entry. Null when not set. |
 | `properties` | map of any | never | As `tableView.properties`, from the column's own entry. |
 | `generation` | map of [generationHints](#generationhints) | never | As `tableView.generation`, from the column's own entry. |
-| `boundType` | [typeRecord](#typerecord) | can be null | Derived from bindings, like a table's bound-by list: the enum, reference type or scalar type of the attribute the entities' bindings map to the column, when they all agree, or null; a projected column has none, its attribute (`attributeId`) types it. |
-| `sensitive` | string | can be null | `pii` or `secret`: the column's own; else a projected column's attribute's own; else the strongest own value of the attributes bindings map to it; null when none says. |
+| `boundType` | [typeRecord](#typerecord) | can be null | Derived from bindings, like a table's bound-by list: the enum, reference type or scalar type of the attribute the entities' bindings map to the column, when they all agree, or null. |
+| `sensitive` | string | can be null | `pii` or `secret`: the column's own; else the strongest own value of the attributes bindings map to it; null when none says. |
 | `memberOrigin` | [memberOriginView](#memberoriginview) | can be null | Where an inherited column comes from; null for the table's own. |
 
 ### keyView
@@ -1943,13 +1898,13 @@ One resolved view.
 | `body` | string | can be null | The body for the database's dialect (or the `"*"` body), or null when the file has none for it. |
 | `columns` | list of [viewColumnView](#viewcolumnview) | never | The declared columns. |
 | `comment` | string | can be null | The comment. Null when not set. |
-| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
+| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback). |
 | `pluralName` | string | can be null | The plural name the table's file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 | `boundBy` | list of [boundByView](#boundbyview) | never | The entity bindings that read the view. |
 
@@ -1981,13 +1936,13 @@ One resolved sequence.
 | `max` | integer | can be null | The maximum value. Null when not set. |
 | `cycle` | boolean | never | Whether the sequence wraps around. |
 | `cache` | integer | can be null | How many values the server caches. Null when not set. |
-| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
+| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback). |
 | `pluralName` | string | can be null | The plural name the table's file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 
 ### routineView
@@ -2007,15 +1962,15 @@ One resolved routine.
 | `hasBody` | boolean | never | Whether the file has a body for the database's dialect (or for every dialect). |
 | `deterministic` | boolean | never | Whether the routine returns the same result for the same arguments. |
 | `security` | string | never | `invoker` or `definer`. |
-| `dependsOn` | list of string | never | The ids (or keys, for a synthesized table) of the objects of the database it names in `dependsOn`. |
+| `dependsOn` | list of string | never | The ids of the objects of the database it names in `dependsOn`. |
 | `comment` | string | can be null | The comment, or null. |
-| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
+| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback). |
 | `pluralName` | string | can be null | The plural name the table's file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 
 ### routineParameterView
@@ -2088,13 +2043,13 @@ One resolved database type.
 | `nativeName` | string | can be null | What a column or parameter typed by it writes. Null when not set. |
 | `dependsOn` | list of string | never | The ids of the database types its fields use. |
 | `comment` | string | can be null | The comment, or null. |
-| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
+| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback). |
 | `pluralName` | string | can be null | The plural name the table's file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 
 ### databaseTypeFieldView
@@ -2122,16 +2077,16 @@ One resolved SQL object.
 | `schema` | string | can be null | The schema name, or null. |
 | `objectKind` | string | never | What the object is, as the file says (trigger, grant, extension...). |
 | `phase` | string | never | `before` or `after` the tables. |
-| `dependsOn` | list of string | never | The ids (or keys, for a synthesized table) of the objects of the database it names in `dependsOn`. |
+| `dependsOn` | list of string | never | The ids of the objects of the database it names in `dependsOn`. |
 | `body` | string | can be null | The statements for the database's dialect, or null when the file has none for it. |
 | `hasBody` | boolean | never | Whether the file has statements for the database's dialect (or for every dialect). |
-| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
+| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback). |
 | `pluralName` | string | can be null | The plural name the table's file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 
 ### queryView
@@ -2154,19 +2109,19 @@ One resolved query: the trees as the file writes them, with what resolution adds
 | `paging` | any | can be null | The paging as the file writes it, or null. |
 | `sql` | string | can be null | The SQL for the database's dialect (`@name` placeholders; for a query written as SQL text, its text as written with the white space at both ends removed, a final `;` kept), or null when it cannot be rendered there. |
 | `sqlParameters` | list of string | never | The parameters the SQL names, in first-appearance order. |
-| `uses` | list of string | never | The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order. |
-| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file). |
+| `uses` | list of string | never | The ids of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order. |
+| `displayName` | string | can be null | The display name the table's file sets, or null (no fallback). |
 | `pluralName` | string | can be null | The plural name the table's file sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
 | `boundBy` | list of [boundByView](#boundbyview) | never | The entity bindings that read the query. |
 | `form` | string | left out when not set | `sql` for a query written as SQL text; null (left out) for a built query. |
 | `texts` | map of string | left out when not set | The file's `sql` of a query written as SQL text, as written (dialect name or `*` to text, `:name` placeholders); null (left out) for a built query. |
-| `writes` | list of string | left out when not set | The ids (keys, for a synthesized table) of the tables a query written as SQL text writes, in file order; null (left out) when none. |
+| `writes` | list of string | left out when not set | The ids of the tables a query written as SQL text writes, in file order; null (left out) when none. |
 | `with` | list of [namedQueryView](#namedqueryview) | left out when not set | The named queries (a `WITH` clause) of a built query, in order; left out when it has none. |
 
 ### queryParameterView
@@ -2242,20 +2197,11 @@ One schema of a resolved database.
 | `displayName` | string | can be null | The display name the schema entry sets, or null. |
 | `pluralName` | string | can be null | The plural name the schema entry sets, or null. |
 | `description` | string | can be null | The description text (a sidecar file loaded), or null. |
-| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too. |
+| `stereotypes` | list of string | never | The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table. |
 | `tags` | list of string | never | The tag keys. |
 | `category` | string | can be null | The category's id, or null. |
-| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it). |
+| `properties` | map of any | never | The custom properties: stereotype defaults merged under the file's own. |
 | `generation` | map of [generationHints](#generationhints) | never | The generation hints, by pack name or `"*"`. |
-
-### conventionPackageView
-
-One package a database takes by convention.
-
-| Field | Type | Null | Meaning |
-| --- | --- | --- | --- |
-| `packageId` | string | never | The package id. |
-| `schema` | string | can be null | The schema name its conventional tables go to, or null for the default schema. |
 
 ## Scope tables
 

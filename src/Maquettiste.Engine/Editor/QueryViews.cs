@@ -26,7 +26,7 @@ namespace Maquettiste.Engine;
 /// </param>
 /// <param name="SqlParameters">The parameters the SQL names, in first-appearance order.</param>
 /// <param name="Uses">
-/// The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads; for a query written as
+/// The ids of the tables, views, routines and database types the query reads; for a query written as
 /// SQL text, its <c>reads</c>, resolved, in file order.
 /// </param>
 /// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
@@ -44,7 +44,7 @@ namespace Maquettiste.Engine;
 /// <see langword="null"/> (left out) for a built query.
 /// </param>
 /// <param name="Writes">
-/// The ids (keys, for a synthesized table) of the tables a query written as SQL text writes, in file order; <see langword="null"/> (left
+/// The ids of the tables a query written as SQL text writes, in file order; <see langword="null"/> (left
 /// out) when none.
 /// </param>
 /// <param name="With">The named queries (a <c>WITH</c> clause) of a built query, in order; left out when it has none.</param>

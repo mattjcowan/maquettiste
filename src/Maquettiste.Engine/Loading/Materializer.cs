@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
-using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -27,35 +26,31 @@ internal sealed record MaterializeOp(BatchOp Op, string Id, string? Hash, JsonOb
 /// <param name="Ops">The changes, in the order they are applied.</param>
 /// <param name="Notes">What the operation leaves as it is, in words.</param>
 /// <param name="Database">The database's name, for the snapshot's aliases.</param>
-/// <param name="Rekeys">The projected tables that became designed tables, with their keys before and after (the snapshot's aliases).</param>
-/// <param name="Sequences">The key sequences that became sequence files, by their synthesized key.</param>
+/// <param name="Rekeys">The tables whose column keys a fold into a stereotype moved, with their keys before and after (the snapshot's aliases).</param>
 /// <param name="MemberRekeys">The constraint ids a fold into a stereotype moved (<c>index</c>, <c>unique</c>, <c>foreign-key</c> and
 /// <c>check</c> entries, each with its table's key), which the write's <c>rekey</c> lists after its table's columns.</param>
 internal sealed record MaterializeResult(string? Refusal, IReadOnlyList<MaterializeOp> Ops, IReadOnlyList<string> Notes, string? Database = null,
-    IReadOnlyList<SchemaDiff.TableRekey>? Rekeys = null, IReadOnlyDictionary<string, string>? Sequences = null,
-    IReadOnlyList<MigrationRekey>? MemberRekeys = null)
+    IReadOnlyList<SchemaDiff.TableRekey>? Rekeys = null, IReadOnlyList<MigrationRekey>? MemberRekeys = null)
 {
-    /// <summary>The rule a refusal is reported under when it is not the operation's own (MQ4055, MQ4089): an overlay check held as text
-    /// that does not parse or type is refused under the expression rule it breaks.</summary>
+    /// <summary>The rule a refusal is reported under when it is not the operation's own (MQ4055, MQ4089).</summary>
     public string? RefusalRule { get; init; }
 
     /// <summary>For <c>materialize-tables</c>: the hierarchies and lists the request could shape, with what it used and the defaults.</summary>
     public MaterializeChoiceSet? Choices { get; init; }
 
     /// <summary>For <c>materialize-tables</c>: the tables it stored that the database already holds though the committed snapshot does not
-    /// (a list of a reference type, whose table the sql-ddl pack created), which the snapshot takes in as they are.</summary>
+    /// (a reference type's lookup table, which the sql-ddl pack created), which the snapshot takes in as they are.</summary>
     public IReadOnlyList<MigrationRekey>? Adopted { get; init; }
 }
 
 /// <summary>
 /// The two materialize operations (erratum E43, engine-design.md section 7, "Bindings and materialize"): <c>materialize-tables</c>
-/// writes, for each entity, a designed table with exactly the shape its projection has today and binds the entity to it (folding the
-/// entity's table overlay into the table and deleting its mapping element); <c>materialize-entities</c> writes, for each designed or
-/// imported table or view, an entity with one attribute per column, its key from the primary key, a binding, and many-to-one
-/// relations for the foreign keys between the tables (or towards tables an entity is already bound to). Everything is planned against
-/// one snapshot; the caller applies the changes all or nothing. A table (or key sequence) stored again after an undo takes back the
-/// ids the committed snapshot's alias recorded for its projected key, whenever no file holds them now (<paramref name="aliases"/>):
-/// storing again then yields the same table, column and sequence ids, the alias stays as it is, and the next migration sees one table.
+/// writes, for each entity, a designed table its own designer proposes and binds the entity to it (retire-projection-design.md section
+/// 7); <c>materialize-entities</c> writes, for each designed table or view, an entity with one attribute per column, its key from the
+/// primary key, a binding, and many-to-one relations for the foreign keys between the tables (or towards tables an entity is already
+/// bound to). Everything is planned against one snapshot; the caller applies the changes all or nothing. A table (or key sequence) a
+/// committed snapshot's alias recorded before 0.29.0 under the proposal's key takes back the ids it had, whenever no file holds them now
+/// (<paramref name="aliases"/>), so the next migration sees one table.
 /// </summary>
 internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolver resolver, IIdGenerator ids, IReadOnlyList<SnapshotAlias>? aliases = null)
 {
@@ -63,86 +58,7 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
     private readonly List<string> _order = [];
     private readonly List<string> _notes = [];
     private readonly List<MigrationRekey> _adopted = [];
-    private readonly List<SchemaDiff.TableRekey> _rekeys = [];
-    private readonly Dictionary<string, string> _sequenceKeys = new(StringComparer.Ordinal);
     private string? _databaseName;
-
-    /// <summary>
-    /// The overlay with each check in the expression language that holds text (a hand-edited file may, MQ3108), at its root or inside
-    /// its tree, turned into a tree in the overlay's scope as <c>text-to-trees</c> turns it, so its paths move to the designed table's
-    /// column ids like any tree check's: the designed table no longer reads the entity's attributes by name, so the text would no longer
-    /// parse there. A text that does not parse or type in the overlay's scope refuses the operation under the rule it breaks (MQ3101,
-    /// MQ3102, MQ3103...), naming the check and the reason; the check is never dropped or moved as text.
-    /// </summary>
-    private (Table Overlay, MaterializeResult? Refusal) WithTrees(Entity entity, Table overlay)
-    {
-        if (!overlay.Checks.Any(c => c.Expression.Count == 0 && ExprSites.HasText(c.Condition)))
-            return (overlay, null);
-        var document = snapshot.GetDocument(overlay.Id);
-        var sites = ExprSites.Of(snapshot, overlay);
-        var checks = overlay.Checks.ToList();
-        for (var i = 0; i < checks.Count; i++)
-        {
-            var check = checks[i];
-            if (check.Expression.Count > 0 || !ExprSites.HasText(check.Condition))
-                continue;
-            // A table's sites are its checks, in order.
-            var site = sites[i];
-            var scope = ExprSites.Scope(snapshot, overlay, document, site, text: true);
-            var problems = new List<Diagnostic>();
-            var tree = ExprSites.ParseTexts(check.Condition!, scope, problems);
-            var parsed = problems.Count == 0;
-            if (parsed)
-                ExprTyper.Type(tree, scope, problems);
-            if (problems.FirstOrDefault(p => p.Severity == DiagnosticSeverity.Error) is { } problem)
-            {
-                return (overlay, Refused($"Check '{check.Name ?? check.Id}' of the overlay of entity '{entity.Name}' holds its condition as text, which does not "
-                    + $"{(parsed ? "type" : "parse")} in the overlay's scope ({problem.Rule} at {site.Pointer} of the overlay): {problem.Message.TrimEnd('.')}. "
-                    + "The text has to become a tree before the check moves into the designed table, where it would no longer read the entity's attributes "
-                    + "by name. Fix the text, or change or remove the check, then materialize again.", problem.Rule));
-            }
-
-            checks[i] = check with { Condition = tree };
-        }
-
-        return (overlay with { Checks = checks }, null);
-    }
-
-    /// <summary>A condition as JSON with each segment of each path turned by <paramref name="remap"/> (a column key into a column id).</summary>
-    private static JsonNode RemapPaths(JsonNode node, Func<string, string> remap)
-    {
-        switch (node)
-        {
-            case JsonObject o:
-                foreach (var (name, child) in o.ToList())
-                {
-                    if (name == "path" && child is JsonArray path)
-                    {
-                        for (var i = 0; i < path.Count; i++)
-                        {
-                            if (path[i]?.GetValue<string>() is { } segment)
-                                path[i] = remap(segment);
-                        }
-                    }
-                    else if (child is not null)
-                    {
-                        RemapPaths(child, remap);
-                    }
-                }
-
-                break;
-            case JsonArray a:
-                foreach (var child in a)
-                {
-                    if (child is not null)
-                        RemapPaths(child, remap);
-                }
-
-                break;
-        }
-
-        return node;
-    }
 
     /// <summary>The ids of a stereotype's members, in member-kind then file order.</summary>
     private static IEnumerable<string> MemberIds(Stereotype stereotype)
@@ -160,17 +76,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
 
     private static readonly string[] AnnotationNames = ["displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation", "source"];
-
-    private static void CopyAnnotations(JsonObject? from, JsonObject to)
-    {
-        if (from is null)
-            return;
-        foreach (var name in AnnotationNames)
-        {
-            if (from[name] is { } value)
-                to[name] = value.DeepClone();
-        }
-    }
 
     private JsonObject? Raw(string id) =>
         snapshot.GetDocument(id) is { } document ? JsonNode.Parse(document.Json.GetRawText()) as JsonObject : null;
@@ -196,8 +101,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             var element = snapshot.Get<Element>(id);
             switch (element)
             {
-                case Table { Origin: TableOrigin.Synthesized } synthesized when synthesized.Database == db.Id:
-                    return Refused($"Table '{ChangePlanner.ReadableName(snapshot, synthesized)}' is projected from an entity: materialize the entity's table instead (materialize-tables).");
                 case Table t when t.Database == db.Id:
                 case View v when v.Database == db.Id:
                     break;
@@ -356,8 +259,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             if (index < 0)
                 return Refused($"Entity '{entity.Name}' has no binding to database '{db.Name}': add one first, or create its table (materialize-tables).");
             var binding = entity.Bindings[index];
-            if (snapshot.Get<Element>(binding.Source) is not Table { Origin: not TableOrigin.Synthesized } table || table.Database != db.Id)
-                return Refused($"Entity '{entity.Name}' does not read a designed or imported table of database '{db.Name}': columns are added to a table file (store a projected table as a file first).");
+            if (snapshot.Get<Element>(binding.Source) is not Table table || table.Database != db.Id)
+                return Refused($"Entity '{entity.Name}' does not read a table of database '{db.Name}': columns are added to a table file.");
             if (binding.Write?.Table is { } other && other != table.Id)
                 return Refused($"Entity '{entity.Name}' writes another table than it reads: add the columns to the tables by hand.");
             entities.Add((entity, index, table));
@@ -365,14 +268,13 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
         var projected = await resolver.ResolveAsync(snapshot, null, ct).ConfigureAwait(false);
         var rdb = projected.Databases.First(d => d.Id == db.Id);
-        var mappings = snapshot.All<Mapping>().Where(m => m.Database == db.Id).ToList();
         var conventions = EffectiveConventions.For(snapshot.Settings, db.Name);
         var typeMap = DialectTypeMaps.Effective(db.Dialect, snapshot.Settings);
         foreach (var (entity, index, table) in entities)
         {
             // The shape the entity's own table would have: the designer proposes it alone, outside any hierarchy.
-            var designer = new TableDesigner(snapshot, projected, db, _ => null, _ => null, _ => null, _ => DesignHierarchy.OneTable, _ => null,
-                id => Outside(db, rdb, mappings, id)) { ColumnsOnly = true };
+            var designer = new TableDesigner(snapshot, projected, db, _ => null, _ => DesignHierarchy.OneTable, _ => null,
+                id => Outside(db, rdb, id)) { ColumnsOnly = true };
             var proposal = designer.Design(new HashSet<string>(StringComparer.Ordinal) { entity.Id });
             var shape = proposal.Tables.FirstOrDefault(t => t.Kind == DesignedTableKind.Entity);
             if (shape is null)
@@ -445,11 +347,11 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             foreach (var (column, target) in chosen)
             {
                 var columnId = ids.NewId();
-                columns.Add(ColumnNode(db, table.Schema, column, columnId, null, conventions, typeMap));
+                columns.Add(ColumnNode(db, table.Schema, column, columnId, conventions, typeMap));
                 fields.Add(new JsonObject { ["attribute"] = target, ["column"] = columnId });
                 written.Add(columnId);
                 if (shape.ForeignKeys.Any(fk => fk.Columns.Contains(column.Key)))
-                    _notes.Add($"Column '{column.Name}' of table '{table.Name}' holds a foreign key in the projection: add the foreign key in the table if you want one.");
+                    _notes.Add($"Column '{column.Name}' of table '{table.Name}' holds a foreign key in the table its entity's own table would have: add the foreign key in the table if you want one.");
             }
 
             foreach (var (name, column, target) in toInherited)
@@ -468,17 +370,12 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         return Result();
     }
 
-    /// <summary>
-    /// A column as materialize reads it. <paramref name="TypeRef"/> is the id of the enum, reference type or scalar type the column
-    /// holds (next-phase-2-design.md section 3.3, decision 11): the reference type of a projected reference column; <see langword="null"/>
-    /// when its physical type is all it says, as for every column of a table file.
-    /// </summary>
+    /// <summary>A column as materialize reads it: its physical type is all it says (a table names no type of the model).</summary>
     private sealed record SourceColumn(string Key, string Name, string? Type, string? NativeType, int? Length, int? Precision, int? Scale, bool Nullable,
-        bool IsKey, bool Identity, string? TypeRef = null);
+        bool IsKey, bool Identity);
 
     private static SourceColumn Source(RColumn c) =>
-        new(c.Key, c.Name, c.Type == "reference" ? c.CodeType : c.Type, c.NativeType, c.Length, c.Precision, c.Scale, c.Nullable, c.IsPrimaryKey, c.Identity,
-            TypeRefOf(c));
+        new(c.Key, c.Name, c.Type, c.NativeType, c.Length, c.Precision, c.Scale, c.Nullable, c.IsPrimaryKey, c.Identity);
 
     private static SourceColumn Source(RViewColumn c) => new(c.Name, c.Name, c.Type, c.NativeType, null, null, null, c.Nullable, false, false);
 
@@ -558,18 +455,9 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
     }
 
     /// <summary>
-    /// The id of the type a column holds: a projected reference column's reference type. A column of a table file names no type of the
-    /// model (0.28.0), and a table materialize-entities reads is bound by no entity yet, so it holds none.
-    /// </summary>
-    private static string? TypeRefOf(RColumn c) => c.Type == "reference" ? c.ReferenceType?.Id : null;
-
-    /// <summary>
     /// The attribute a column becomes (materialize-entities, materialize-attributes): its name the column's camel-cased (made unique
-    /// among <paramref name="taken"/>, which it joins), required when the column is not nullable. A column that holds an enum, a
-    /// reference type or a scalar type (<see cref="SourceColumn.TypeRef"/>) types the attribute by it, <c>{ "ref": id }</c>, with no
-    /// length, precision or scale, since the type states them (next-phase-2-design.md section 3.3, decision 11); otherwise its type is the
-    /// column's built-in keyword or the dialect's keyword for its native type (else string), with the column's length, precision and
-    /// scale.
+    /// among <paramref name="taken"/>, which it joins), required when the column is not nullable; its type is the column's built-in
+    /// keyword or the dialect's keyword for its native type (else string), with the column's length, precision and scale.
     /// </summary>
     private JsonObject AttributeFor(SourceColumn column, IReadOnlyDictionary<string, string> dialectMap, HashSet<string> taken)
     {
@@ -594,32 +482,24 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
     }
 
     /// <summary>
-    /// Types an attribute node as materialize types the attribute of a column: by the column's enum, reference type or scalar type
-    /// (<c>{ "ref": id }</c>, no length, precision or scale), else by its built-in keyword (or the dialect's keyword for its native type,
-    /// else string) with its length, precision and scale; <c>required</c> when the column is not nullable. Keys it does not set are
+    /// Types an attribute node as materialize types the attribute of a column: by its built-in keyword (or the dialect's keyword for its
+    /// native type, else string) with its length, precision and scale; <c>required</c> when the column is not nullable. Keys it does not set are
     /// removed, so a re-sync can retype an attribute in place.
     /// </summary>
     private static void TypeAttribute(JsonObject attribute, SourceColumn column, IReadOnlyDictionary<string, string> dialectMap)
     {
         foreach (var facet in new[] { "length", "precision", "scale" })
             attribute.Remove(facet);
-        if (column.TypeRef is { } typeRef)
+        var type = column.Type is not null && BuiltinTypes.All.Contains(column.Type) ? column.Type : Reverse(dialectMap, column.NativeType) ?? "string";
+        attribute["type"] = type;
+        if (column.Length is { } l && type is "string" or "binary")
+            attribute["length"] = l;
+        if (type == "decimal")
         {
-            attribute["type"] = new JsonObject { ["ref"] = typeRef };
-        }
-        else
-        {
-            var type = column.Type is not null && BuiltinTypes.All.Contains(column.Type) ? column.Type : Reverse(dialectMap, column.NativeType) ?? "string";
-            attribute["type"] = type;
-            if (column.Length is { } l && type is "string" or "binary")
-                attribute["length"] = l;
-            if (type == "decimal")
-            {
-                if (column.Precision is { } p)
-                    attribute["precision"] = p;
-                if (column.Scale is { } s)
-                    attribute["scale"] = s;
-            }
+            if (column.Precision is { } p)
+                attribute["precision"] = p;
+            if (column.Scale is { } s)
+                attribute["scale"] = s;
         }
 
         Require(attribute, column);
@@ -790,13 +670,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         _work[id] = (hash, node ?? [], op, because);
     }
 
-    private void PutRewrite(string id, JsonObject node, string because)
-    {
-        if (_work.ContainsKey(id))
-            return;
-        Put(id, snapshot.GetDocument(id)!.Hash, node, BatchOp.Update, because);
-    }
-
     /// <summary>The working copy of an existing element, read once.</summary>
     private JsonObject Node(string id, BatchOp op, string because)
     {
@@ -819,6 +692,6 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             ops.Add(new MaterializeOp(op, id, hash, op == BatchOp.Delete ? null : node, kind, name, because));
         }
 
-        return new MaterializeResult(null, ops, [.. _notes], _databaseName, [.. _rekeys], _sequenceKeys) { Choices = _choices, Adopted = _adopted };
+        return new MaterializeResult(null, ops, [.. _notes], _databaseName) { Choices = _choices, Adopted = _adopted };
     }
 }

@@ -12,14 +12,14 @@ using Dapper;
 
 namespace App.Model.Billing;
 
-/// <summary>Reads and writes <see cref="InvoiceNote"/> rows in invoice_notes (database local, sqlite).</summary>
+/// <summary>Reads and writes <see cref="InvoiceNote"/> rows through its binding to table invoice_notes (database local, sqlite).</summary>
 public partial interface IInvoiceNoteRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<InvoiceNote?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<InvoiceNote>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<InvoiceNote>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(InvoiceNote entity, CancellationToken cancellationToken = default);
@@ -34,40 +34,44 @@ public partial interface IInvoiceNoteRepository
 /// <summary>The Dapper implementation of <see cref="IInvoiceNoteRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class InvoiceNoteRepository(IDbConnection connection, IDbTransaction? transaction = null) : IInvoiceNoteRepository
 {
-    private const string Columns = """
-        id AS Id,
-        invoice_id AS InvoiceId,
-        body AS Body,
-        created_at AS CreatedAt
+    private const string SelectSql = """
+        SELECT t.id AS id, t.invoice_id AS invoiceId, t.body AS body, t.created_at AS createdAt
+        FROM invoice_notes t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM invoice_notes WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM invoice_notes ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.invoice_id AS invoiceId, t.body AS body, t.created_at AS createdAt
+        FROM invoice_notes t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO invoice_notes (id, invoice_id, body, created_at)
-        VALUES (@Id, @InvoiceId, @Body, @CreatedAt)
+        VALUES (@id, @invoiceId, @body, @createdAt)
         """;
 
     private const string UpdateSql = """
-        UPDATE invoice_notes SET invoice_id = @InvoiceId, body = @Body, created_at = @CreatedAt
-        WHERE id = @Id
+        UPDATE invoice_notes SET invoice_id = @invoiceId, body = @body
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM invoice_notes WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM invoice_notes
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<InvoiceNote?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<InvoiceNote>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InvoiceNote>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -90,31 +94,31 @@ public partial class InvoiceNoteRepository(IDbConnection connection, IDbTransact
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of invoice_notes, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table invoice_notes as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public Guid InvoiceId { get; set; }
-        public string Body { get; set; } = default!;
-        public DateTimeOffset? CreatedAt { get; set; }
+        public Guid id { get; set; }
+        public Guid invoiceId { get; set; }
+        public string body { get; set; } = default!;
+        public DateTimeOffset? createdAt { get; set; }
 
         public static InvoiceNote ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            InvoiceId = row.InvoiceId,
-            Body = row.Body,
-            CreatedAt = row.CreatedAt,
+            Id = row.id,
+            InvoiceId = row.invoiceId,
+            Body = row.body,
+            CreatedAt = row.createdAt,
         };
 
         public static Row From(InvoiceNote entity) => new()
         {
-            Id = entity.Id,
-            InvoiceId = entity.InvoiceId,
-            Body = entity.Body,
-            CreatedAt = entity.CreatedAt,
+            id = entity.Id,
+            invoiceId = entity.InvoiceId,
+            body = entity.Body,
+            createdAt = entity.CreatedAt,
         };
     }
 }

@@ -7,7 +7,7 @@ internal sealed class RelationPhysical(RelationShape shape)
 {
     public RelationShape Shape { get; } = shape;
 
-    /// <summary>The relation (or promotion relation) stored.</summary>
+    /// <summary>The relation stored.</summary>
     public RRelation? Relation { get; init; }
 
     /// <summary>The relation mapping in this database; its foreign key is set once foreign keys are resolved.</summary>
@@ -22,10 +22,10 @@ internal sealed class RelationPhysical(RelationShape shape)
     /// <summary>Foreign keys of the foreign-key shape, one per host table of the dependent end.</summary>
     public List<ForeignKeySpec> Foreign { get; } = [];
 
-    /// <summary>Junction or promoted table foreign keys, by end id.</summary>
+    /// <summary>Junction table foreign keys, by end id.</summary>
     public Dictionary<string, ForeignKeySpec> EndKeys { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The junction or promoted table.</summary>
+    /// <summary>The junction table.</summary>
     public TableBuild? Junction { get; set; }
 
     /// <summary>
@@ -135,10 +135,10 @@ internal sealed class TypeLinkPointer
     public RRelationLinkEnd? Result { get; set; }
 }
 
-/// <summary>Relations: foreign keys, junction tables, promoted entities and bindings to existing foreign keys.</summary>
+/// <summary>Relations: each stored by its relation mapping, on a designed foreign key or a designed junction table.</summary>
 internal sealed partial class DatabaseRun
 {
-    private readonly List<(REntity Entity, TableBuild Table)> _promotedTables = [];
+    private readonly Dictionary<Placement, IReadOnlyList<string>> _keyDeps = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>One-type relations whose designed link table's mapping writes constants or attribute columns (answer 9), in relation order.</summary>
     private readonly List<(RRelation Relation, RelationPhysical Physical)> _linkTableLinks = [];
@@ -159,32 +159,23 @@ internal sealed partial class DatabaseRun
         if (rel.Ends.Any(e => !_placements.ContainsKey(e.OneEntity.Id)))
             return;
         var m = _run.MappingOf(_db.Id, rel.Id);
-        if (m is { Ignore: true })
-            return;
-        switch (ShapeOf(rel, src, m))
-        {
-            case RelationShape.ForeignKey:
-                ResolveForeignKeyShape(rel, src, m);
-                break;
-            case RelationShape.Promoted:
-                ResolveJunctionShape(rel, src, m, promote: true);
-                break;
-            default:
-                ResolveJunctionShape(rel, src, m, promote: false);
-                break;
-        }
+        if (ShapeOf(rel, src, m) == RelationShape.ForeignKey)
+            ResolveForeignKeyShape(rel, m);
+        else
+            ResolveJunctionShape(rel, m);
     }
 
-    private RelationShape ShapeOf(RRelation rel, Relation src, Mapping? m)
+    /// <summary>
+    /// The relation's shape in the database: the mapping's <c>shape</c>; else a junction when it names a <c>junctionTable</c>, when the relation
+    /// is many-to-many or n-ary, or when it carries attributes and names no foreign key; else a foreign key.
+    /// </summary>
+    private static RelationShape ShapeOf(RRelation rel, Relation src, Mapping? m)
     {
         var nary = rel.Ends.Count != 2 || src.RelationKind == RelationKind.NAry;
         var manyToMany = string.Equals(rel.Cardinality, "many-to-many", StringComparison.Ordinal);
-        if (m?.Shape == RelationShape.Promoted)
-            return RelationShape.Promoted;
-        if (nary)
+        if (nary || manyToMany)
             return RelationShape.Junction;
-        var shape = m?.Shape ?? (m?.JunctionTable is not null ? RelationShape.Junction : rel.Attributes.Count > 0 ? (m?.ForeignKey is not null ? RelationShape.ForeignKey : _conv.RelationsWithAttributes) : manyToMany ? RelationShape.Junction : RelationShape.ForeignKey);
-        return shape == RelationShape.ForeignKey && manyToMany ? RelationShape.Junction : shape;
+        return m?.Shape ?? (m?.JunctionTable is not null || (rel.Attributes.Count > 0 && m?.ForeignKey is null) ? RelationShape.Junction : RelationShape.ForeignKey);
     }
 
     /// <summary>The principal (referenced) and dependent (holding the key) ends of a binary relation.</summary>
@@ -199,71 +190,28 @@ internal sealed partial class DatabaseRun
         return string.Equals(m?.ForeignKeyEnd, e0.Id, StringComparison.Ordinal) ? (e1, e0) : (e0, e1);
     }
 
-    /// <summary>The referential action of the principal end's intent (composition cascades by default).</summary>
-    private static string PrincipalAction(REnd principal, Relation src) => principal.OnDelete switch
-    {
-        "cascade" => "cascade",
-        "restrict" => "restrict",
-        "set-null" => "set-null",
-        _ => src.RelationKind == RelationKind.Composition ? "cascade" : "no-action",
-    };
-
-    private void ResolveForeignKeyShape(RRelation rel, Relation src, Mapping? m)
+    /// <summary>
+    /// A foreign-key relation: bound to the existing foreign key its mapping names in the dependent end's table (section 7.4); MQ4011 when
+    /// the mapping names none, or one that no table of the database declares.
+    /// </summary>
+    private void ResolveForeignKeyShape(RRelation rel, Mapping? m)
     {
         var (principal, dependent) = PrincipalAndDependent(rel, m);
-        var pp = _placements[principal.OneEntity.Id];
         var dp = _placements[dependent.OneEntity.Id];
         var phys = new RelationPhysical(RelationShape.ForeignKey) { Relation = rel, Principal = principal, Dependent = dependent };
-        var relationDeps = _run.DepsOf(rel).ToList();
-        if (dp.Bound)
+        if (m?.ForeignKey is { } fkId && _foreignKeysById.TryGetValue(fkId, out var bound))
         {
-            // Binding to an existing foreign key of the dependent's designed or imported table (section 7.4).
-            if (m?.ForeignKey is { } fkId && _foreignKeysById.TryGetValue(fkId, out var bound))
-            {
-                bound.Result.Relation = rel;
-                bound.Result.End = dependent;
-                bound.Host.Deps.AddRange(relationDeps);
-                phys.Foreign.Add(bound);
-            }
-            else if (m?.ForeignKey is not null || !pp.Bound || dp.ViaBinding || pp.ViaBinding)
-            {
-                // Both ends bound to designed tables with no foreign key named is W2's MQ4011; the resolver reports the cases W2 cannot
-                // see: a bound dependent whose principal is synthesized, a named foreign key that is not in this database, and an end
-                // bound by an entity binding (erratum E43), which W2 does not read.
-                _run.AddDiagnostic("MQ4011", m?.ForeignKey is { } missing
-                    ? $"Relation '{rel.Name}' names foreign key '{missing}', which no table of database '{_db.Name}' declares; the relation has no foreign key there."
-                    : $"Relation '{rel.Name}' has its dependent end '{dependent.Role}' bound to table '{dp.Table?.Table.Name}' in database '{_db.Name}' but names no foreign key (Mapping.ForeignKey); the relation has no foreign key there.",
-                    rel.Id);
-            }
+            bound.Result.Relation = rel;
+            bound.Result.End = dependent;
+            bound.Host.Deps.AddRange(_run.DepsOf(rel).ToList());
+            phys.Foreign.Add(bound);
         }
-        else if (pp.Root.Entity.Key is { Attributes.Count: > 0 } key)
+        else
         {
-            var target = pp.Table;
-            var targetKeys = target?.PrimaryKey ?? [];
-            var onDelete = PrincipalAction(principal, src);
-            var oneToOne = string.Equals(rel.Cardinality, "one-to-one", StringComparison.Ordinal);
-            foreach (var host in HostsOf(dp))
-            {
-                var forceNull = principal.Min == 0 || (dp.Strategy == InheritanceStrategy.Tph && !ReferenceEquals(dp.Root, dp));
-                var keys = AddReferenceColumns(host, principal, rel, key, target, targetKeys, forceNull);
-                host.Deps.AddRange(relationDeps).AddRange(KeyDeps(pp)).Referrers(rel.Id);
-                if (target is not null && keys.Count > 0)
-                {
-                    var spec = new ForeignKeySpec(host, keys, target, null, [], onDelete, "no-action", null);
-                    spec.Result.Relation = rel;
-                    spec.Result.End = dependent;
-                    host.ForeignKeys.Add(spec);
-                    phys.Foreign.Add(spec);
-                }
-
-                if (oneToOne && keys.Count > 0)
-                    host.Uniques.Add(new UniqueSpec(keys, null, null));
-                foreach (var a in rel.Attributes)
-                    AddAttributeColumns(host, a, RelationAttributeMapping(m, a), false, true, rel.Name);
-                foreach (var action in host.Deferred.ToList())
-                    action();
-                host.Deferred.Clear();
-            }
+            _run.AddDiagnostic("MQ4011", m?.ForeignKey is { } missing
+                ? $"Relation '{rel.Name}' names foreign key '{missing}', which no table of database '{_db.Name}' declares; the relation has no foreign key there."
+                : $"Relation '{rel.Name}' has its dependent end '{dependent.Role}' bound to table '{dp.Table.Table.Name}' in database '{_db.Name}' but its relation mapping names no foreign key (foreignKey); the relation has no foreign key there.",
+                rel.Id);
         }
 
         _relationPhysical[rel.Id] = phys;
@@ -271,37 +219,13 @@ internal sealed partial class DatabaseRun
         _run.SetRelationMapping(rel, _db.Name, phys.Mapping);
     }
 
-    /// <summary>The foreign key columns that reference an end's entity key, added to a table (keys <c>&lt;endId&gt;.&lt;keyAttrId&gt;</c>).</summary>
-    private List<string> AddReferenceColumns(TableBuild host, REnd end, RRelation rel, RKey key, TableBuild? target, IReadOnlyList<string> targetKeys,
-        bool nullable)
-    {
-        var keys = new List<string>();
-        for (var i = 0; i < key.Attributes.Count; i++)
-        {
-            var ka = key.Attributes[i];
-            var referenced = target is not null && i < targetKeys.Count ? target.Resolve(targetKeys[i]) : null;
-            var columnKey = end.Id + "." + ka.Id;
-            var name = Render(_conv.ForeignKeyColumn, ("role", end.Role), ("key", ka.Name), ("entity", end.OneEntity.Name), ("relation", rel.Name),
-                ("table", host.Table.Name));
-            AddColumn(host, columnKey, name, referenced?.Type ?? ka.Type.Builtin ?? "string", referenced?.Length ?? ka.Length,
-                referenced?.Precision ?? ka.Precision, referenced?.Scale ?? ka.Scale, nullable, null, null, null,
-                scalar: referenced is not null ? ScalarOf(referenced) : ka.Type.Scalar, follows: referenced);
-            keys.Add(columnKey);
-        }
-
-        return keys;
-    }
-
-    /// <summary>What the key columns of a referenced entity depend on: the entity and the overlay or file of its table.</summary>
+    /// <summary>What the key columns of a referenced entity depend on: the entity, its hierarchy root and its table's file.</summary>
     private IReadOnlyList<string> KeyDeps(Placement p)
     {
         if (_keyDeps.TryGetValue(p, out var cached))
             return cached;
         var deps = new DependencySet(_run.Keys).AddRange(_run.DepsOf(p.Entity).ToList()).AddRange(_run.DepsOf(p.Root.Entity).ToList());
-        if (p.Table?.Overlay is { } overlay)
-            deps.Element(overlay.Id);
-        if (p.Table?.Source is { } source)
-            deps.Element(source.Id);
+        deps.Element(p.Table.Source.Id);
         cached = deps.ToList();
         _keyDeps[p] = cached;
         return cached;
@@ -337,158 +261,42 @@ internal sealed partial class DatabaseRun
         }
     }
 
-    private static AttributeMapping? RelationAttributeMapping(Mapping? m, RAttribute a) =>
-        m?.Attributes.FirstOrDefault(x => string.Equals(x.Attribute, a.Id, StringComparison.Ordinal));
-
-    private void ResolveJunctionShape(RRelation rel, Relation src, Mapping? m, bool promote)
+    /// <summary>
+    /// A relation stored in a junction table: bound to the designed table its mapping names, each end through its <c>ends</c> entry
+    /// (section 7.4); MQ4011 when the mapping names no designed junction table of the database.
+    /// </summary>
+    private void ResolveJunctionShape(RRelation rel, Mapping? m)
     {
-        var phys = new RelationPhysical(promote ? RelationShape.Promoted : RelationShape.Junction);
+        var phys = new RelationPhysical(RelationShape.Junction);
         _relationPhysical[rel.Id] = phys;
-        var relationDeps = _run.DepsOf(rel).ToList();
-
-        if (!promote && m?.JunctionTable is { } junctionId && _tables.TryGetValue(junctionId, out var designed) && designed.IsDesigned)
+        if (m?.JunctionTable is not { } junctionId || !_tables.TryGetValue(junctionId, out var designed))
         {
-            // A designed junction binds each end through Mapping.Ends (section 7.4). An entry with no foreignKey is skipped: MQ4009 reports it
-            // (several-types-design.md decision 38). Its constants and attribute columns are finished with the storage run (answer 9).
-            foreach (var endMapping in m.Ends)
-            {
-                var end = rel.Ends.FirstOrDefault(e => string.Equals(e.Id, endMapping.End, StringComparison.Ordinal));
-                if (end is null || endMapping.ForeignKey is not { } foreignKeyId || !_foreignKeysById.TryGetValue(foreignKeyId, out var spec))
-                    continue;
-                spec.Result.Relation = rel;
-                spec.Result.End = end;
-                phys.EndKeys[end.Id] = spec;
-            }
-
-            designed.Table.Relation ??= rel;
-            designed.Table.IsJunction = true;
-            designed.Deps.AddRange(relationDeps);
-            phys.Junction = designed;
-            phys.Mapping = new RRelationMapping { Shape = "junction", JunctionTable = designed.Table };
-            _run.SetRelationMapping(rel, _db.Name, phys.Mapping);
-            CollectLinkTableExtras(rel, m, designed, phys.Mapping);
-            if (m.Constants.Count > 0 || m.Attributes.Any(a => a.Column is not null))
-                _linkTableLinks.Add((rel, phys));
+            _run.AddDiagnostic("MQ4011", m?.JunctionTable is { } missing
+                ? $"Relation '{rel.Name}' names junction table '{missing}', which is not a table of database '{_db.Name}'; the relation has no storage there."
+                : $"Relation '{rel.Name}' is stored in a junction table in database '{_db.Name}', where both ends are bound, but {(m is null ? "it has no relation mapping there" : "its relation mapping names no junctionTable")}; the relation has no storage there.",
+                rel.Id);
             return;
         }
 
-        var promoted = promote ? _run.Promote(rel, m?.PromotedName) : null;
-        var overlay = _overlays.GetValueOrDefault("relation:" + rel.Id);
-        var key = rel.Id + "@" + _db.Id;
-        var r = new RTable
+        // A designed junction binds each end through Mapping.Ends (section 7.4). An entry with no foreignKey is skipped: MQ4009 reports it
+        // (several-types-design.md decision 38). Its constants and attribute columns are finished with the storage run (answer 9).
+        foreach (var endMapping in m.Ends)
         {
-            Id = key,
-            Key = key,
-            Name = overlay is { Name.Length: > 0 } ? overlay.Name : promoted is not null ? TableNameFor(promoted.Name) : JunctionName(rel),
-            Schema = SchemaName(overlay?.Schema),
-            Database = _rdb,
-            Origin = "synthesized",
-            Entity = promoted,
-            Relation = rel,
-            Comment = overlay?.Comment,
-            IsJunction = promoted is null,
-        };
-        var t = new TableBuild(_run.Keys, r, null, overlay, rel.Id);
-        t.Deps.AddRange(relationDeps).Element(_db.Id).Add(Conventions).Add(TypeMaps).Referrers(rel.Id);
-        if (promoted is not null)
-            t.Deps.AddRange(_run.DepsOf(promoted).ToList()).Add(InflectionKey);
-        if (overlay is not null)
-        {
-            t.Deps.Element(overlay.Id);
-            AddConstraintFiles(t, overlay);
-        }
-
-        AddTable(t);
-        phys.Junction = t;
-        var surrogate = src.AllowDuplicates || src.Ends.Any(e => e.Ordered);
-        if (surrogate)
-        {
-            var id = AddColumn(t, "id", Render(_conv.KeyColumn, ("attribute", "id"), ("entity", promoted?.Name ?? rel.Name), ("table", r.Name)),
-                "int64", null, null, null, false, null, null, null);
-            if (id.Sequence is null)
-                id.Identity = true;
-        }
-
-        var allKeys = new List<string>();
-        foreach (var end in rel.Ends)
-        {
-            var ep = _placements[end.OneEntity.Id];
-            t.Deps.AddRange(KeyDeps(ep)).Referrers(end.OneEntity.Id);
-            if (ep.Root.Entity.Key is not { Attributes.Count: > 0 } endKey)
+            var end = rel.Ends.FirstOrDefault(e => string.Equals(e.Id, endMapping.End, StringComparison.Ordinal));
+            if (end is null || endMapping.ForeignKey is not { } foreignKeyId || !_foreignKeysById.TryGetValue(foreignKeyId, out var spec))
                 continue;
-            var keys = AddReferenceColumns(t, end, rel, endKey, ep.Table, ep.Table?.PrimaryKey ?? [], false);
-            allKeys.AddRange(keys);
-            if (ep.Table is null || keys.Count == 0)
-                continue;
-            var spec = new ForeignKeySpec(t, keys, ep.Table, null, [], string.Equals(end.OnDelete, "restrict", StringComparison.Ordinal) ? "restrict" : "cascade",
-                "no-action", null);
-            if (promoted is not null)
-            {
-                var promotion = _run.PromotionRelation(rel, end);
-                spec.Result.Relation = promotion;
-                spec.Result.End = promotion.Ends[1];
-                var promotionPhysical = new RelationPhysical(RelationShape.ForeignKey)
-                {
-                    Relation = promotion, Principal = promotion.Ends[0], Dependent = promotion.Ends[1], Mapping = new RRelationMapping { Shape = "foreign-key" },
-                };
-                promotionPhysical.Foreign.Add(spec);
-                _relationPhysical[promotion.Id] = promotionPhysical;
-                _run.SetRelationMapping(promotion, _db.Name, promotionPhysical.Mapping);
-            }
-            else
-            {
-                spec.Result.Relation = rel;
-                spec.Result.End = end;
-            }
-
-            t.ForeignKeys.Add(spec);
+            spec.Result.Relation = rel;
+            spec.Result.End = end;
             phys.EndKeys[end.Id] = spec;
         }
 
-        if (src.Ends.Any(e => e.Ordered))
-            AddColumn(t, "position", Render(_conv.OrderColumn), "int32", null, null, null, false, null, null, null);
-        var promotedKeys = promoted is null ? [] : _run.PromotedKeys(promoted.Id);
-        foreach (var a in promoted?.Attributes ?? rel.Attributes)
-        {
-            if (!promotedKeys.Any(k => ReferenceEquals(k.Attribute, a)))
-                AddAttributeColumns(t, a, RelationAttributeMapping(m, a), false, false, promoted?.Name ?? rel.Name);
-        }
-
-        // A promoted entity's key attributes map to the surrogate id or to the foreign key columns of the composite key.
-        foreach (var (attribute, columnKey) in promotedKeys)
-        {
-            if (t.Resolve(columnKey) is { Attribute: null } column)
-            {
-                column.Attribute = attribute;
-                column.AttributePath = attribute.Id;
-            }
-        }
-
-        if (t.PrimaryKey.Count == 0)
-            t.PrimaryKey.AddRange(surrogate ? ["id"] : allKeys);
-        if (surrogate && !src.AllowDuplicates && allKeys.Count > 0)
-            t.Uniques.Add(new UniqueSpec(allKeys, null, null));
-        foreach (var action in t.Deferred.ToList())
-            action();
-        t.Deferred.Clear();
-
-        if (promoted is not null)
-        {
-            _promotedTables.Add((promoted, t));
-            _run.SetRelationMapping(rel, _db.Name, new RRelationMapping { Shape = "promoted", PromotedEntity = promoted });
-        }
-        else
-        {
-            _run.SetRelationMapping(rel, _db.Name, new RRelationMapping { Shape = "junction", JunctionTable = r });
-        }
+        designed.Table.Relation ??= rel;
+        designed.Deps.AddRange(_run.DepsOf(rel).ToList());
+        phys.Junction = designed;
+        phys.Mapping = new RRelationMapping { Shape = "junction", JunctionTable = designed.Table };
+        _run.SetRelationMapping(rel, _db.Name, phys.Mapping);
+        CollectLinkTableExtras(rel, m, designed, phys.Mapping);
+        if (m.Constants.Count > 0 || m.Attributes.Any(a => a.Column is not null))
+            _linkTableLinks.Add((rel, phys));
     }
-
-    /// <summary>The <c>junctionTable</c> pattern; an n-ary relation's <c>{entity2}</c> joins the names of every end after the first.</summary>
-    private string JunctionName(RRelation rel) =>
-        NamePattern.Render(_conv.JunctionTable, new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["entity1"] = rel.Ends[0].OneEntity.Name,
-            ["entity2"] = string.Join('_', rel.Ends.Skip(1).Select(e => e.OneEntity.Name)),
-            ["relation"] = rel.Name,
-        }, _conv.TableCase);
 }

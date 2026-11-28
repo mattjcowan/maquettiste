@@ -7,7 +7,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Resolution;
 
 /// <summary>
-/// Entity bindings (erratum E43): a bound entity is never projected, its source, constants, field map, accounted columns, write table
+/// Entity bindings (erratum E43): its source, constants, field map, accounted columns, write table
 /// and delete resolve, the tables, views and queries list the bindings that use them, the statements render per dialect, and the
 /// rules MQ4044 to MQ4054 report what a binding gets wrong at the JSON pointer of its entry in the entity's file.
 /// </summary>
@@ -16,11 +16,11 @@ public sealed class BindingTests
     /// <summary>
     /// A database <c>main</c> with a designed table <c>notes</c> shared by InvoiceNote and CustomerNote (told apart by
     /// <c>entity_type</c>), a table <c>events</c> with an identity key and a soft-delete flag bound one to one by Event, a query over
-    /// the notes read by NoteCount, and Customer projected by convention.
+    /// the notes read by NoteCount, and Customer, which no table holds.
     /// </summary>
     private sealed class Shop
     {
-        public Shop(Dialect dialect = Dialect.PostgreSql, Func<Shop, string, EntityBinding, EntityBinding>? edit = null, bool mapInvoiceNote = false,
+        public Shop(Dialect dialect = Dialect.PostgreSql, Func<Shop, string, EntityBinding, EntityBinding>? edit = null,
             Func<Table, Table>? changeNotes = null, bool invoiceNoteShowsType = false, string queryParameter = "since")
         {
             _invoiceNoteShowsType = invoiceNoteShowsType;
@@ -88,8 +88,6 @@ public sealed class BindingTests
                 Id = "", Database = Main, Source = Query,
                 Fields = [Field(NoteCount, "entityType", "entityType"), Field(NoteCount, "total", "total")],
             }));
-            if (mapInvoiceNote)
-                Builder.Mapping(db, InvoiceNote);
         }
 
         private EntityBuilder Note(string name, string reference, string type, Func<Shop, string, EntityBinding, EntityBinding>? edit)
@@ -163,20 +161,17 @@ public sealed class BindingTests
     private static REntityBinding BindingOf(ResolvedModel model, string entity) => model.Entity(entity).Bindings["main"];
 
     [Fact]
-    public void A_bound_entity_is_never_projected_and_the_table_lists_every_entity_bound_to_it()
+    public void A_table_lists_every_entity_bound_to_it()
     {
         var model = new Shop().Resolve();
         var db = model.Db("main");
 
         Assert.DoesNotContain(model.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(["customers", "events", "notes"], db.Tables.Select(t => t.Name));
-        Assert.All(db.Tables.Where(t => t.Name != "customers"), t => Assert.Null(t.Entity));
+        Assert.Equal(["events", "notes"], db.Tables.Select(t => t.Name));
         var notes = db.Table("notes");
         Assert.Equal(["CustomerNote", "InvoiceNote"], notes.BoundBy.Select(b => b.Entity.Name));
         Assert.Equal(["customer", "invoice"], notes.BoundBy.Select(b => Assert.Single(b.Constants).Value));
         Assert.Equal(["NoteCount"], db.Queries.Single().BoundBy.Select(b => b.Entity.Name));
-        Assert.Empty(model.Entity("InvoiceNote").Mappings);
-        Assert.True(model.Entity("Customer").Mappings.ContainsKey("main"));
 
         var binding = BindingOf(model, "InvoiceNote");
         Assert.Equal(("table", "notes", true, "key"), (binding.SourceKind, binding.SourceName, binding.Writes, binding.Delete));
@@ -198,17 +193,6 @@ public sealed class BindingTests
         Assert.All(model.Entities, e => Assert.Empty(e.Bindings));
         Assert.All(model.Databases.SelectMany(d => d.Tables), t => Assert.Empty(t.BoundBy));
         Assert.All(model.Databases.SelectMany(d => d.Views), v => Assert.Empty(v.BoundBy));
-    }
-
-    [Fact]
-    public void A_mapping_element_for_a_bound_entity_is_ignored_with_an_info()
-    {
-        var shop = new Shop(mapInvoiceNote: true);
-        var model = shop.Resolve();
-
-        var info = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4054");
-        Assert.Equal((DiagnosticSeverity.Info, "/entity"), (info.Severity, info.JsonPointer));
-        Assert.DoesNotContain(model.Db("main").Tables, t => t.Entity?.Name == "InvoiceNote");
     }
 
     public static TheoryData<Dialect, string, string, string, string, string> SharedTableStatements() => new()
@@ -482,15 +466,14 @@ public sealed class BindingTests
         var mapping = model.Relation("contains").Mappings["main"];
         Assert.Equal(("foreign-key", "order_lines"), (mapping.Shape, mapping.ForeignKey?.Columns[0].Table.Name));
         Assert.Equal(["order_id"], mapping.ForeignKey!.Columns.Select(c => c.Name));
-        Assert.Empty(model.Entity("OrderLine").Mappings);
     }
 
     // ---- sensitivity said once, shown on both sides (next-phase-2-design.md section 3.2, D23) ----
 
     /// <summary>
     /// A table <c>notes</c> (id, entity_type, body) shared by InvoiceNote and CustomerNote, each with a body attribute bound to the
-    /// body column; Customer projected with an email attribute, and its overlay entry for the email column. Each value is the
-    /// sensitivity that side states, or <see langword="null"/>.
+    /// body column; with <paramref name="email"/> or <paramref name="emailEntry"/>, Customer's email attribute is bound to the email
+    /// column of a table <c>customers</c>. Each value is the sensitivity that side states, or <see langword="null"/>.
     /// </summary>
     private static ResolvedModel SensitiveNotes(Sensitivity? body, Sensitivity? invoiceBody, Sensitivity? customerBody, Sensitivity? email = null,
         Sensitivity? emailEntry = null)
@@ -511,8 +494,9 @@ public sealed class BindingTests
         }
 
         var customer = b.Entity("Customer").Key("id", "uuid").Attr("email", "string", a => { a.Length(320); if (email is { } s) a.Sensitive(s); });
-        if (emailEntry is { } entry)
-            b.Table("customers", db).OverlayFor(customer).Overlay(customer.AttrId("email")).Edit(t => t with { Columns = [t.Columns[0] with { Sensitive = entry }] });
+        if (email is not null || emailEntry is not null)
+            b.Table("customers", db).Column("id", "uuid", nullable: false).Column("email", "string").PrimaryKey("id")
+                .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "email" ? c with { Sensitive = emailEntry } : c)] }).Binds(customer);
         return ResolutionKit.Resolve(b);
     }
 
@@ -538,13 +522,13 @@ public sealed class BindingTests
     }
 
     [Fact]
-    public void A_projected_column_shows_its_attribute_sensitivity()
+    public void A_bound_column_shows_its_attribute_sensitivity()
     {
         var model = SensitiveNotes(null, null, null, email: Sensitivity.Pii);
         Assert.Equal("pii", model.Db("main").Table("customers").Column("email").Sensitive);
         Assert.Null(model.Db("main").Table("customers").Column("id").Sensitive);
 
-        // The overlay entry's own value is the column's statement.
+        // The column's own value is its statement.
         var overlaid = SensitiveNotes(null, null, null, email: Sensitivity.Pii, emailEntry: Sensitivity.Secret);
         Assert.Equal("secret", overlaid.Db("main").Table("customers").Column("email").Sensitive);
         Assert.Equal("pii", overlaid.Entity("Customer").Attributes.Single(a => a.Name == "email").Sensitive);

@@ -100,7 +100,6 @@ public sealed class ModelWriteTests
         Contract.AssertResponse(response, "/api/model/elements");
     }
 
-    [UsesProjectedFixtures]
     [Theory]
     [InlineData("quoted")]
     [InlineData("weak")]
@@ -108,17 +107,17 @@ public sealed class ModelWriteTests
     public async Task Save_accepts_every_if_match_form(string form)
     {
         await using var host = EditorHost.Create();
-        var (json, hash) = await LoadAsync(host, EditorHost.InvoiceId);
-        json["attributes"]![5]!["name"] = "remarks";
+        var (json, hash) = await LoadAsync(host, EditorHost.InvoicesTableId);
+        json["columns"]![6]!["name"] = "remarks";
         var header = form switch { "quoted" => "\"" + hash + "\"", "weak" => "W/\"" + hash + "\"", _ => hash };
 
-        var response = await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.InvoiceId, json, r => r.Header("If-Match", header));
+        var response = await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.InvoicesTableId, json, r => r.Header("If-Match", header));
 
         Assert.Equal(200, response.Status);
         Contract.AssertResponse(response, "/api/model/elements/{id}");
         Assert.Equal("saved", response.Json["outcome"]!.GetValue<string>());
         Assert.Equal("\"" + response.Json["hash"]!.GetValue<string>() + "\"", response.ETag);
-        Assert.Equal("remarks", response.Json["current"]!["json"]!["attributes"]![5]!["name"]!.GetValue<string>());
+        Assert.Equal("remarks", response.Json["current"]!["json"]!["columns"]![6]!["name"]!.GetValue<string>());
         // The column's rename is recorded as a migration fact in the same write.
         var fact = Assert.Single(response.Json["facts"]!.AsArray())!;
         Assert.Equal(("rename", "complete"), (fact["fact"]!.GetValue<string>(), fact["state"]!.GetValue<string>()));
@@ -271,17 +270,16 @@ public sealed class ModelWriteTests
         Assert.Equal([id], deleted.Json["changes"]!["deleted"]!.AsArray().Select(d => d!.GetValue<string>()));
     }
 
-    [UsesProjectedFixtures]
     [Fact]
     public async Task Batch_applies_all_or_nothing_with_each_outcome_status()
     {
         await using var host = EditorHost.Create();
-        var (invoice, hash) = await LoadAsync(host, EditorHost.InvoiceId);
-        invoice["name"] = "Bill";
+        var (invoices, hash) = await LoadAsync(host, EditorHost.InvoicesTableId);
+        invoices["name"] = "bills";
         var ok = new JsonObject
         {
             ["operations"] = new JsonArray(
-                new JsonObject { ["op"] = "update", ["id"] = EditorHost.InvoiceId, ["expectedHash"] = hash, ["element"] = invoice.DeepClone() },
+                new JsonObject { ["op"] = "update", ["id"] = EditorHost.InvoicesTableId, ["expectedHash"] = hash, ["element"] = invoices.DeepClone() },
                 new JsonObject { ["op"] = "create", ["element"] = new JsonObject { ["kind"] = "package", ["name"] = "Shipping" } }),
         };
 
@@ -296,14 +294,12 @@ public sealed class ModelWriteTests
 
         Assert.Equal(200, saved.Status);
         Contract.AssertResponse(saved, "/api/model/batch");
-        // The renames of the invoices table and of the junction table named after it are recorded as migration facts: on the batch
-        // answer, in the same change, and on no item.
+        // The rename of the invoices table is recorded as a migration fact: on the batch answer, in the same change, and on no item.
         var facts = saved.Json["facts"]!.AsArray();
-        Assert.Equal(["rename table billing.invoices to bills", "rename table billing.payment_invoice to payment_bill"],
-            facts.Select(f => f!["summary"]!.GetValue<string>()).Order(StringComparer.Ordinal));
+        Assert.Equal(["rename table billing.invoices to bills"], facts.Select(f => f!["summary"]!.GetValue<string>()));
         Assert.All(saved.Json["items"]!.AsArray(), i => Assert.Null(i!["facts"]));
         var changed = saved.Json["changes"]!["changed"]!.AsArray().Select(c => c!["id"]!.GetValue<string>()).ToList();
-        Assert.Equal(4, changed.Count);
+        Assert.Equal(3, changed.Count); // the table, the fact and the new package
         Assert.All(facts, f => Assert.Contains(f!["id"]!.GetValue<string>(), changed));
         Assert.Equal(409, conflict.Status);
         Contract.AssertResponse(conflict, "/api/model/batch");
@@ -357,7 +353,6 @@ public sealed class ModelWriteTests
         Assert.Equal(400, badId.Status);
     }
 
-    [UsesProjectedFixtures]
     [Fact]
     public async Task Validate_carries_the_resolvers_MQ4005_with_its_pointer_as_the_problems_panel_shows_it()
     {
@@ -464,14 +459,14 @@ public sealed class ModelWriteTests
         var main = await host.GetAsync("/api/databases/" + EditorHost.MainDatabaseId + "/view");
         Assert.Contains(main.Json["view"]!["tables"]!.AsArray(), t => t!["name"]!.GetValue<string>() == "customers");
 
+        // Laying out tables by package was removed in 0.29.0: the save is refused with MQ4145, and the database stays empty.
         var (json, hash) = await LoadAsync(host, id);
-        Assert.Equal("none", json["byConvention"]!.GetValue<string>());
         json["byConvention"] = "packages";
         json["packages"] = new JsonArray(EditorHost.BillingPackageId);
-        var saved = await host.SendJsonAsync("PUT", "/api/model/elements/" + id, json, r => r.IfMatch(hash));
-        Assert.True(saved.Status is 200, saved.Json.ToJsonString());
-        var mapped = await host.GetAsync("/api/databases/" + id + "/view");
-        Assert.Contains(mapped.Json["view"]!["tables"]!.AsArray(), t => t!["name"]!.GetValue<string>() == "customers");
+        var refused = await host.SendJsonAsync("PUT", "/api/model/elements/" + id, json, r => r.IfMatch(hash));
+        Assert.Equal(422, refused.Status);
+        Assert.Equal("MQ4145", refused.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
+        Assert.Empty((await host.GetAsync("/api/databases/" + id + "/view")).Json["view"]!["tables"]!.AsArray());
     }
 
     [Fact]
@@ -481,8 +476,9 @@ public sealed class ModelWriteTests
 
         var response = await host.SendJsonAsync("POST", "/api/model/elements", """{ "kind": "database", "name": "x", "dialect": "sqlite", "byConvention": "some" }""");
 
+        // Any value but none is the removed key (MQ4145).
         Assert.Equal(422, response.Status);
-        Assert.Equal("MQ1002", response.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
+        Assert.Equal("MQ4145", response.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
     }
 
     [Fact]

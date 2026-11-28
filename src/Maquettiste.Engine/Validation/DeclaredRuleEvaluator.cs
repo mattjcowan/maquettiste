@@ -304,10 +304,10 @@ internal static class DeclaredRuleEvaluator
         return select.Package.Count == 0 || InPackage(value, select.Package);
     }
 
-    /// <summary>Whether an object's package (a table's, else its entity's or relation's) is one of the packages or nested in one.</summary>
+    /// <summary>Whether an object's package (a table's, else a junction table's relation's) is one of the packages or nested in one.</summary>
     private static bool InPackage(RAnnotated value, IReadOnlyList<string> packages)
     {
-        var package = value.Package ?? (value as RTable)?.Entity?.Package ?? (value as RTable)?.Relation?.Package;
+        var package = value.Package ?? (value as RTable)?.Relation?.Package;
         for (var depth = 0; package is not null && depth < 256; package = package.Parent, depth++)
         {
             if (packages.Contains(package.Id, StringComparer.Ordinal))

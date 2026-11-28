@@ -35,7 +35,7 @@ import {
 } from "@/editors/storage/relationStorage";
 import { MockBackend } from "@/mocks/backend";
 import { bindingSql } from "@/mocks/model/bindings";
-import { billingProjectedSeed } from "@/mocks/model/seed";
+import { billingSeed } from "@/mocks/model/seed";
 
 const col = (key: string, name: string, extra: Partial<SourceColumn> = {}): SourceColumn => ({
   key,
@@ -348,19 +348,48 @@ describe("relationship storage", () => {
 // ------------------------------------------------------------------ the mock
 
 const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
-const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
 const INVOICE = "01J92P0V0FJ23CGSNKM7P1W5V7";
-const INVOICE_OVERLAY = "01J92P0V1T0J6RH4MY9H81NYB4";
-const INVOICE_MAPPING = "01J92P0V200XW93JQYSRCT2SE3";
-const PLACES = "01J92P0V1ACKN3G6TK3NJDTM82";
 const BILLING = "01J92P0V01KDRN8GX5PGYCNKSX";
 const INVOICE_NOTE = "01K6BND0000000000000000010";
+const TICKET = "01K7TKT0000000000000000010";
+const TICKET_NOTE = "01K7TKT0000000000000000020";
+const TICKET_RELATION = "01K7TKT0000000000000000030";
 
 describe("the mock's materialize", () => {
+  /** Two entities with a relation between them, bound to nothing yet. */
+  function withTickets() {
+    const model = new MockBackend({ seed: billingSeed() }).model;
+    const attr = (id: string, name: string, extra: object = {}) => ({ id, name, type: "string", ...extra });
+    const entity = (id: string, name: string, key: string) => ({
+      kind: "entity",
+      id,
+      name,
+      package: BILLING,
+      key: { attributes: [key] },
+      attributes: [attr(key, "id", { type: "uuid", required: true }), attr(`${key.slice(0, -1)}9`, "title", { length: 60 })],
+    });
+    expect(model.create(entity(TICKET, "Ticket", "01K7TKT0000000000000000011") as never).outcome).toBe("saved");
+    expect(model.create(entity(TICKET_NOTE, "TicketNote", "01K7TKT0000000000000000021") as never).outcome).toBe("saved");
+    expect(
+      model.create({
+        kind: "relation",
+        id: TICKET_RELATION,
+        name: "ticket has notes",
+        package: BILLING,
+        ends: [
+          { id: "01K7TKT0000000000000000031", entity: TICKET, role: "ticket", navigation: "ticket", min: 1, max: 1 },
+          { id: "01K7TKT0000000000000000032", entity: TICKET_NOTE, role: "notes", navigation: "notes", min: 0, max: "*" },
+        ],
+      } as never).outcome,
+    ).toBe("saved");
+    return model;
+  }
+
   it("lists what is unbound, and the bindings of each table", () => {
-    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
+    const model = withTickets();
     const status = model.materializeStatus(MAIN)!;
-    expect(status.entities.find((e) => e.id === INVOICE)).toMatchObject({ projected: true });
+    expect(status.entities.find((e) => e.id === TICKET)).toMatchObject({ name: "Ticket" });
+    expect(status.entities.some((e) => e.id === INVOICE)).toBe(false);
     expect(status.entities.some((e) => e.id === INVOICE_NOTE)).toBe(false);
     expect(status.sources.find((s) => s.name === "notes")?.boundBy.map((b) => [b.entityName, b.constants])).toEqual([
       ["CustomerNote", [{ column: "01K6BND0000000000000000003", value: "customer" }]],
@@ -368,30 +397,29 @@ describe("the mock's materialize", () => {
     ]);
   });
 
-  it("creates the tables of two related entities in one batch: bindings, the overlay kept, the foreign key named", () => {
-    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
-    const plan = model.previewMaterialize(MAIN, { op: "materialize-tables", entities: [CUSTOMER, INVOICE] });
+  it("creates the tables of two related entities in one batch: bindings, the foreign key named", () => {
+    const model = withTickets();
+    const plan = model.previewMaterialize(MAIN, { op: "materialize-tables", entities: [TICKET, TICKET_NOTE] });
     expect(plan.valid).toBe(true);
-    expect(plan.deletes.map((d) => d.id)).toEqual([INVOICE_MAPPING]);
-    const result = model.batch({ operations: [{ op: "materialize-tables", database: MAIN, entities: [CUSTOMER, INVOICE] }] });
+    expect(plan.deletes).toEqual([]);
+    const result = model.batch({ operations: [{ op: "materialize-tables", database: MAIN, entities: [TICKET, TICKET_NOTE] }] });
     expect(result.body).toMatchObject({ outcome: "saved" });
-    const invoice = model.get(INVOICE)!.json as { bindings: Binding[] };
-    expect(invoice.bindings[0]).toMatchObject({ database: MAIN, source: INVOICE_OVERLAY });
-    const table = model.get(INVOICE_OVERLAY)!.json as { origin?: string; entity?: string; foreignKeys: { id: string; referencesTable: string }[] };
+    const ticket = model.get(TICKET)!.json as { bindings: Binding[] };
+    const note = model.get(TICKET_NOTE)!.json as { bindings: Binding[] };
+    expect(ticket.bindings[0]).toMatchObject({ database: MAIN });
+    const table = model.get(note.bindings[0].source)!.json as { origin?: string; entity?: string; foreignKeys: { id: string; referencesTable: string }[] };
     expect([table.origin, table.entity]).toEqual([undefined, undefined]);
-    const customerTable = (model.get(CUSTOMER)!.json as { bindings: Binding[] }).bindings[0].source;
-    expect(table.foreignKeys.map((k) => k.referencesTable)).toEqual([customerTable]);
-    const relationMapping = [...model.docs().values()].find((d) => d.kind === "mapping" && d.relation === PLACES);
+    expect(table.foreignKeys.map((k) => k.referencesTable)).toEqual([ticket.bindings[0].source]);
+    const relationMapping = [...model.docs().values()].find((d) => d.kind === "mapping" && d.relation === TICKET_RELATION);
     expect(relationMapping?.foreignKey).toBe(table.foreignKeys[0].id);
-    expect(model.get(INVOICE_MAPPING)).toBeNull();
     // Every binding rule holds: no MQ404x finding.
     expect(model.validate().diagnostics.filter((d) => /^MQ40(4[4-9]|5\d)|MQ4011/.test(d.rule))).toEqual([]);
     // Refused a second time: already bound.
-    expect(model.previewMaterialize(MAIN, { op: "materialize-tables", entities: [INVOICE] }).diagnostics.map((d) => d.rule)).toEqual(["MQ4055"]);
+    expect(model.previewMaterialize(MAIN, { op: "materialize-tables", entities: [TICKET] }).diagnostics.map((d) => d.rule)).toEqual(["MQ4055"]);
   });
 
   it("makes entities from a table and refuses a bound one", () => {
-    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
+    const model = new MockBackend({ seed: billingSeed() }).model;
     const notes = "01K6BND0000000000000000001";
     expect(model.previewMaterialize(MAIN, { op: "materialize-entities", tables: [notes], package: BILLING }).diagnostics.map((d) => d.rule)).toEqual([
       "MQ4055",
@@ -406,7 +434,7 @@ describe("the mock's materialize", () => {
   });
 
   it("renders a binding's statements, constants as a filter and a value", () => {
-    const model = new MockBackend({ seed: billingProjectedSeed() }).model;
+    const model = new MockBackend({ seed: billingSeed() }).model;
     const settings = model.projectSettings();
     const input = {
       docs: model.docs(),

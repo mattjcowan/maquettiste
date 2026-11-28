@@ -64,8 +64,7 @@ public sealed record ExpressionPreviewRequest
     public string? Lifecycle { get; init; }
 
     /// <summary>
-    /// The row the expression reads, a JSON object of members by name: a table's column names (on a synthesized table, the names its
-    /// text prints: an overlay's attributes as an entity's), an entity's attribute names (a value object's members nested), a process's
+    /// The row the expression reads, a JSON object of members by name: a table's column names, an entity's attribute names (a value object's members nested), a process's
     /// context attributes with the event's payload under <c>event</c> and its object under <c>subject</c>, an operation's input members
     /// with the subject under <c>subject</c>. <see langword="null"/> previews no answer.
     /// </summary>
@@ -180,9 +179,9 @@ public sealed partial class ModelStore
                 note = lowering.FirstOrDefault()?.Message ?? "The expression does not lower to SQL.";
         }
 
-        // A table's checks read the row by column names; every other site reads the API's values by member name, and so does a synthesized
-        // table's, whose column names only resolution knows: by the names its text prints (an attribute, a value object's members nested).
-        var columns = element is Table { Origin: not TableOrigin.Synthesized } or Stereotype
+        // A table's checks read the row by column names; every other site reads the API's values by member name, by the names its text
+        // prints (an attribute, a value object's members nested).
+        var columns = element is Table or Stereotype
             ? TableMapping(snapshot, element, null, site.SubId, document.Path)
             : ExprResolution.ApiColumns(snapshot, site.SubId, document.Path);
         var javaScript = ExprLowering.ToJavaScript(typed, site.Kind, columns);
@@ -316,8 +315,6 @@ public sealed partial class ModelStore
         switch (element)
         {
             case Table table:
-                if (table.Origin == TableOrigin.Synthesized)
-                    return (null, $"Table '{table.Name}' is synthesized from a mapping, so its column names come from resolution; generate to see its CHECK.");
                 if (database is not null && !string.Equals(database.Id, table.Database, StringComparison.Ordinal))
                     return (null, $"Table '{table.Name}' is not in database '{database.Name}'.");
                 return (TableMapping(snapshot, table, snapshot.Get<Database>(table.Database), site.SubId, path), null);
@@ -386,7 +383,7 @@ public sealed partial class ModelStore
 
         var bound = snapshot.Get<Database>(binding.Database);
         var tableId = site.Kind == ExprSiteKind.Check ? (binding.Write is { None: true } ? null : binding.Write?.Table ?? binding.Source) : binding.Source;
-        if ((tableId is null ? null : snapshot.Get<Table>(tableId)) is not { Origin: not TableOrigin.Synthesized } table)
+        if ((tableId is null ? null : snapshot.Get<Table>(tableId)) is not { } table)
         {
             return (null, $"The binding of entity '{entity.Name}' to database '{bound?.Name ?? binding.Database}' "
                 + (site.Kind == ExprSiteKind.Check ? "writes no table file" : "reads no table file") + ", so no table holds the columns the expression reads.");

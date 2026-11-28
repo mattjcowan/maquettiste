@@ -22,13 +22,15 @@ const ID = {
   map: (n: number) => ulid(80 + n),
 };
 
-const entity = (id: string, name: string, n: number) => ({
+/** An entity with its key, bound to the table (and its first column) when one is given. */
+const entity = (id: string, name: string, n: number, bound?: [string, string]) => ({
   kind: "entity",
   id,
   name,
   package: BILLING,
   key: { attributes: [ID.att(n)], strategy: "uuid-v7" },
   attributes: [{ id: ID.att(n), name: "id", type: "uuid", required: true }],
+  ...(bound ? { bindings: [{ id: ulid(200 + n), database: ID.db, source: bound[0], fields: [{ attribute: ID.att(n), column: bound[1] }] }] } : {}),
 });
 const table = (id: string, name: string, columns: [string, string, string?][]) => ({
   kind: "table",
@@ -42,9 +44,9 @@ const table = (id: string, name: string, columns: [string, string, string?][]) =
 async function seed(page: Page) {
   const operations = [
     { kind: "database", id: ID.db, name: "Store", dialect: "postgresql", byConvention: "none" },
-    entity(ID.comment, "Comment", 1),
-    entity(ID.part, "Part", 2),
-    entity(ID.assembly, "Assembly", 3),
+    entity(ID.comment, "Comment", 1, [ID.tComments, ID.col(1)]),
+    entity(ID.part, "Part", 2, [ID.tParts, ID.col(4)]),
+    entity(ID.assembly, "Assembly", 3, [ID.tAssemblies, ID.col(5)]),
     // Tool is covered but has no table in the database: it is left out.
     entity(ID.tool, "Tool", 4),
     table(ID.tComments, "comments", [
@@ -54,10 +56,6 @@ async function seed(page: Page) {
     ]),
     table(ID.tParts, "parts", [[ID.col(4), "id"]]),
     table(ID.tAssemblies, "assemblies", [[ID.col(5), "id"]]),
-    { kind: "mapping", id: ID.map(1), name: "Comment in Store", database: ID.db, entity: ID.comment, table: ID.tComments },
-    { kind: "mapping", id: ID.map(2), name: "Part in Store", database: ID.db, entity: ID.part, table: ID.tParts },
-    { kind: "mapping", id: ID.map(3), name: "Assembly in Store", database: ID.db, entity: ID.assembly, table: ID.tAssemblies },
-    { kind: "mapping", id: ID.map(4), name: "Tool in Store", database: ID.db, entity: ID.tool, ignore: true },
     {
       kind: "relation",
       id: ID.rel,
@@ -159,7 +157,7 @@ async function seedPicking(page: Page) {
   ]);
   const attachedTypes = [{ entity: ID.part }, { entity: ID.assembly }];
   const operations = [
-    entity(M.memo, "Memo", 9),
+    entity(M.memo, "Memo", 9, [M.tMemos, M.col(1)]),
     {
       ...memos,
       foreignKeys: [
@@ -168,7 +166,6 @@ async function seedPicking(page: Page) {
       ],
     },
     { ...links, foreignKeys: [{ id: M.fkLink, name: "fk_memo", columns: [M.col(7)], referencesTable: M.tMemos }] },
-    { kind: "mapping", id: M.mapEntity, name: "Memo in Store", database: ID.db, entity: M.memo, table: M.tMemos },
     {
       kind: "relation",
       id: M.relMemo,

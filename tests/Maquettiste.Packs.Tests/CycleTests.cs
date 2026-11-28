@@ -8,12 +8,11 @@ namespace Maquettiste.Packs.Tests;
 /// reject a CREATE TABLE whose foreign key names a table that does not exist yet, so the schema script and the first migration
 /// leave the cycle-closing key out and add it with ALTER TABLE after the tables exist. SQLite keeps it inline.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed partial class CycleTests
 {
     [Theory]
     [InlineData("main", false, "ALTER TABLE billing.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES billing.customers (id)")]
-    [InlineData("main", true, "ALTER TABLE billing.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES billing.customers (id)")]
+    [InlineData("main", true, "ALTER TABLE billing.customers ADD CONSTRAINT fk_customers_featured_invoice_id FOREIGN KEY (featured_invoice_id) REFERENCES billing.invoices (id)")]
     [InlineData("reporting", false, "ALTER TABLE dbo.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)")]
     [InlineData("reporting", true, "ALTER TABLE dbo.invoices ADD CONSTRAINT fk_invoices_customer_id FOREIGN KEY (customer_id) REFERENCES dbo.customers (id)")]
     public async Task Every_referenced_table_exists_before_the_foreign_key_that_names_it(string database, bool migration, string deferred)

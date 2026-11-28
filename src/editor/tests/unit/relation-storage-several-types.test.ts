@@ -52,20 +52,20 @@ describe("storageEndOf", () => {
 
 describe("what Held in offers", () => {
   it("offers the other end's table only when the end with several types is to-one", () => {
-    expect(offeredHeldIn([comment, attachedOne])).toEqual(["other-table", "link-table", "table-per-type", "none"]);
+    expect(offeredHeldIn([comment, attachedOne])).toEqual(["other-table", "link-table", "table-per-type"]);
   });
   it("offers each type's table when the one-type end is to-one", () => {
-    expect(offeredHeldIn([commentOne, attachedMany])).toEqual(["type-tables", "link-table", "table-per-type", "none"]);
+    expect(offeredHeldIn([commentOne, attachedMany])).toEqual(["type-tables", "link-table", "table-per-type"]);
   });
   it("offers only a link table, a table per type and not here for a many-to-many", () => {
-    expect(offeredHeldIn([comment, attachedMany])).toEqual(["link-table", "table-per-type", "none"]);
+    expect(offeredHeldIn([comment, attachedMany])).toEqual(["link-table", "table-per-type"]);
   });
   it("offers no table per type, and no type tables, with any entity", () => {
-    expect(offeredHeldIn([commentOne, attachedAny])).toEqual(["other-table", "link-table", "none"]);
-    expect(offeredHeldIn([commentOne, { ...attachedAny, toOne: false }])).toEqual(["link-table", "none"]);
+    expect(offeredHeldIn([commentOne, attachedAny])).toEqual(["other-table", "link-table"]);
+    expect(offeredHeldIn([commentOne, { ...attachedAny, toOne: false }])).toEqual(["link-table"]);
   });
-  it("offers only a link table, or none, with several types at both ends", () => {
-    expect(offeredHeldIn([commentMany, attachedMany])).toEqual(["link-table", "none"]);
+  it("offers only a link table with several types at both ends", () => {
+    expect(offeredHeldIn([commentMany, attachedMany])).toEqual(["link-table"]);
   });
   it("offers nothing for a one-type relation", () => {
     expect(offeredHeldIn([comment, storageEndOf({ id: "e2", entity: "Part" })])).toEqual([]);
@@ -86,7 +86,7 @@ describe("what Linked by offers", () => {
     expect(offeredLinkedBy("other-table", attachedAny)).not.toContain("column-per-type");
   });
   it("fixes the choice for each type's table and a table per type", () => {
-    for (const held of ["type-tables", "table-per-type", "none", null] as const) expect(offeredLinkedBy(held, attachedOne)).toEqual([]);
+    for (const held of ["type-tables", "table-per-type", null] as const) expect(offeredLinkedBy(held, attachedOne)).toEqual([]);
   });
   it("asks for each end under a link table, and the end with several types otherwise", () => {
     const ends: StorageEnd[] = [comment, attachedOne];
@@ -100,10 +100,9 @@ describe("writing a choice and reading it back", () => {
   const ends = [comment, attachedOne];
   const roundTrip = (json: StorageMapping) => readChoice(json, ends);
 
-  it("reads a mapping that states nothing as no choice, and ignore as not stored", () => {
+  it("reads a mapping that states nothing as no choice", () => {
     expect(readChoice(null, ends)).toEqual({ heldIn: null, linkedBy: {} });
     expect(roundTrip({})).toEqual({ heldIn: null, linkedBy: {} });
-    expect(roundTrip({ ignore: true })).toEqual({ heldIn: "none", linkedBy: {} });
   });
 
   it("writes and reads the other end's table with each way", () => {
@@ -166,19 +165,14 @@ describe("writing a choice and reading it back", () => {
     expect(readChoice(json, both)).toEqual({ heldIn: "link-table", linkedBy: { e1: "type-and-id", e2: "id" } });
   });
 
-  it("leaves a link table with its table, constants and attribute columns gone, and ignore set", () => {
+  it("leaves a link table with its table, constants and attribute columns gone", () => {
     const json: StorageMapping = {
-      attributes: [
-        { attribute: "note", column: "c" },
-        { attribute: "other", storage: "json" },
-      ],
+      attributes: [{ attribute: "note", column: "c" }, { attribute: "other" }],
     };
     setLinkTable(json, "links");
     setMappingConstants(json, [{ column: "code", value: "A" }]);
-    setHeldIn(json, "none", ends);
-    expect(json).toEqual({ ignore: true, attributes: [{ attribute: "other", storage: "json" }] });
     setHeldIn(json, "other-table", ends);
-    expect(json.ignore).toBeUndefined();
+    expect(json).toEqual({});
   });
 
   it("keeps the link table and its entries when A link table is chosen again", () => {
@@ -209,7 +203,6 @@ describe("writing a choice and reading it back", () => {
 
   it("shows a mapping that matches no pair as written", () => {
     expect(roundTrip({ foreignKey: "fk" })).toMatchObject({ heldIn: "as-written" });
-    expect(roundTrip({ shape: "promoted" })).toMatchObject({ heldIn: "as-written" });
     expect(
       roundTrip({
         ends: [
@@ -331,7 +324,6 @@ describe("a half-written choice keeps its choice", () => {
     "type-tables": [{}, { ends: [{ end: "e1", foreignKeys: ["k1"] }] }],
     "link-table": [{}, { junctionTable: "J", shape: "junction" }, { junctionTable: "J", shape: "junction", ends: [{ end: "e1", foreignKey: "k" }] }],
     "table-per-type": [{}, { ends: [{ end: "e1", foreignKeys: ["k1"] }] }, { ends: [{ end: "e2", types: [{ entity: "Part", foreignKey: "k" }] }] }],
-    none: [{ ignore: true }],
   };
   for (const [choice, mappings] of Object.entries(half))
     it(`reads each half-written state of ${choice} as ${choice} while the card holds that choice`, () => {
@@ -350,11 +342,9 @@ describe("a half-written choice keeps its choice", () => {
       { junctionTable: "J" },
     ];
     for (const mapping of states)
-      for (const draft of [null, "other-table", "type-tables", "link-table", "table-per-type", "none"] as const) {
+      for (const draft of [null, "other-table", "type-tables", "link-table", "table-per-type"] as const) {
         const held = readChoice(mapping, many, draft).heldIn;
-        expect(held === null || held === "as-written" || held === "none" || offered.includes(held), `${JSON.stringify(mapping)} / ${draft} -> ${held}`).toBe(
-          true,
-        );
+        expect(held === null || held === "as-written" || offered.includes(held), `${JSON.stringify(mapping)} / ${draft} -> ${held}`).toBe(true);
       }
     // The half-written table per type of a many-to-many reads as itself, with no draft.
     expect(readChoice({ ends: [{ end: "e1", foreignKeys: ["k1"] }] }, many).heldIn).toBe("table-per-type");
@@ -364,7 +354,6 @@ describe("a half-written choice keeps its choice", () => {
   it("lets the file win over a draft it disagrees with", () => {
     expect(readChoice({ ends: [{ end: "e1", foreignKeys: ["k1"] }] }, ends, "other-table").heldIn).toBe("type-tables");
     expect(readChoice({ junctionTable: "J", ends: [{ end: "e1", foreignKey: "k" }] }, ends, "other-table").heldIn).toBe("link-table");
-    expect(readChoice({ ignore: true }, ends, "other-table").heldIn).toBe("none");
   });
 
   it("keeps A type and an id while only the id column is written", () => {
@@ -397,7 +386,7 @@ describe("a half-written choice keeps its choice", () => {
         ends,
       ),
     ).toBe(true);
-    const target: Record<string, unknown> = { name: "x", ignore: true };
+    const target: Record<string, unknown> = { name: "x", foreignKey: "fk" };
     copyStorageKeys(target, { junctionTable: "J", shape: "junction" });
     expect(target).toEqual({ name: "x", junctionTable: "J", shape: "junction" });
   });

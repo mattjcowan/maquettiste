@@ -5,9 +5,9 @@ namespace Maquettiste.Engine.Tests.Integration;
 
 /// <summary>
 /// The acceptance of next-phase-2-design.md section 6.2: a reviewer reads a change by package and by member, from the snapshot taken
-/// before it or from a folder that holds the base (a CI checkout stands in), with the migration facts in their own group.
+/// before it or from a folder that holds the base (a CI checkout stands in), with the migration facts in their own group. The change renames
+/// Invoice's number and the invoices column it is bound to, and adds a table.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class ModelReviewTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -25,18 +25,23 @@ public sealed class ModelReviewTests
         var comparison = (await f.Library.CompareAsync(snapshot.Id, SnapshotLibrary.Working, 0, SnapshotLibrary.MaxCompareLimit, review, Ct))!;
         var markdown = ModelDiffFormat.Markdown(comparison);
 
-        var table = Assert.Single(comparison.Elements, e => e.Kind == "table").Id;
+        var table = Assert.Single(comparison.Elements, e => e.Kind == "table" && e.Name == "payment_method").Id;
         var fact = Assert.Single(comparison.Elements, e => e.Kind == "migration").Id;
         Assert.Equal($$"""
             # Model diff: `{{snapshot.Id}}` to `working`
 
-            2 added, 0 removed, 1 changed.
+            2 added, 0 removed, 2 changed.
 
             ## Billing
 
             - changed entity `Invoice` (`{{ModelDiffTests.Invoice}}`)
               - attribute `code`, `/name` from `"number"` to `"code"`
             - added table `payment_method` (`{{table}}`)
+
+            ## (no package)
+
+            - changed table `invoices` (`{{ModelDiffTests.InvoicesTable}}`)
+              - column `code`, `/name` from `"number"` to `"code"`
 
             ## migrations of main
 

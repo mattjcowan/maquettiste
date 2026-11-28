@@ -1,5 +1,5 @@
 // Database schemas (erratum E26): a database declares its schemas ({ id, name }) and names its default by name
-// (`defaultSchema`); tables, views, sequences, routines, database types, SQL objects, convention entries and entity mappings name a schema by id. The four
+// (`defaultSchema`); tables, views, sequences, routines, database types and SQL objects name a schema by id. The four
 // schema operations of a batch (add-schema, rename-schema, remove-schema, set-default-schema) run on the server; the
 // mock server runs `applySchemaOperation` here. Free of React.
 
@@ -40,54 +40,14 @@ export function defaultSchemaId(db: Json | null | undefined): string | null {
   return schemasOf(db).find((s) => s.name === name)?.id ?? null;
 }
 
-/** A convention package entry: a package id, or { package, schema }. */
-export type ConventionEntry = string | { package: string; schema?: string | null };
-
-export const entryPackage = (e: ConventionEntry): string => (typeof e === "string" ? e : e.package);
-export const entrySchema = (e: ConventionEntry): string | null => (typeof e === "string" ? null : (e.schema ?? null));
-
-/** Package id → schema id, for the entries that name a schema. */
-export function conventionSchemas(db: Json | null | undefined): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const e of (Array.isArray(db?.packages) ? db.packages : []) as ConventionEntry[]) {
-    const s = entrySchema(e);
-    if (s) out[entryPackage(e)] = s;
-  }
-  return out;
-}
-
-/** The entry written for a package: the id when there is no schema (the canonical form). */
-export const entryOf = (pkg: string, schema: string | null | undefined): ConventionEntry => (schema ? { package: pkg, schema } : pkg);
-
-/**
- * The schema id an entity's conventional table goes to: the entity's mapping, else the nearest convention entry up the
- * package tree that names a schema, else null (the default).
- */
-export function schemaForEntity(
-  db: Json,
-  packageId: string | null | undefined,
-  mapping: { schema?: unknown } | null | undefined,
-  parentOf: (id: string) => string | null | undefined,
-): string | null {
-  if (typeof mapping?.schema === "string") return mapping.schema;
-  const bySchema = conventionSchemas(db);
-  const seen = new Set<string>();
-  for (let id = packageId ?? null; id && !seen.has(id); id = parentOf(id) ?? null) {
-    seen.add(id);
-    if (bySchema[id]) return bySchema[id];
-  }
-  return null;
-}
-
 /** The schema name a schema id stands for; null (the default) when it is not declared. */
 export function schemaNameOf(db: Json, schemaId: string | null | undefined): string | null {
   return (schemaId && schemasOf(db).find((s) => s.id === schemaId)?.name) || defaultSchemaName(db);
 }
 
-const SCHEMA_KINDS: ReadonlySet<string> = new Set(["table", "view", "sequence", "routine", "database-type", "sql-object", "mapping"]);
+const SCHEMA_KINDS: ReadonlySet<string> = new Set(["table", "view", "sequence", "routine", "database-type", "sql-object"]);
 
-/** What lives in a schema: tables, views, sequences, routines, database types, SQL objects and mappings of the database, and
- * convention entries. */
+/** What lives in a schema: tables, views, sequences, routines, database types and SQL objects of the database. */
 export function occupantsOf(docs: Iterable<Json>, db: Json, schemaId: string): { id: string; label: string }[] {
   const out: { id: string; label: string }[] = [];
   const dbId = String(db.id);
@@ -95,8 +55,6 @@ export function occupantsOf(docs: Iterable<Json>, db: Json, schemaId: string): {
     if (!SCHEMA_KINDS.has(String(d.kind))) continue;
     if (d.database === dbId && d.schema === schemaId) out.push({ id: String(d.id), label: `${String(d.kind)} ${String(d.name ?? d.id)}` });
   }
-  for (const e of (Array.isArray(db.packages) ? db.packages : []) as ConventionEntry[])
-    if (entrySchema(e) === schemaId) out.push({ id: entryPackage(e), label: `convention entry ${entryPackage(e)}` });
   return out;
 }
 
@@ -159,8 +117,6 @@ export function applySchemaOperation(docs: ReadonlyMap<string, Json>, o: SchemaO
           changed.set(x.id, doc);
         }
       }
-      if (Array.isArray(db.packages))
-        db.packages = (db.packages as ConventionEntry[]).map((e) => (entrySchema(e) === o.schema ? entryOf(entryPackage(e), o.target) : e));
       if (newDefault) db.defaultSchema = newDefault.name;
       db.schemas = schemas.filter((x) => x !== s);
       return { changed };

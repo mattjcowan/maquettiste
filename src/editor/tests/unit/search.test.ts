@@ -26,8 +26,8 @@ const ROWS: ElementSummary[] = [
   row("T1", "tag-vocabulary", "Tags"),
 ];
 const TABLES = [
-  { key: "invoice_lines", name: "invoice_lines", schema: "billing", entityId: "E2" },
-  { key: "orders", name: "orders", schema: "sales", entityId: "E3" },
+  { key: "invoice_lines", name: "invoice_lines", schema: "billing" },
+  { key: "orders", name: "orders", schema: "sales" },
 ] as unknown as TableSummary[];
 
 function loaded(withTables = true): SearchIndex {
@@ -174,7 +174,8 @@ describe("search/engine", () => {
     expect(ids("inv kind:entities")).toEqual(["E1", "E2"]);
     expect(ids("kind:domain ^b")).toEqual(["P1"]);
     expect(ids("in:billing")).toEqual(["E1", "E2", "N1", "P1", "P2"]);
-    expect(ids("in:billing", "databases")).toEqual([tableKeyOf("DB", "invoice_lines")]);
+    // A table names no entity, so it is in no domain.
+    expect(ids("in:billing", "databases")).toEqual([]);
     expect(ids("tag:pii")).toEqual(["E1", "E4"]);
     expect(ids("st:AGGREGATE")).toEqual(["E1"]);
     expect(ids("cat:finance")).toEqual(["E1"]);

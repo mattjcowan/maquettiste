@@ -1,9 +1,9 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Cli.Tests;
 
-[UsesProjectedFixtures]
 public sealed class ValidateTests
 {
     private const string CustomerFile = ".maquettiste/model/entities/customer.json";
@@ -108,7 +108,7 @@ public sealed class ValidateTests
     }
 
     [Fact]
-    public async Task A_foreign_key_pinned_by_an_overlay_is_MQ4005_in_text_json_and_sarif_as_generation_would_report_it()
+    public async Task A_foreign_key_column_pinned_to_another_native_type_is_MQ4005_in_text_json_and_sarif_as_generation_would_report_it()
     {
         using var repo = CliRepo.Billing();
         repo.Write(BillingEdits.InvoiceOverlayPath, BillingEdits.PinCustomerForeignKey(repo.Read(BillingEdits.InvoiceOverlayPath)));
@@ -273,7 +273,7 @@ public sealed class ValidateTests
         Assert.False(Directory.Exists(repo.PathOf(SchemaFolder)));
     }
 
-    private const string OverlayFile = ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json";
+    private const string InvoicesFile = ".maquettiste/model/databases/main/tables/invoices.json";
     private const string FactFile = ".maquettiste/model/databases/main/migrations/open/01jfct00000000000000000001.json";
 
     /// <summary>A change-type fact of the invoice number from text to varchar(20), with <paramref name="intent"/> after its sides.</summary>
@@ -286,8 +286,8 @@ public sealed class ValidateTests
           "fact": "change-type",
           "object": {
             "kind": "column",
-            "table": "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4",
-            "key": "01J92P0V0R3VSP7D5238DTNZX1",
+            "table": "01J92P0V1T0J6RH4MY9H81NYB4",
+            "key": "01J92P0V1VQAA9FW71PKYWWHKN",
             "schema": "billing",
             "tableName": "invoices",
             "name": "number"
@@ -312,7 +312,7 @@ public sealed class ValidateTests
         using var repo = CliRepo.Billing();
         using var copy = new TempRepo();
         // The baseline pins the invoice number to text: a snapshot of it, and a copy of the project in a folder.
-        repo.Replace(OverlayFile, "\"nativeType\": \"varchar(32)\"", "\"nativeType\": \"text\"");
+        repo.Replace(InvoicesFile, "\"nativeType\": \"varchar(32)\"", "\"nativeType\": \"text\"");
         var created = await repo.RunAsync("snapshot", "create", "Base", "--format", "json");
         Assert.True(created.ExitCode == 0, created.ToString());
         using var info = JsonDocument.Parse(created.Out);
@@ -320,14 +320,14 @@ public sealed class ValidateTests
         CliRepo.CopyTree(repo.ModelRoot, copy.ModelRoot);
 
         // Narrowed by hand (no write records a fact): nothing explains it.
-        repo.Replace(OverlayFile, "\"nativeType\": \"text\"", "\"nativeType\": \"varchar(20)\"");
+        repo.Replace(InvoicesFile, "\"nativeType\": \"text\"", "\"nativeType\": \"varchar(20)\"");
         Assert.Equal(0, (await repo.RunAsync("validate")).ExitCode);
         foreach (var against in new[] { snapshot, copy.RepoRoot })
         {
             var unexplained = await repo.RunAsync("validate", "--against", against);
             Assert.True(unexplained.ExitCode == 1, unexplained.ToString());
             var line = Assert.Single(Text.Lines(unexplained.Out), l => l.Contains(" error ", StringComparison.Ordinal));
-            Assert.StartsWith(OverlayFile + "(", line, StringComparison.Ordinal);
+            Assert.StartsWith(InvoicesFile + "(", line, StringComparison.Ordinal);
             Assert.Contains("error MQ4102: ", line, StringComparison.Ordinal);
         }
 
@@ -372,5 +372,56 @@ public sealed class ValidateTests
         var missing = await repo.RunAsync("validate", "--against", "./no-such-folder");
         Assert.Equal(4, missing.ExitCode);
         Assert.Contains("no-such-folder", missing.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_baseline_that_laid_out_tables_by_convention_is_refused_by_validate_and_generate()
+    {
+        using var repo = CliRepo.Billing();
+        const string database = ".maquettiste/model/databases/main/database.json";
+        const string product = ".maquettiste/model/entities/product.json";
+
+        // byConvention "all", and an entity mapping: read without the removed keys, either baseline would hold none of those tables.
+        using var all = new TempRepo();
+        CliRepo.CopyTree(repo.ModelRoot, all.ModelRoot);
+        all.WriteFile(database, all.ReadFile(database).Replace("\"byConvention\": \"none\"", "\"byConvention\": \"all\"", StringComparison.Ordinal));
+        using var mapped = new TempRepo();
+        CliRepo.CopyTree(repo.ModelRoot, mapped.ModelRoot);
+        mapped.WriteFile(".maquettiste/model/mappings/product-in-main.json", """
+            { "kind": "mapping", "id": "01K6RPJ0000000000000000001", "name": "Product in main", "database": "DATABASE",
+              "entity": "PRODUCT", "table": "products" }
+            """.Replace("DATABASE", IdOf(repo.Read(database)), StringComparison.Ordinal).Replace("PRODUCT", IdOf(repo.Read(product)), StringComparison.Ordinal));
+        // No byConvention while an entity is not bound to the database: it laid out that entity's table.
+        using var unbound = new TempRepo();
+        CliRepo.CopyTree(repo.ModelRoot, unbound.ModelRoot);
+        unbound.WriteFile(database, Without(unbound.ReadFile(database), "byConvention"));
+        unbound.WriteFile(product, Without(unbound.ReadFile(product), "bindings"));
+
+        foreach (var against in new[] { all.RepoRoot, mapped.RepoRoot, unbound.RepoRoot })
+        {
+            var validate = await repo.RunAsync("validate", "--against", against);
+            Assert.True(validate.ExitCode == 4, validate.ToString());
+            Assert.Contains("MQ4145 This baseline (folder ", validate.Error, StringComparison.Ordinal);
+            Assert.Contains("laid out tables by convention. Compare it on 0.28.0, or take a new baseline after Create tables.", validate.Error, StringComparison.Ordinal);
+            var generate = await repo.RunAsync("generate", "--dry-run", "--against", against);
+            Assert.True(generate.ExitCode == 4, generate.ToString());
+            Assert.Contains("laid out tables by convention", generate.Error, StringComparison.Ordinal);
+        }
+
+        // No byConvention while every entity is bound laid out nothing: the comparison runs.
+        using var bound = new TempRepo();
+        CliRepo.CopyTree(repo.ModelRoot, bound.ModelRoot);
+        bound.WriteFile(database, Without(bound.ReadFile(database), "byConvention"));
+        var accepted = await repo.RunAsync("validate", "--against", bound.RepoRoot);
+        Assert.True(accepted.ExitCode == 0, accepted.ToString());
+    }
+
+    private static string IdOf(string json) => JsonNode.Parse(json)!["id"]!.GetValue<string>();
+
+    private static string Without(string json, string key)
+    {
+        var node = JsonNode.Parse(json)!.AsObject();
+        Assert.True(node.Remove(key), key);
+        return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
     }
 }

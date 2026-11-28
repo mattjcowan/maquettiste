@@ -11,7 +11,7 @@ namespace Maquettiste.Engine.Tests.Planning;
 
 /// <summary>
 /// The <c>each view</c> and <c>each sequence</c> scopes (engine-design.md section 7.0a, erratum E38): one unit per view or sequence of
-/// every database, the key sequences the resolver creates included, keyed by the object's id; <c>generation.skip</c> and <c>where</c>
+/// every database, keyed by the object's id; <c>generation.skip</c> and <c>where</c>
 /// (tags, stereotypes, categories, database) read the object's own file. The <c>each database</c> and <c>each attribute</c> scopes
 /// (next-phase-1-design.md section 5.5): one unit per database, filtered on the database file; one unit per declared attribute at its
 /// declaring owner, filtered on its own tags and stereotypes and its owner's package and databases.
@@ -26,7 +26,6 @@ public sealed class ObjectScopeTests
         var b = new ModelBuilder(seed: 71);
         b.Stereotype("ledger").AppliesTo("view", "sequence");
         var receivables = b.Category("Receivables");
-        b.Entity("Counter").Key("id", "int64", IdentityStrategy.Sequence);
         var main = b.Database("main", Dialect.PostgreSql);
         var reporting = b.Database("reporting", Dialect.SqlServer);
         View(b, "open_ledger", main.Id, v => v with { Tags = ["finance"], Stereotypes = ["ledger"], Category = receivables });
@@ -38,9 +37,9 @@ public sealed class ObjectScopeTests
 
     /// <summary>
     /// Packages Sales and Catalog; entities Party (Sales, abstract: id, name tagged pii), Customer (Sales, derives from Party: email,
-    /// stereotype audited with the virtual createdAt), Product (Catalog: sku, title with stereotype label, ignored in reporting); value
-    /// object Money (Catalog: amount, currency); relation buys (Customer to Product: quantity, audited), promoted; databases main
-    /// (tag primary, stereotype ops, category Finance), reporting and scratch (package Catalog, <c>generation["p"].skip</c>).
+    /// stereotype audited with the virtual createdAt), Product (Catalog: sku, title with stereotype label); value object Money (Catalog:
+    /// amount, currency); relation buys (Customer to Product: quantity, audited); databases main (tag primary, stereotype ops, category
+    /// Finance), reporting (where Party and Customer are bound to tables) and scratch (package Catalog, <c>generation["p"].skip</c>).
     /// </summary>
     private static ResolvedModel BuildScoped()
     {
@@ -56,9 +55,10 @@ public sealed class ObjectScopeTests
         var product = b.Entity("Product", catalog).Key("sku", "string").Attr("title", "string", a => a.Stereotype("label"));
         b.ValueObject("Money", catalog).Attr("amount", "decimal").Attr("currency", "string");
         b.Relation("buys", customer, product, fromRole: "buyer", toRole: "item").Attr("quantity", "int32").Stereotype("audited");
-        b.Settings(s => s with { Conventions = s.Conventions with { RelationsWithAttributes = RelationShape.Promoted } });
         b.Database("main", Dialect.PostgreSql).Tag("primary").Stereotype("ops").Category(finance);
-        b.Mapping(b.Database("reporting", Dialect.SqlServer), product).Ignore();
+        var reporting = b.Database("reporting", Dialect.SqlServer);
+        b.Table("parties", reporting).Column("id", "uuid", nullable: false).Column("name", "string").PrimaryKey("id").Binds(party);
+        b.Table("customers", reporting).Column("id", "uuid", nullable: false).Column("email", "string").PrimaryKey("id").Binds(customer);
         b.Add(new Database
         {
             Id = b.NewId(),
@@ -84,8 +84,7 @@ public sealed class ObjectScopeTests
         // The scratch view's hint names pack "p": this pack plans the other two, keyed by the view's id.
         Assert.Equal(["monthly_totals", "open_ledger"], Names(plan, "view"));
         Assert.Contains(plan.Units, u => u.Key == "p/view:" + views.Single(v => v.Name == "open_ledger").Id);
-        // The sequence file and the key sequence the resolver creates for Counter in each database.
-        Assert.Equal(["counters_seq", "counters_seq", "posting_seq"], Names(plan, "sequence"));
+        Assert.Equal(["posting_seq"], Names(plan, "sequence"));
         Assert.All(plan.Units.Where(u => u.Unit.Id == "sequence"), u => Assert.IsType<RSequence>(u.Element));
 
         var other = await Plan(Pack("q", [Unit("view", "each view")]));
@@ -98,7 +97,8 @@ public sealed class ObjectScopeTests
     [InlineData("each view", "stereotypes", "ledger", "open_ledger")]
     [InlineData("each view", "categories", "Receivables", "open_ledger")]
     [InlineData("each view", "database", "reporting", "monthly_totals")]
-    [InlineData("each sequence", "database", "main", "counters_seq,posting_seq")]
+    [InlineData("each sequence", "database", "main", "posting_seq")]
+    [InlineData("each sequence", "database", "reporting", "")]
     [InlineData("each sequence", "tags", "finance", "posting_seq")]
     public async Task Where_filters_views_and_sequences_by_their_own_files(string scope, string filter, string value, string expected)
     {
@@ -183,8 +183,6 @@ public sealed class ObjectScopeTests
         var customer = Scoped.Entities.Single(e => e.Name == "Customer");
         Assert.Contains(customer.Attributes, a => a.IsInherited && a.Name == "name");
         Assert.Contains(customer.Attributes, a => a.IsVirtual && a.Name == "createdAt");
-        var promoted = Scoped.Entities.Single(e => e.IsPromoted);
-        Assert.Contains(promoted.Attributes, a => a.Name == "quantity");
         Assert.Contains(Scoped.Relations.Single(r => r.Name == "buys").Attributes, a => a.IsVirtual);
     }
 

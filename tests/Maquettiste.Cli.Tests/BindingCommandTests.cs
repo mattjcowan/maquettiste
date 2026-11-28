@@ -8,7 +8,6 @@ namespace Maquettiste.Cli.Tests;
 /// CustomerNote share the table <c>notes</c>: a re-sync records InvoiceNote's provenance, a change to the table is drift, and the
 /// operations catch up as <c>model materialize</c> does.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class BindingCommandTests
 {
     private const string Notes = ".maquettiste/model/databases/main/tables/notes.json";
@@ -67,19 +66,23 @@ public sealed class BindingCommandTests
             drift.Out);
         Assert.Contains("1 binding listed, 1 with drift.", drift.Error, StringComparison.Ordinal);
 
-        // Every binding: CustomerNote has no provenance and lists only the column nothing accounts for; RevenueMonth reads a query.
+        // Every binding: CustomerNote has no provenance and lists only the column nothing accounts for; RevenueMonth reads a query; the
+        // bindings of the other tables do not drift.
         var all = await repo.RunAsync("binding", "drift", "--all", "--format", "json");
         Assert.True(all.ExitCode == 0, all.ToString());
         var bindings = JsonNode.Parse(all.Out)!["bindings"]!.AsArray();
-        Assert.Equal(["CustomerNote", "InvoiceNote", "RevenueMonth"], bindings.Select(b => (string)b!["entityName"]!));
-        var customer = bindings[0]!;
+        Assert.Equal(["Customer", "CustomerNote", "Invoice", "InvoiceLine", "InvoiceNote", "Payment", "Product", "RevenueMonth"],
+            bindings.Select(b => (string)b!["entityName"]!));
+        JsonNode Named(string name) => bindings.Single(b => (string)b!["entityName"]! == name)!;
+        var customer = Named("CustomerNote");
         Assert.False((bool)customer["hasProvenance"]!);
         Assert.Equal("subject", (string)Assert.Single(customer["added"]!.AsArray())!["name"]!);
         Assert.Empty(customer["renamed"]!.AsArray());
-        var invoice = bindings[1]!;
+        var invoice = Named("InvoiceNote");
         Assert.Equal((Body, "body"), ((string)invoice["renamed"]![0]!["attribute"]!, (string)invoice["renamed"]![0]!["attributeName"]!));
         Assert.Equal(CreatedAt, (string)invoice["retyped"]![0]!["column"]!);
-        Assert.Empty(bindings[2]!["added"]!.AsArray());
+        Assert.Empty(Named("RevenueMonth")["added"]!.AsArray());
+        Assert.Empty(Named("Invoice")["added"]!.AsArray());
 
         Assert.Equal(4, (await repo.RunAsync("binding", "drift", "--database", "nowhere")).ExitCode);
         Assert.Equal(4, (await repo.RunAsync("binding", "drift", "Nobody")).ExitCode);
@@ -110,11 +113,10 @@ public sealed class BindingCommandTests
     [Fact]
     public async Task A_new_invoice_column_is_drift_and_fails_validate_once_MQ4047_is_an_error()
     {
-        // next-phase-2-design.md section 3.3, acceptance: materialize binds Invoice to its table with provenance; a column added to the
-        // table is listed by binding drift and is MQ4047, a warning, until the project makes it an error that makes validate exit 1.
+        // next-phase-2-design.md section 3.3, acceptance: Invoice is bound to its table with provenance; a column added to the table is
+        // listed by binding drift and is MQ4047, a warning, until the project makes it an error that makes validate exit 1.
         using var repo = CliRepo.Billing();
-        var materialized = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice");
-        Assert.True(materialized.ExitCode == 0, materialized.ToString());
+        Assert.NotNull(JsonNode.Parse(repo.Read(".maquettiste/model/entities/invoice.json"))!["bindings"]![0]!["provenance"]);
         var table = JsonNode.Parse(repo.Read(Invoices))!.AsObject();
         table["columns"]!.AsArray().Add(new JsonObject { ["id"] = "01K9D0E0000000000000000001", ["name"] = "due_on", ["type"] = "date" });
         WriteJson(repo, Invoices, table);

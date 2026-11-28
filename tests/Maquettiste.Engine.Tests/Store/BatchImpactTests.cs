@@ -9,12 +9,12 @@ namespace Maquettiste.Engine.Tests.Store;
 /// The store's part of a dry run's impact (next-phase-2-design.md section 6.1, decisions 6 and 7): the referrers of what the change
 /// alters or deletes, minus the batch's own documents, and the databases it can reach. Packs are the generation service's.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class BatchImpactTests
 {
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
     private const string Number = "01J92P0V0R3VSP7D5238DTNZX1";
-    private const string InvoiceOverlay = "01J92P0V1T0J6RH4MY9H81NYB4";
+    private const string InvoicesTable = "01J92P0V1T0J6RH4MY9H81NYB4";
+    private const string NumberColumn = "01J92P0V1VQAA9FW71PKYWWHKN";
     private const string InvoicesByCustomer = "01K6QRY0000000000000000001";
     private const string InvoiceStatus = "01J92P0V05WQDH2GZG539D9VG1";
     private const string Main = "01J92P0V1QRN2181XM2ZWE02W4";
@@ -46,21 +46,25 @@ public sealed class BatchImpactTests
         return preview;
     }
 
+    private static Action<JsonObject> RenameColumn(string column, string name) =>
+        e => e["columns"]!.AsArray().Single(c => (string?)c!["id"] == column)!["name"] = name;
+
     [Fact]
-    public async Task Referrers_of_a_renamed_attribute_exclude_the_batch_documents()
+    public async Task Referrers_of_a_renamed_column_exclude_the_batch_documents()
     {
+        // The invoices table's number column is mapped by Invoice's binding and read by the query InvoicesByCustomer.
         await using var s = await BillingStore.OpenAsync();
-        var alone = await DryRunAsync(s, Update(s, Invoice, Rename(Number, "code")));
-        Assert.Contains(alone.Impact!.Referrers, r => r.Reference.FromElementId == InvoiceOverlay);
+        var alone = await DryRunAsync(s, Update(s, InvoicesTable, RenameColumn(NumberColumn, "code")));
+        Assert.Contains(alone.Impact!.Referrers, r => r.Reference.FromElementId == Invoice);
         Assert.Contains(alone.Impact.Referrers, r => r.Reference.FromElementId == InvoicesByCustomer);
-        Assert.DoesNotContain(alone.Impact.Referrers, r => r.Reference.FromElementId == Invoice);
-        Assert.All(alone.Impact.Referrers, r => Assert.Equal((Number, "changed"), (r.Target, r.Change)));
+        Assert.DoesNotContain(alone.Impact.Referrers, r => r.Reference.FromElementId == InvoicesTable);
+        Assert.All(alone.Impact.Referrers, r => Assert.Equal((NumberColumn, "changed"), (r.Target, r.Change)));
         var query = alone.Impact.Referrers.First(r => r.Reference.FromElementId == InvoicesByCustomer);
         Assert.Equal(("query", "InvoicesByCustomer"), (query.FromKind, query.FromName));
 
-        // The overlay written by the same batch is in its files, not among the referrers.
-        var both = await DryRunAsync(s, Update(s, Invoice, Rename(Number, "code")), Update(s, InvoiceOverlay, e => e["description"] = "Invoices."));
-        Assert.DoesNotContain(both.Impact!.Referrers, r => r.Reference.FromElementId == InvoiceOverlay);
+        // The entity written by the same batch is in its files, not among the referrers.
+        var both = await DryRunAsync(s, Update(s, InvoicesTable, RenameColumn(NumberColumn, "code")), Update(s, Invoice, e => e["description"] = "Invoices."));
+        Assert.DoesNotContain(both.Impact!.Referrers, r => r.Reference.FromElementId == Invoice);
         Assert.Contains(both.Impact.Referrers, r => r.Reference.FromElementId == InvoicesByCustomer);
         Assert.Equal(both.Impact.Referrers.Count, both.Impact.ReferrersTotal);
     }
@@ -70,10 +74,10 @@ public sealed class BatchImpactTests
     {
         await using var s = await BillingStore.OpenAsync();
         // The harness's validator accepts the dangling references, so the dry run saves and lists them.
-        var preview = await DryRunAsync(s, Update(s, Invoice, e => e["attributes"]!.AsArray().Remove(e["attributes"]!.AsArray().Single(a => (string?)a!["id"] == Number))));
+        var preview = await DryRunAsync(s, Update(s, InvoicesTable, e => e["columns"]!.AsArray().Remove(e["columns"]!.AsArray().Single(c => (string?)c!["id"] == NumberColumn))));
         Assert.Contains(preview.Impact!.Referrers, r => r.Reference.FromElementId == InvoicesByCustomer);
-        Assert.All(preview.Impact.Referrers.Where(r => r.Target == Number), r => Assert.Equal("deleted", r.Change));
-        Assert.Contains(preview.Impact.Referrers, r => r.Target == Number);
+        Assert.All(preview.Impact.Referrers.Where(r => r.Target == NumberColumn), r => Assert.Equal("deleted", r.Change));
+        Assert.Contains(preview.Impact.Referrers, r => r.Target == NumberColumn);
     }
 
     [Fact]
@@ -113,7 +117,7 @@ public sealed class BatchImpactTests
     {
         await using var s = await BillingStore.OpenAsync();
         var preview = await s.Store.PreviewBatchAsync(Parse(s, $$"""
-            { "operations": [ { "op": "update", "id": "{{Invoice}}", "expectedHash": "{{s.Model.GetDocument(InvoiceOverlay)!.Hash}}", "element": {{Encoding.UTF8.GetString(BillingStore.Edit(s.Model.GetDocument(Invoice)!, Rename(Number, "code")))}} } ] }
+            { "operations": [ { "op": "update", "id": "{{Invoice}}", "expectedHash": "{{s.Model.GetDocument(InvoicesTable)!.Hash}}", "element": {{Encoding.UTF8.GetString(BillingStore.Edit(s.Model.GetDocument(Invoice)!, Rename(Number, "code")))}} } ] }
             """), Ct);
         Assert.NotEqual(SaveOutcome.Saved, preview.Outcome);
         Assert.Null(preview.Impact);

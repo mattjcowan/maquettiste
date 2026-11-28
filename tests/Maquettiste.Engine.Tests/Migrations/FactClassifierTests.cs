@@ -47,7 +47,7 @@ public sealed class FactClassifierTests
         FactClassifier.Classify(new ClassifierInput
         {
             DatabaseId = Db, Dialect = dialect, Before = before, After = after, OpenFacts = facts ?? [], WrittenFacts = written ?? FrozenSet<string>.Empty,
-            Rekeys = rekeys ?? [], SequenceRekeys = sequences ?? FrozenDictionary<string, string>.Empty, MemberRekeys = members ?? [],
+            Rekeys = rekeys ?? [], MemberRekeys = members ?? [],
             ConstraintsBefore = constraintsBefore ?? FrozenDictionary<string, IReadOnlySet<string>>.Empty,
             ConstraintsAfter = constraintsAfter ?? FrozenDictionary<string, IReadOnlySet<string>>.Empty,
         }, new SequentialIdGenerator(7));

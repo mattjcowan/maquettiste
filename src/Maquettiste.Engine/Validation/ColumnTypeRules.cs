@@ -11,8 +11,7 @@ namespace Maquettiste.Engine.Validation;
 /// when the file is read). On a table file: MQ4083 for a column whose type or stated facets cannot hold its bound type's values; MQ4084
 /// for a declared foreign key from a column whose bound type is a reference type that does not point at the type's bound table and its
 /// code column; MQ7014 for a literal default that is not one of the type's stored values or codes, or MQ7019 when it is a former code of
-/// its reference type (section 3.5, <see cref="FormerCodeProblem"/>, which table seed cells use too); MQ4085 for an overlay entry whose
-/// sensitivity differs from the attribute it stores. The columns a designed or imported table inherits from its stereotypes are judged
+/// its reference type (section 3.5, <see cref="FormerCodeProblem"/>, which table seed cells use too). The columns a designed or imported table inherits from its stereotypes are judged
 /// too, with findings where 3.1 places member findings (<see cref="MemberRules.PointerOf"/>). On an entity (<see cref="CheckEntity"/>):
 /// MQ4085 for a binding field whose attribute and column state different sensitivities, and MQ7014 for a binding constant written into a
 /// column with a bound type. Table seed cells (<see cref="TableSeedRules"/>) and a reference type binding's constants
@@ -26,7 +25,7 @@ internal static class ColumnTypeRules
 
     private static string Str(long i) => i.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Judges the columns with a bound type, the declared foreign keys from them and the overlay entries' sensitivity of one table file.</summary>
+    /// <summary>Judges the columns with a bound type and the declared foreign keys from them of one table file.</summary>
     /// <param name="context">The validation context.</param>
     /// <param name="table">The table file.</param>
     /// <param name="report">The report.</param>
@@ -37,21 +36,12 @@ internal static class ColumnTypeRules
         {
             var column = table.Columns[i];
             var pointer = Ptr.At("/columns", i);
-            if (column.Attribute is { } key)
-            {
-                CheckOverlaySensitivity(model, column, key, pointer, report);
-                continue;
-            }
-
             CheckColumn(context, table, column, pointer, null, column.Id, report);
         }
 
-        // The columns the table inherits are judged on the table; an overlay's candidate set may hold members its synthesized table skips.
-        if (table.Origin != TableOrigin.Synthesized)
-        {
-            foreach (var member in TableMembers.Of(model, table).Columns)
-                CheckColumn(context, table, member.Member, null, MemberRules.PointerOf(table, member.MemberId, member.From), table.Id, report);
-        }
+        // The columns the table inherits are judged on the table.
+        foreach (var member in TableMembers.Of(model, table).Columns)
+            CheckColumn(context, table, member.Member, null, MemberRules.PointerOf(table, member.MemberId, member.From), table.Id, report);
 
         CheckForeignKeys(context, table, report);
     }
@@ -93,7 +83,7 @@ internal static class ColumnTypeRules
 
     /// <summary>
     /// The enum, reference type or scalar type a column of a table file holds by its bindings (<see cref="BoundColumnTypes"/>), or
-    /// <see langword="null"/>: a column no binding maps, one whose bindings disagree, or a column of an overlay.
+    /// <see langword="null"/>: a column no binding maps, or one whose bindings disagree.
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="table">The table file.</param>
@@ -289,8 +279,6 @@ internal static class ColumnTypeRules
             CheckForeignKey(context, table, withMembers, fk.Name ?? fk.Id, fk.Columns, fk.ReferencesTable, fk.ReferencesColumns, Ptr.At("/foreignKeys", i), fk.Id, report);
         }
 
-        if (table.Origin == TableOrigin.Synthesized)
-            return;
         foreach (var member in TableMembers.Of(model, table).ForeignKeys)
         {
             if (member.Member.ReferencesTable is { } referencesTable)
@@ -338,34 +326,6 @@ internal static class ColumnTypeRules
         }
     }
 
-    /// <summary>MQ4085 on an overlay entry: its own sensitivity differs from the own sensitivity of the attribute its projected column stores.</summary>
-    private static void CheckOverlaySensitivity(ModelSnapshot model, Column entry, string key, string pointer, Report report)
-    {
-        if (entry.Sensitive is not { } own || StoredAttribute(model, key) is not { Sensitive: { } theirs } attribute || theirs == own)
-            return;
-        report.Add("MQ4085", $"Column entry '{Label(entry, key)}' states sensitive '{Text(own)}', but attribute '{attribute.Name}', which its column stores, states '{Text(theirs)}': state it on one side, and the other shows it.", pointer + "/sensitive", entry.Id);
-    }
-
-    /// <summary>
-    /// The attribute a projected column of a column key stores: the last segment of a key whose first segment is an attribute (an attribute,
-    /// or a member of an embedded value object); <see langword="null"/> for a foreign key column (an end's), <c>id</c>, <c>position</c> and
-    /// the other columns that store none.
-    /// </summary>
-    private static ModelAttribute? StoredAttribute(ModelSnapshot model, string key)
-    {
-        var segments = key.Split('.');
-        if (!model.TryGetEntry(segments[0], out var first) || first.Kind != "attribute"
-            || !model.TryGetEntry(segments[^1], out var last) || last.Kind != "attribute" || model.GetDocument(last.OwnerId)?.Element is not { } owner)
-            return null;
-        foreach (var attribute in ReferenceDataIndex.AttributesOf(owner))
-        {
-            if (string.Equals(attribute.Id, segments[^1], StringComparison.Ordinal))
-                return attribute;
-        }
-
-        return null;
-    }
-
     /// <summary>
     /// The rules on an entity's bindings to table files: MQ4085 for a field whose attribute (or value object member) and the column it maps
     /// state different sensitivities, at <c>/bindings/&lt;i&gt;/fields/&lt;j&gt;</c>, and MQ7014 for a constant written into a column whose
@@ -387,7 +347,7 @@ internal static class ColumnTypeRules
             {
                 // A child table's fields and constants (retire-projection-design.md section 5), against the child table.
                 var child = binding.ChildTables[k];
-                if (context.Model.Get<Table>(child.Table) is { Origin: not TableOrigin.Synthesized } file && file.Database == binding.Database)
+                if (context.Model.Get<Table>(child.Table) is { } file && file.Database == binding.Database)
                     CheckFields(context, entity, binding, [MemberRules.WithMembers(context.Model, file)], child.Fields, child.Constants, Ptr.At(pointer + "/childTables", k), report);
             }
         }
@@ -432,7 +392,7 @@ internal static class ColumnTypeRules
         var tables = new List<Table>(2);
         foreach (var key in new[] { binding.Source, binding.Write?.Table })
         {
-            if (key is not null && model.Get<Table>(key) is { Origin: not TableOrigin.Synthesized } file && !tables.Any(t => t.Id == file.Id))
+            if (key is not null && model.Get<Table>(key) is { } file && !tables.Any(t => t.Id == file.Id))
                 tables.Add(MemberRules.WithMembers(model, file));
         }
 

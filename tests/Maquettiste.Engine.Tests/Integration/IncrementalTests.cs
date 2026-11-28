@@ -7,11 +7,10 @@ namespace Maquettiste.Engine.Tests.Integration;
 
 /// <summary>
 /// Incremental runs with the real renderer (integration tasks 3 and 4): an edit re-renders exactly the units whose recorded reads
-/// changed, rewrites only the files whose bytes changed, and new files that start contributing to a resolved object (a mapping, a
-/// table overlay, a relation) re-render its readers, so an incremental run equals a forced one.
+/// changed, rewrites only the files whose bytes changed, and new files that start contributing to a resolved object (a relation and the
+/// mapping that stores it) re-render its readers, so an incremental run equals a forced one.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class IncrementalTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -29,7 +28,8 @@ public sealed class IncrementalTests
         var bytes0 = repo.Tree();
         var times0 = repo.WriteTimes();
 
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        // Customer's name and the column it is bound to go from 120 to 150.
+        await repo.WidenCustomerNameAsync();
         var s1 = await repo.Store.GetSnapshotAsync(Ct);
 
         // The units to render are exactly those whose recorded read keys changed hash.
@@ -38,7 +38,7 @@ public sealed class IncrementalTests
         var rendered = plan.Units.Where(u => !u.Skipped).Select(u => u.Key).Order(StringComparer.Ordinal).ToList();
         Assert.Equal(expected, rendered);
         Assert.Contains("e2e/entity:" + E2ERepo.CustomerId, rendered);
-        Assert.Contains("e2e/table:" + E2ERepo.CustomerId + "@" + E2ERepo.MainDatabaseId, rendered);
+        Assert.Contains("e2e/table:" + E2ERepo.CustomersTableId, rendered);
         Assert.Contains("billing-demo/entity:" + E2ERepo.CustomerId, rendered);
         Assert.DoesNotContain("e2e/entity:" + E2ERepo.ProductId, rendered);
         Assert.DoesNotContain("e2e/types:" + E2ERepo.ProductId, rendered);
@@ -71,59 +71,31 @@ public sealed class IncrementalTests
     }
 
     [Fact]
-    public async Task Creating_a_mapping_rerenders_the_units_that_read_the_entity()
-    {
-        // Without migration facts: the change drops or narrows columns, whose pending facts would stop generation.
-        await using var repo = E2ERepo.Create(settings: E2ERepo.RecordOff);
-        await repo.ApplyAsync();
-        var productsBefore = repo.Repo.ReadFile("db/e2e/tables/products.sql");
-        Assert.Contains("list_price_amount", productsBefore, StringComparison.Ordinal);
-
-        await repo.CreateElementAsync($$"""
-            {"kind": "mapping", "name": "Product in main", "database": "{{E2ERepo.MainDatabaseId}}", "entity": "{{E2ERepo.ProductId}}",
-             "attributes": [{"attribute": "{{E2ERepo.ProductListPriceAttributeId}}", "storage": "json"}]}
-            """);
-        var result = await repo.ApplyAsync();
-
-        var products = repo.Repo.ReadFile("db/e2e/tables/products.sql");
-        Assert.DoesNotContain("list_price_amount", products, StringComparison.Ordinal);
-        Assert.Contains("list_price jsonb", products, StringComparison.Ordinal);
-        Assert.Contains(result.Changes, c => c.Path == "db/e2e/tables/products.sql" && c.Kind == FileChangeKind.Modified);
-        Assert.Contains(result.Changes, c => c.Path == "src/Generated/demo/db/billing/products.sql" && c.Kind == FileChangeKind.Modified);
-        await AssertIncrementalEqualsForcedAsync(repo);
-    }
-
-    [Fact]
-    public async Task Creating_a_table_overlay_rerenders_the_table_units()
-    {
-        // Without migration facts: the change drops or narrows columns, whose pending facts would stop generation.
-        await using var repo = E2ERepo.Create(settings: E2ERepo.RecordOff);
-        await repo.ApplyAsync();
-
-        await repo.CreateElementAsync($$"""
-            {"kind": "table", "database": "{{E2ERepo.MainDatabaseId}}", "origin": "synthesized", "entity": "{{E2ERepo.CustomerId}}",
-             "columns": [{"id": "01J92P0VZZ0000000000000001", "attribute": "{{E2ERepo.CustomerNameAttributeId}}", "nativeType": "varchar(99)",
-                          "comment": "Overlay comment."}]}
-            """);
-        var result = await repo.ApplyAsync();
-
-        var customers = repo.Repo.ReadFile("db/e2e/tables/customers.sql");
-        Assert.Contains("name varchar(99) NOT NULL, -- Overlay comment.", customers, StringComparison.Ordinal);
-        Assert.Contains(result.Changes, c => c.Path == "db/e2e/tables/customers.sql" && c.Kind == FileChangeKind.Modified);
-        await AssertIncrementalEqualsForcedAsync(repo);
-    }
-
-    [Fact]
     public async Task Creating_a_relation_rerenders_both_entities_and_their_tables()
     {
         await using var repo = E2ERepo.Create();
         await repo.ApplyAsync();
 
-        await repo.CreateElementAsync($$"""
-            {"kind": "relation", "name": "prefers", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "ends": [
-              {"id": "01J92P0VZZ0000000000000002", "entity": "{{E2ERepo.ProductId}}", "role": "favoriteProduct", "navigation": "favoriteProduct", "min": 0, "max": 1},
-              {"id": "01J92P0VZZ0000000000000003", "entity": "{{E2ERepo.CustomerId}}", "role": "fans", "navigation": "fans"}]}
+        // One batch: customers gains favorite_product_id and a foreign key into products, the relation, and its mapping naming that key.
+        var customers = (await repo.Store.GetElementAsync(E2ERepo.CustomersTableId, Ct))!;
+        var table = JsonNode.Parse(customers.Json.GetRawText())!.AsObject();
+        table["columns"]!.AsArray().Add(JsonNode.Parse("""{"id": "01J92P0VZZ0000000000000004", "name": "favorite_product_id", "type": "uuid"}"""));
+        table["foreignKeys"] = JsonNode.Parse("""
+            [{"id": "01J92P0VZZ0000000000000005", "name": "fk_customers_favorite_product_id", "columns": ["01J92P0VZZ0000000000000004"],
+              "referencesTable": "01M8EJPZN967ERTF2BPP3YM4QY", "referencesColumns": ["01M8EJPZN9FW9ZV7DANC4C50XN"]}]
             """);
+        var parsed = repo.Store.ParseBatch(System.Text.Encoding.UTF8.GetBytes($$"""
+            {"operations": [
+              {"op": "update", "id": "{{E2ERepo.CustomersTableId}}", "expectedHash": "{{customers.Hash}}", "element": {{table.ToJsonString()}} },
+              {"op": "create", "element": {"kind": "relation", "id": "01J92P0VZZ0000000000000006", "name": "prefers", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "ends": [
+                {"id": "01J92P0VZZ0000000000000002", "entity": "{{E2ERepo.ProductId}}", "role": "favoriteProduct", "navigation": "favoriteProduct", "min": 0, "max": 1},
+                {"id": "01J92P0VZZ0000000000000003", "entity": "{{E2ERepo.CustomerId}}", "role": "fans", "navigation": "fans"}] } },
+              {"op": "create", "element": {"kind": "mapping", "name": "prefers in main", "database": "{{E2ERepo.MainDatabaseId}}",
+                "relation": "01J92P0VZZ0000000000000006", "foreignKey": "01J92P0VZZ0000000000000005"} } ] }
+            """));
+        Assert.True(parsed.Batch is not null, string.Join("; ", parsed.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        var saved = await repo.Store.ApplyBatchAsync(parsed.Batch, ChangeSource.Editor, Ct);
+        Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
         var result = await repo.ApplyAsync();
 
         Assert.Contains("favorite_product_id", repo.Repo.ReadFile("db/e2e/tables/customers.sql"), StringComparison.Ordinal);

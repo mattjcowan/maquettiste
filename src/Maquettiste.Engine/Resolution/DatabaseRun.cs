@@ -8,8 +8,9 @@ using Maquettiste.Engine.Text;
 namespace Maquettiste.Engine.Resolution;
 
 /// <summary>
-/// The physical resolution of one database (engine-design.md sections 7.3 to 7.6): designed and imported tables passed through,
-/// synthesized entity, child, junction and promoted tables, overlays merged, constraints named, mappings and join paths.
+/// The physical resolution of one database (engine-design.md sections 7.3 to 7.6): its designed and imported tables, views, sequences and
+/// other objects, constraints named, the bindings of the entities bound to it and the relations its relation mappings store, with their
+/// join paths. Since 0.29.0 the engine lays out no table from an entity (retire-projection-design.md).
 /// </summary>
 internal sealed partial class DatabaseRun
 {
@@ -32,19 +33,14 @@ internal sealed partial class DatabaseRun
     private readonly List<(RSequence Sequence, string SourceId, DependencySet Deps)> _sequenceOrder = [];
     private readonly List<(RView View, string SourceId)> _views = [];
     private readonly Dictionary<string, string> _schemaNames = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Table> _overlays = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ForeignKeySpec> _foreignKeysById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RelationPhysical> _relationPhysical = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, RColumn> _discriminators = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _columnNames = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<(string? Token, IReadOnlyList<string>? Literal)>> _patterns = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IReadOnlyList<string>> _words = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _rendered = new(StringComparer.Ordinal);
     private readonly System.Text.StringBuilder _renderKey = new();
     private readonly List<string> _renderWords = new(16);
     private readonly Dictionary<(string, int?, int?, int?, string?), string> _nativeTypes = [];
-    private readonly Dictionary<RColumn, RScalarType> _columnScalars = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Placement, IReadOnlyList<string>> _keyDeps = new(ReferenceEqualityComparer.Instance);
 
     public DatabaseRun(ResolveRun run, Database db)
     {
@@ -75,13 +71,6 @@ internal sealed partial class DatabaseRun
                 _ => null,
             },
         };
-        _rdb.ByConvention = db.ByConvention is { } byConvention ? ResolutionValues.Kebab(byConvention) : db.Packages.Count == 0 ? "all" : "packages";
-        _rdb.Packages = [.. db.Packages.Select(p => new RConventionPackage
-        {
-            Package = run.PackageOf(p.Package),
-            PackageId = p.Package,
-            Schema = p.Schema is { } schemaId ? db.Schemas.FirstOrDefault(s => string.Equals(s.Id, schemaId, StringComparison.Ordinal))?.Name : null,
-        })];
         // The database's own values come from its file. What refers to it (its tables, views, queries, and every binding to it) reaches
         // its lists, which carry their own keys, the referrers among them: a unit that reads only the database's name or dialect does
         // not render again when a bound entity changes.
@@ -104,7 +93,6 @@ internal sealed partial class DatabaseRun
         CollectBindings();
         CollectPhysicalFiles();
         ComputePlacements();
-        CreateEntityTables();
         // Beside the other databases' runs: the relations copy the keys earlier runs' relation mappings add, so wait for those.
         RelationsAfter?.Wait(_run.Ct);
         foreach (var relation in _run.RelationOrder)
@@ -118,8 +106,6 @@ internal sealed partial class DatabaseRun
         CheckOnDeleteSets();
         FinishRelationMappings();
         RelationsDone?.TrySetResult();
-        ReportUnusedOverlays();
-        BuildEntityMappings();
         BuildJoins();
         // Names are judged once the bindings, which Publish resolves, have added the entity checks they list to their write tables.
         var database = Publish();
@@ -128,7 +114,7 @@ internal sealed partial class DatabaseRun
         return database;
     }
 
-    // ---- designed and imported tables, views, sequences, overlays ------------------------------------------------------------
+    // ---- designed and imported tables, views, sequences -----------------------------------------------------------------------
 
     private void CollectPhysicalFiles()
     {
@@ -188,23 +174,8 @@ internal sealed partial class DatabaseRun
         }
 
         foreach (var table in _run.Model.All<Table>().Where(t => t.Database == _db.Id).OrderBy(t => t.Id, StringComparer.Ordinal))
-        {
-            if (table.Origin == TableOrigin.Synthesized)
-            {
-                var target = OverlayTarget(table);
-                if (target is not null)
-                    _overlays.TryAdd(target, table);
-                continue;
-            }
-
             BuildDesignedTable(table);
-        }
     }
-
-    private static string? OverlayTarget(Table table) =>
-        table.Entity is { } entity ? (table.Attribute is { } attribute ? $"child:{entity}.{attribute}" : $"entity:{entity}")
-        : table.Relation is { } relation ? $"relation:{relation}"
-        : null;
 
     private void BuildDesignedTable(Table table)
     {
@@ -215,10 +186,9 @@ internal sealed partial class DatabaseRun
             Name = table.Name,
             Schema = SchemaName(table.Schema),
             Database = _rdb,
-            Origin = ResolutionValues.Kebab(table.Origin),
             Comment = table.Comment,
         };
-        var t = new TableBuild(_run.Keys, r, table, null, table.Id);
+        var t = new TableBuild(_run.Keys, r, table);
         t.Deps.Element(table.Id).Referrers(table.Id).Element(_db.Id).Add(TypeMaps).Add(Conventions);
         AddTable(t);
         foreach (var column in table.Columns)
@@ -248,7 +218,7 @@ internal sealed partial class DatabaseRun
         AddConstraintFiles(t, table);
     }
 
-    /// <summary>Adds the constraints and indexes of a table file (designed table or overlay) as pending specs.</summary>
+    /// <summary>Adds the constraints and indexes of a table file as pending specs.</summary>
     private void AddConstraintFiles(TableBuild t, Table table)
     {
         if (table.PrimaryKey is { } pk)
@@ -326,7 +296,7 @@ internal sealed partial class DatabaseRun
         : null;
 
     /// <summary>
-    /// Applies the physical properties and the annotations a column file sets (designed column, extra column or overlay entry) to a
+    /// Applies the physical properties and the annotations a column file sets to a
     /// column; the annotations' stereotype and category keys join the table's dependencies.
     /// </summary>
     private void ApplyColumnFile(TableBuild t, RColumn c, Column column)
@@ -348,10 +318,7 @@ internal sealed partial class DatabaseRun
             case ColumnGeneration.Sequence:
                 c.Identity = false;
                 if (column.Sequence is { } sequenceId)
-                {
-                    t.SequenceOverrides[c.Key] = sequenceId;
                     c.Sequence = _sequences.GetValueOrDefault(sequenceId);
-                }
 
                 break;
         }
@@ -376,8 +343,8 @@ internal sealed partial class DatabaseRun
     /// Gives a column of a designed or imported table, own or inherited, its bound type (0.28.0): the enum, reference type or scalar type
     /// of the attribute the entities' bindings map to it, when they all agree (<see cref="BoundColumnTypes"/>). Sets
     /// <see cref="RColumn.BoundType"/> only, as information: a table carries its own definition and binding an entity never changes
-    /// storage, so the bound type sets no <see cref="RColumn.ReferenceType"/> (no pack key or CHECK, no captured reference state, no value
-    /// map), fills no facet and no native type. The table depends on the bound entities, the elements that declare the mapped
+    /// storage, so the bound type sets no pack key or CHECK, no captured reference state and no value map, and fills no facet and no
+    /// native type. The table depends on the bound entities, the elements that declare the mapped
     /// attributes, and the type.
     /// </summary>
     private void TypeColumn(TableBuild t, RColumn c)
@@ -406,8 +373,8 @@ internal sealed partial class DatabaseRun
         }
     }
 
-    /// <summary>The logical type that decides a column's native type: a reference column's code type, else the column's type.</summary>
-    private static string PhysicalType(RColumn c) => c.Type == "reference" && c.CodeType is { } code ? code : c.Type;
+    /// <summary>The logical type that decides a column's native type.</summary>
+    private static string PhysicalType(RColumn c) => c.Type;
 
     /// <summary>
     /// Fills a column's missing facets with the conventions' defaults; a range or multirange column takes no facets, so it gets none
@@ -457,7 +424,7 @@ internal sealed partial class DatabaseRun
     // ---- checks in the expression language (next-phase-3-design.md section 3.1, "Where lowering runs") ----------------------------
 
     /// <summary>
-    /// Types a table's, overlay's or stereotype's check written in the expression language, in the scope of the file that holds it, and
+    /// Types a table's or stereotype's check written in the expression language, in the scope of the file that holds it, and
     /// adds what its condition names (an enum, a seed, a constraint) to the table's dependency keys. <see langword="null"/> when it does
     /// not type (validation reports why) or the database is not PostgreSQL (MQ4056: the DDL leaves it out).
     /// </summary>
@@ -487,9 +454,8 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// A table's resolved check: a SQL text check as its spec says; a check in the expression language lowered to PostgreSQL through the
-    /// table's final columns (a stereotype's check reads its columns under their keyed ids, an overlay's check an entity's attributes by
-    /// their column keys), with its condition and shape. <see langword="null"/> leaves a tree check out when it reads a column the table
-    /// does not have (validation, MQ4008 for a skipped stereotype, or <see cref="ReportUnstored"/> for an overlay's check, says so).
+    /// table's final columns (a stereotype's check reads its columns under their keyed ids), with its condition and shape.
+    /// <see langword="null"/> leaves a tree check out when it reads a column the table does not have (validation says so).
     /// </summary>
     private RCheck? ResolveCheck(TableBuild t, CheckSpec c)
     {
@@ -506,19 +472,11 @@ internal sealed partial class DatabaseRun
         if (c.Tree is not { } tree)
             return check;
         var columns = new Dictionary<string, RColumn>(StringComparer.Ordinal);
-        List<string>? missing = null;
         foreach (var id in ExprResolution.Paths(tree.Source.Typed))
         {
-            if (((tree.KeyPrefix is { } prefix ? t.Resolve(ContributedMembers.KeyOf(prefix, id)) : null) ?? t.Resolve(id)) is { } column)
-                columns[id] = column;
-            else
-                (missing ??= []).Add(id);
-        }
-
-        if (missing is not null)
-        {
-            ReportUnstored(t, check.Name, tree, missing);
-            return null;
+            if (((tree.KeyPrefix is { } prefix ? t.Resolve(ContributedMembers.KeyOf(prefix, id)) : null) ?? t.Resolve(id)) is not { } column)
+                return null;
+            columns[id] = column;
         }
 
         if (LowerCheck(tree.Source, columns, $"Check '{check.Name}' of table '{t.Table.Name}' in database '{_db.Name}'", tree.ElementId, tree.Pointer) is not { } lowered)
@@ -527,33 +485,6 @@ internal sealed partial class DatabaseRun
         check.Condition = lowered.Condition;
         check.Shape = lowered.Shape;
         return check;
-    }
-
-    /// <summary>
-    /// MQ4008 at an overlay's own tree check for each path that reads no column of the table: an attribute of its entity, or an override
-    /// entry of one, that the projection does not store in a column (the mapping ignores it, it is derived and not stored, a base's table
-    /// per type holds it, or its value object is stored as JSON), so the check is reported where it is written rather than left out of
-    /// the DDL silently. A stereotype's column is left
-    /// to the findings that already name it (MQ4008 for a skipped stereotype, MQ2028 for an excluded member); a designed table's check
-    /// reads only its own columns, as validation proves.
-    /// </summary>
-    private void ReportUnstored(TableBuild t, string name, TreeCheck tree, List<string> missing)
-    {
-        if (t.Overlay is not { } overlay || tree.KeyPrefix is not null || !string.Equals(tree.ElementId, overlay.Id, StringComparison.Ordinal))
-            return;
-        var contributed = t.Table.Key + ".";
-        foreach (var id in missing)
-        {
-            if (id.StartsWith(contributed, StringComparison.Ordinal))
-                continue;
-            var member = ExprText.Print(new Expr { Path = [id] }, tree.Source.Scope);
-            // A value object member whose value object the table stores as JSON is in the table, in that one column.
-            var key = overlay.Columns.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.Ordinal))?.Attribute ?? id;
-            var why = key.IndexOf('.', StringComparison.Ordinal) is > 0 and var dot && t.Resolve(key[..dot]) is { Type: "json" } json
-                ? $"which the table stores as JSON in its column '{json.Name}', not in a column of its own. The check is left out of the DDL; store the value object in columns (storage embedded), or read another member."
-                : "which the table does not store: its mapping ignores it, does not store it, or stores it in another table. The check is left out of the DDL; store it in this table, or read another member.";
-            _run.AddDiagnostic("MQ4008", $"Check '{name}' of table '{t.Table.Name}' in database '{_db.Name}' reads '{member}', {why}", overlay.Id, tree.Pointer);
-        }
     }
 
     /// <summary>
@@ -581,60 +512,27 @@ internal sealed partial class DatabaseRun
         schemaId is not null && _schemaNames.TryGetValue(schemaId, out var name) ? name : _rdb.DefaultSchema;
 
     /// <summary>
-    /// Registers a table: its holder and effective stereotype set (next-phase-2-design.md section 3.1), annotations and storage from its
-    /// file, or for a table without a file the stereotypes, merged default properties and storage its schema and package defaults give.
+    /// Registers a table: its holder and effective stereotype set, the annotations and storage its file and stereotypes give, and the
+    /// keys of the entities bound to it.
     /// </summary>
     /// <param name="t">The table.</param>
-    /// <param name="holder">The holder of a table without a file when the caller knows it (a child table's, from its owner's), else
-    /// <see langword="null"/>.</param>
-    private void AddTable(TableBuild t, StereotypeHolder? holder = null)
+    private void AddTable(TableBuild t)
     {
-        var file = t.Source ?? t.Overlay;
-        t.Holder = file is not null ? _run.Model.HolderOf(file) : holder ?? HolderWithoutFile(t.Table);
+        var file = t.Source;
+        t.Holder = _run.Model.HolderOf(file);
         t.Effective = _run.Model.EffectiveStereotypes(t.Holder);
-        if (file is not null)
-        {
-            _run.FillPhysicalAnnotations(t.Table, file, t.Deps);
-            t.Table.Storage = Storage([.. t.Effective.Select(s => s.Stereotype.Storage), file.Storage]);
-        }
-        else
-        {
-            _run.FillDefaultAnnotations(t.Table, t.Effective, t.Holder.Package, t.Deps);
-            if (t.Effective.Count > 0)
-                t.Table.Storage = Storage([.. t.Effective.Select(s => s.Stereotype.Storage)]);
-        }
-
+        _run.FillPhysicalAnnotations(t.Table, file, t.Deps);
+        t.Table.Storage = Storage([.. t.Effective.Select(s => s.Stereotype.Storage), file.Storage]);
         AddBinderKeys(t.Deps, t.Table.Key);
-        if (t.Source is { } designedFile)
-        {
-            AddBinderKeys(t.Deps, designedFile.Id);
-            var entries = new DependencySet(_run.Keys).Element(designedFile.Id).Element(_db.Id);
-            foreach (var applied in t.Effective)
-                entries.Element(applied.Stereotype.Id);
-            _run.AddPackageChain(entries, t.Holder.Package);
-            t.Table.EntryKeys = entries.ToList();
-        }
-
-        if (t.Overlay is { } overlayFile)
-            AddBinderKeys(t.Deps, overlayFile.Id);
+        AddBinderKeys(t.Deps, file.Id);
+        var entries = new DependencySet(_run.Keys).Element(file.Id).Element(_db.Id);
+        foreach (var applied in t.Effective)
+            entries.Element(applied.Stereotype.Id);
+        _run.AddPackageChain(entries, t.Holder.Package);
+        t.Table.EntryKeys = entries.ToList();
         _tables.TryAdd(t.Table.Key, t);
         _tableOrder.Add(t);
         _run.Register(t.Table);
-    }
-
-    /// <summary>
-    /// The holder of a synthesized entity or relation table without an overlay, by ids, by the rule validation uses
-    /// (<see cref="StereotypeDefaults.SchemaOf"/>): its relation's or entity's package, and the schema its entity is routed to (a relation's
-    /// table is in the default schema's entry). A child table takes its owner's holder instead (<see cref="CreateChildTable"/>).
-    /// </summary>
-    private StereotypeHolder HolderWithoutFile(RTable table)
-    {
-        var defaults = _run.Model.StereotypeDefaults;
-        if (table.Relation is { } relation)
-            return new StereotypeHolder(ElementKind.Table, [], [], _run.RelationSource(relation.Id)?.Package, defaults.SchemaOf(_db.Id, null));
-        var entityId = table.Entity?.Id;
-        return new StereotypeHolder(ElementKind.Table, [], [], entityId is null ? null : _run.EntitySource(entityId)?.Package,
-            entityId is null ? defaults.SchemaOf(_db.Id, null) : defaults.SchemaOf(_db.Id, null, entityId));
     }
 
     private void AddSequence(RSequence sequence, string sourceId, DependencySet deps)
@@ -647,37 +545,19 @@ internal sealed partial class DatabaseRun
 
     // ---- placements ---------------------------------------------------------------------------------------------------------
 
+    /// <summary>
+    /// Places each entity bound to the database on its binding's write (else source) table, for the foreign keys of relations; an entity
+    /// without a binding here has no rows in the database.
+    /// </summary>
     private void ComputePlacements()
     {
         foreach (var entity in _run.EntityOrder)
         {
-            var source = _run.EntitySource(entity.Id)!;
-            var mapping = _run.MappingOf(_db.Id, entity.Id);
-            if (_bindingByEntity.ContainsKey(entity.Id))
-            {
-                // A binding wins over projection (erratum E43): the entity never gets a table here, and a mapping element for the
-                // same entity and database is ignored.
-                if (mapping is not null)
-                {
-                    _run.AddDiagnostic("MQ4054", $"Mapping '{mapping.Name}' maps entity '{entity.Name}' to database '{_db.Name}', where the entity has a binding; the binding wins and the mapping is ignored. Delete the mapping.",
-                        mapping.Id, "/entity");
-                }
-
-                if (BindingHost(entity.Id) is { } host)
-                {
-                    var bound = new Placement(entity, source, null) { Bound = true, ViaBinding = true, Table = host };
-                    _placements[entity.Id] = bound;
-                    _placementOrder.Add(bound);
-                }
-
+            if (!_bindingByEntity.ContainsKey(entity.Id) || BindingHost(entity.Id) is not { } host)
                 continue;
-            }
-
-            if (!DatabaseScope.Places(_run.Model, _db, source.Package, mapping))
-                continue;
-            var placement = new Placement(entity, source, mapping);
-            _placements[entity.Id] = placement;
-            _placementOrder.Add(placement);
+            var bound = new Placement(entity, _run.EntitySource(entity.Id)!) { Table = host };
+            _placements[entity.Id] = bound;
+            _placementOrder.Add(bound);
         }
 
         foreach (var p in _placementOrder)
@@ -710,20 +590,13 @@ internal sealed partial class DatabaseRun
             foreach (var key in root.Entity.Key?.Attributes ?? p.Entity.Key?.Attributes ?? RList<RAttribute>.Empty)
                 p.KeyIds.Add(key.Id);
         }
-
-        foreach (var p in _placementOrder)
-        {
-            if (p.Root.Derived.Count > 0 || p.Base is not null)
-                p.Strategy = p.Root.Mapping?.Inheritance ?? _conv.Inheritance;
-            if (p.Mapping?.Table is { } tableId && _tables.TryGetValue(tableId, out var bound) && bound.IsDesigned)
-            {
-                p.Bound = true;
-                p.Table = bound;
-                bound.Table.Entity ??= p.Entity;
-                bound.Deps.AddRange(_run.DepsOf(p.Entity).ToList());
-            }
-        }
     }
+
+    /// <summary>
+    /// The most steps a walk up an entity's bases takes: a speculative resolution of an invalid snapshot may hold an inheritance cycle
+    /// (MQ3002), and every walk must end; counting steps allocates nothing, which matters in walks made per binding field.
+    /// </summary>
+    internal const int MaxDepth = 4096;
 
     /// <summary>Whether <paramref name="target"/> is <paramref name="from"/> or one of its bases (the links made so far).</summary>
     private static bool Reaches(Placement from, Placement target)
@@ -736,120 +609,6 @@ internal sealed partial class DatabaseRun
         }
 
         return false;
-    }
-
-    /// <summary>The tables where rows of an entity live (the tables a dependent entity's foreign key columns go into).</summary>
-    private List<TableBuild> HostsOf(Placement p)
-    {
-        if (p.Strategy == InheritanceStrategy.Tpc && !p.Bound)
-        {
-            var hosts = new List<TableBuild>();
-            Collect(p);
-            return hosts;
-
-            void Collect(Placement x)
-            {
-                if (x.Table is not null && !x.Bound && !hosts.Contains(x.Table))
-                    hosts.Add(x.Table);
-                foreach (var d in x.Derived)
-                    Collect(d);
-            }
-        }
-
-        return p.Table is null ? [] : [p.Table];
-    }
-
-    // ---- entity tables ------------------------------------------------------------------------------------------------------
-
-    private void CreateEntityTables()
-    {
-        // Shells first (TPH derived entities share the root's table), then columns in entity order.
-        foreach (var p in _placementOrder)
-        {
-            if (p.Bound)
-                continue;
-            var ownsTable = p.Strategy switch
-            {
-                InheritanceStrategy.Tph => ReferenceEquals(p.Root, p),
-                InheritanceStrategy.Tpc => !p.Entity.IsAbstract,
-                _ => true,
-            };
-            if (!ownsTable)
-                continue;
-            p.Table = NewEntityTable(p.Entity.Id + "@" + _db.Id, p.Entity, null, _overlays.GetValueOrDefault("entity:" + p.Entity.Id), p.Entity.Id,
-                DatabaseScope.SchemaFor(_run.Model, _db, p.Source.Package, p.Mapping));
-        }
-
-        foreach (var p in _placementOrder)
-        {
-            if (p.Strategy == InheritanceStrategy.Tph && !ReferenceEquals(p.Root, p) && !p.Bound)
-                p.Table = p.Root.Table;
-        }
-
-        foreach (var p in _placementOrder)
-        {
-            _run.Ct.ThrowIfCancellationRequested();
-            if (p.Bound)
-            {
-                if (!p.ViaBinding)
-                    MatchBoundColumns(p);
-                continue;
-            }
-
-            if (p.Table is null || !ReferenceEquals(p.Table.Table.Entity, p.Entity))
-                continue;
-            AddEntityColumns(p, p.Table);
-        }
-    }
-
-    private TableBuild NewEntityTable(string key, REntity entity, RRelation? relation, Table? overlay, string sourceElementId, string? conventionSchema = null)
-    {
-        var name = overlay is { Name.Length: > 0 } ? overlay.Name : TableNameFor(entity.Name, ExplicitPlural(entity.Id));
-        var r = new RTable
-        {
-            Id = key,
-            Key = key,
-            Name = name,
-            Schema = SchemaName(overlay?.Schema ?? conventionSchema),
-            Database = _rdb,
-            Origin = "synthesized",
-            Entity = entity,
-            Relation = relation,
-            Comment = overlay?.Comment,
-        };
-        var t = new TableBuild(_run.Keys, r, null, overlay, sourceElementId);
-        t.Deps.AddRange(_run.DepsOf(entity).ToList()).Element(_db.Id).Add(Conventions).Add(TypeMaps).Referrers(entity.Id);
-        if (_conv.PluralTables)
-            t.Deps.Add(InflectionKey);
-        if (overlay is not null)
-        {
-            t.Deps.Element(overlay.Id);
-            AddConstraintFiles(t, overlay with { PrimaryKey = overlay.PrimaryKey is { } pk ? pk with { Columns = [] } : null });
-            if (overlay.PrimaryKey is { Columns.Count: > 0 } overlayPk)
-                t.Deferred.Add(() => { t.PrimaryKey.Clear(); t.PrimaryKey.AddRange(overlayPk.Columns); });
-        }
-
-        AddTable(t);
-        return t;
-    }
-
-    /// <summary>The table name of an entity, enum or promoted entity by the <c>tableName</c> pattern (an explicit plural name wins).</summary>
-    private string TableNameFor(string entityName, string? pluralName = null) =>
-        NamePattern.Render(_conv.TableName, new Dictionary<string, string>(StringComparer.Ordinal) { ["entity"] = entityName, ["name"] = entityName },
-            _conv.TableCase, _conv.PluralTables ? _run.Inflector : null, pluralName);
-
-    /// <summary>The <c>pluralName</c> written in an entity's or enum's file, or <see langword="null"/>.</summary>
-    private string? ExplicitPlural(string elementId) => _run.EntitySource(elementId)?.PluralName ?? _run.EnumSource(elementId)?.PluralName;
-
-    private string ColumnName(string attributeName)
-    {
-        if (!_columnNames.TryGetValue(attributeName, out var name))
-        {
-            name = Casing.Apply(attributeName, _conv.ColumnCase);
-            _columnNames[attributeName] = name;
-        }
-
-        return name;
     }
 
     /// <summary>
@@ -883,9 +642,6 @@ internal sealed partial class DatabaseRun
 
         return native;
     }
-
-    /// <summary>The custom type a synthesized column stores, when its native type came from that type (see <c>AddColumn</c>).</summary>
-    private RScalarType? ScalarOf(RColumn? column) => column is not null && _columnScalars.TryGetValue(column, out var scalar) ? scalar : null;
 
     /// <summary>
     /// Renders a non-table name pattern with the column case (section 2.4). Same result as <see cref="NamePattern.Render"/>, with
@@ -1002,70 +758,6 @@ internal sealed partial class DatabaseRun
         return words;
     }
 
-    private void AddEntityColumns(Placement p, TableBuild t)
-    {
-        var entity = p.Entity;
-        switch (p.Strategy)
-        {
-            case InheritanceStrategy.Tph:
-                foreach (var a in entity.Attributes)
-                    AddAttributeColumns(t, a, AttributeMappingFor(p, a), p.KeyIds.Contains(a.Id), false, entity.Name);
-                foreach (var d in Descendants(p))
-                {
-                    t.Deps.AddRange(_run.DepsOf(d.Entity).ToList()).Referrers(d.Entity.Id);
-                    foreach (var a in d.Entity.Attributes)
-                    {
-                        if (!t.ByKey.ContainsKey(a.Id) && !HasPathUnder(t, a.Id))
-                            AddAttributeColumns(t, a, AttributeMappingFor(d, a), p.KeyIds.Contains(a.Id), true, entity.Name);
-                    }
-                }
-
-                var discriminator = AddColumn(t, "discriminator", Render(_conv.DiscriminatorColumn), "string", 64, null, null, false, null, null, null);
-                discriminator.IsDiscriminator = true;
-                _discriminators[t.Table.Key] = discriminator;
-                break;
-            case InheritanceStrategy.Tpt when p.Base is not null:
-                foreach (var a in entity.Attributes)
-                {
-                    if (p.KeyIds.Contains(a.Id) || ReferenceEquals(a.DeclaringEntity, entity))
-                        AddAttributeColumns(t, a, AttributeMappingFor(p, a), p.KeyIds.Contains(a.Id), false, entity.Name);
-                }
-
-                break;
-            default:
-                foreach (var a in entity.Attributes)
-                    AddAttributeColumns(t, a, AttributeMappingFor(p, a), p.KeyIds.Contains(a.Id), false, entity.Name);
-                break;
-        }
-
-        if (!t.PrimaryKey.Any())
-            t.PrimaryKey.AddRange(KeyColumnKeys(t, p));
-
-        // TPT: the derived table's key is also a foreign key to the base table.
-        if (p.Strategy == InheritanceStrategy.Tpt && p.Base?.Table is { } baseTable && !ReferenceEquals(baseTable, t))
-        {
-            t.ForeignKeys.Add(new ForeignKeySpec(t, [.. t.PrimaryKey], baseTable, null, [], "cascade", "no-action", null));
-            // Its key columns follow the base table's (an overlay there may pin their native type), unless its own overlay pins them.
-            t.Deps.AddRange(KeyDeps(p.Base));
-            foreach (var key in t.PrimaryKey)
-            {
-                if (t.Resolve(key) is not { } column || baseTable.Resolve(key) is not { } referenced || PinsType(t.OverlayColumns.GetValueOrDefault(key)))
-                    continue;
-                (column.Type, column.Length, column.Precision, column.Scale, column.NativeType) =
-                    (referenced.Type, referenced.Length, referenced.Precision, referenced.Scale, referenced.NativeType);
-            }
-        }
-
-        ApplyKeyGeneration(p, t);
-        AddAttributeConstraints(t, entity, p.Strategy == InheritanceStrategy.Tph ? Descendants(p).Select(d => d.Entity) : []);
-        foreach (var action in t.Deferred.ToList())
-            action();
-        t.Deferred.Clear();
-    }
-
-    private static bool HasPathUnder(TableBuild t, string attributeId) =>
-        t.Columns.Any(c => c.AttributePath is { } path && IsBelow(path, attributeId));
-
     /// <summary>
     /// Whether a dotted path lies below a head: it starts with the head and a dot (<c>path.StartsWith(head + ".")</c>, without building the
     /// string, which the binding checks did for every pair of fields).
@@ -1073,148 +765,4 @@ internal sealed partial class DatabaseRun
     internal static bool IsBelow(string path, string head) =>
         path.Length > head.Length && path[head.Length] == '.' && path.StartsWith(head, StringComparison.Ordinal);
 
-    private static IEnumerable<Placement> Descendants(Placement p)
-    {
-        foreach (var d in p.Derived)
-        {
-            yield return d;
-            foreach (var dd in Descendants(d))
-                yield return dd;
-        }
-    }
-
-    private static IEnumerable<string> KeyColumnKeys(TableBuild t, Placement p) =>
-        (p.Root.Entity.Key?.Attributes ?? p.Entity.Key?.Attributes ?? RList<RAttribute>.Empty)
-            .SelectMany(k => t.Columns.Where(c => c.AttributePath is { } path
-                && (string.Equals(path, k.Id, StringComparison.Ordinal) || IsBelow(path, k.Id))))
-            .Select(c => c.Key);
-
-    private AttributeMapping? AttributeMappingFor(Placement p, RAttribute a)
-    {
-        foreach (var candidate in new[] { p.Mapping, a.DeclaringEntity is { } d ? _run.MappingOf(_db.Id, d.Id) : null, p.Root.Mapping })
-        {
-            var found = candidate?.Attributes.FirstOrDefault(x => string.Equals(x.Attribute, a.Id, StringComparison.Ordinal));
-            if (found is not null)
-                return found;
-        }
-
-        return null;
-    }
-
-    /// <summary>Identity or sequence on the key column (section 7.5, D37).</summary>
-    private void ApplyKeyGeneration(Placement p, TableBuild t)
-    {
-        if (p.Strategy == InheritanceStrategy.Tpt && p.Base is not null)
-            return; // the key comes from the base row
-        var strategy = _run.EntitySource(p.Root.Entity.Id)?.Key?.Strategy;
-        if (t.PrimaryKey.Count != 1 || t.Resolve(t.PrimaryKey[0]) is not { } column)
-            return;
-        if (strategy == IdentityStrategy.DatabaseIdentity && !t.SequenceOverrides.ContainsKey(column.Key) && column.Sequence is null)
-        {
-            column.Identity = true;
-            return;
-        }
-
-        if (strategy != IdentityStrategy.Sequence || column.Identity)
-            return;
-        var sequence = t.SequenceOverrides.TryGetValue(column.Key, out var id) ? _sequences.GetValueOrDefault(id) : null;
-        if (sequence is null)
-        {
-            var key = p.Root.Entity.Id + ".sequence@" + _db.Id;
-            if (!_sequences.TryGetValue(key, out sequence))
-            {
-                var tableName = p.Root.Table?.Table.Name ?? TableNameFor(p.Root.Entity.Name, ExplicitPlural(p.Root.Entity.Id));
-                var type = column.Type is "int16" or "int32" or "int64" ? column.Type : "int64";
-                sequence = new RSequence
-                {
-                    Id = key,
-                    Name = Render(_conv.SequenceName, ("table", tableName), ("entity", p.Root.Entity.Name)),
-                    Schema = t.Table.Schema,
-                    Database = _rdb,
-                    Type = type,
-                    NativeType = DialectTypeMaps.Render(_typeMap, type, null, null, null, _conv),
-                };
-                var deps = new DependencySet(_run.Keys).AddRange(t.Deps.ToList()).Referrers(p.Root.Entity.Id);
-                AddSequence(sequence, p.Root.Entity.Id, deps);
-            }
-        }
-
-        column.Sequence = sequence;
-        foreach (var member in Descendants(p.Root).Prepend(p.Root))
-            _run.SetKeySequence(member.Entity, _db.Name, sequence);
-    }
-
-    /// <summary>Unique and indexed attributes, and alternate keys, as constraints of the table holding their columns.</summary>
-    private void AddAttributeConstraints(TableBuild t, REntity entity, IEnumerable<REntity> more)
-    {
-        foreach (var e in more.Prepend(entity))
-        {
-            foreach (var a in e.Attributes)
-            {
-                if (!a.Unique && !a.Indexed)
-                    continue;
-                if (!ReferenceEquals(e, entity) && !ReferenceEquals(a.DeclaringEntity, e))
-                    continue;
-                var keys = ColumnsOf(t, a.Id);
-                if (keys.Count == 0)
-                    continue;
-                if (a.Unique)
-                    t.Uniques.Add(new UniqueSpec(keys, null, null));
-                else
-                    t.Indexes.Add(new IndexSpec([.. keys.Select(k => new IndexColumnSpec(k, false))], [], null, false, "default", null));
-            }
-
-            foreach (var ak in e.AlternateKeys)
-            {
-                var keys = ak.Attributes.SelectMany(a => ColumnsOf(t, a.Id)).ToList();
-                if (keys.Count > 0 && ak.Attributes.All(a => ColumnsOf(t, a.Id).Count > 0) && !t.Uniques.Any(u => u.Columns.SequenceEqual(keys)))
-                    t.Uniques.Add(new UniqueSpec(keys, null, ak.Name));
-            }
-        }
-    }
-
-    private static List<string> ColumnsOf(TableBuild t, string attributeId) =>
-        [.. t.Columns.Where(c => c.AttributePath is { } path
-                && (string.Equals(path, attributeId, StringComparison.Ordinal) || IsBelow(path, attributeId)))
-            .Select(c => c.Key)];
-
-    /// <summary>Binds attributes to the columns of a designed or imported table: <c>AttributeMapping.Column</c>, else by name.</summary>
-    private void MatchBoundColumns(Placement p)
-    {
-        var t = p.Table!;
-        foreach (var a in p.Entity.Attributes)
-        {
-            var am = AttributeMappingFor(p, a);
-            if (am is { Ignore: true })
-                continue;
-            if (a.Type.ValueObject is { } vo && !a.Collection)
-            {
-                foreach (var m in vo.Attributes)
-                {
-                    var expected = Render(_conv.ValueObjectColumn, ("attribute", am?.Prefix ?? a.Name), ("member", m.Name));
-                    Bind(t, FindByName(t, expected), m, a.Id + "." + m.Id);
-                }
-
-                continue;
-            }
-
-            var column = am?.Column is { } columnId ? t.Resolve(columnId) : FindByName(t, p.KeyIds.Contains(a.Id)
-                ? Render(_conv.KeyColumn, ("attribute", a.Name), ("entity", p.Entity.Name), ("table", t.Table.Name))
-                : ColumnName(a.Name)) ?? FindByName(t, ColumnName(a.Name));
-            Bind(t, column, a, a.Id);
-        }
-
-        static void Bind(TableBuild t, RColumn? column, RAttribute a, string path)
-        {
-            if (column is null || column.AttributePath is not null)
-                return;
-            column.Attribute = a;
-            column.AttributePath = path;
-            t.ByKey.TryAdd(path, column);
-        }
-    }
-
-    private static RColumn? FindByName(TableBuild t, string name) =>
-        t.Columns.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.Ordinal))
-        ?? t.Columns.FirstOrDefault(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
 }

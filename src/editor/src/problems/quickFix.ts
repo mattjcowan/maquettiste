@@ -78,6 +78,7 @@ const EDITOR_FIXES = new Set([
   "MQ8308",
   "MQ8312",
   "MQ3116",
+  "MQ4146",
   "MQ3042",
   "MQ3043",
   ...STORAGE_FIX_RULES,
@@ -661,6 +662,11 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
       if (element.kind !== "relation") return null;
       const fix = endTypesFix(d.rule, element, pointer);
       return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
+    }
+    case "MQ4146": {
+      // A database with no byConvention: say it holds only the tables written for it.
+      if (element.kind !== "database" || element.byConvention !== undefined) return null;
+      return { kind: "update", id, json: { ...clone(element), byConvention: "none" }, label: 'Write "byConvention": "none"' };
     }
     case "MQ3116": {
       if (element.kind !== "process") return null;

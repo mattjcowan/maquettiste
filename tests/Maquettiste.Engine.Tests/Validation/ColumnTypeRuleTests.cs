@@ -253,10 +253,10 @@ public sealed class ColumnTypeRuleTests
 
     /// <summary>
     /// The fixture with a <c>notes</c> table (id, body) whose body states <paramref name="column"/>, the entity <c>InvoiceNote</c> bound to
-    /// it with a body attribute that states <paramref name="attribute"/>, and the entity <c>Invoice</c> projected with an overlay entry for
-    /// its <c>email</c> (stating <paramref name="overlay"/>, its attribute <paramref name="attribute"/>).
+    /// it with a body attribute that states <paramref name="attribute"/>, and the entity <c>Invoice</c> bound to table <c>invoices</c>, whose
+    /// <c>email</c> column states <paramref name="email"/> (its attribute <paramref name="attribute"/>).
     /// </summary>
-    private static Fixture SensitivityFixture(Sensitivity? column, Sensitivity? attribute, Sensitivity? overlay, Func<ProjectSettings, ProjectSettings>? settings = null) =>
+    private static Fixture SensitivityFixture(Sensitivity? column, Sensitivity? attribute, Sensitivity? email, Func<ProjectSettings, ProjectSettings>? settings = null) =>
         new(more: x =>
         {
             var notes = x.B.Table("notes", x.Main).Column("id", "uuid", nullable: false).Column("body", "text").PrimaryKey("id")
@@ -268,8 +268,8 @@ public sealed class ColumnTypeRuleTests
                 Fields = [new BindingField { Attribute = note.AttrId("id"), Column = notes.ColumnId("id") }, new BindingField { Attribute = note.AttrId("body"), Column = "body" }],
             });
             var invoice = x.B.Entity("Invoice").Key("id", "uuid").Attr("email", "string", a => { if (attribute is { } s) a.Sensitive(s); });
-            x.B.Table("invoices", x.Main).OverlayFor(invoice).Overlay(invoice.AttrId("email"))
-                .Edit(t => t with { Columns = [t.Columns[0] with { Sensitive = overlay }] });
+            x.B.Table("invoices", x.Main).Column("id", "uuid", nullable: false).Column("email", "string").PrimaryKey("id")
+                .Edit(t => EditColumn(t, "email", c => c with { Sensitive = email })).Binds(invoice);
             if (settings is not null)
                 x.B.Settings(settings);
         });
@@ -279,10 +279,10 @@ public sealed class ColumnTypeRuleTests
     {
         var found = await SensitivityFixture(Sensitivity.Pii, Sensitivity.Secret, Sensitivity.Pii).FindingsAsync();
 
-        Assert.Equal([("MQ4085", "/bindings/0/fields/1"), ("MQ4085", "/columns/0/sensitive")], At(found));
+        Assert.Equal([("MQ4085", "/bindings/0/fields/1"), ("MQ4085", "/bindings/0/fields/1")], At(found));
         Assert.All(found, d => Assert.Equal(DiagnosticSeverity.Warning, d.Severity));
-        Assert.Contains("Attribute 'body' of entity 'InvoiceNote' states sensitive 'secret', but column 'body'", found.Single(d => d.JsonPointer!.StartsWith("/bindings", StringComparison.Ordinal)).Message,
-            StringComparison.Ordinal);
+        Assert.Contains(found, d => d.Message.Contains("Attribute 'body' of entity 'InvoiceNote' states sensitive 'secret', but column 'body'", StringComparison.Ordinal));
+        Assert.Contains(found, d => d.Message.Contains("Attribute 'email' of entity 'Invoice' states sensitive 'secret', but column 'email'", StringComparison.Ordinal));
     }
 
     [Fact]

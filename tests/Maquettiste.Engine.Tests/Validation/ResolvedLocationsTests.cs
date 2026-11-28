@@ -8,7 +8,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Validation;
 
 /// <summary>Where the checks after resolution put a finding (next-phase-2-design.md section 5.5), one case per rule.</summary>
-[UsesProjectedFixtures]
 public sealed class ResolvedLocationsTests
 {
     private static async Task<(ResolvedModel Model, Maquettiste.Engine.Model.ModelSnapshot Snapshot)> Billing()
@@ -51,42 +50,5 @@ public sealed class ResolvedLocationsTests
         Assert.False(at.Holder);
         var placed = ResolvedLocations.Place(new Diagnostic("x/r", DiagnosticSeverity.Warning, "m", attribute.Id, null, "/name", null, null), attribute, snapshot);
         Assert.Equal(entry.JsonPointer + "/name", placed.JsonPointer);
-    }
-
-    [Fact]
-    public async Task A_synthesized_table_and_its_columns_are_located_on_the_overlay_file()
-    {
-        var (model, snapshot) = await Billing();
-        var table = model.Databases.SelectMany(d => d.Tables).First(t => !snapshot.TryGetEntry(t.Id, out _) && t.FileId is not null);
-        var column = table.Columns.First(c => !snapshot.TryGetEntry(c.Id, out _));
-
-        Assert.Equal(FileOf(snapshot, table.FileId!), ResolvedLocations.Of(table, snapshot).FilePath);
-        Assert.Equal(FileOf(snapshot, table.FileId!), ResolvedLocations.Of(column, snapshot).FilePath);
-        Assert.True(ResolvedLocations.Of(column, snapshot).Holder);
-    }
-
-    [Fact]
-    public async Task A_synthesized_table_without_an_overlay_is_located_on_its_entity()
-    {
-        var (model, snapshot) = await Billing();
-        var table = model.Databases.SelectMany(d => d.Tables).First(t => !snapshot.TryGetEntry(t.Id, out _) && t.FileId is null && t.Entity is not null);
-
-        var at = ResolvedLocations.Of(table, snapshot);
-
-        Assert.Equal(FileOf(snapshot, table.Entity!.Id), at.FilePath);
-        Assert.True(at.Holder);
-    }
-
-    [Fact]
-    public async Task A_synthesized_key_is_located_on_the_id_it_starts_with()
-    {
-        var (model, snapshot) = await Billing();
-        var table = model.Databases.SelectMany(d => d.Tables).First(t => t.Entity is not null && !snapshot.TryGetEntry(t.Id, out _));
-        var sequence = new RSequence { Id = table.Entity!.Id + ".sequence@" + table.Database.Id };
-
-        Assert.Equal(FileOf(snapshot, table.Entity.Id), ResolvedLocations.Of(sequence, snapshot).FilePath);
-        Assert.Null(ResolvedLocations.Of(new RSequence { Id = "nowhere" }, snapshot).FilePath);
-        var placed = ResolvedLocations.Place(new Diagnostic("x/r", DiagnosticSeverity.Warning, "m", null, null, "/x", null, null), new RSequence { Id = "nowhere" }, snapshot);
-        Assert.Equal(("nowhere", (string?)null, (string?)null), (placed.ElementId, placed.FilePath, placed.JsonPointer));
     }
 }

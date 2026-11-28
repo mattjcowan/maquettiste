@@ -105,7 +105,7 @@ public sealed class ElementSummaryTests
         Assert.Equal(2, json["memberCount"]!.GetValue<int>());
         Assert.False(JsonSerializer.SerializeToNode(s.Model.Summaries().First(r => r.Kind == "entity"), web)!.AsObject().ContainsKey("type"));
         Assert.NotEqual(message, message with { Type = "notice" });
-        Assert.Equal("maquettiste-index/e14", Maquettiste.Engine.ModelReads.IndexFormat);
+        Assert.Equal("maquettiste-index/e15", Maquettiste.Engine.ModelReads.IndexFormat);
     }
 
     [Fact]
@@ -157,5 +157,23 @@ public sealed class ElementSummaryTests
         Assert.Equal(row, row with { Actors = [.. row.Actors!] }); // compared by items
         Assert.NotEqual(row, row with { Actors = [clerk.Id] });
         Assert.NotEqual(quiet, quiet with { Actors = [clerk.Id] });
+    }
+
+    /// <summary>
+    /// The shape of an index row (every public property of <see cref="ElementSummary"/> and <see cref="RelationEndSummary"/>, with its type)
+    /// is pinned with the index format: a row that gains, loses or retypes a member changes the hash, and then
+    /// <see cref="Maquettiste.Engine.ModelReads.IndexFormat"/> must change too, so no client keeps an index of the older shape on a 304.
+    /// </summary>
+    [Fact]
+    public void The_index_format_changes_whenever_the_row_shape_does()
+    {
+        static string Shape(Type type) => string.Join(";", type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Select(p => p.Name + ":" + p.PropertyType.ToString())
+            .Order(StringComparer.Ordinal));
+        var text = Shape(typeof(ElementSummary)) + "|" + Shape(typeof(RelationEndSummary));
+        var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..16];
+
+        // When this fails: bump ModelReads.IndexFormat (and the mock's INDEX_FORMAT and the API description), then paste the new hash.
+        Assert.Equal(("maquettiste-index/e15", "5e5dfdbb5c8bfc41"), (Maquettiste.Engine.ModelReads.IndexFormat, hash));
     }
 }

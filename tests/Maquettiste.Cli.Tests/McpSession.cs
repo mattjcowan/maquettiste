@@ -27,6 +27,8 @@ public sealed class McpSession : IAsyncDisposable
     public const string BillingPackage = "01J92P0V01KDRN8GX5PGYCNKSX";
     public const string Customer = "01J92P0V0ETQKXXP951CMMNHH3";
     public const string CustomerPath = ".maquettiste/model/entities/customer.json";
+    public const string CustomersTable = "01M8EJPZN867GR1CJR5ZERBJ0V";
+    public const string CustomersTablePath = ".maquettiste/model/databases/main/tables/customers.json";
 
     private readonly bool _ownsRepo;
 

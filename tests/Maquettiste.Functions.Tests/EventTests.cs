@@ -11,17 +11,17 @@ using Microsoft.Extensions.Logging;
 namespace Maquettiste.Functions.Tests;
 
 /// <summary>Realtime events (phase2-design.md section 3.6): what is published, how often, and within the hub's 256 KB.</summary>
-[UsesProjectedFixtures]
 public sealed class EventTests
 {
     private const int HubLimit = 256 * 1024;
 
+    /// <summary>Renames the invoices table's column notes.</summary>
     private static async Task<TestResponse> RenameNotesAsync(EditorHost host, string name)
     {
-        var invoice = await host.GetAsync("/api/model/elements/" + EditorHost.InvoiceId);
-        var json = invoice.Json["json"]!.AsObject();
-        json["attributes"]![5]!["name"] = name;
-        return await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.InvoiceId, json, r => r.IfMatch(invoice.Json["hash"]!.GetValue<string>()));
+        var invoices = await host.GetAsync("/api/model/elements/" + EditorHost.InvoicesTableId);
+        var json = invoices.Json["json"]!.AsObject();
+        json["columns"]!.AsArray().Single(c => (string?)c!["name"] == "notes")!["name"] = name;
+        return await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.InvoicesTableId, json, r => r.IfMatch(invoices.Json["hash"]!.GetValue<string>()));
     }
 
     private static async Task WaitLoadedAsync(EditorHost host) =>
@@ -108,14 +108,14 @@ public sealed class EventTests
         Assert.Equal("all", changed.Target);
         Contract.AssertEvent("model.changed", changed.Payload);
         Assert.Equal("editor", changed.Payload["source"]!.GetValue<string>());
-        // The column's rename is recorded as a migration fact in the same change: the invoice is one of the two entries.
+        // The column's rename is recorded as a migration fact in the same change: the table is one of the two entries.
         var entries = changed.Payload["changed"]!.AsArray();
         Assert.Equal(2, entries.Count);
-        var invoice = Assert.Single(entries, e => e!["id"]!.GetValue<string>() == EditorHost.InvoiceId)!;
+        var invoice = Assert.Single(entries, e => e!["id"]!.GetValue<string>() == EditorHost.InvoicesTableId)!;
         Assert.Equal(saved.Json["facts"]![0]!["id"]!.GetValue<string>(), Assert.Single(entries, e => e != invoice)!["id"]!.GetValue<string>());
         Assert.Equal(saved.Json["hash"]!.GetValue<string>(), invoice["hash"]!.GetValue<string>());
         var summary = invoice["summary"]!; // E5d: the new index row rides along
-        Assert.Equal(EditorHost.InvoiceId, summary["id"]!.GetValue<string>());
+        Assert.Equal(EditorHost.InvoicesTableId, summary["id"]!.GetValue<string>());
         Assert.Equal(saved.Json["hash"]!.GetValue<string>(), summary["hash"]!.GetValue<string>());
         var validated = Assert.Single(host.Published("validation.completed"));
         Contract.AssertEvent("validation.completed", validated.Payload);

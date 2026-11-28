@@ -106,9 +106,9 @@ public sealed class ResolverBehaviorTests
     }
 
     [Fact]
-    public void Find_returns_every_kind_of_resolved_object()
+    public async Task Find_returns_every_kind_of_resolved_object()
     {
-        var model = ResolutionKit.Resolve(BillingFixture.Create());
+        var model = await BillingModel.GetAsync();
         var invoice = model.Entity("Invoice");
         Assert.Same(invoice, model.Find(invoice.Id));
         Assert.Same(invoice.OwnAttributes[1], model.Find(invoice.OwnAttributes[1].Id));
@@ -122,64 +122,50 @@ public sealed class ResolverBehaviorTests
     }
 
     [Fact]
-    public void Naming_conventions_apply_per_project_and_per_database()
+    public void Naming_conventions_name_the_constraints_a_table_leaves_unnamed()
     {
         var b = new ModelBuilder(seed: 82);
-        var customer = b.Entity("Customer").Key("id", "int64").Attr("fullName", "string").Attr("email", "string", a => a.Unique().Indexed());
-        var order = b.Entity("SalesOrder").Key("id", "int64");
-        b.Relation("places", customer, order, fromMax: MaxCardinality.One, fromRole: "buyer", toRole: "order");
-        b.Database("pg", Dialect.PostgreSql);
-        b.Database("ms", Dialect.SqlServer);
+        foreach (var (name, dialect) in new[] { ("pg", Dialect.PostgreSql), ("ms", Dialect.SqlServer) })
+        {
+            var db = b.Database(name, dialect);
+            var unique = b.NewId();
+            var customers = b.Table("customers", db).Column("id", "int64", nullable: false).Column("email", "string", length: 254).PrimaryKey("id")
+                .Edit(t => t with { Uniques = [new UniqueConstraint { Id = unique, Columns = [t.Columns[1].Id] }] });
+            b.Table("sales_orders", db).Column("id", "int64", nullable: false).Column("buyer_id", "int64").PrimaryKey("id").ForeignKey(customers, "buyer_id");
+        }
+
         b.Settings(s => s with
         {
-            Conventions = new Conventions { KeyColumn = "{entity}_{attribute}", ForeignKeyColumn = "{role}_{key}", PrimaryKeyName = "{table}_pkey" },
-            Databases = ImmutableDictionary<string, Conventions>.Empty.Add("ms", new Conventions
-            {
-                TableCase = CaseStyle.Pascal, ColumnCase = CaseStyle.Pascal, PluralTables = false, ForeignKeyName = "FK_{table}_{columns}",
-            }),
+            Conventions = new Conventions { PrimaryKeyName = "{table}_pkey" },
+            Databases = ImmutableDictionary<string, Conventions>.Empty.Add("ms", new Conventions { ForeignKeyName = "{table}_{columns}_fkey" }),
         });
         var model = ResolutionKit.Resolve(b);
         var pg = model.Db("pg");
-        Assert.Equal(["customers", "sales_orders"], pg.Tables.Select(t => t.Name));
-        Assert.Equal(["customer_id", "full_name", "email"], pg.Table("customers").Columns.Names());
         Assert.Equal("customers_pkey", pg.Table("customers").PrimaryKey!.Name);
-        Assert.Equal("buyer_id", pg.Table("sales_orders").Columns[1].Name);
         Assert.Equal("fk_sales_orders_buyer_id", pg.Table("sales_orders").ForeignKeys[0].Name);
+        Assert.Equal("uq_customers_email", pg.Table("customers").Uniques[0].Name);
 
         var ms = model.Db("ms");
-        Assert.Equal(["Customer", "SalesOrder"], ms.Tables.Select(t => t.Name));
-        Assert.Equal(["CustomerId", "FullName", "Email"], ms.Table("Customer").Columns.Names());
-        Assert.Equal("CustomerPkey", ms.Table("Customer").PrimaryKey!.Name);
-        Assert.Equal("FkSalesOrderBuyerId", ms.Table("SalesOrder").ForeignKeys[0].Name);
-        Assert.Equal("UqCustomerEmail", ms.Table("Customer").Uniques[0].Name);
-        Assert.Empty(ms.Table("Customer").Indexes); // unique wins over indexed: one constraint per attribute
-    }
-
-    [Fact]
-    public void Preserve_case_keeps_names_as_written()
-    {
-        var b = new ModelBuilder(seed: 83);
-        b.Entity("OrderLine").Key("ID", "int64").Attr("unitPrice", "decimal");
-        b.Database("db", Dialect.Sqlite);
-        b.Settings(s => s with { Conventions = new Conventions { TableCase = CaseStyle.Preserve, ColumnCase = CaseStyle.Preserve } });
-        var table = ResolutionKit.Resolve(b).Db("db").Tables.Single();
-        Assert.Equal("OrderLines", table.Name);
-        Assert.Equal(["ID", "unitPrice"], table.Columns.Names());
+        Assert.Equal("customers_pkey", ms.Table("customers").PrimaryKey!.Name);
+        Assert.Equal("sales_orders_buyer_id_fkey", ms.Table("sales_orders").ForeignKeys[0].Name);
     }
 
     [Fact]
     public void Identifiers_over_the_limit_are_reported_never_truncated()
     {
         var b = new ModelBuilder(seed: 84);
-        var entity = b.Entity("AnExtremelyLongEntityNameThatKeepsGoingAndGoingPastTheLimit").Key("id", "int64")
-            .Attr("anAttributeNameThatIsAlsoFarTooLongForAPostgreSqlIdentifierToHold", "string");
-        b.Database("pg", Dialect.PostgreSql);
-        b.Database("lite", Dialect.Sqlite);
+        foreach (var (name, dialect) in new[] { ("pg", Dialect.PostgreSql), ("lite", Dialect.Sqlite) })
+        {
+            var db = b.Database(name, dialect);
+            b.Table("an_extremely_long_table_name_that_keeps_going_and_going_past_the_limit", db).Column("id", "int64", nullable: false)
+                .Column("a_column_name_that_is_also_far_too_long_for_a_postgresql_identifier", "string").PrimaryKey("id");
+        }
+
         var model = ResolutionKit.Resolve(b);
         var table = model.Db("pg").Tables.Single();
         Assert.True(table.Name.Length > 63);
         var diagnostics = model.Diagnostics.Where(d => d.Rule == "MQ4001").ToList();
-        Assert.Contains(diagnostics, d => d.Message.StartsWith("Table name", StringComparison.Ordinal) && d.ElementId == entity.Id);
+        Assert.Contains(diagnostics, d => d.Message.StartsWith("Table name", StringComparison.Ordinal) && d.ElementId == table.Id);
         Assert.Contains(diagnostics, d => d.Message.StartsWith("Column name", StringComparison.Ordinal));
         Assert.Contains(diagnostics, d => d.Message.StartsWith("Primary key name", StringComparison.Ordinal));
         Assert.All(diagnostics, d => Assert.Equal(DiagnosticSeverity.Error, d.Severity));
@@ -196,8 +182,9 @@ public sealed class ResolverBehaviorTests
     public void Database_max_identifier_length_overrides_the_dialect()
     {
         var b = new ModelBuilder(seed: 85);
-        b.Entity("Customer").Key("id", "int64");
-        b.Add(new Database { Id = b.NewId(), Name = "tight", Dialect = Dialect.SqlServer, MaxIdentifierLength = 8 });
+        var tight = new Database { Id = b.NewId(), Name = "tight", Dialect = Dialect.SqlServer, MaxIdentifierLength = 8 };
+        b.Add(tight);
+        b.Add(new Table { Id = b.NewId(), Name = "customers", Database = tight.Id, Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int64", Nullable = false }] });
         var model = ResolutionKit.Resolve(b);
         Assert.Equal(8, model.Db("tight").MaxIdentifierLength);
         Assert.Contains(model.Diagnostics, d => d.Message.StartsWith("Table name 'customers'", StringComparison.Ordinal));
@@ -250,7 +237,7 @@ public sealed class ResolverBehaviorTests
         b.Database("main", Dialect.PostgreSql);
         var model = ResolutionKit.Resolve(b);
         Assert.Empty(model.Relations);
-        Assert.Equal("string", model.Db("main").Table("orphans").Column("x").Type);
+        Assert.Equal(["x"], model.Entity("Orphan").Attributes.Select(x => x.Name));
     }
 
     [Fact]
@@ -347,52 +334,6 @@ public sealed class ResolverBehaviorTests
     }
 
     [Fact]
-    public void A_schema_default_reaches_a_table_without_a_file()
-    {
-        // next-phase-2-design.md section 3.1: a synthesized table without an overlay takes its schema's defaults (and the stereotypes
-        // they imply): stereotypes, merged default properties, storage, and the keys of the stereotypes and its package chain.
-        var b = new ModelBuilder(seed: 870);
-        b.Stereotype("versioned").AppliesTo("table");
-        b.Stereotype("audited").AppliesTo("table").Implies("versioned").DefaultProperty("retention", 7);
-        var billing = b.Package("Billing");
-        var invoice = b.Entity("Invoice", billing).Key("id", "uuid").Attr("notes", "string", a => a.Collection());
-        var customer = b.Entity("Customer", billing).Key("id", "uuid");
-        var main = b.Database("main", Dialect.PostgreSql);
-        var sales = main.Schema("sales");
-        var common = main.Schema("public");
-        main.Package(billing, sales);
-        b.Mapping(main, customer).Schema(common);
-        var storage = new Dictionary<string, IReadOnlyDictionary<string, System.Text.Json.JsonElement>>(StringComparer.Ordinal)
-        {
-            ["postgresql"] = new Dictionary<string, System.Text.Json.JsonElement>(StringComparer.Ordinal) { ["fillfactor"] = System.Text.Json.JsonSerializer.SerializeToElement(80) },
-        };
-        var snapshot = Tests.Model.StereotypeDefaultsTests.Rebuild(b, e => e is Stereotype { Key: "audited" } s
-            ? s with { Storage = storage }
-            : Tests.Model.StereotypeDefaultsTests.SchemaDefaults(e, sales, "audited"));
-        var model = ResolutionKit.Resolve(snapshot);
-        var db = model.Db("main");
-
-        var invoices = db.Table("invoices");
-        Assert.Equal([("versioned", "schema-default", "audited"), ("audited", "schema-default", null)],
-            invoices.Stereotypes.Select(s => (s.Key, s.Source, s.ImpliedBy)));
-        Assert.True(invoices.HasStereotype("versioned"));
-        Assert.Equal(7L, invoices.Properties["retention"]);
-        Assert.Equal(["fillfactor = 80"], invoices.Storage.Select(p => p.Name + " = " + p.Value));
-        Assert.Contains("e:" + snapshot.GetStereotype("audited")!.Id, invoices.Dependencies);
-        Assert.Contains("e:" + snapshot.GetStereotype("versioned")!.Id, invoices.Dependencies);
-        Assert.Contains("e:" + billing.Id, invoices.Dependencies);
-        Assert.Null(invoices.Description);
-
-        // A child table is in its owner's schema; a table its mapping puts in another schema, and the entity itself, take nothing.
-        var notes = db.Tables.Single(t => t.Attribute is not null);
-        Assert.Equal(["versioned", "audited"], notes.Stereotypes.Select(s => s.Key));
-        Assert.Empty(db.Table("customers").Stereotypes);
-        Assert.Empty(db.Table("customers").Storage);
-        Assert.Empty(model.Entity("Invoice").Stereotypes);
-        Assert.Equal(invoice.Id + "@" + main.Id, invoices.Key);
-    }
-
-    [Fact]
     public async Task A_default_entry_points_at_the_stereotypes_list()
     {
         // next-phase-2-design.md section 3.1: a default has no entry (-1), so a finding about it points at the element's stereotypes
@@ -467,7 +408,6 @@ public sealed class ResolverBehaviorTests
         Assert.Same(table.Stereotypes[0], column.MemberOrigin.Stereotype);
         Assert.Empty(column.MemberOrigin.Redefined);
         Assert.Equal((false, "CURRENT_TIMESTAMP"), (column.Nullable, column.DefaultSql));
-        Assert.Null(column.Attribute);
         Assert.Same(model.ById[column.Id], column);
         // Own members share one origin.
         Assert.Equal("own", table.Column("id").MemberOrigin.Source);
@@ -594,163 +534,6 @@ public sealed class ResolverBehaviorTests
         Assert.Equal(["row_id"], pk.Columns.Names());
         Assert.Equal(("stereotype", keyed.PrimaryKey.Id), (pk.MemberOrigin.Source, pk.MemberOrigin.MemberId));
         Assert.True(db.Table("logs").Column("row_id").IsPrimaryKey);
-    }
-
-    [Fact]
-    public void A_synthesized_table_skips_the_members_whose_attributes_it_stores()
-    {
-        var b = new ModelBuilder(seed: 884);
-        var audited = Audited(b, s => s with
-        {
-            Attributes = [new ModelAttribute { Id = b.NewId(), Name = "createdAt", Type = new TypeRef { Builtin = "datetimeoffset" }, Required = true }],
-        });
-        var invoice = b.Entity("Invoice").Key("id", "uuid").Stereotype("audited");
-        var product = b.Entity("Product").Key("id", "uuid");
-        var main = b.Database("main", Dialect.PostgreSql);
-        var billing = main.Schema("billing");
-        main.DefaultSchema("billing");
-        b.Mapping(main, invoice);
-        b.Mapping(main, product);
-        var snapshot = Tests.Model.StereotypeDefaultsTests.Rebuild(b, e => Tests.Model.StereotypeDefaultsTests.SchemaDefaults(e, billing, "audited"));
-        var db = ResolutionKit.Resolve(snapshot).Db("main");
-
-        // Invoice's table stores audited's attribute as a column and inherits no member; it still lists the stereotype.
-        var invoices = db.Table("invoices");
-        Assert.Equal(["id", "created_at"], invoices.Columns.Names());
-        Assert.NotNull(invoices.Column("created_at").Attribute);
-        Assert.Empty(invoices.Indexes);
-        Assert.Empty(invoices.Checks);
-        Assert.Contains(invoices.Stereotypes, s => s.Key == "audited");
-
-        // Product's table inherits every member from the schema default, keyed by the synthesized table key.
-        var products = db.Table("products");
-        Assert.Equal(["id", "created_at", "updated_at"], products.Columns.Names());
-        var created = products.Column("created_at");
-        Assert.Equal(Keyed(product.Id + "@" + main.Id, audited.Columns[0].Id), created.Key);
-        Assert.Equal(("schema-default", "schema-default"), (created.MemberOrigin.Source, created.MemberOrigin.Stereotype!.Source));
-        Assert.Single(products.Indexes);
-        Assert.Single(products.Checks);
-    }
-
-    [Fact]
-    public void A_tph_root_table_skips_the_members_a_derived_entity_stores_through_attributes()
-    {
-        var b = new ModelBuilder(seed: 885);
-        Audited(b, s => s with
-        {
-            Attributes = [new ModelAttribute { Id = b.NewId(), Name = "createdAt", Type = new TypeRef { Builtin = "datetimeoffset" } }],
-        });
-        var document = b.Entity("Document").Key("id", "uuid");
-        b.Entity("Invoice").Base(document).Attr("total", "decimal").Stereotype("audited");
-        var main = b.Database("main", Dialect.PostgreSql);
-        var billing = main.Schema("billing");
-        main.DefaultSchema("billing");
-        b.Mapping(main, document);
-        var snapshot = Tests.Model.StereotypeDefaultsTests.Rebuild(b, e => Tests.Model.StereotypeDefaultsTests.SchemaDefaults(e, billing, "audited"));
-        var model = ResolutionKit.Resolve(snapshot);
-
-        // The root entity does not carry audited, but its table stores the derived entity's audited attribute: no member.
-        var documents = model.Db("main").Table("documents");
-        Assert.Equal(1, documents.Columns.Count(c => c.Name == "created_at"));
-        Assert.DoesNotContain(documents.Columns, c => c.Name == "updated_at");
-        Assert.All(documents.Columns, c => Assert.Equal("own", c.MemberOrigin.Source));
-        Assert.DoesNotContain(model.Diagnostics, d => d.Rule == "MQ4003");
-    }
-
-    [Fact]
-    public void An_inherited_column_named_like_another_stereotypes_attribute_column_is_MQ4003()
-    {
-        var b = new ModelBuilder(seed: 886);
-        Audited(b);
-        b.Stereotype("timestamps").AppliesTo("entity").Attr("createdAt", "datetimeoffset");
-        var invoice = b.Entity("Invoice").Key("id", "uuid").Stereotype("timestamps");
-        var main = b.Database("main", Dialect.PostgreSql);
-        var billing = main.Schema("billing");
-        main.DefaultSchema("billing");
-        b.Mapping(main, invoice);
-        var snapshot = Tests.Model.StereotypeDefaultsTests.Rebuild(b, e => Tests.Model.StereotypeDefaultsTests.SchemaDefaults(e, billing, "audited"));
-        var model = ResolutionKit.Resolve(snapshot);
-
-        var finding = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4003");
-        Assert.Equal(invoice.Id, finding.ElementId);
-        Assert.Contains("'created_at'", finding.Message, StringComparison.Ordinal);
-        Assert.Contains("attribute 'createdAt'", finding.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void An_overlay_link_to_a_skipped_member_is_MQ2027_from_the_resolver()
-    {
-        var b = new ModelBuilder(seed: 887);
-        var audited = Audited(b, s => s with
-        {
-            Attributes = [new ModelAttribute { Id = b.NewId(), Name = "createdAt", Type = new TypeRef { Builtin = "datetimeoffset" } }],
-        });
-        var created = audited.Columns[0];
-        var invoice = b.Entity("Invoice").Key("id", "uuid").Stereotype("audited");
-        var main = b.Database("main", Dialect.PostgreSql);
-        b.Mapping(main, invoice);
-        var key = invoice.Id + "@" + main.Id;
-        var overlay = b.Table("invoices", main).OverlayFor(invoice).Stereotype("audited").Edit(t => t with
-        {
-            Redefines = [new TableRedefinition { Member = created.Id, Nullable = true }],
-            Indexes = [new TableIndex { Id = "01JC7AVD1TC0000000000000X9", Columns = [new IndexColumn { Column = Keyed(key, created.Id) }] }],
-        });
-        var model = ResolutionKit.Resolve(b);
-
-        var link = Assert.Single(model.Diagnostics, d => d.Rule == "MQ2027");
-        Assert.Equal((overlay.Id, "/redefines/0/member"), (link.ElementId, link.JsonPointer));
-        var missing = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4008");
-        Assert.Equal((overlay.Id, "/indexes/0/columns/0/column"), (missing.ElementId, missing.JsonPointer));
-        Assert.Empty(model.Db("main").Table("invoices").Indexes);
-    }
-
-    [Fact]
-    public void A_not_null_member_without_a_default_on_a_synthesized_table_is_MQ4079()
-    {
-        var b = new ModelBuilder(seed: 888);
-        Audited(b, s => s with { Columns = [.. s.Columns, new Column { Id = "01JC7AVD1TC0000000000000C8", Name = "row_version", Type = "int64", Nullable = false }] });
-        var product = b.Entity("Product").Key("id", "uuid");
-        var main = b.Database("main", Dialect.PostgreSql);
-        var billing = main.Schema("billing");
-        main.DefaultSchema("billing");
-        b.Mapping(main, product);
-        b.Table("notes", main).Column("id", "uuid", nullable: false).PrimaryKey("id");
-        var snapshot = Tests.Model.StereotypeDefaultsTests.Rebuild(b, e => Tests.Model.StereotypeDefaultsTests.SchemaDefaults(e, billing, "audited"));
-        var model = ResolutionKit.Resolve(snapshot);
-
-        // created_at has a default; row_version has none, and a designed table (notes) is not reported: its rows are written as seeds.
-        var finding = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4079");
-        Assert.Equal((product.Id, DiagnosticSeverity.Warning), (finding.ElementId, finding.Severity));
-        Assert.Contains("'row_version'", finding.Message, StringComparison.Ordinal);
-        Assert.Contains("entity 'Product'", finding.Message, StringComparison.Ordinal);
-        Assert.Equal(["id", "created_at", "updated_at", "row_version"], model.Db("main").Table("notes").Columns.Names());
-    }
-
-    [Fact]
-    public void A_clash_between_defaults_on_a_table_without_a_file_goes_on_its_entity()
-    {
-        // next-phase-2-design.md section 3.1 (D7, decision 29): no file's validation judges the set a table without a file takes from
-        // its schema's and package's defaults, so the resolver reports the clash on its entity at /stereotypes, naming both defaults.
-        var b = new ModelBuilder(seed: 889);
-        b.Stereotype("hot").AppliesTo("table").Group("temperature");
-        b.Stereotype("cold").AppliesTo("table").Group("temperature");
-        var billing = b.Package("Billing");
-        var invoice = b.Entity("Invoice", billing).Key("id", "uuid");
-        var main = b.Database("main", Dialect.PostgreSql);
-        var sales = main.Schema("sales");
-        main.DefaultSchema("sales");
-        b.Mapping(main, invoice);
-        var snapshot = Tests.Model.StereotypeDefaultsTests.Rebuild(b, e => e is Package p && p.Id == billing.Id
-            ? p with { DefaultStereotypes = ["cold"] }
-            : Tests.Model.StereotypeDefaultsTests.SchemaDefaults(e, sales, "hot"));
-        var model = ResolutionKit.Resolve(snapshot);
-
-        var finding = Assert.Single(model.Diagnostics, d => d.Rule == "MQ2013");
-        Assert.Equal((invoice.Id, "/stereotypes"), (finding.ElementId, finding.JsonPointer));
-        Assert.Contains("Table 'invoices' of database 'main', which has no table file", finding.Message, StringComparison.Ordinal);
-        Assert.Contains("schema 'sales'", finding.Message, StringComparison.Ordinal);
-        Assert.Contains("package 'Billing'", finding.Message, StringComparison.Ordinal);
-        Assert.Equal(["hot", "cold"], model.Db("main").Table("invoices").Stereotypes.Select(s => s.Key));
     }
 
     private sealed class SyncProgress(Action<ProgressUpdate> report) : IProgress<ProgressUpdate>

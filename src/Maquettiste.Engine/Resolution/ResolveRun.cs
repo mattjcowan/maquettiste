@@ -143,16 +143,18 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
-    /// Links the reference type bindings into the given databases' tables, as a full run does after every database: a reference
-    /// column's bound table (<see cref="RColumn.ReferenceBinding"/>) is part of its physical snapshot, so the databases a write records
-    /// facts for capture it as validate and generate do (next-phase-2-design.md section 3.2, decision 8).
+    /// Links the reference type bindings into the given databases' tables (<see cref="RTable.ReferenceBindings"/>), as a full run does after
+    /// every database, so the databases a write records facts for see where each type's codes live as validate and generate do
+    /// (next-phase-2-design.md section 3.2, decision 8).
     /// </summary>
     private void LinkReferenceBindings(IReadOnlyList<RDatabase?> databases)
     {
         var tablesByKey = new Dictionary<string, RTable>(StringComparer.Ordinal);
         foreach (var database in databases)
         {
-            foreach (var table in database?.Tables.Where(t => t.Origin != "synthesized") ?? [])
+            if (database is null)
+                continue;
+            foreach (var table in database.Tables)
                 tablesByKey.TryAdd(table.Key, table);
         }
 
@@ -561,13 +563,11 @@ internal sealed partial class ResolveRun
     /// Whether the database runs can go side by side with the result of running them one by one. They share the conceptual objects, and
     /// the one link between runs that a later run reads is what an earlier run adds to a relation's dependency keys (in
     /// <c>FinishRelationMappings</c>), which a later run's relations copy (<c>ResolveRelation</c>): each run waits for the run before it
-    /// to finish its relation mappings before it resolves its relations. A model where a relation can be promoted (promotion adds entities
-    /// and relations every run reads) or with an end of several types (whose storage reads relation keys after its own run's mappings)
-    /// runs them one by one.
+    /// to finish its relation mappings before it resolves its relations. A model with an end of several types (whose storage reads
+    /// relation keys after its own run's mappings) runs them one by one.
     /// </summary>
     private bool CanRunDatabasesSideBySide(List<Database> databases) =>
-        databases.Count > 1 && _parallelism > 1 && _severalTypeEnds.Count == 0 && !EffectiveConventions.AnyPromotes(Settings)
-        && !Model.All<Mapping>().Any(m => m.Relation is not null && m.Shape == RelationShape.Promoted);
+        databases.Count > 1 && _parallelism > 1 && _severalTypeEnds.Count == 0;
 
     /// <summary>
     /// Runs every database at once (see <see cref="CanRunDatabasesSideBySide"/>), then, in database order, applies each run's findings,

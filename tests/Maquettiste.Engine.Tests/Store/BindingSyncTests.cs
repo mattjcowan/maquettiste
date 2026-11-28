@@ -17,7 +17,6 @@ namespace Maquettiste.Engine.Tests.Store;
 /// retypes, maps by name, adds attributes for added columns, removes the fields of removed columns and records provenance again; both
 /// refuse with MQ4089 and never resolve the whole model.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class BindingSyncTests
 {
     private const string Main = EditorRepo.MainDatabaseId;
@@ -289,7 +288,11 @@ public sealed class BindingSyncTests
         var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("map-by-name", Main, [RevenueMonth]), Ct);
         Assert.False(plan.Valid);
         Assert.Equal("MQ4089", Assert.Single(plan.Diagnostics).Rule);
-        Assert.Contains("has no binding to database 'main'", Refused(await ApplyAsync(r, MapByName(EditorRepo.InvoiceId))).Message, StringComparison.Ordinal);
+        await CreateAsync(r, $$"""
+            {"kind":"entity","id":"01K7SYNC0000000000000000G0","name":"Shipment","package":"{{EditorRepo.BillingPackageId}}","key":{"attributes":["01K7SYNC0000000000000000G1"]},
+             "attributes":[{"id":"01K7SYNC0000000000000000G1","name":"reference","type":"string","length":40}]}
+            """);
+        Assert.Contains("has no binding to database 'main'", Refused(await ApplyAsync(r, MapByName("01K7SYNC0000000000000000G0"))).Message, StringComparison.Ordinal);
     }
 
     // ---- resync-binding ---------------------------------------------------------------------------------------------------------

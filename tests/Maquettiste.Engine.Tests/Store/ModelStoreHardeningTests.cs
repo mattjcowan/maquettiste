@@ -13,7 +13,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Store;
 
 /// <summary>Untrusted input, collisions inside one plan, and failures midway: the store answers with a result and changes nothing.</summary>
-[UsesProjectedFixtures]
 public sealed class ModelStoreHardeningTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -171,34 +170,6 @@ public sealed class ModelStoreHardeningTests
         Assert.Equal(SaveOutcome.Saved, saved.Outcome);
         Assert.Equal("Mine", saved.Current!.Element.DisplayName);
         Assert.Equal([ChangeSource.Disk, ChangeSource.Disk, ChangeSource.Editor], s.Notifications.Select(n => n.Source));
-    }
-
-    [Fact]
-    public async Task Remove_references_refuses_to_empty_a_list_whose_empty_value_widens_it()
-    {
-        await using var s = await BillingStore.OpenAsync();
-        var main = s.Doc("database", "main");
-        var catalog = s.Doc("package", "Catalog");
-        var billing = s.Id("package", "Billing");
-        var scoped = await s.Store.SaveAsync(main.Element.Id, BillingStore.Edit(main, n => n["packages"] = new JsonArray(catalog.Element.Id)), main.Hash, ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Saved, scoped.Outcome);
-        var before = s.Files();
-
-        var refused = await s.Store.DeleteAsync(catalog.Element.Id, catalog.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
-
-        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
-        var d = Assert.Single(refused.Diagnostics, x => x.Rule == "MQ2001");
-        Assert.Equal((main.Element.Id, "/packages/0/package"), (d.ElementId, d.JsonPointer));
-        Assert.Contains("every package", d.Message, StringComparison.Ordinal);
-        Assert.Equal(before, s.Files());
-
-        // With another package left in the list, the entry is simply removed.
-        var current = s.Store.Current!.GetDocument(main.Element.Id)!;
-        var both = await s.Store.SaveAsync(main.Element.Id, BillingStore.Edit(current, n => n["packages"] = new JsonArray(billing, catalog.Element.Id)), current.Hash, ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Saved, both.Outcome);
-        var removed = await s.Store.DeleteAsync(catalog.Element.Id, catalog.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
-        Assert.Equal(SaveOutcome.Saved, removed.Outcome);
-        Assert.Equal([billing], s.Store.Current!.Get<Database>(main.Element.Id)!.Packages);
     }
 
     [Fact]

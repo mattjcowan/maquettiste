@@ -10,7 +10,6 @@ namespace Maquettiste.Engine.Tests.Rendering;
 /// The tracking context records exactly what a template read (engine-design.md section 9): an object's dependencies on any member
 /// read, a list's membership keys on enumeration, indexing or size, <c>e:&lt;id&gt;</c> for a missing lookup, and template keys.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class ReadTrackingTests
 {
     private const string MainKey = "t:adhoc/main.scriban";
@@ -133,26 +132,6 @@ public sealed class ReadTrackingTests
         var found = await Adhoc.RenderAsync($"{{{{ if lookup \"{invoice.Id}\" }}}}found{{{{ end }}}}");
         Assert.Equal("found", found.Text());
         Assert.Equal(Sorted(invoice.Dependencies.Append(MainKey)), found.ReadKeys);
-    }
-
-    [Fact]
-    public async Task Mapping_and_hints_record_the_element_they_come_from()
-    {
-        var model = await BillingModel.GetAsync();
-        var invoice = model.Entities.Single(e => e.Name == "Invoice");
-        var mapping = invoice.Mappings["main"];
-        var unit = await Adhoc.RenderAsync("{{ mapping.table.name }}", invoice);
-
-        Assert.Equal(mapping.Table.Name, unit.Text());
-        Assert.Equal(Sorted(invoice.Dependencies.Concat(mapping.Table.Dependencies).Append(MainKey)), unit.ReadKeys);
-
-        var hints = await Adhoc.RenderAsync("{{ hints.skip }}", invoice);
-        Assert.Equal("false", hints.Text());
-        Assert.Equal(Sorted(invoice.Dependencies.Append(MainKey)), hints.ReadKeys);
-
-        var mappings = await Adhoc.RenderAsync("{{ for m in mappings }}{{ m.key }}{{ end }}", invoice);
-        Assert.Equal("main", mappings.Text());
-        Assert.Equal(Sorted(invoice.Dependencies.Append(MainKey)), mappings.ReadKeys);
     }
 
     [Fact]

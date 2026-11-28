@@ -125,25 +125,18 @@ public sealed class ModelBuilder
     /// <returns>The database builder.</returns>
     public DatabaseBuilder Database(string name, Dialect dialect) => Register(new DatabaseBuilder(this, name, dialect));
 
-    /// <summary>Adds a designed table (or, with <see cref="TableBuilder.OverlayFor(EntityBuilder)"/>, a synthesized table's overlay).</summary>
+    /// <summary>Adds a designed table.</summary>
     /// <param name="name">The name.</param>
     /// <param name="database">The database.</param>
     /// <returns>The table builder.</returns>
     public TableBuilder Table(string name, DatabaseBuilder database) => Register(new TableBuilder(this, name, database));
-
-    /// <summary>Adds a mapping of an entity to a database.</summary>
-    /// <param name="database">The database.</param>
-    /// <param name="entity">The entity.</param>
-    /// <returns>The mapping builder.</returns>
-    public MappingBuilder Mapping(DatabaseBuilder database, EntityBuilder entity) =>
-        Register(new MappingBuilder(this, $"{entity.Name} in {database.Name}", database.Id, entity.Id, null, entity));
 
     /// <summary>Adds a mapping of a relation to a database.</summary>
     /// <param name="database">The database.</param>
     /// <param name="relation">The relation.</param>
     /// <returns>The mapping builder.</returns>
     public MappingBuilder Mapping(DatabaseBuilder database, RelationBuilder relation) =>
-        Register(new MappingBuilder(this, $"{relation.Name} in {database.Name}", database.Id, null, relation.Id, null));
+        Register(new MappingBuilder(this, $"{relation.Name} in {database.Name}", database.Id, relation.Id));
 
     /// <summary>Adds a stereotype.</summary>
     /// <param name="key">The stereotype key.</param>

@@ -108,7 +108,7 @@ public sealed class ModelBaseline : IDisposable
                 if (info.ModelFormat > EngineVersion.FormatVersion)
                     throw new BadBaselineException(NewerFormat("snapshot " + against, info.ModelFormat), nameof(against));
                 if (await library.OpenAsync(against, ct).ConfigureAwait(false) is { } store)
-                    return new ModelBaseline(BaselineKind.Snapshot, against, "snapshot " + against, store, info.ModelHash, ownsStore: false);
+                    return RefuseLaidOut(new ModelBaseline(BaselineKind.Snapshot, against, "snapshot " + against, store, info.ModelHash, ownsStore: false));
             }
         }
 
@@ -119,8 +119,28 @@ public sealed class ModelBaseline : IDisposable
                 : $"'{against}' names no model snapshot.", nameof(against));
         }
 
-        return await OpenFolderAsync(working, against, currentDirectory, ct).ConfigureAwait(false);
+        return RefuseLaidOut(await OpenFolderAsync(working, against, currentDirectory, ct).ConfigureAwait(false));
     }
+
+    /// <summary>
+    /// Refuses a baseline taken before 0.29.0 that laid out tables by convention (<see cref="TolerantDocumentStore.LaidOutTables"/>): read
+    /// without the removed keys it holds none of those tables, so a schema comparison with it would create every one of them again.
+    /// </summary>
+    /// <param name="baseline">The baseline, loaded.</param>
+    /// <returns><paramref name="baseline"/> when it laid out no table.</returns>
+    /// <exception cref="BadBaselineException">It did (MQ4145); a folder baseline's store is released first.</exception>
+    private static ModelBaseline RefuseLaidOut(ModelBaseline baseline)
+    {
+        if (baseline.Store.Documents is not TolerantDocumentStore tolerant || baseline.Store.Current is not { } snapshot || !tolerant.LaidOutTables(snapshot))
+            return baseline;
+        baseline.Dispose();
+        throw new BadBaselineException(LaidOutMessage(baseline.Label), "against");
+    }
+
+    /// <summary>The message of a baseline that laid out tables by convention, naming it by <paramref name="label"/>.</summary>
+    internal static string LaidOutMessage(string label) =>
+        $"{Json.RemovedProjectionKeys.Rule} This baseline ({label}) laid out tables by convention. Compare it on 0.28.0, or take a new baseline "
+        + "after Create tables.";
 
     /// <summary>
     /// Opens a folder baseline, the part of <see cref="OpenAsync"/>'s order after the snapshot ids: the folder must exist and be a project

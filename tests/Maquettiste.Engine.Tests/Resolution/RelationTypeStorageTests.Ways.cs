@@ -19,8 +19,6 @@ public sealed partial class RelationTypeStorageTests
 
     private static void Delete(LoaderHarness h, string path) => File.Delete(h.Model(path));
 
-    private static string Synthesized(string entity) => entity + "@" + Main;
-
     private static string KeyTo(string table, int n, string name, int column, string referencesTable) =>
         $$"""{"id":"{{Fk(table, n)}}","name":"{{name}}","columns":["{{Col(table, column)}}"],"referencesTable":"{{referencesTable}}","referencesColumns":[]}""";
 
@@ -29,22 +27,6 @@ public sealed partial class RelationTypeStorageTests
          {"id":"{{CommentEnd}}","entity":"{{SComment}}","role":"comment","navigation":"comments","max":{{commentMax}}},
          {"id":"{{AttachedToEnd}}","types":[{"entity":"{{SPart}}"},{"entity":"{{SAssembly}}"}],"role":"attachedTo","navigation":"attachedTo","max":{{attachedMax}}}]}
         """;
-
-    /// <summary>Item, the root of Part and Assembly, in tables the engine makes with an inheritance strategy; the designed parts and assemblies go.</summary>
-    private static void ItemHierarchy(LoaderHarness h, string strategy)
-    {
-        h.Write("model/entities/item.json", EntityFile(SItem, "Item", attributes: (strategy == "tpc" ? ",\"abstract\":true" : "")
-            + $$""","key":{"attributes":["{{ItemKey}}"]},"attributes":[{"id":"{{ItemKey}}","name":"id","type":"uuid"}]"""));
-        h.Write("model/entities/part.json", EntityFile(SPart, "Part", @base: SItem));
-        h.Write("model/entities/assembly.json", EntityFile(SAssembly, "Assembly", @base: SItem));
-        Delete(h, "model/databases/main/tables/parts.json");
-        Delete(h, "model/databases/main/tables/assemblies.json");
-        Delete(h, "model/mappings/part.json");
-        Delete(h, "model/mappings/assembly.json");
-        h.Write("model/mappings/item.json", $$"""{"kind":"mapping","id":"{{N(P, 905)}}","name":"m5","database":"{{Main}}","entity":"{{SItem}}","inheritance":"{{strategy}}"}""");
-        // Filed's folder keys lived on the designed parts and assemblies.
-        Delete(h, "model/relations/filed.json");
-    }
 
     /// <summary>The comments table with a key per type and a key to the shared table, each to a table the engine makes.</summary>
     private static string CommentsTo(string parts, string assemblies, string? items) => Table(Comments, "comments",
@@ -64,150 +46,6 @@ public sealed partial class RelationTypeStorageTests
     private static List<string> Kinds(ResolvedModel model, string relation) =>
         [.. model.Db("main").RelationStorage.Single(n => n.Relation.Id == relation).Gaps.Select(g => g.Kind)];
 
-    [Theory]
-    [InlineData("tph", "3-n1")]
-    [InlineData("tpt", "3-n1")]
-    [InlineData("tpc", "3-n1")]
-    [InlineData("tph", "3-11")]
-    [InlineData("tpt", "3-11")]
-    [InlineData("tpc", "3-11")]
-    [InlineData("tph", "4-n1")]
-    [InlineData("tpt", "4-n1")]
-    [InlineData("tpc", "4-n1")]
-    [InlineData("tph", "2-n1")]
-    [InlineData("tpt", "2-n1")]
-    [InlineData("tpc", "2-n1")]
-    [InlineData("tph", "5-n1")]
-    [InlineData("tpt", "5-n1")]
-    [InlineData("tph", "9-nn")]
-    [InlineData("tpt", "9-nn")]
-    [InlineData("tpc", "9-nn")]
-    public async Task Each_way_in_each_cardinality_over_TPH_TPT_and_TPC(string strategy, string shape)
-    {
-        var (way, cardinality) = (shape[0], shape[2..]);
-        var tph = strategy == "tph";
-        var partTable = Synthesized(tph ? SItem : SPart);
-        var assemblyTable = Synthesized(tph ? SItem : SAssembly);
-        var body = way switch
-        {
-            '3' => Way3,
-            '4' => $$""","ends":[{"end":"{{AttachedToEnd}}","idColumn":"{{Col(Comments, 3)}}"}]""",
-            '2' => $$""","ends":[{"end":"{{AttachedToEnd}}","types":[{"entity":"{{SPart}}","foreignKey":"{{Fk(Comments, 1)}}"},{"entity":"{{SAssembly}}","foreignKey":"{{Fk(Comments, 2)}}"}]}]""",
-            '5' => $$""","ends":[{"end":"{{AttachedToEnd}}","foreignKey":"{{Fk(Comments, 3)}}"}]""",
-            _ => $$""","junctionTable":"{{Links}}","ends":[{"end":"{{CommentEnd}}","foreignKey":"{{Fk(Links, 1)}}"},{"end":"{{AttachedToEnd}}","typeColumn":"{{Col(Links, 3)}}","idColumn":"{{Col(Links, 4)}}"}]""",
-        };
-        var (model, validation) = await ResolveAsync(h =>
-        {
-            ItemHierarchy(h, strategy);
-            h.Write("model/databases/main/tables/comments.json", CommentsTo(partTable, assemblyTable, strategy == "tpc" ? null : Synthesized(SItem)));
-            h.Write("model/relations/attached-to.json", AttachedRelation(cardinality == "11" ? "1" : "\"*\"", cardinality == "nn" ? "\"*\"" : "1"));
-            h.Write("model/mappings/attached.json", RelationMapping(Attached, body));
-        });
-        var found = string.Join("\n", validation.Concat(model.Diagnostics).Where(d => d.Severity != DiagnosticSeverity.Info || d.Rule is "MQ4117" or "MQ4120")
-            .Select(d => d.Rule + " " + d.Message));
-        Assert.DoesNotContain(validation, d => d.Severity == DiagnosticSeverity.Error);
-        Assert.True(Messages(model, "MQ4117").Count == 0 && Messages(model, "MQ4120").Count == 0, found);
-
-        var mapping = MappingOf(model, Attached);
-        Assert.Equal(way == '9' ? "junction" : "foreign-key", mapping.Shape);
-        Assert.Equal(["Part", "Assembly"], mapping.Links.Select(l => l.Ends[1].Type.Name));
-        var shared = tph || way == '5';
-        Assert.Equal(shared ? ["items", "items"] : ["parts", "assemblies"], mapping.Links.Select(l => l.Ends[1].ReferencedTable!.Name));
-        Assert.All(mapping.Links, l => Assert.Equal(way == '9' ? "links" : "comments", l.Table.Name));
-        Assert.Equal(way is '3' or '9' ? ["Assembly", "Part"] : [], mapping.TypeCodes.Select(c => c.Code));
-
-        // Joins: a path per pair, the TPH discriminator picking each target's rows in the root's table; way 5 also has its one path.
-        var discriminator = tph ? model.Entities.Single(e => e.Id == SPart).Mappings["main"].DiscriminatorColumn!.Name : null;
-        var forth = NavigationOf(model, SComment, "attachedTo");
-        var paths = forth.TypeJoins["main"];
-        Assert.Equal(["Part", "Assembly"], paths.Select(p => p.ToType!.Name));
-        for (var i = 0; i < 2; i++)
-        {
-            var last = paths[i].Steps[^1];
-            Assert.Equal(shared ? "items" : i == 0 ? "parts" : "assemblies", last.ToTable.Name);
-            Assert.Equal(tph ? [(discriminator!, i == 0 ? "Part" : "Assembly")] : [],
-                last.Conditions.Where(c => c.Column.Name == discriminator).Select(c => (c.Column.Name, (string)c.Values.Single()!)));
-        }
-
-        if (way == '5')
-        {
-            var one = forth.Joins["main"];
-            Assert.Equal("comments(item_id) > items(id)", Describe(one));
-            Assert.Equal("items(id) > comments(item_id)", Describe(NavigationOf(model, SPart, "comments").Joins["main"]));
-            Assert.Same(one, model.Entities.Single(e => e.Id == SComment).Mappings["main"].Joins["attachedTo"]);
-        }
-        else
-        {
-            Assert.False(forth.Joins.ContainsKey("main"));
-        }
-
-        // Back from each target: one path each, on its own entity mapping.
-        foreach (var (entity, name) in new[] { (SPart, "Part"), (SAssembly, "Assembly") })
-        {
-            var back = model.Entities.Single(e => e.Id == entity).Mappings["main"].Joins["comments"];
-            Assert.Equal(name, back.FromType?.Name);
-            Assert.Equal("comments", back.Steps[^1].ToTable.Name);
-        }
-
-        string[] gaps = shape switch
-        {
-            "3-n1" => ["no-foreign-key", "type-check"],
-            "3-11" => ["no-foreign-key", "type-check", "one-to-one-unique"],
-            "4-n1" => ["no-foreign-key", "id-only"],
-            "2-n1" => ["count-check"],
-            "5-n1" => ["shared-table"],
-            _ => ["no-foreign-key", "type-check", "link-unique"],
-        };
-        Assert.Equal(gaps, Kinds(model, Attached));
-    }
-
-    [Fact]
-    public async Task A_one_type_end_over_an_abstract_TPC_root_has_a_path_per_concrete_entity()
-    {
-        // Pinned: a comment or a folder pins items (Item, an abstract TPC root: its targets are Part and Assembly), in table pins.
-        var (model, validation) = await ResolveAsync(h =>
-        {
-            ItemHierarchy(h, "tpc");
-            h.Write("model/databases/main/tables/comments.json", CommentsTo(Synthesized(SPart), Synthesized(SAssembly), null));
-            h.Write("model/relations/pinned.json", $$"""
-                {"kind":"relation","id":"{{Pinned}}","name":"Pinned","package":"{{Sales}}","ends":[
-                 {"id":"{{PinnedEnd}}","types":[{"entity":"{{SComment}}"},{"entity":"{{SFolder}}"}],"role":"pinnedBy","navigation":"pinnedBy","max":"*"},
-                 {"id":"{{PinnedItemEnd}}","entity":"{{SItem}}","role":"pinned","navigation":"pinned","max":"*"}]}
-                """);
-            h.Write("model/databases/main/tables/pins.json", Table(Pins, "pins", string.Join(",", Column(Pins, 1, "id", nullable: false),
-                Column(Pins, 2, "source_type", "string", 20), Column(Pins, 3, "source_id"), Column(Pins, 4, "item_type", "string", 20), Column(Pins, 5, "item_id"))));
-            h.Write("model/mappings/pinned.json", $$"""
-                {"kind":"mapping","id":"{{N(P, 991)}}","name":"pins","database":"{{Main}}","relation":"{{Pinned}}","junctionTable":"{{Pins}}","ends":[
-                 {"end":"{{PinnedEnd}}","typeColumn":"{{Col(Pins, 2)}}","idColumn":"{{Col(Pins, 3)}}"},
-                 {"end":"{{PinnedItemEnd}}","typeColumn":"{{Col(Pins, 4)}}","idColumn":"{{Col(Pins, 5)}}"}]}
-                """);
-        });
-        Assert.DoesNotContain(validation, d => d.Severity == DiagnosticSeverity.Error);
-        Assert.Empty(Messages(model, "MQ4117"));
-        var mapping = MappingOf(model, Pinned);
-        // The one-type end's targets: Item's concrete entities, by qualified name (decision 39).
-        Assert.Equal([("Comment", "Assembly"), ("Comment", "Part"), ("Folder", "Assembly"), ("Folder", "Part")],
-            mapping.Links.Select(l => (l.Ends[0].Type.Name, l.Ends[1].Type.Name)));
-        Assert.Equal([("Assembly", (object)"Assembly"), ("Comment", "Comment"), ("Folder", "Folder"), ("Part", "Part")],
-            mapping.TypeCodes.Select(c => (c.Entity.Name, c.Code)));
-
-        // The navigation to the one-type end has a path per pair, so no single one; the comment's entity mapping keeps its two paths in
-        // type_joins (the joins agent's reading: more than one path to a one-type end), and neither in joins.
-        var navigation = NavigationOf(model, SComment, "pinned");
-        Assert.Equal(4, navigation.TypeJoins["main"].Count);
-        Assert.False(navigation.Joins.ContainsKey("main"));
-        var comment = model.Entities.Single(e => e.Id == SComment).Mappings["main"];
-        Assert.False(comment.Joins.ContainsKey("pinned"));
-        Assert.Equal(
-            [
-                "comments(id) > pins(source_id) [source_type in Comment] | pins(item_id) > assemblies(id) [item_type in Assembly] from=Comment",
-                "comments(id) > pins(source_id) [source_type in Comment] | pins(item_id) > parts(id) [item_type in Part] from=Comment",
-            ],
-            comment.TypeJoins["pinned"].Select(Describe));
-        // From each concrete item, one path to each holder type.
-        Assert.Equal(["Comment", "Folder"], model.Entities.Single(e => e.Id == SPart).Mappings["main"].TypeJoins["pinnedBy"].Select(p => p.ToType!.Name));
-    }
-
     [Fact]
     public async Task Way_5_sets_joins_to_its_one_path_to_the_shared_table_with_no_per_target_row_condition()
     {
@@ -221,8 +59,6 @@ public sealed partial class RelationTypeStorageTests
         {
             h.Write("model/entities/part.json", Bound(SPart, "Part", 1, "P"));
             h.Write("model/entities/assembly.json", Bound(SAssembly, "Assembly", 2, "A"));
-            Delete(h, "model/mappings/part.json");
-            Delete(h, "model/mappings/assembly.json");
             Delete(h, "model/relations/filed.json");
             h.Write("model/databases/main/tables/items.json", Table(Items, "items", Column(Items, 1, "id", nullable: false) + "," + Column(Items, 2, "kind", "string", 1)));
             h.Write("model/databases/main/tables/comments.json", CommentsTo(Parts, Assemblies, Items));
@@ -237,10 +73,6 @@ public sealed partial class RelationTypeStorageTests
         var back = NavigationOf(model, SPart, "comments");
         Assert.Equal("items(id) > comments(item_id)", Describe(back.Joins["main"]));
         Assert.Equal(["items(id) > comments(item_id) from=Part", "items(id) > comments(item_id) from=Assembly"], back.TypeJoins["main"].Select(Describe));
-        // The comment's entity mapping holds the one path too, and the pairs in type_joins.
-        var comment = model.Entities.Single(e => e.Id == SComment).Mappings["main"];
-        Assert.Same(forth.Joins["main"], comment.Joins["attachedTo"]);
-        Assert.Equal(2, comment.TypeJoins["attachedTo"].Count);
         Assert.Equal(["shared-table"], Kinds(model, Attached));
     }
 
@@ -262,7 +94,6 @@ public sealed partial class RelationTypeStorageTests
             h.Write("model/entities/part.json", Bound(SPart, "Part", 1, "kind", "P"));
             h.Write("model/entities/purchased-part.json", Bound(N(P, 6), "PurchasedPart", 6, oneColumn ? "kind" : "sub", "PP", SPart));
             h.Write("model/entities/gizmo.json", Bound(N(P, 7), "Gizmo", 7, "kind", "G"));
-            Delete(h, "model/mappings/part.json");
             Delete(h, "model/relations/filed.json");
             h.Write("model/databases/main/tables/items.json", Table(Items, "items",
                 Column(Items, 1, "id", nullable: false) + "," + Column(Items, 2, "kind", "string", 2) + "," + Column(Items, 3, "sub", "string", 2)));
@@ -293,7 +124,6 @@ public sealed partial class RelationTypeStorageTests
             h.Write("model/entities/part.json", Bound(SPart, "Part", 1, """ "discriminatorColumn":"kind","discriminatorValue":"P" """));
             h.Write("model/entities/purchased-part.json", Bound(N(P, 6), "PurchasedPart", 6, """ "discriminatorValue":"PP" """, SPart));
             h.Write("model/entities/gizmo.json", Bound(N(P, 7), "Gizmo", 7, """ "constants":[{"column":"kind","value":"G"}] """));
-            Delete(h, "model/mappings/part.json");
             Delete(h, "model/relations/filed.json");
             h.Write("model/databases/main/tables/items.json", Table(Items, "items",
                 Column(Items, 1, "id", nullable: false) + "," + Column(Items, 2, "kind", "string", 2) + "," + Column(Items, 3, "sub", "string", 2)));
@@ -350,7 +180,6 @@ public sealed partial class RelationTypeStorageTests
         Task<(ResolvedModel, IReadOnlyList<Diagnostic>)> Run(string type, string partCode, string assemblyCode) => ResolveAsync(h =>
         {
             h.Write("model/entities/part.json", PartBound(partCode));
-            Delete(h, "model/mappings/part.json");
             h.Write("model/databases/main/tables/comments.json", CommentsWith(type));
             h.Write("model/mappings/attached.json", RelationMapping(Attached, Way3));
         }, assemblyMapping: ",\"discriminatorValue\":" + assemblyCode);
@@ -379,30 +208,6 @@ public sealed partial class RelationTypeStorageTests
     }
 
     [Fact]
-    public async Task ReferencesColumn_may_name_a_column_of_a_table_the_engine_makes_and_must_be_unique()
-    {
-        // Part and Assembly in tables the engine makes (TPT under Item); the id refers to each one's key column by its key, the attribute id.
-        const string Uid = "01JST200000000000000000199";
-        Task<(ResolvedModel, IReadOnlyList<Diagnostic>)> Run(string partColumn) => ResolveAsync(h =>
-        {
-            ItemHierarchy(h, "tpt");
-            h.Write("model/entities/part.json", EntityFile(SPart, "Part", @base: SItem, attributes: $$""","attributes":[{"id":"{{Uid}}","name":"uid","type":"uuid"}]"""));
-            h.Write("model/databases/main/tables/comments.json", CommentsTo(Synthesized(SPart), Synthesized(SAssembly), null));
-            h.Write("model/mappings/attached.json", RelationMapping(Attached, $$""","ends":[{"end":"{{AttachedToEnd}}","idColumn":"{{Col(Comments, 3)}}","types":["""
-                + $$"""{"entity":"{{SPart}}","referencesColumn":"{{partColumn}}"},{"entity":"{{SAssembly}}","referencesColumn":"{{ItemKey}}"}]}]"""));
-        });
-        var (model, validation) = await Run(ItemKey);
-        Assert.DoesNotContain(validation, d => d.Severity == DiagnosticSeverity.Error);
-        Assert.Empty(Messages(model, "MQ4117"));
-        Assert.Equal([("parts", "id"), ("assemblies", "id")],
-            MappingOf(model, Attached).Links.Select(l => (l.Ends[1].ReferencedTable!.Name, l.Ends[1].ReferencedColumns.Single().Name)));
-
-        var (notUnique, _) = await Run(Uid);
-        Assert.Equal(["Column 'attached_id' of table 'comments' refers to column 'uid' of table 'parts', which is neither its primary key nor a unique key."],
-            Messages(notUnique, "MQ4117"));
-    }
-
-    [Fact]
     public async Task A_primary_key_of_several_columns_or_none_needs_referencesColumn()
     {
         var (model, _) = await ResolveAsync(h =>
@@ -420,29 +225,6 @@ public sealed partial class RelationTypeStorageTests
             ],
             Messages(model, "MQ4117").Order(StringComparer.Ordinal).Reverse());
         Assert.Empty(MappingOf(model, Attached).Links);
-    }
-
-    [Fact]
-    public async Task MQ4117_refuses_a_types_item_that_is_not_covered_or_not_a_target()
-    {
-        // Folder isn't covered by attachedTo; PurchasedPart is covered but keeps its rows in Part's table (TPH under a covered Part).
-        var purchased = N(P, 6);
-        var (model, _) = await ResolveAsync(h =>
-        {
-            h.Write("model/entities/purchased.json", EntityFile(purchased, "PurchasedPart", @base: SPart));
-            h.Write("model/mappings/purchased.json", EntityMapping(6, purchased, Parts));
-            h.Write("model/mappings/part.json", EntityMapping(2, SPart, Parts, ",\"inheritance\":\"tph\""));
-            h.Write("model/mappings/attached.json", RelationMapping(Attached, $$""","ends":[{"end":"{{AttachedToEnd}}","types":["""
-                + $$"""{"entity":"{{SPart}}","foreignKey":"{{Fk(Comments, 1)}}"},{"entity":"{{SFolder}}","foreignKey":"{{Fk(Comments, 2)}}"},{"entity":"{{purchased}}","foreignKey":"{{Fk(Comments, 1)}}"}]}]"""));
-        });
-        Assert.Equal(
-            [
-                "Type 'Folder' of a types item isn't covered by end 'attachedTo'; name one of the end's types.",
-                "Type 'PurchasedPart' of end 'attachedTo' keeps its rows in the table of 'Part', which the end also covers, so it isn't a target of its own; name 'Part' instead.",
-            ],
-            Messages(model, "MQ4117"));
-        Assert.Equal(["/ends/0/types/1/entity", "/ends/0/types/2/entity"],
-            model.Diagnostics.Where(d => d.Rule == "MQ4117").Select(d => d.JsonPointer));
     }
 
     [Fact]

@@ -32,9 +32,7 @@ public sealed partial class RelationTypeStorageTests
         {
             h.Write("model/entities/comment.json", comment);
             h.Write("model/entities/part.json", part);
-            Delete(h, "model/mappings/comment.json");
-            Delete(h, "model/mappings/part.json");
-            h.Write("model/mappings/assembly.json", EntityMapping(3, SAssembly, Assemblies, ",\"ignore\":true"));
+            h.Write("model/entities/assembly.json", Entity(SAssembly, "Assembly", 2));
             h.Write("model/mappings/attached.json", RelationMapping(Attached, $$""","ends":[{"end":"{{AttachedToEnd}}","types":["""
                 + $$"""{"entity":"{{SPart}}","foreignKey":"{{Fk(Comments, 1)}}"},{"entity":"{{SAssembly}}","foreignKey":"{{Fk(Comments, 2)}}"}]}]"""));
             h.Write("model/mappings/filed.json", RelationMapping(Filed, $$""","ends":[{"end":"{{FolderEnd}}","foreignKeys":["{{Fk(Parts, 1)}}"]}]""")
@@ -72,8 +70,7 @@ public sealed partial class RelationTypeStorageTests
         var (alone, _) = await ResolveAsync(h =>
         {
             h.Write("model/entities/comment.json", comment);
-            Delete(h, "model/mappings/comment.json");
-            h.Write("model/mappings/assembly.json", EntityMapping(3, SAssembly, Assemblies, ",\"ignore\":true"));
+            h.Write("model/entities/assembly.json", Entity(SAssembly, "Assembly", 2));
         });
         Assert.Empty(Messages(alone, "MQ4117"));
         Assert.Equal("Assembly", alone.Entities.Single(e => e.Id == SComment).Bindings["main"].Fields.Single(f => f.Name == "attachedToAssemblyId").KeyOf!.Name);
@@ -88,7 +85,7 @@ public sealed partial class RelationTypeStorageTests
         var (model, _) = await ResolveAsync(h =>
         {
             h.Write("model/mappings/attached.json", RelationMapping(Attached, body));
-            h.Write("model/mappings/part.json", EntityMapping(2, SPart, Parts, ",\"discriminatorValue\":\"P\""));
+            h.Write("model/entities/part.json", BoundEntity(SPart, "Part", 1, Parts, ",\"discriminatorValue\":\"P\""));
         }, bindComment: true, attachedAttributes: attributes);
         var record = JsonSerializer.Serialize(Engine.ResolvedRecords.Entries(model, "relations", null).Single(e => e.Id == Attached).Project(), Web);
         foreach (var member in new[] { "\"links\":", "\"isHolder\":false", "\"referencedTable\":", "\"referencedColumns\":", "\"typeColumn\":", "\"codes\":[\"P\"]",
@@ -133,8 +130,8 @@ public sealed partial class RelationTypeStorageTests
         {
             Delete(h, "model/relations/filed.json");
             h.Write("model/databases/main/tables/items.json", Table(Items, "items", Column(Items, 1, "id", nullable: false)));
-            h.Write("model/mappings/part.json", EntityMapping(2, SPart, Items));
-            h.Write("model/mappings/assembly.json", EntityMapping(3, SAssembly, Items));
+            h.Write("model/entities/part.json", BoundEntity(SPart, "Part", 1, Items));
+            h.Write("model/entities/assembly.json", BoundEntity(SAssembly, "Assembly", 2, Items));
             h.Write("model/mappings/attached.json", RelationMapping(Attached, Way3));
         });
         Assert.Equal(["no-foreign-key", "type-check", "rows-not-told-apart", "rows-not-told-apart"], Kinds(shared, Attached));

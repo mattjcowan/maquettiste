@@ -10,7 +10,6 @@ namespace Maquettiste.Cli.Tests;
 /// The <c>l10n</c> and <c>seed</c> verbs (reference-types-seeds-localization.md section 3.9) on the reference-data fixture (en default,
 /// fr and fr-CA; the fr shard holds three stale entries), and the project name rules of <c>init</c>.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class L10nAndSeedCommandTests
 {
     private const string UnitOfMeasure = "01JBM9S346Q3D25VT4F5V37E3S";
@@ -276,24 +275,24 @@ public sealed class L10nAndSeedCommandTests
     public async Task Seed_export_heads_a_foreign_key_entry_with_its_name()
     {
         // next-phase-2-design.md section 3.4: invoices name their customer by email through fk_invoices_customer, and their branch by
-        // (company, region) through an unnamed foreign key; the tables sit in schema sales (billing projects its own customers).
+        // (company, region) through an unnamed foreign key; the tables sit in schema sales (billing has its own customers and invoices).
         using var repo = CliRepo.Billing();
         static string Id(int n) => "01K9SEX000000000000000" + n.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
         repo.Replace(".maquettiste/model/databases/main/database.json", "\"name\": \"billing\"\n    }",
             $"\"name\": \"billing\"\n    }},\n    {{ \"id\": \"{Id(99)}\", \"name\": \"sales\" }}");
-        repo.Write(".maquettiste/model/databases/main/tables/customers.json", $$"""
+        repo.Write(".maquettiste/model/databases/main/tables/sales-customers.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(1)}}","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
              "columns":[{"id":"{{Id(2)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
                {"id":"{{Id(3)}}","name":"email","type":"string","length":254,"nullable":false}],
              "primaryKey":{"columns":["{{Id(2)}}"]},"uniques":[{"id":"{{Id(4)}}","name":"uq_customers_email","columns":["{{Id(3)}}"]}]}
             """);
-        repo.Write(".maquettiste/model/databases/main/tables/branches.json", $$"""
+        repo.Write(".maquettiste/model/databases/main/tables/sales-branches.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(5)}}","name":"branches","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
              "columns":[{"id":"{{Id(6)}}","name":"company","type":"string","length":8,"nullable":false},
                {"id":"{{Id(7)}}","name":"region","type":"string","length":8,"nullable":false}],
              "primaryKey":{"columns":["{{Id(6)}}","{{Id(7)}}"]} }
             """);
-        repo.Write(".maquettiste/model/databases/main/tables/invoices.json", $$"""
+        repo.Write(".maquettiste/model/databases/main/tables/sales-invoices.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(10)}}","name":"invoices","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
              "columns":[{"id":"{{Id(11)}}","name":"number","type":"string","length":32,"nullable":false},
                {"id":"{{Id(12)}}","name":"customer_id","type":"uuid","nullable":false},
@@ -337,13 +336,13 @@ public sealed class L10nAndSeedCommandTests
         static string Id(int n) => "01K9SPC000000000000000" + n.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
         repo.Replace(".maquettiste/model/databases/main/database.json", "\"name\": \"billing\"\n    }",
             $"\"name\": \"billing\"\n    }},\n    {{ \"id\": \"{Id(99)}\", \"name\": \"sales\" }}");
-        repo.Write(".maquettiste/model/databases/main/tables/customers.json", $$"""
+        repo.Write(".maquettiste/model/databases/main/tables/sales-customers.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(1)}}","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
              "columns":[{"id":"{{Id(2)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
                {"id":"{{Id(3)}}","name":"email","type":"string","length":254,"nullable":false}],
              "primaryKey":{"columns":["{{Id(2)}}"]},"uniques":[{"id":"{{Id(4)}}","name":"uq_customers_email","columns":["{{Id(3)}}"]}]}
             """);
-        repo.Write(".maquettiste/model/databases/main/tables/invoices.json", $$"""
+        repo.Write(".maquettiste/model/databases/main/tables/sales-invoices.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{Id(10)}}","name":"invoices","database":"01J92P0V1QRN2181XM2ZWE02W4","schema":"{{Id(99)}}",
              "columns":[{"id":"{{Id(11)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
                {"id":"{{Id(12)}}","name":"number","type":"string","length":32,"nullable":false},

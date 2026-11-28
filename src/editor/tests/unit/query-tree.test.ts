@@ -49,29 +49,29 @@ import {
   SCHEMA_ELEMENT_KINDS,
   type DatabaseObjectInput,
 } from "@/explorer/databaseCreate";
-import { parameterDefault, tableFiles } from "@/editors/database/QueryParts";
+import { parameterDefault } from "@/editors/database/QueryParts";
 import { ddlPreviewCaption, ddlPreviewTarget } from "@/workspaces/database/ddlPreview";
 import { LIST_KINDS, OBJECT_LIST_MEMBERS } from "@/workspaces/database/tableList";
 import { unitScope } from "@/workspaces/generate/previewScope";
 import { scopeHelp } from "@/workspaces/generate/unitsModel";
 import { hasEditor } from "@/editors/tabs";
 import { MockBackend } from "@/mocks/backend";
-import { billingProjectedSeed } from "@/mocks/model/seed";
+import { billingSeed } from "@/mocks/model/seed";
 
 const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
-const INVOICE = "01J92P0V0FJ23CGSNKM7P1W5V7";
-const INVOICE_LINE = "01J92P0V0GWFR78HZH0P8Z3GY7";
-const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
-const INVOICES_OVERLAY = "01J92P0V1T0J6RH4MY9H81NYB4";
-const INVOICE_ID = "01J92P0V0Q9EK961M5HAQ3C5MY";
-const INVOICE_NUMBER = "01J92P0V0R3VSP7D5238DTNZX1";
-const INVOICE_ISSUED_ON = "01J92P0V0SNXS6PZ42VDK42HP9";
+const INVOICE = "01J92P0V1T0J6RH4MY9H81NYB4";
+const INVOICE_LINE = "01M8EJPZN9VC241ZQY1P20V7D5";
+const CUSTOMER = "01M8EJPZN867GR1CJR5ZERBJ0V";
+const INVOICES_OVERLAY = INVOICE;
+const INVOICE_ID = "01M8EJPZN8P9AWRMABQ8VM73RS";
+const INVOICE_NUMBER = "01J92P0V1VQAA9FW71PKYWWHKN";
+const INVOICE_ISSUED_ON = "01M8EJPZN8RF69424595Z93TBZ";
+const LINE_INVOICE_ID = "01M8EJPZN9CXQ3J4NP64BA313M";
 
 const billing = () => {
-  const backend = new MockBackend({ seed: billingProjectedSeed() });
+  const backend = new MockBackend({ seed: billingSeed() });
   const view = backend.generation.databaseView(MAIN)!.view!;
-  const files = tableFiles(backend.model.index(), MAIN);
-  return { backend, view, files };
+  return { backend, view };
 };
 
 describe("forms and labels", () => {
@@ -241,20 +241,20 @@ describe("edits across the query", () => {
 });
 
 describe("over the billing database", () => {
-  it("lists the tables and views a query may read, and finds a source by key, file id, view id or entity id", () => {
-    const { view, files } = billing();
+  it("lists the tables and views a query may read, and finds a source by table id or view id", () => {
+    const { view } = billing();
     const options = sourceOptions(view);
     expect(options.map((o) => o.name)).toEqual(expect.arrayContaining(["customers", "invoices", "invoice_lines", "outstanding_invoices"]));
-    expect(findSource(view, INVOICES_OVERLAY, files)?.name).toBe("invoices");
-    expect(findSource(view, `${INVOICE_LINE}@${MAIN}`, files)?.name).toBe("invoice_lines");
-    expect(findSource(view, CUSTOMER, files)?.name).toBe("customers");
-    expect(findSource(view, "01J92P0V1YZ4YP352KD1A50FXS", files)?.kind).toBe("view");
-    expect(findSource(view, "nope", files)).toBeNull();
+    expect(findSource(view, INVOICES_OVERLAY)?.name).toBe("invoices");
+    expect(findSource(view, INVOICE_LINE)?.name).toBe("invoice_lines");
+    expect(findSource(view, CUSTOMER)?.name).toBe("customers");
+    expect(findSource(view, "01J92P0V1YZ4YP352KD1A50FXS")?.kind).toBe("view");
+    expect(findSource(view, "nope")).toBeNull();
   });
 
   it("resolves column references as the engine does, and labels them with the physical names", () => {
-    const { view, files } = billing();
-    const scope = scopeOf({ from: { source: INVOICES_OVERLAY, alias: "i" } }, view, files);
+    const { view } = billing();
+    const scope = scopeOf({ from: { source: INVOICES_OVERLAY, alias: "i" } }, view);
     expect(resolveColumn(scope, `i.${INVOICE_ISSUED_ON}`)?.column.name).toBe("issued_on");
     expect(resolveColumn(scope, "i.deleted_at")?.column.name).toBe("deleted_at");
     expect(resolveColumn(scope, "i.ISSUEDON")?.column.name).toBe("issued_on");
@@ -263,7 +263,7 @@ describe("over the billing database", () => {
     expect(columnLabel(scope, `i.${INVOICE_NUMBER}`)).toBe("i.number");
     expect(columnLabel(scope, "i.nope")).toBe("i.nope");
     // The aliases of the query around a nested one are in scope, marked outer.
-    const nested = scopeOf({ from: { source: `${INVOICE_LINE}@${MAIN}`, alias: "l" } }, view, files, scope);
+    const nested = scopeOf({ from: { source: INVOICE_LINE, alias: "l" } }, view, scope);
     expect(nested.map((s) => [s.alias, s.outer])).toEqual([
       ["l", false],
       ["i", true],
@@ -271,15 +271,15 @@ describe("over the billing database", () => {
   });
 
   it("joins by a foreign key in either direction", () => {
-    const { view, files } = billing();
-    const scope = scopeOf({ from: { source: INVOICES_OVERLAY, alias: "i" }, joins: [{ source: `${INVOICE_LINE}@${MAIN}`, alias: "il" }] }, view, files);
+    const { view } = billing();
+    const scope = scopeOf({ from: { source: INVOICES_OVERLAY, alias: "i" }, joins: [{ source: INVOICE_LINE, alias: "il" }] }, view);
     const [invoices, lines] = scope;
     const fromLines = foreignKeyJoins(lines, [invoices]);
     expect(fromLines).toHaveLength(1);
     expect(fromLines[0].label).toMatch(/^il\.invoice_id = i\.id \(fk_/);
-    expect(fromLines[0].on).toEqual(compare("eq", column("il", `01J92P0V1GMF7GJPA7981CH7YG.${INVOICE_ID}`), column("i", INVOICE_ID)));
+    expect(fromLines[0].on).toEqual(compare("eq", column("il", LINE_INVOICE_ID), column("i", INVOICE_ID)));
     // The other way round: the invoice's foreign key to its customer.
-    const customers = scopeOf({ from: { source: CUSTOMER, alias: "c" } }, view, files)[0];
+    const customers = scopeOf({ from: { source: CUSTOMER, alias: "c" } }, view)[0];
     const toCustomer = foreignKeyJoins(customers, [invoices]);
     expect(toCustomer[0].label).toMatch(/^i\.customer_id = c\.id/);
     expect(foreignKeyJoins(invoices, [])).toEqual([]);
@@ -292,7 +292,7 @@ describe("New query…", () => {
     name: "OpenInvoices",
     database: MAIN,
     schema: null,
-    source: `${INVOICE}@${MAIN}`,
+    source: INVOICE,
     alias: "i",
     ...over,
   });
@@ -314,8 +314,8 @@ describe("New query…", () => {
   });
 
   it("starts a valid query: the source's first column as a field named after it", () => {
-    const { view, files } = billing();
-    const invoices = findSource(view, INVOICE, files);
+    const { view } = billing();
+    const invoices = findSource(view, INVOICE);
     expect(queryAlias(invoices)).toBe("i");
     const select = querySelect(invoices, "i");
     expect(select).toEqual([{ name: "id", expression: column("i", invoices!.table!.columns[0].key) }]);
@@ -327,15 +327,15 @@ describe("New query…", () => {
       id: "ID1",
       name: "OpenInvoices",
       database: MAIN,
-      from: { source: `${INVOICE}@${MAIN}`, alias: "i" },
+      from: { source: INVOICE, alias: "i" },
       select,
     });
     expect(buildDatabaseObject(input({ alias: "", select }), () => "ID")).not.toHaveProperty("entity");
   });
 
   it("validates as a query document the mock accepts as one undo step", () => {
-    const { backend, view, files } = billing();
-    const invoices = findSource(view, INVOICE, files);
+    const { backend, view } = billing();
+    const invoices = findSource(view, INVOICE);
     const json = buildDatabaseObject(input({ select: querySelect(invoices, "i") }), () => "01K6QRY0000000000000000099");
     const result = backend.model.create(json as never);
     expect(result.outcome).toBe("saved");

@@ -159,7 +159,7 @@ export function actorIdsIn(value: unknown, known: ReadonlySet<string> | undefine
 
 /**
  * The E5 members of an index row (explorer-redesign.md 4.1), as the engine's index writes them, so a saved row keeps
- * its display name, its base entity, a relation's ends, a mapping's or table's entity and database, and the seed and
+ * its display name, its base entity, a relation's ends, a database, and the seed and
  * reference type counts (RT 2.1) until the next index read.
  */
 function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<string>, stereotypeIds?: ReadonlyMap<string, string>): Partial<ElementSummary> {
@@ -167,7 +167,6 @@ function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<stri
   const kind = json.kind;
   if (typeof json.displayName === "string") out.displayName = json.displayName;
   if (DATABASE_MEMBER_KINDS.has(String(kind)) && typeof json.database === "string") out.database = json.database;
-  if ((kind === "table" || kind === "mapping") && typeof json.entity === "string") out.entity = json.entity;
   if (kind === "entity" && typeof json.base === "string") out.base = json.base;
   if (kind === "seed") {
     if (typeof json.target === "string") out.target = json.target;

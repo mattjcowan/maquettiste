@@ -87,7 +87,6 @@ export type QueryView = S["QueryView"];
 export type QuerySqlResult = S["QuerySqlResult"];
 export type QuerySqlPreview = S["QuerySqlPreview"];
 export type SchemaView = S["SchemaView"];
-export type ConventionPackageView = S["ConventionPackageView"];
 export type GenerationRequest = S["GenerationRequest"];
 export type GenerationPlan = S["GenerationPlan"];
 export type FileChange = S["FileChange"];

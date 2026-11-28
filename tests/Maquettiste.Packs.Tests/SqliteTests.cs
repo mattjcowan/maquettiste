@@ -8,7 +8,6 @@ namespace Maquettiste.Packs.Tests;
 /// scripts go through the <c>sqlite3</c> command-line shell when it is on the PATH; without it the test checks the scripts' shape.
 /// <see cref="CompileTests"/> also executes the schema and seed scripts through Microsoft.Data.Sqlite when NuGet is reachable.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed partial class SqliteTests
 {
     [Fact]
@@ -34,8 +33,9 @@ public sealed partial class SqliteTests
 
         // The schema script, then the seed (twice); the first migration, then the seed; every table script in isolation (SQLite
         // accepts forward foreign-key references, so any order works).
-        var query = "\nSELECT 'tables=' || count(*) FROM sqlite_master WHERE type = 'table' AND name <> 'payment_methods';\nSELECT 'methods=' || count(*) FROM payment_methods;\n";
-        // The seed runs twice: it reconciles the payment_methods lookup table and upserts its rows, so a second run succeeds.
+        var query = "\nSELECT 'tables=' || count(*) FROM sqlite_master WHERE type = 'table';\nSELECT 'methods=' || count(*) FROM payment_methods;\n";
+        // The seed runs twice: payment_methods is a designed table bound to PaymentMethod, whose rows are inserted when missing, so a
+        // second run succeeds.
         foreach (var script in new[] { schema + seed + seed + query, migration + seed + query })
         {
             var run = await ProcessRunner.RunAsync(sqlite3, ["-bail", ":memory:"], folder, TimeSpan.FromMinutes(1), script);
@@ -52,10 +52,10 @@ public sealed partial class SqliteTests
     [Fact]
     public async Task Sqlite_column_comments_from_descriptions_sit_on_their_own_line_so_the_comma_survives()
     {
-        // An attribute's description becomes its column's comment (the comments convention); SQLite keeps it as a line comment,
-        // which must not end the line of a column that a comma and another column follow.
+        // A column's description becomes its comment (the comments convention); SQLite keeps it as a line comment, which must not end
+        // the line of a column that a comma and another column follow.
         using var repo = PackRepo.BillingDialects();
-        repo.EditJson(".maquettiste/model/entities/customer.json", e => e["attributes"]![1]!["description"] = "The name, as printed,\nnever empty.");
+        ModelChanges.EditCustomerColumn(repo, "01J92P0V0MS09YFZHX07JQ3KMN", column => column["description"] = "The name, as printed,\nnever empty.");
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         var table = repo.Read("db/local/tables/customers.sql");
         Assert.Contains("    id text NOT NULL,\n    -- The name, as printed, never empty.\n    name text NOT NULL,\n", table, StringComparison.Ordinal);

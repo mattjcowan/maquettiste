@@ -20,16 +20,7 @@ import { DatabaseLine } from "./fields";
 import { SqlColumnsTab, SqlTablesTab, SqlTextTab } from "./SqlQueryParts";
 import { NamedQueriesSection } from "./NamedQueries";
 import { FunctionList, type QueryEnv } from "./queryExpression";
-import {
-  FilterSection,
-  GroupOrderSection,
-  ParametersSection,
-  SelectSection,
-  SourcesSection,
-  tableFiles,
-  type BodyUpdate,
-  type QueryContext,
-} from "./QueryParts";
+import { FilterSection, GroupOrderSection, ParametersSection, SelectSection, SourcesSection, type BodyUpdate, type QueryContext } from "./QueryParts";
 
 export const QUERY_EDITOR_TABS = {
   general: "General",
@@ -61,7 +52,6 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
   const view = dbView.data?.view ?? null;
   const dbDoc = useElements(database ? [database] : []).byId.get(database)?.json as DatabaseDoc | undefined;
   const index = useIndex();
-  const files = useMemo(() => tableFiles(index.data, database), [index.data, database]);
   const routines = useMemo(
     () => (index.data ?? []).filter((r) => r.kind === "routine" && r.database === database).map((r) => ({ id: r.id, name: r.name })),
     [index.data, database],
@@ -69,8 +59,8 @@ function QueryBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
   const dialect = view?.dialect ?? dbDoc?.dialect ?? "postgresql";
   const resolved = view?.queries?.find((x) => x.id === ctx.id);
   const named = useMemo(() => namedOptions(doc.with, doc.with?.length ?? 0, resolved?.with), [doc.with, resolved?.with]);
-  const env: QueryEnv = { scope: scopeOf(doc, view, files, [], named), parameters: doc.parameters ?? [], routines, dialect };
-  const q: QueryContext = { view, files, env, outer: [], named };
+  const env: QueryEnv = { scope: scopeOf(doc, view, [], named), parameters: doc.parameters ?? [], routines, dialect };
+  const q: QueryContext = { view, env, outer: [], named };
   // One gesture, one save: the edit and its flush together (RoutineEditor's pattern).
   const update = (mutate: (d: QueryDoc) => void) => {
     ctx.edit((j) => {

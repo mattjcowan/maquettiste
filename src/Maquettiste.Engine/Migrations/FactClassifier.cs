@@ -28,9 +28,6 @@ internal sealed record ClassifierInput
     /// <summary>The tables a materialize in the same write moved (<c>MaterializeResult.Rekeys</c>).</summary>
     public IReadOnlyList<TableRekey> Rekeys { get; init; } = [];
 
-    /// <summary>The key sequences a materialize in the same write moved (<c>MaterializeResult.Sequences</c>).</summary>
-    public IReadOnlyDictionary<string, string> SequenceRekeys { get; init; } = FrozenDictionary<string, string>.Empty;
-
     /// <summary>
     /// The constraint ids a fold into a stereotype in the same write moved (<c>MaterializeResult.MemberRekeys</c>): <c>index</c>,
     /// <c>unique</c>, <c>foreign-key</c> and <c>check</c> entries, each with its table's key before the change. The write's one
@@ -167,7 +164,7 @@ internal static class FactClassifier
 
             var (tables, sequences, recorded) = KeyMaps();
             Migration? rekey = null;
-            if (recorded.Count > 0)
+            if (recorded.Count > 0 || input.Adopted.Count > 0)
             {
                 rekey = new Migration { Id = "", Database = input.DatabaseId, Fact = MigrationFact.Rekey, Keys = recorded, Adopted = input.Adopted };
                 _newMoves = FactKeys.RekeyMap.Of(rekey);
@@ -327,12 +324,6 @@ internal static class FactClassifier
             {
                 if (IsConstraint(m.Kind) && m.Table is { } table)
                     members.TryAdd((m.Kind, table, m.From), m);
-            }
-
-            foreach (var (from, to) in input.SequenceRekeys.OrderBy(p => p.Key, StringComparer.Ordinal))
-            {
-                if (sequences.TryAdd(from, to))
-                    recordableSequences.Add((from, to));
             }
 
             var writtenKeys = new HashSet<(string Kind, string? Table, string From)>();

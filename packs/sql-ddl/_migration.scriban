@@ -811,33 +811,11 @@ func column_change_statements(tc, cc, out)
   if $c.collation
     $collate = " COLLATE " + collation_sql($c.collation, $db)
   end
-  # PostgreSQL: a column that holds the codes of another reference type (next-phase-2-design.md section 3.5), with no value map of the
-  # migration covering it, gets its strategy objects dropped here and created again for the new type at the end; a column of an enum
-  # type is retyped to the new type's enum type through text, which no plain cast between two enum types allows.
-  $ref_change = $d == "postgresql" && has_change(cc.changes, ["referenceType"]) && !value_map_covers(tc.key, cc.key)
-  $ref_objects = $ref_change
-  if $ref_change
-    $rt = $c.reference_type
-    if $rt
-      emit(out, "-- " + $t.name + "." + $name + " now holds codes of " + $rt.name + " (" + realization_words($rt, $db) + "): its reference objects are dropped and created again.")
-      $rows = ref_rows_exist_sql($rt, $db, null)
-      if $rows != ""
-        emit(out, $rows)
-      end
-    else
-      emit(out, "-- " + $t.name + "." + $name + " no longer holds codes of a reference type: its reference objects are dropped.")
-    end
-    if $ref_objects
-      emit(out, column_objects_drop_sql($t, $name, $db))
-    end
-    if $rt && $c.type == "reference" && column_realization($c, $db) == "native" && !$type_fact
-      emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " DROP DEFAULT;")
-      emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " TYPE " + $native + " USING " + $col + "::text::" + $native + ";")
-      if $dflt != "" && !$redefault
-        emit(out, alter_prefix($t) + " ALTER COLUMN " + $col + " SET DEFAULT " + $dflt + ";")
-      end
-      $retype = false
-    end
+  # PostgreSQL: a column that held a reference type's codes as a column the engine laid out before 0.29.0 (next-phase-2-design.md
+  # section 3.5), with no value map of the migration covering it, gets the strategy objects an earlier seed.sql made dropped by name.
+  if $d == "postgresql" && has_change(cc.changes, ["referenceType"]) && !value_map_covers(tc.key, cc.key)
+    emit(out, "-- " + $t.name + "." + $name + " no longer holds codes of a reference type: its reference objects are dropped.")
+    emit(out, column_objects_drop_sql($t, $name, $db))
   end
   if $d == "oracle"
     if $retype
@@ -908,12 +886,6 @@ func column_change_statements(tc, cc, out)
       emit(out, x.add)
     end
     identity_statements($t, cc, $c, $col, out)
-    if $ref_objects && $c.reference_type
-      $add = column_objects_add_sql($t, $name, $c.reference_type, $db, column_realization($c, $db))
-      if $add != ""
-        emit(out, $add)
-      end
-    end
   end
   # A change of logical type keeps each stored value as the cast leaves it; the reviewer decides whether values change
   # meaning (for example integer ids that become codes) and converts them before dropping anything they depend on. A migration
@@ -2244,39 +2216,6 @@ func value_map_rename_type(db, f, rt, out)
   end
 end
 
-# The realization a holder column had before the migration: its strategy or bound table as the diff's change of it says they were,
-# else the one it has now (after). A projected column only is stored as the enum type.
-func value_map_before(diff, o, c, after)
-  $tc = find_change(diff.tables, o.current_table)
-  $cc = $tc ? column_change($tc, o.current_key) : null
-  if !$cc || !c.reference_type
-    ret after
-  end
-  $changed = false
-  $strategy = null
-  for ch in $cc.changes
-    if ch.property == "referenceTable" && ch.old
-      ret "table"
-    end
-    if ch.property == "strategy"
-      $changed = true
-      $strategy = ch.old
-    end
-  end
-  if !$changed
-    ret after
-  end
-  $r = ref_realization($strategy)
-  ret ($r == "native" && c.type != "reference") ? "check" : $r
-end
-
-# The PL/pgSQL that stops the migration, naming the codes, when a mapped value the query yields (column m of the rows of from) is not
-# a label of an enum type: PostgreSQL cannot use an enum value in the transaction that adds it.
-func value_map_enum_guard(f, enum, from, db)
-  $message = "migration fact " + f.id + ": the enum type " + enum + " has no value for the codes %; add them in an earlier migration (PostgreSQL cannot use an enum value in the transaction that adds it)"
-  ret "SELECT string_agg(DISTINCT v.m, ', ' ORDER BY v.m) INTO missing FROM (" + from + ") AS v WHERE v.m IS NOT NULL AND NOT " + pg_enum_has(enum, "v.m", db) + ";\nIF missing IS NOT NULL THEN RAISE EXCEPTION " + lit($message, db) + ", missing; END IF;"
-end
-
 # The schema a view or table was in before the migration's schema renames: the old name of the schema renamed to it, else the same.
 func pre_schema(diff, schema)
   for sc in diff.schemas
@@ -2288,7 +2227,7 @@ func pre_schema(diff, schema)
 end
 
 # PostgreSQL cannot retype a column a view reads, and the model does not say which views read which columns: before the first
-# retype of a value map (value_map_column, value_map_collection), every view of the model that exists before the migration is
+# retype of a value map, every view of the model that exists before the migration is
 # dropped, by the name the database knows it by, each before the views it reads. mq_vm_views.dropped then makes the migration drop
 # (IF EXISTS) and create every view again at its end (mq_all_views, see migration.scriban), after the schema statements, so a view
 # is created for the shape the model gives it. A view the model does not know about still stops the retype (see the README).
@@ -2318,9 +2257,8 @@ func value_map_drop_views(db, diff, out)
   end
 end
 
-# One column of a value map, named as the database knows it before the migration's statements: its strategy objects dropped by name,
-# its stored codes mapped, then its objects created again for the type that holds the codes now. A column of an enum type is mapped
-# through text: in place while it keeps the enum type, else retyped (a merge's other enum type, or a type that is no enum).
+# One column of a value map, named as the database knows it before the migration's statements: its stored codes mapped. A column of a
+# table file holds the codes as its table states (a declared foreign key to the type's bound table), so they are updated in place.
 func value_map_column(db, diff, f, rt, o, out)
   $c = model_column(db, o)
   $t = pre_table(db, diff, o.current_table, o.schema, o.table_name)
@@ -2329,116 +2267,11 @@ func value_map_column(db, diff, f, rt, o, out)
     emit(out, "-- " + $t.name + "." + $name + " leaves the model in this migration, so its codes are not mapped.")
     ret
   end
-  $pt = { name: $t.name, schema: $t.schema, database: db }
-  $tq = qt($pt)
+  $tq = qt({ name: $t.name, schema: $t.schema, database: db })
   $col = q($name, db)
-  $crt = $c.reference_type
-  $objects = $crt
-  $after = $crt ? column_realization($c, db) : null
-  $before = value_map_before(diff, o, $c, $after)
-  $enum_before = $before == "native" ? (f.from_reference_type ? (snake f.from.name) + "_t" : native_type_name(rt)) : null
-  $enum_after = $after == "native" ? native_type_name($crt) : null
-  $froms = value_map_froms(f, db)
-  if $objects
-    emit(out, column_objects_drop_sql($pt, $name, db))
-  end
-  if $enum_before && $enum_before != $enum_after
-    # Retyped through text: a USING expression cannot hold a subquery, so the guard reads the mapped values first.
-    value_map_drop_views(db, diff, out)
-    $type = $enum_after ? q($enum_after, db) : column_type($c)
-    $mapped = value_map_case(f, $col + "::text", $col + "::text", db)
-    $s = "DO $mq$ DECLARE missing text; BEGIN\nIF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(" + lit($tq, db) + ") AND attname = " + lit($name, db) + " AND atttypid = " + pg_enum_type($enum_before, db) + ") THEN\n"
-    if $enum_after
-      $s = $s + value_map_enum_guard(f, $enum_after, "SELECT " + $mapped + " AS m FROM " + $tq, db) + "\n"
-    end
-    $s = $s + "ALTER TABLE " + $tq + " ALTER COLUMN " + $col + " DROP DEFAULT;\nALTER TABLE " + $tq + " ALTER COLUMN " + $col + " TYPE " + $type + " USING (" + $mapped + ")::" + $type + ";\n"
-    $default = default_sql($c, db)
-    if $default != ""
-      $s = $s + "ALTER TABLE " + $tq + " ALTER COLUMN " + $col + " SET DEFAULT " + $default + ";\n"
-    end
-    emit(out, $s + "END IF;\nEND $mq$;")
-  else if f.values.size == 0
-    # A merge whose codes all match: the stored codes stay as they are.
-  else if $enum_before
-    $enum = q($enum_before, db)
-    $mapped = value_map_case(f, $col + "::text", $col + "::text", db)
-    emit(out, "DO $mq$ DECLARE missing text; BEGIN\n" + value_map_enum_guard(f, $enum_before, "SELECT " + $mapped + " AS m FROM " + $tq + " WHERE " + $col + "::text IN (" + $froms + ")", db) + "\nUPDATE " + $tq + " SET " + $col + " = (" + $mapped + ")::" + $enum + " WHERE " + $col + "::text IN (" + $froms + ");\nEND $mq$;")
-  else
-    emit(out, "UPDATE " + $tq + " SET " + $col + " = " + value_map_case(f, $col, $col, db) + " WHERE " + $col + " IN (" + $froms + ");")
-  end
-  if $objects
-    $add = column_objects_add_sql($pt, $name, $crt, db, $after)
-    if $add != ""
-      emit(out, $add)
-    end
-  end
-end
-
-# One collection of a value map, its owner table named as the database knows it before the migration's statements. A junction table
-# (lookup-table, check) drops the rows the map would make twice for one owner, then maps its code column between a drop and a
-# reconcile of its strategy objects; an array of the enum type ("native") keeps the first position of each mapped code, retyped
-# through text when a merge moves it to another enum type. Each runs only where seed.sql created the junction table or the column.
-func value_map_collection(db, diff, f, rt, x, out)
-  $found = null
-  for y in ref_collections(db)
-    if y[0].key == x.current_table && y[1].id == x.attribute
-      $found = y
-      break
-    end
-  end
-  $t = pre_table(db, diff, x.current_table, x.schema, x.table_name)
-  if !$found
-    emit(out, "-- The collection " + $t.name + "." + (x.name ?? x.attribute) + " leaves the model in this migration, so its codes are not mapped.")
-    ret
-  end
-  $a = $found[1]
-  $crt = $a.type.reference_type
-  $pt = { name: $t.name, schema: $t.schema, database: db }
-  $tq = qt($pt)
-  $froms = value_map_froms(f, db)
-  if type_realization($crt, db) == "native"
-    $name = snake $a.name
-    $col = q($name, db)
-    $enum_before = f.from_reference_type ? (snake f.from.name) + "_t" : native_type_name(rt)
-    $enum_after = native_type_name($crt)
-    $mapped = value_map_case(f, "u.x::text", "u.x::text", db)
-    if $enum_before == $enum_after
-      if f.values.size == 0
-        ret
-      end
-      $enum = q($enum_after, db)
-      $kept = "ARRAY(SELECT (k.m)::" + $enum + " FROM (SELECT " + $mapped + " AS m, min(u.o) AS o FROM unnest(" + $col + ") WITH ORDINALITY AS u(x, o) GROUP BY 1) AS k ORDER BY k.o)"
-      emit(out, "DO $mq$ DECLARE missing text; BEGIN\nIF " + pg_column_exists($t, $name, db) + " THEN\n" + value_map_enum_guard(f, $enum_after, "SELECT " + $mapped + " AS m FROM " + $tq + ", unnest(" + $col + ") AS u(x) WHERE u.x::text IN (" + $froms + ")", db) + "\nUPDATE " + $tq + " SET " + $col + " = " + $kept + " WHERE " + $col + "::text[] && ARRAY[" + $froms + "]::text[];\nEND IF;\nEND $mq$;")
-    else
-      value_map_drop_views(db, diff, out)
-      $enum = q($enum_after, db)
-      $kept = "ARRAY(SELECT k.m FROM (SELECT " + value_map_case(f, "u.x", "u.x", db) + " AS m, min(u.o) AS o FROM unnest(" + $col + ") WITH ORDINALITY AS u(x, o) GROUP BY 1) AS k ORDER BY k.o)"
-      $s = "DO $mq$ DECLARE missing text; BEGIN\nIF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(" + lit($tq, db) + ") AND attname = " + lit($name, db) + " AND atttypid = to_regtype(" + lit(q($enum_before, db) + "[]", db) + ")) THEN\n"
-      $s = $s + value_map_enum_guard(f, $enum_after, "SELECT " + $mapped + " AS m FROM " + $tq + ", unnest(" + $col + ") AS u(x)", db) + "\n"
-      $s = $s + "ALTER TABLE " + $tq + " ALTER COLUMN " + $col + " DROP DEFAULT;\nALTER TABLE " + $tq + " ALTER COLUMN " + $col + " TYPE text[] USING " + $col + "::text[];\n"
-      if f.values.size > 0
-        $s = $s + "UPDATE " + $tq + " SET " + $col + " = " + $kept + " WHERE " + $col + " && ARRAY[" + $froms + "]::text[];\n"
-      end
-      $s = $s + "ALTER TABLE " + $tq + " ALTER COLUMN " + $col + " TYPE " + $enum + "[] USING " + $col + "::" + $enum + "[];\nALTER TABLE " + $tq + " ALTER COLUMN " + $col + " SET DEFAULT '{}';\nEND IF;\nEND $mq$;"
-      emit(out, $s)
-    end
-    ret
-  end
-  $jt = { name: junction_name($pt, $a), schema: $t.schema, database: db }
-  $jq = qt($jt)
-  $code = q(junction_code_column($a), db)
-  $same = ""
-  for pk in $found[0].primary_key.columns
-    $owner = q(junction_owner_column($found[2], pk), db)
-    $same = $same + "k." + $owner + " = d." + $owner + " AND "
-  end
-  $s = "DO $mq$ BEGIN\nIF to_regclass(" + lit($jq, db) + ") IS NOT NULL THEN\n" + column_objects_drop_sql($jt, junction_code_column($a), db) + "\n"
   if f.values.size > 0
-    $s = $s + "DELETE FROM " + $jq + " AS d WHERE d." + $code + " IN (" + $froms + ") AND EXISTS (SELECT 1 FROM " + $jq + " AS k WHERE " + $same + "k." + $code + " <> d." + $code + " AND " + value_map_case(f, "k." + $code, "k." + $code, db) + " = " + value_map_case(f, "d." + $code, "d." + $code, db) + " AND (k." + $code + " NOT IN (" + $froms + ") OR k." + $code + " < d." + $code + "));\n"
-    $s = $s + "UPDATE " + $jq + " SET " + $code + " = " + value_map_case(f, $code, $code, db) + " WHERE " + $code + " IN (" + $froms + ");\n"
+    emit(out, "UPDATE " + $tq + " SET " + $col + " = " + value_map_case(f, $col, $col, db) + " WHERE " + $col + " IN (" + value_map_froms(f, db) + ");")
   end
-  $add = column_objects_add_sql($jt, junction_code_column($a), $crt, db, type_realization($crt, db))
-  emit(out, $s + ($add == "" ? "" : $add + "\n") + "END IF;\nEND $mq$;")
 end
 
 # A value-map fact's data step on PostgreSQL (next-phase-2-design.md section 3.5), in the fact's applied order before the schema
@@ -2481,8 +2314,9 @@ func value_map_step(db, diff, f, out)
         value_map_column(db, diff, f, $rt, o, out)
       end
     end
+    # A collection of codes was a list the engine left to the templates before 0.29.0; no table holds one now.
     for x in f.collections
-      value_map_collection(db, diff, f, $rt, x, out)
+      emit(out, "-- The collection " + (x.table_name ? x.table_name + "." : "") + (x.name ?? x.attribute) + " is no longer in the model, so its codes are not mapped.")
     end
   end
   fact_row(f, out)
@@ -2661,7 +2495,7 @@ func adopted_table_statements(db, diff, out)
   end
 end
 
-# SQLite: the triggers this pack's seed.sql made for a column holding a reference type's codes (column_objects_add_sql in
+# SQLite: the triggers this pack's earlier seed.sql made for a column holding a reference type's codes (column objects in
 # _reference.scriban), since SQLite cannot add a constraint to a table: for an adopted foreign key, _i and _u on the table and _d on
 # the referenced one; for an adopted check (its expression "<column> IN (...)"), _i and _u. CREATE TRIGGER IF NOT EXISTS, so a
 # database that holds them keeps its own. A TODO line when the constraint has another shape.

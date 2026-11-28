@@ -21,13 +21,13 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | reference-types/ | reference type: built-in `code` and `label`, plus your own fields | an attribute's `type` may name one (single, or `collection`); defaults and cells use the row's code; storage is template-defined unless `referenceData.strategies` declares one |
 | seeds/<target>/ | rows of an entity, relation or reference type | one row per line with its own id; owned by its target and deleted with it |
 | locales/<locale>/ | translation shards (`kind: "locale-shard"`) keyed by id | only display name, plural name, description, a row's label and description, the text of a custom property marked `x-translatable` (field `properties/<name>`) and the `x-translatable` content text of a custom element or member (field `content/<name>`) |
-| databases/<db>/ | database, tables (overlays), views, sequences | tables from entities store only overrides |
+| databases/<db>/ | database, tables, views, sequences | every table is a designed table; no table follows an entity |
 | databases/<db>/routines/ | routine (`kind: "routine"`): a function or procedure, `parameters` typed by a built-in type or a database type id, `returns`, a `body` per dialect | `dependsOn` orders it; routines are not overloaded |
 | databases/<db>/types/ | database type (`kind: "database-type"`): a domain, composite, enum or range the database owns | a column uses it by naming its id or name in `nativeType` |
 | databases/<db>/objects/ | SQL object (`kind: "sql-object"`): a trigger, grant, extension or anything else, statements per dialect | `phase` before or after the tables; `dependsOn` orders it |
 | databases/<db>/queries/ | query (`kind: "query"`), in one of two forms. Built from parts: `from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging` as JSON trees over the database's tables and views; the select list is the row shape (each field a `name`); a query has no `entity`, `collections` or field `attribute` (removed in 0.28.0, a file with one does not load: MQ4127): an entity reads the query through its binding's `source`, and a record's parts come through composition, each part with its own binding; `with` lists named queries (WITH), each `name`, `from`, `joins`, `select`, `where`, `groupBy`, `having`, `distinct` and an optional `recursive` part (`union`, `from`, `joins`, `select`, `where`), which the query's `from`, joins and nested queries and later named queries read by name as a source, their columns by `alias.<field name>`. Written as SQL text: `sql` (text per dialect or `"*"`, parameters written `:name`), `columns` (name, type, `nullable` default true; none for a command, which returns the rows changed), `reads` and `writes` (ids of what the text reads and the tables it writes) | built: column refs are `alias.<column key>` (the key `get_database_view` lists: an attribute id, a designed column's id), names accepted, an `sql` expression per dialect where a tree cannot say it; SQL text: the engine never parses it, so declare columns, reads and writes; never mix the two forms |
 | databases/<db>/migrations/open/ | migration fact (`kind: "migration"`): what a change of the database's shape means for its stored rows (`rename`, `change-type`, `drop`, `backfill`, `raw`, ...) | recorded by the saves themselves; complete a pending one, never delete one by hand |
-| mappings/ | projection overrides of older models, and relation mappings (`foreignKey`, junctions) | new work binds entities in their own file instead |
+| mappings/ | relation mappings (`foreignKey`, junctions) | entities are bound in their own file; an entity mapping key is MQ4145 |
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (`subjects`: entries `{ id, entity, boundAttribute? }`; the one-subject `subject`/`boundAttribute` form is deprecated, MQ9209) or `orchestration` |
 | actors/ | actor: `type` person, role, group, organization, external system or system (shown as Automatic, at most one); `memberOf`; `relative` | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
@@ -115,7 +115,7 @@ clobber a concurrent edit or leave a dangling id.
    For a query, `preview_query_sql` returns the SQL it renders (for its database's dialect or another) with the diagnostics
    (MQ4021 to MQ4043, MQ4096 to MQ4098 for a query written as SQL text, MQ4099 for named queries) that point at the node to fix; a
    SQL text comes back as written (a final `;` kept), its `:name` placeholders in the asked style. For an entity's binding, `preview_binding_sql` returns its select,
-   insert, update and delete statements; `validate` reports MQ4044 to MQ4054 and MQ4121 for bindings. When a base entity and its
+   insert, update and delete statements; `validate` reports MQ4044 to MQ4053 and MQ4121 for bindings. When a base entity and its
    subtypes share one table, the base's binding names the type column once (`discriminatorColumn`); each subtype's
    `discriminatorValue` (else its name) then filters its statements and is what its insert writes (MQ4122 to MQ4126).
    When a subtype keeps its own attributes in a table of its own, its binding names that table's foreign key to the base's
@@ -424,22 +424,18 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   unique to copy into the team's table, MQ4120 warns about a placed type no pointer reaches, and `validate --against` warns when a stored
   type code changed since the baseline (MQ4119): set `discriminatorValue` to the old code to keep stored links. The engine never adds a
   column, key or check for this. A covered type with no table in the database is left out with no finding, a read-only binding's entity
-  (write `none`, or a view or query source) included; `ignore` on the mapping stores nothing there. A link table for each pair of types
+  (write `none`, or a view or query source) included. A link table for each pair of types
   and one column pointer spread over several types' tables are refused (MQ4117). The editor's relation form offers several types at
   either end or both.
-- A database holds only what is mapped to it: `byConvention` on the database file is `all`, `packages` (the domains
-  listed in `packages`, with their sub-domains) or `none`; a mapping file adds one entity (or ignores one) either way. Write
-  `byConvention` on every new database (`none` unless asked); a file without it keeps the older rule (every entity when
-  `packages` is empty). MQ4012 (info) names an entity that lands in no database; MQ4013 (warning) a `packages` list that
-  `all` or `none` does not use. Never add a database or a mapping just to silence MQ4012: which entities become tables,
-  and how, is the user's decision.
+- A database holds only the tables written for it. Write `"byConvention": "none"` on every new database; a database file
+  with no `byConvention` is MQ4146 while an entity is not bound to it, and `all`, `packages`, `packages` and the entity
+  half of a mapping file are MQ4145 (the file does not load). Which entities become tables, and how, is the user's decision.
 - Bind entities explicitly. The database knows nothing about entities; an entity's `bindings` (one per database) say where it
   reads (`source`: a table, a view or a query of that database), its `constants` (a filter on every read and a value on every
   insert: how several entities share one table through an `entity_type` column), which column each attribute reads
   (`fields`), the columns no field maps (`columns`: `ignored`, `database` or `computed`; leaving one out is MQ4047), where it
-  writes (`write`, `"none"` for a read-only entity) and how it deletes (`delete`: `key`, `soft` or `none`). A bound entity is
-  never projected. To turn an entity the database projects into a table of its own, use materialize instead of relying on
-  projection: `get_materialize_status`, `preview_materialize`, then `apply_batch` with `{"op":"materialize-tables",
+  writes (`write`, `"none"` for a read-only entity) and how it deletes (`delete`: `key`, `soft` or `none`). To make a table for an entity,
+  use materialize: `get_materialize_status`, `preview_materialize`, then `apply_batch` with `{"op":"materialize-tables",
   "database":...,"entities":[...]}` (name a hierarchy whole; `"hierarchy":"one-table|per-concrete|per-type"` and
   `"listStorage":"table|json"`, or objects keyed by root entity id and attribute id, pick the shapes; the preview's `choices`
   show the defaults); to make entities from existing tables, `{"op":"materialize-entities","database":...,
@@ -501,8 +497,7 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
 - Stereotype members: a stereotype that applies to tables may carry `columns`, `primaryKey`, `uniques`, `foreignKeys`,
   `checks` and `indexes`, which every table that carries it inherits, also through a database schema's or a package's
   `defaultStereotypes`. Write an inherited member as `<tableKey>.<memberId>` wherever its id goes (seeds, keys,
-  indexes, binding fields, queries): the table file's id, or the synthesized key (`<entityId>@<databaseId>`) for a
-  table without one; `get_database_view` shows each keyed id with its `memberOrigin`. Change a member on the
+  indexes, binding fields, queries): the table file's id; `get_database_view` shows each keyed id with its `memberOrigin`. Change a member on the
   stereotype, or for one table with `redefines` (facets only; the id stays) and `excludes` (member ids); a table drops
   a default with `excludeStereotypes`. Never copy an inherited member into a table as an own column. To turn own copies
   into inherited members, use `apply_batch` `{"op":"fold-into-stereotype","id":<stereotype>,"tables":[...]}` with

@@ -11,10 +11,9 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// <summary>
 /// A project that uses no relation end with several types keeps its records and keys (several-types-design.md section 12): a hash over the
 /// billing fixture's resolved entities, relations and navigations, their records and every dependency key they carry, pinned at the commit
-/// before part 1's resolver changes. Re-pinned once since (0.29.0): an entity's relation list records the promotion key
-/// (<c>pm:relation-mappings</c>) instead of each relation mapping file's own key; nothing else in the text changed.
+/// before part 1's resolver changes. Re-pinned in 0.29.0, when projection was removed and the billing fixture became bound to designed tables:
+/// the keys and records follow its bindings and relation mappings.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class RelationTypesUnchangedTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
@@ -47,7 +46,7 @@ public sealed class RelationTypesUnchangedTests
             text.Append(WithoutParts(Engine.ResolvedRecords.Entries(model, scope, null).Select(e => e.Project()).ToList())).Append('\n');
 
         Assert.Contains("\"navigations\":[{", text.ToString(), StringComparison.Ordinal);
-        Assert.Equal("cc13539721ffdb437acabb9d2c5a982d", Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())))[..32]);
+        Assert.Equal("9c99daf43f69f5b416cc63164f8ac25b", Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())))[..32]);
     }
 
     /// <summary>

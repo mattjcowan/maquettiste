@@ -11,14 +11,22 @@ namespace Maquettiste.Engine.Tests.Editor;
 /// Deletes that resolve references (engine-design.md section 15.1) over the billing fixture with the real validator: the delete plan
 /// read, <c>remove-references</c> refusals that read first, and <c>delete-dependents</c> cascades in one change that a batch undoes.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class DeleteCascadeTests
 {
     private const string ProductId = "01J92P0V0JR8BE8253SKT29ZG7";
     private const string MoneyId = "01J92P0V0304M76KA84NE4D1TE";
     private const string RefersToId = "01J92P0V1CC98R0RRCAV73SGF4";
     private const string DiagramId = "01J92P0V2164SDBW687ZV6E1MV";
-    private const string InvoiceMappingId = "01J92P0V200XW93JQYSRCT2SE3";
+    private const string InvoiceLineId = "01J92P0V0GWFR78HZH0P8Z3GY7";
+    private const string SettlesId = "01J92P0V1DKHD5Q02DV6S5M53D";
+    private const string RefersToMappingId = "01M8EJPZP47YMVP6NE06X8GK1S";
+    private const string ContainsMappingId = "01M8EJPZP48MNPCSEXHYASNATD";
+    private const string PlacesMappingId = "01M8EJPZP4PXCX37YCSR3XEG5Y";
+    private const string CustomersTableId = "01M8EJPZN867GR1CJR5ZERBJ0V";
+    private const string ProductsTableId = "01M8EJPZN967ERTF2BPP3YM4QY";
+    private const string PaymentsTableId = "01M8EJPZN9C4NZBD1KXE8NG70G";
+    private const string InvoiceLinesTableId = "01M8EJPZN9VC241ZQY1P20V7D5";
+    private const string PaymentInvoiceTableId = "01M8EJPZN9Y3HNXTC7V3Q7CP50";
     private const string SettlesMappingId = "01J92P0V1ZYK32MC97T5NBB5Y5";
     private const string SequenceId = "01J92P0V1S972MSFDJ8G6V6MWT";
     private const string ViewId = "01J92P0V1YZ4YP352KD1A50FXS";
@@ -172,10 +180,13 @@ public sealed class DeleteCascadeTests
         Assert.Contains("entity Product", required.Why, StringComparison.Ordinal);
         Assert.DoesNotContain("Required properties", required.Why, StringComparison.Ordinal);
         Assert.Equal(SaveOutcome.Saved, cascade.Outcome);
-        var relation = Assert.Single(cascade.Deletes);
-        Assert.Equal((RefersToId, "relation", "refers to", "needs entity Product"), (relation.Id, relation.Kind, relation.Name, relation.Because));
-        var member = Assert.Single(cascade.Removes);
-        Assert.Equal((DiagramId, "/members/4", "member Product"), (member.Id, member.Pointer, member.What));
+        Assert.Equal(
+            [(RefersToId, "relation", "refers to", "needs entity Product"), (RefersToMappingId, "mapping", "refers to in main", "needs relation refers to")],
+            cascade.Deletes.Select(d => (d.Id, d.Kind, d.Name, d.Because)));
+        var member = Assert.Single(cascade.Removes, x => x.Id == DiagramId);
+        Assert.Equal(("/members/4", "member Product"), (member.Pointer, member.What));
+        var field = Assert.Single(cascade.Removes, x => x.Id == InvoiceLineId);
+        Assert.Equal("/bindings/0/fields/6", field.Pointer);
         Assert.Empty(cascade.Refused);
         Assert.Equal(before, r.Files());
     }
@@ -215,12 +226,14 @@ public sealed class DeleteCascadeTests
         var result = await r.Store.DeleteAsync(database.Element.Id, database.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
 
         Assert.Equal(SaveOutcome.Saved, plan.Outcome);
-        Assert.Equal([SequenceId, EditorRepo.OverlayTableId, ViewId, SettlesMappingId, InvoiceMappingId, NotesTableId, InvoicesByCustomerId, RevenueByMonthId,
-                FindCustomersWithIssuedInvoicesId],
+        Assert.Equal([SequenceId, EditorRepo.OverlayTableId, ViewId, SettlesMappingId, NotesTableId, InvoicesByCustomerId, RevenueByMonthId,
+                FindCustomersWithIssuedInvoicesId, CustomersTableId, ProductsTableId, PaymentsTableId, InvoiceLinesTableId, PaymentInvoiceTableId,
+                RefersToMappingId, ContainsMappingId, PlacesMappingId],
             plan.Deletes.Select(d => d.Id));
         Assert.All(plan.Deletes, d => Assert.Equal("needs database main", d.Because));
         // The entities bound to the database lose their binding and stay (erratum E43).
-        Assert.Equal([InvoiceNoteId, CustomerNoteId, RevenueMonthId], plan.Removes.Select(x => x.Id).Order(StringComparer.Ordinal));
+        Assert.Equal([EditorRepo.CustomerId, EditorRepo.InvoiceId, InvoiceLineId, EditorRepo.PaymentId, ProductId, InvoiceNoteId, CustomerNoteId, RevenueMonthId],
+            plan.Removes.Select(x => x.Id).Order(StringComparer.Ordinal));
         Assert.All(plan.Removes, x => Assert.Equal(("binding", "/bindings/0", "the binding needs database main; the entity stays"), (x.SubKind, x.Pointer, x.Because)));
         Assert.Equal("/databases/main", Assert.Single(plan.Settings).Pointer);
         var warning = Assert.Single(plan.Warnings);
@@ -229,7 +242,7 @@ public sealed class DeleteCascadeTests
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.Equal(plan.Deletes.Select(d => d.Id).Prepend(EditorRepo.MainDatabaseId).Order(StringComparer.Ordinal), result.Changes!.Deleted.Order(StringComparer.Ordinal));
         Assert.False(Directory.Exists(r.Repo.PathOf(".maquettiste/model/databases/main")));
-        Assert.False(r.Repo.Exists(".maquettiste/model/mappings/invoice-in-main.json"));
+        Assert.False(r.Repo.Exists(".maquettiste/model/mappings/places-in-main.json"));
         var settings = await r.Store.GetSettingsAsync(Ct);
         Assert.Empty(settings.Settings.Databases);
         Assert.True(settings.Settings.Conventions.PluralTables);
@@ -237,7 +250,7 @@ public sealed class DeleteCascadeTests
     }
 
     [Fact]
-    public async Task Delete_dependents_takes_an_entity_with_its_relations_overlay_and_mappings_in_one_change_that_a_batch_undoes()
+    public async Task Delete_dependents_takes_an_entity_with_its_relations_and_their_mappings_in_one_change_that_a_batch_undoes()
     {
         await using var r = WithoutFacts();
         var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
@@ -258,15 +271,12 @@ public sealed class DeleteCascadeTests
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.Single(notifications);
         Assert.Equal(
-            [
-                "01J92P0V1ACKN3G6TK3NJDTM82", "01J92P0V1BWHG0REWKSTR292RS", "01J92P0V1DKHD5Q02DV6S5M53D", EditorRepo.OverlayTableId, InvoiceMappingId,
-                InvoicesByCustomerId, RevenueByMonthId, FindCustomersWithIssuedInvoicesId, SettlesMappingId,
-            ],
+            ["01J92P0V1ACKN3G6TK3NJDTM82", "01J92P0V1BWHG0REWKSTR292RS", SettlesId, PlacesMappingId, ContainsMappingId, SettlesMappingId],
             plan.Deletes.Select(d => d.Id));
         Assert.Equal(affected.Order(StringComparer.Ordinal), result.Changes!.Deleted.Order(StringComparer.Ordinal));
-        // RevenueMonth reads the deleted RevenueByMonth query: its binding goes and the entity stays.
-        Assert.Equal([DiagramId, RevenueMonthId], result.Changes.Changed.Select(c => c.Id));
-        Assert.Empty(r.Store.Current!.Get<Entity>(RevenueMonthId)!.Bindings);
+        // InvoiceLine's binding loses the field of the contains end; the invoices table and the queries over it stay.
+        Assert.Equal([InvoiceLineId, DiagramId], result.Changes.Changed.Select(c => c.Id).Order(StringComparer.Ordinal));
+        Assert.NotNull(r.Store.Current!.GetDocument(EditorRepo.OverlayTableId));
         var diagram = r.Store.Current!.Get<Diagram>(DiagramId)!;
         Assert.DoesNotContain(diagram.Members, m => affected.Contains(m.Element));
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
@@ -302,14 +312,16 @@ public sealed class DeleteCascadeTests
         var plan = await r.Store.GetDeletePlanAsync([MoneyId], DeleteResolution.DeleteDependents, Ct);
         var result = await r.Store.DeleteAsync(MoneyId, money.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
 
-        // The revenue query reads total's amount column by its key (alias.attribute.member), so it goes whole with the attribute.
-        var query = Assert.Single(plan.Deletes);
-        Assert.Equal((RevenueByMonthId, "needs attribute amount of value-object Money"), (query.Id, query.Because));
+        // The revenue query reads the invoices table's total_amount column, so it stays; the binding fields that map the attributes go.
+        Assert.Empty(plan.Deletes);
         Assert.Contains(plan.Removes, x => x.Name == "InvoiceLine" && x.What == "attribute unitPrice" && x.SubKind == "attribute" && x.Because == "needs value-object Money");
-        Assert.Contains(plan.Removes, x => x.Id == InvoiceMappingId && x.What == "attribute total" && x.Because == "needs attribute total of entity Invoice");
+        Assert.Contains(plan.Removes, x => x.Id == EditorRepo.InvoiceId && x.Pointer == "/bindings/0/fields/3"
+            && x.Because == "this entry of its binding needs attribute amount of value-object Money; the entity stays");
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
-        Assert.DoesNotContain(r.Store.Current!.Get<Entity>(EditorRepo.InvoiceId)!.Attributes, a => a.Name == "total");
-        Assert.Single(r.Store.Current.Get<Mapping>(InvoiceMappingId)!.Attributes);
+        var invoice = r.Store.Current!.Get<Entity>(EditorRepo.InvoiceId)!;
+        Assert.DoesNotContain(invoice.Attributes, a => a.Name == "total");
+        Assert.DoesNotContain(invoice.Bindings.Single().Fields, f => f.Attribute.StartsWith("01J92P0V0T6EA0XM025XQX8GBW", StringComparison.Ordinal));
+        Assert.NotNull(r.Store.Current.GetDocument(RevenueByMonthId));
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
         Assert.DoesNotContain(validation.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
     }
@@ -317,22 +329,31 @@ public sealed class DeleteCascadeTests
     [Fact]
     public async Task A_table_lists_the_queries_that_read_it_and_delete_dependents_removes_each_whole()
     {
-        await using var r = EditorRepo.Create();
+        // Facts off: dropping the table would otherwise record a drop fact that waits for its acknowledgement (MQ4101).
+        await using var r = WithoutFacts();
         var table = (await r.Store.GetElementAsync(EditorRepo.OverlayTableId, Ct))!;
         string[] queries = [InvoicesByCustomerId, RevenueByMonthId, FindCustomersWithIssuedInvoicesId];
 
         var refused = await r.Store.DeleteAsync(table.Element.Id, table.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
         var cleared = await r.Store.GetDeletePlanAsync([EditorRepo.OverlayTableId], DeleteResolution.RemoveReferences, Ct);
+        // While the settles relation's junction table names a key of invoices, its relation mapping would lose an end entry (MQ4011).
+        var blocked = await r.Store.GetDeletePlanAsync([EditorRepo.OverlayTableId], DeleteResolution.DeleteDependents, Ct);
+        var settles = (await r.Store.GetElementAsync(SettlesId, Ct))!;
+        Assert.Equal(SaveOutcome.Saved, (await r.Store.DeleteAsync(SettlesId, settles.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct)).Outcome);
+        table = (await r.Store.GetElementAsync(EditorRepo.OverlayTableId, Ct))!;
         var plan = await r.Store.GetDeletePlanAsync([EditorRepo.OverlayTableId], DeleteResolution.DeleteDependents, Ct);
         var result = await r.Store.DeleteAsync(table.Element.Id, table.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct);
 
         Assert.Equal(SaveOutcome.Referenced, refused.Outcome);
-        Assert.Equal(queries.Order(StringComparer.Ordinal), refused.Referrers.Select(x => x.FromElementId).Distinct().Order(StringComparer.Ordinal));
-        Assert.Equal(queries.Order(StringComparer.Ordinal), cleared.Refused.Select(x => x.Id).Distinct().Order(StringComparer.Ordinal)); // a source is required
+        Assert.Superset(queries.ToHashSet(StringComparer.Ordinal), refused.Referrers.Select(x => x.FromElementId).ToHashSet(StringComparer.Ordinal));
+        Assert.Superset(queries.ToHashSet(StringComparer.Ordinal), cleared.Refused.Select(x => x.Id!).ToHashSet(StringComparer.Ordinal)); // a source is required
+        Assert.Equal(SaveOutcome.Invalid, blocked.Outcome);
+        Assert.Equal((SettlesMappingId, "MQ4011"), (Assert.Single(blocked.Refused).Id, blocked.Refused[0].Rule));
         Assert.Equal(queries.Order(StringComparer.Ordinal), plan.Deletes.Select(d => d.Id).Order(StringComparer.Ordinal));
-        Assert.All(plan.Deletes, d => Assert.Equal(("query", "needs table Invoice register"), (d.Kind, d.Because)));
-        var binding = Assert.Single(plan.Removes); // RevenueMonth reads the RevenueByMonth query
-        Assert.Equal((RevenueMonthId, "/bindings/0", "binding"), (binding.Id, binding.Pointer, binding.SubKind));
+        Assert.All(plan.Deletes, d => Assert.Equal(("query", "needs table invoices"), (d.Kind, d.Because)));
+        // RevenueMonth reads the RevenueByMonth query, and Invoice reads the table: both bindings go and the entities stay.
+        Assert.Equal([(EditorRepo.InvoiceId, "/bindings/0"), (RevenueMonthId, "/bindings/0")],
+            plan.Removes.Where(x => x.SubKind == "binding").Select(x => (x.Id, x.Pointer)).Order());
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         Assert.All(queries, id => Assert.Null(r.Store.Current!.GetDocument(id)));
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
@@ -359,10 +380,10 @@ public sealed class DeleteCascadeTests
         Assert.Equal(DeleteResolution.DeleteDependents, parsed.Batch!.Operations[0].Resolution);
         Assert.Equal(SaveOutcome.Saved, plan.Outcome);
         Assert.Equal([ProductId, EditorRepo.InvoiceId], plan.Ids);
-        Assert.Equal(10, plan.Deletes.Count); // refers to, then Invoice's three relations, overlay, two mappings and the three queries over it
+        Assert.Equal(8, plan.Deletes.Count); // refers to and Invoice's three relations, each with its relation mapping
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
-        Assert.Equal(12, result.Changes!.Deleted.Count);
-        Assert.Equal([DiagramId, RevenueMonthId], result.Changes.Changed.Select(c => c.Id));
+        Assert.Equal(10, result.Changes!.Deleted.Count);
+        Assert.Equal([InvoiceLineId, DiagramId], result.Changes.Changed.Select(c => c.Id).Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -531,7 +552,7 @@ public sealed class DeleteCascadeTests
         });
         Edit(r, ".maquettiste/model/databases/main/database.json", d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("stamped"));
         Edit(r, ".maquettiste/model/packages/catalog.json", p => p["defaultStereotypes"] = new JsonArray("stamped"));
-        Edit(r, ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json", t => t["excludeStereotypes"] = new JsonArray("stamped"));
+        Edit(r, ".maquettiste/model/databases/main/tables/invoices.json", t => t["excludeStereotypes"] = new JsonArray("stamped"));
         Edit(r, ".maquettiste/model/databases/main/tables/notes.json", t => t["excludes"] = new JsonArray(StampedIndexId));
         WriteElement(r, ".maquettiste/model/seeds/notes/notes.json", new JsonObject
         {

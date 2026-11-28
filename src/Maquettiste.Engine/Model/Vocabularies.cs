@@ -132,7 +132,7 @@ public sealed record Stereotype : Element, IPackaged
     /// <summary>
     /// Columns every table whose effective set holds the stereotype inherits (next-phase-2-design.md section 3.1), keyed
     /// <c>&lt;tableKey&gt;.&lt;memberId&gt;</c> in each table. With the keys, indexes and checks below they are the stereotype's
-    /// <em>members</em>. A synthesized table that stores the stereotype's attributes as columns inherits none of them.
+    /// <em>members</em>.
     /// </summary>
     public IReadOnlyList<Column> Columns { get; init; } = [];
 

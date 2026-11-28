@@ -30,7 +30,6 @@ public sealed class TypeStorageCodeTests
         {
             ["id"] = Id(1990), ["database"] = Id(1), ["source"] = Id(Comments), ["fields"] = fields,
         }));
-        File.Delete(repo.PathOf(".maquettiste/model/mappings/comment-in-db1.json"));
 
         static JsonObject Field(string attribute, string column) => new() { ["attribute"] = attribute, ["column"] = column };
     }

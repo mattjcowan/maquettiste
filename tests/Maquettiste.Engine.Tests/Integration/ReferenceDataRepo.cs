@@ -90,6 +90,7 @@ internal sealed class ReferenceDataRepo : IAsyncDisposable
         var node = new JsonObject
         {
             ["$schema"] = "../../../.schema/v1/database.json", ["kind"] = "database", ["id"] = id, ["name"] = name, ["dialect"] = dialect,
+            ["byConvention"] = "none",
         };
         var file = Path.Combine(repo.ModelRoot, path.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);

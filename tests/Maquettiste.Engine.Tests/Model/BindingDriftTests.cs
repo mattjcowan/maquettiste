@@ -21,6 +21,9 @@ public sealed class BindingDriftTests
     /// <summary>What a binding edit may read: the table's column ids by name, before any change, and the entity's id.</summary>
     private sealed record Parts(TableBuilder Notes, EntityBuilder Note);
 
+    /// <summary>A view of the database: a source that is not a table file.</summary>
+    private const string NoteView = "01K6DRF0000000000000000009";
+
     /// <summary>
     /// Table <c>notes</c> (id, body, number, kind) bound to entity <c>Note</c>: id, body and number are fields, kind a constant. The
     /// provenance is recorded from the unchanged table, then <paramref name="change"/> edits the table. <paramref name="binding"/> edits
@@ -73,6 +76,7 @@ public sealed class BindingDriftTests
         if (edit is not null)
             binding = edit(binding, new Parts(notes, note));
         note.Bind(binding with { Provenance = provenance });
+        b.Add(new View { Id = NoteView, Name = "note_view", Database = main.Id, Body = new Dictionary<string, string> { ["*"] = "SELECT id, body FROM notes" } });
         var model = b.Build();
         var entity = model.Get<Entity>(note.Id)!;
         return new Fixture(model, entity, entity.Bindings.Single(), model.Get<Table>(notes.Id)!);
@@ -227,13 +231,15 @@ public sealed class BindingDriftTests
         Assert.Equal(["due_on"], drift.Added.Select(a => a.Name));
         Assert.Empty(drift.Removed);
 
-        // Provenance on a binding whose source is not a table file (here the entity's own projected table) is stale too; a source
-        // that is nothing of the database is the resolver's MQ4044, not drift.
-        var projected = Build(binding: (b, p) => b with { Source = p.Note.Id }).Drift();
-        Assert.Equal((DriftSource.NotTableFile, true, true), (projected.Source, projected.Stale, projected.HasDrift));
-        Assert.Empty(projected.Columns);
+        // Provenance on a binding whose source is not a table file (a view) is stale too; a source that is nothing of the database
+        // (the database itself, or an entity's id) is the resolver's MQ4044, not drift.
+        var notTable = Build(binding: (b, _) => b with { Source = NoteView }).Drift();
+        Assert.Equal((DriftSource.NotTableFile, true, true), (notTable.Source, notTable.Stale, notTable.HasDrift));
+        Assert.Empty(notTable.Columns);
         var nothing = Build(binding: (b, _) => b with { Source = b.Database }).Drift();
         Assert.Equal((DriftSource.Unresolved, false, false), (nothing.Source, nothing.Stale, nothing.HasDrift));
+        var entity = Build(binding: (b, p) => b with { Source = p.Note.Id }).Drift();
+        Assert.Equal((DriftSource.Unresolved, false, false), (entity.Source, entity.Stale, entity.HasDrift));
     }
 
     [Fact]

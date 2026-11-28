@@ -315,8 +315,6 @@ public sealed partial class ModelStore
                 OpenFacts = openFacts,
                 WrittenFacts = written,
                 Rekeys = [.. materialized.SelectMany(m => m.Rekeys ?? [])],
-                SequenceRekeys = materialized.SelectMany(m => m.Sequences ?? FrozenDictionary<string, string>.Empty)
-                    .GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Value, StringComparer.Ordinal),
                 MemberRekeys = [.. materialized.SelectMany(m => m.MemberRekeys ?? [])],
                 Adopted = [.. materialized.SelectMany(m => m.Adopted ?? [])],
                 RenderedFacts = (await _services.Snapshots.LoadAsync(database.Name, ct).ConfigureAwait(false))?.Facts is { Count: > 0 } rendered
@@ -590,12 +588,6 @@ public sealed partial class ModelStore
                 switch (a)
                 {
                     case Entity entity:
-                        if (b is not Entity old || !string.Equals(old.Package, entity.Package, StringComparison.Ordinal))
-                        {
-                            foreach (var database in databases.Where(d => DatabaseScope.ByConvention(candidate, d, entity.Package)))
-                                yield return database.Id;
-                        }
-
                         if (entity.Base is { } baseId && (b is not Entity previous || !string.Equals(previous.Base, baseId, StringComparison.Ordinal)))
                         {
                             foreach (var databaseId in Holding(baseId))
@@ -621,12 +613,6 @@ public sealed partial class ModelStore
                     yield return databaseId;
                 break;
             case Package:
-                foreach (var database in databases)
-                {
-                    if (NamesPackage(before, before.Get<Database>(database.Id), id) || NamesPackage(candidate, database, id))
-                        yield return database.Id;
-                }
-
                 if (DefaultsMoved(b as Package, a as Package, before.StereotypeDefaults.HasDefaults || candidate.StereotypeDefaults.HasDefaults))
                 {
                     foreach (var databaseId in PackageDefaultReach(id, before, candidate, databases, footprint))
@@ -790,10 +776,6 @@ public sealed partial class ModelStore
                 yield return database;
         }
     }
-
-    /// <summary>Whether a database's convention entries name a package or one of its ancestors in a model.</summary>
-    private static bool NamesPackage(ModelSnapshot model, Database? database, string packageId) =>
-        database is { Packages.Count: > 0 } && DatabaseScope.NearestEntry(model, database, packageId) is not null;
 
     /// <summary>The cache entries that belong to a snapshot.</summary>
     private Dictionary<string, CaptureEntry> CachedEntries(ModelSnapshot snapshot)
@@ -980,8 +962,8 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
-    /// The top-level ids of the elements with errors in a write's validation (policy rules MQ2009 to MQ2023 aside), plus, for a mapping
-    /// or table file with errors, the entity, relation and table it applies to, as the explorer's table list leaves them out.
+    /// The top-level ids of the elements with errors in a write's validation (policy rules MQ2009 to MQ2023 aside), plus, for a relation
+    /// mapping with errors, its relation, as the explorer's table list leaves them out.
     /// </summary>
     internal static HashSet<string> FailedOwners(ModelSnapshot before, ModelSnapshot candidate, IReadOnlyList<Diagnostic> errors)
     {
@@ -998,13 +980,7 @@ public sealed partial class ModelStore
                 switch (element)
                 {
                     case Mapping mapping:
-                        AddIfSet(mapping.Entity);
                         AddIfSet(mapping.Relation);
-                        AddIfSet(mapping.Table);
-                        break;
-                    case Table table:
-                        AddIfSet(table.Entity);
-                        AddIfSet(table.Relation);
                         break;
                 }
             }

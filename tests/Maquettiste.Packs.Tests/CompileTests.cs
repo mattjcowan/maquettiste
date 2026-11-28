@@ -10,7 +10,6 @@ namespace Maquettiste.Packs.Tests;
 /// and its repositories round-trip rows through an in-memory SQLite database built from the sql-ddl output. The tests skip
 /// with a message when NuGet cannot be reached and the packages are not in the local cache.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class CompileTests
 {
     private const string DapperVersion = "2.1.66";
@@ -2626,7 +2625,7 @@ public sealed class CompileTests
         await payments.InsertAsync(first);
         await payments.InsertAsync(second);
         Check(first.Id > 0 && second.Id > first.Id, "identity keys returned by insert");
-        var page = await payments.ListAsync(skip: 1, take: 10);
+        var page = await payments.ListAsync(1, 10);
         Check(page.Count == 1 && page[0].Id == second.Id && page[0].Amount.Amount == 6m, "list paging");
 
         var notes = new CreditNoteRepository(connection);
@@ -2636,8 +2635,9 @@ public sealed class CompileTests
             CustomerId = customer.Id, Reason = "damaged",
         };
         await notes.InsertAsync(note);
-        Check((await notes.GetAsync(note.Id))?.Reason == "damaged", "derived entity (table per hierarchy)");
-        Check(await invoices.GetAsync(note.Id) is null && (await invoices.ListAsync()).All(i => i.Id != note.Id), "discriminator filter");
+        Check((await notes.GetAsync(note.Id))?.Reason == "damaged", "derived entity (one table for the hierarchy)");
+        // Reading the base returns every row of its table, the derived entity's too (retire-projection-design.md section 4).
+        Check(await invoices.GetAsync(note.Id) is not null, "base reads the derived row");
 
         Check(await lines.DeleteAsync(line.Id), "delete line");
         Check(await invoices.DeleteAsync(invoice.Id), "delete");

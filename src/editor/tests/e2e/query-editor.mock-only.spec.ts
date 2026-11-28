@@ -1,8 +1,6 @@
 // The query editor on the billing fixture's InvoicesByCustomer: the Database screen lists it under Queries with its SQL, the
 // inspector's Show the SQL opens it on the SQL tab (the statement), and the tabs show its sources, select list, filter and
-// paging (a query has no collections tab); the Parameters tab edits the limit's default (one save); a column the
-// query reads goes away (the Invoice entity loses its soft-delete stereotype, so invoices.deleted_at is gone) and the problem
-// shows in the SQL tab and in Problems, then the editor fixes it (the condition removed) and the SQL renders again.
+// paging (a query has no collections tab); the Parameters tab edits the limit's default (one save).
 import type { Page } from "@playwright/test";
 import { expect, test, keepDdlOpen } from "./fixtures";
 
@@ -14,28 +12,12 @@ const tab = (page: Page, name: string) => editor(page).getByRole("tab", { name, 
 const checked = (page: Page, label: string) => editor(page).getByLabel(label, { exact: true }).locator("option:checked");
 
 const QUERY = "01K6QRY0000000000000000001";
-const INVOICE = "01J92P0V0FJ23CGSNKM7P1W5V7";
 
 const queryJson = (page: Page) =>
   page.evaluate(async (id) => ((await (await fetch(`/api/model/elements/${id}`)).json()) as { json: Record<string, unknown> }).json, QUERY);
 
-/** Another session (an agent, a teammate) edits the Invoice entity: its stereotypes become `stereotypes`. */
-const setInvoiceStereotypes = (page: Page, stereotypes: string[]) =>
-  page.evaluate(
-    async ({ id, stereotypes }) => {
-      const doc = (await (await fetch(`/api/model/elements/${id}`)).json()) as { json: Record<string, unknown>; hash: string };
-      const res = await fetch(`/api/model/elements/${id}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json", "If-Match": `"${doc.hash}"` },
-        body: JSON.stringify({ ...doc.json, stereotypes }),
-      });
-      return ((await res.json()) as { outcome: string }).outcome;
-    },
-    { id: INVOICE, stereotypes },
-  );
-
-test("the billing InvoicesByCustomer: its tabs, its SQL, a default edited, and a removed column's problem fixed in the editor", async ({ page }) => {
-  await page.goto("/database?mock=projected");
+test("the billing InvoicesByCustomer: its tabs, its SQL, and a default edited", async ({ page }) => {
+  await page.goto("/database");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await page.getByTestId("database-list-kind-query").click();
   await expect(page.getByTestId("database-objects-count")).toHaveText("3 queries");
@@ -94,23 +76,4 @@ test("the billing InvoicesByCustomer: its tabs, its SQL, a default edited, and a
     .poll(async () => ((await queryJson(page)).parameters as { name: string; default?: unknown }[])[3])
     .toEqual({ name: "limit", type: "int32", default: 25 });
   await expect(page.getByTestId("editor-save-status")).toHaveText("Saved");
-
-  // A column the query reads goes away: Invoice loses its soft-delete stereotype, and with it invoices.deleted_at.
-  expect(await setInvoiceStereotypes(page, ["aggregate-root", "audited"])).toBe("saved");
-  await tab(page, "SQL");
-  const problems = editor(page).getByTestId("query-sql-problems");
-  await expect(problems).toContainText("MQ4023");
-  await expect(problems).toContainText("which has no such column");
-  await expect(problems).toContainText("/where/and/2/left/column");
-  await page.getByRole("tab", { name: /Problems/ }).click();
-  await expect(page.getByTestId("problems-list").getByTestId("problem-MQ4023")).toBeVisible();
-
-  // Fixed in the editor: the condition on the removed column goes, and the SQL renders again.
-  await tab(page, "Filter");
-  await editor(page).getByRole("button", { name: "Remove Where 3", exact: true }).click();
-  await expect.poll(async () => ((await queryJson(page)).where as { and: unknown[] }).and.length).toBe(2);
-  await tab(page, "SQL");
-  await expect(problems).toHaveCount(0);
-  await expect(statement).toContainText("WHERE i.customer_id = @customerId AND i.status IN @statuses\nORDER BY");
-  await expect(page.getByTestId("problems-list").getByTestId("problem-MQ4023")).toHaveCount(0);
 });

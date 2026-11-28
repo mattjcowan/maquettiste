@@ -313,6 +313,6 @@ public sealed class RevisionReferenceTests
     public void The_index_format_stays_e14()
     {
         // The block adds no row and no member to the index (section 10, "Index").
-        Assert.Equal("maquettiste-index/e14", ModelReads.IndexFormat);
+        Assert.Equal("maquettiste-index/e15", ModelReads.IndexFormat);
     }
 }

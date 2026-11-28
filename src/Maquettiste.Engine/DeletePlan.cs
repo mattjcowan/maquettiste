@@ -33,7 +33,7 @@ public sealed record DeletePlan(
 /// <summary>An element a delete takes with it.</summary>
 /// <param name="Id">The element id.</param>
 /// <param name="Kind">The kind name.</param>
-/// <param name="Name">A readable name (a synthesized table: its entity's name and "table").</param>
+/// <param name="Name">A readable name.</param>
 /// <param name="Path">The repo-relative file path.</param>
 /// <param name="Because">Why, for example "needs database main" or "belongs to entity Invoice".</param>
 public sealed record DeletePlanDelete(string Id, string Kind, string Name, string Path, string Because);

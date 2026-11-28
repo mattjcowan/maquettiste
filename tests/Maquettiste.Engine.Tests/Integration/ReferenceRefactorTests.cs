@@ -11,7 +11,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// the <c>due</c> row: a rename keeps the old code as a former code and records one value map, a retire removes the row and moves its
 /// uses, and a merge moves every use of the merged type to the target. sql-ddl's data step for each is in the packs' ReferenceDataTests.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class ReferenceRefactorTests
 {
     private const string DemoInvoices = "01KAPT00000000000000000040";
@@ -131,12 +130,9 @@ public sealed class ReferenceRefactorTests
         Assert.Null(await repo.Store.GetElementAsync(PaymentTerms.CreditTermSeed, Ct));
         Assert.Equal([("n90", PaymentTerms.Net60)], await FormerCodesAsync(repo));
 
-        // One value map in main maps n90 to net60 for both columns, from CreditTerm into PaymentTerm.
-        var map = Assert.Single(await PaymentTerms.ValueMapsAsync(repo, E2ERepo.MainDatabaseId));
-        Assert.Equal((PaymentTerms.PaymentTerm, PaymentTerms.CreditTerm, "CreditTerm", "PaymentTerm"), (map.ReferenceType, map.FromReferenceType, map.From!.Name, map.To!.Name));
-        Assert.Equal([("n90", "net60")], map.Values.Select(v => (v.From, v.To)));
-        // notes.term is bound to an attribute of the type but holds no codes for the database: binding never changes storage.
-        Assert.Equal([("customers", "credit_term")], map.Objects.Select(o => (o.TableName!, o.Name!)));
+        // No column of main holds CreditTerm codes (notes.term is bound to an attribute of the type, and binding never changes storage):
+        // the merge records no value map.
+        Assert.Empty(await PaymentTerms.ValueMapsAsync(repo, E2ERepo.MainDatabaseId));
         await AssertValidAsync(repo);
     }
 }

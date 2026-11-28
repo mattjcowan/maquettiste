@@ -7,36 +7,21 @@ using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Rendering;
 
-/// <summary>Templates read a table's annotations from its own file (the billing fixture's invoice table overlay), never the entity's.</summary>
-[UsesProjectedFixtures]
+/// <summary>Templates read a table's annotations from its own file (the billing fixture's invoices table), never the entity's.</summary>
 public sealed class PhysicalAnnotationRenderTests
 {
     private const string Template =
         "{{ table.display_name }}|{{ table.description }}|{{ table.stereotypes.size }}:{{ table.stereotypes[0].key }}/{{ table.stereotypes[0].name }}|"
         + "{{ table.tags | array.join ',' }}|{{ table.category.name }}/{{ table.category.path }}|{{ table.properties.tablespace }}/{{ table.properties.retentionDays }}|"
-        + "{{ has_stereotype table 'audited' }}/{{ has_tag table 'billing' }}/{{ in_category table 'Receivables' }}|{{ table.entity.display_name }}";
+        + "{{ has_stereotype table 'audited' }}/{{ has_tag table 'billing' }}/{{ in_category table 'Receivables' }}";
 
     [Fact]
-    public async Task A_table_reads_the_annotations_of_its_overlay()
+    public async Task A_table_reads_the_annotations_of_its_own_file()
     {
         var unit = await Adhoc.RenderAsync(Template, await TableAsync("invoices"), u => u with { For = "each table" });
 
         Assert.Equal("Invoice register|One row per issued invoice; finance reconciles it monthly.|1:audited/Audited|billing|Receivables/Receivables|"
-            + "billing_data/2555|true/true/true|Invoice", unit.Text());
-    }
-
-    [Fact]
-    public async Task A_table_without_a_file_has_no_annotations_even_when_its_entity_has()
-    {
-        var table = await TableAsync("customers");
-        Assert.True(table.Entity!.HasStereotype("audited"));
-
-        var unit = await Adhoc.RenderAsync(
-            "[{{ table.display_name }}|{{ table.description }}|{{ table.stereotypes.size }}|{{ table.tags.size }}|{{ table.category }}|{{ table.properties.tablespace }}|"
-            + "{{ has_stereotype table 'audited' }}|{{ has_stereotype table.entity 'audited' }}]",
-            table, u => u with { For = "each table" });
-
-        Assert.Equal("[||0|0|||false|true]", unit.Text());
+            + "billing_data/2555|true/true/true", unit.Text());
     }
 
     [Fact]
@@ -47,7 +32,7 @@ public sealed class PhysicalAnnotationRenderTests
         var variables = ImmutableDictionary<string, JsonElement>.Empty.Add("audience", JsonDocument.Parse("\"finance\"").RootElement);
         b.Add(new Table
         {
-            Id = b.NewId(), Name = "ledger", Database = db.Id, Origin = TableOrigin.Designed,
+            Id = b.NewId(), Name = "ledger", Database = db.Id,
             Generation = new Dictionary<string, GenerationHints> { ["adhoc"] = new() { Rename = "LedgerRow", Variables = variables } },
             Columns = [new Column { Id = b.NewId(), Name = "id", Type = "int64", Nullable = false }],
         });
@@ -60,16 +45,16 @@ public sealed class PhysicalAnnotationRenderTests
     }
 
     [Fact]
-    public async Task A_column_reads_its_overlay_entry_and_the_database_and_schemas_their_own()
+    public async Task A_column_reads_its_own_entry_and_the_database_and_schemas_their_own()
     {
         var unit = await Adhoc.RenderAsync(
             "{{ for c in table.columns }}{{ if c.description }}{{ c.name }}:{{ c.description }}|{{ c.stereotypes[0].key }}|{{ c.properties.classification }}/"
-            + "{{ c.properties.retentionDays }}|{{ has_stereotype c 'audited' }}|{{ c.attribute.name }}{{ end }}{{ end }}|"
-            + "{{ (table.columns | array.filter @(do; ret $0.stereotypes.size > 0; end)).size }}|{{ table.database.by_convention }}|"
+            + "{{ c.properties.retentionDays }}|{{ has_stereotype c 'audited' }}{{ end }}{{ end }}|"
+            + "{{ (table.columns | array.filter @(do; ret $0.stereotypes.size > 0; end)).size }}|"
             + "{{ table.database.schemas[0].name }}:{{ table.database.schemas[0].is_default }}:{{ table.database.schemas[0].stereotypes.size }}",
             await TableAsync("invoices"), u => u with { For = "each table" });
 
-        Assert.Equal("number:The number printed on the invoice; customers quote it when they pay.|audited|internal/2555|true|number|1|all|billing:true:0", unit.Text());
+        Assert.Equal("number:The number printed on the invoice; customers quote it when they pay.|audited|internal/2555|true|1|billing:true:0", unit.Text());
     }
 
     [Fact]

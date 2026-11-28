@@ -79,7 +79,6 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Stereotypes">The element's stereotype keys, in application order (E4: the explorer's stereotype filter).</param>
 /// <param name="DisplayName">The element's display name, when it has one (E5: search and the explorer's label).</param>
 /// <param name="Database">The owning database's id, on table, view, sequence and mapping rows (E5), and on the rows of the other database objects and migration facts.</param>
-/// <param name="Entity">The entity a mapping maps or a table overlay applies to, when it has one (E5).</param>
 /// <param name="MemberCount">The number of members, on diagram rows (E5) and on custom element rows (next-phase-2-design.md section 4.2).</param>
 /// <param name="Ends">The relation's ends in document order, on relation rows (E5).</param>
 /// <param name="Target">The id of the entity, relation or reference type a seed holds rows for, on seed rows.</param>
@@ -129,6 +128,9 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// process rows that have at least one (signoff-design.md section 9).</param>
 /// <param name="Signatures">The number of named signatures across those gates' stages, on process rows that have at least one
 /// (signoff-design.md section 9).</param>
+/// <param name="BoundTo">On entity rows with bindings: per binding in file order, the table its writes go to, else its source (a table,
+/// view or query id), distinct. The explorer's "Go to table" and related-element highlighting read it (since 0.29.0 an entity has a table
+/// only through its binding).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -137,7 +139,6 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     string? Category, IReadOnlyList<string> Stereotypes,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DisplayName = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Database = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Entity = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MemberCount = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationEndSummary>? Ends = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Target = null,
@@ -167,7 +168,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? TriggerVerbs = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Replaces = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Approvals = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Signatures = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Signatures = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? BoundTo = null)
 {
     /// <summary>
     /// A process row's <c>rightsDefault</c> as its file writes it, <c>allow</c> or <c>deny</c> (rights-design.md section 6); <see langword="null"/>
@@ -267,7 +269,6 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && Stereotypes.SequenceEqual(other.Stereotypes, StringComparer.Ordinal)
         && string.Equals(DisplayName, other.DisplayName, StringComparison.Ordinal)
         && string.Equals(Database, other.Database, StringComparison.Ordinal)
-        && string.Equals(Entity, other.Entity, StringComparison.Ordinal)
         && MemberCount == other.MemberCount
         && string.Equals(Target, other.Target, StringComparison.Ordinal)
         && RowCount == other.RowCount
@@ -301,6 +302,7 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && TriggerPoints == other.TriggerPoints
         && (ReferenceEquals(TriggerVerbs, other.TriggerVerbs) || (TriggerVerbs is not null && other.TriggerVerbs is not null && TriggerVerbs.SequenceEqual(other.TriggerVerbs, StringComparer.Ordinal)))
         && (ReferenceEquals(Replaces, other.Replaces) || (Replaces is not null && other.Replaces is not null && Replaces.SequenceEqual(other.Replaces, StringComparer.Ordinal)))
+        && (ReferenceEquals(BoundTo, other.BoundTo) || (BoundTo is not null && other.BoundTo is not null && BoundTo.SequenceEqual(other.BoundTo, StringComparer.Ordinal)))
         && Approvals == other.Approvals
         && Signatures == other.Signatures
         && (ReferenceEquals(ReplaceScopes, other.ReplaceScopes)
