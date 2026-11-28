@@ -286,7 +286,7 @@ export function compile(domain, stored = new Map()) {
     }));
     const colId = (cn) => { if (!t.columns[cn]) throw new Error(`table ${name}: unknown column ${cn}`); return id(`table:${name}.${cn}`); };
     emit("database", `model/databases/${kebab(db.name)}/tables/${kebab(name)}.json`, "table.json", {
-      kind: "table", id: tid, name, database: dbId, schema: schemaId, origin: "designed", description: t.description, tags: t.tags,
+      kind: "table", id: tid, name, database: dbId, schema: schemaId, description: t.description, tags: t.tags,
       columns: cols, primaryKey: { name: t.primaryKey.name, columns: t.primaryKey.columns.map((c) => colId(c)) },
       indexes: (t.indexes ?? []).map((ix, i) => ({
         id: id(`table:${name}/index:${i}`), name: ix.name,
