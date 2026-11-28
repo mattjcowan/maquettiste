@@ -1,4 +1,5 @@
 using Maquettiste.Engine;
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Planning;
@@ -83,6 +84,13 @@ public sealed class SkipEquivalence : IAsyncDisposable
             var keyedPlan = await _keyed.PlanAsync(request, null, ct).ConfigureAwait(false);
             var fullPlan = await _full.PlanAsync(request, null, ct).ConfigureAwait(false);
             Compare(differences, "plan outcome", keyedPlan.Outcome, fullPlan.Outcome);
+            if (keyedPlan.Outcome != fullPlan.Outcome)
+            {
+                // Say why, so a failure on a slow runner can be told from a real difference.
+                differences.Add("keyed plan diagnostics: " + Describe(keyedPlan.Plan?.Diagnostics));
+                differences.Add("full plan diagnostics: " + Describe(fullPlan.Plan?.Diagnostics));
+            }
+
             Compare(differences, "planned units", Units(keyedPlan.Plan), Units(fullPlan.Plan));
         }
 
@@ -108,6 +116,12 @@ public sealed class SkipEquivalence : IAsyncDisposable
         Compare(differences, "unit states", States(_keyedOptions), States(_fullOptions));
         return differences;
     }
+
+    /// <summary>A plan's diagnostics on one line, for a difference report.</summary>
+    /// <param name="diagnostics">The diagnostics, or <see langword="null"/> when there is no plan.</param>
+    /// <returns>The line.</returns>
+    private static string Describe(IReadOnlyList<Diagnostic>? diagnostics) =>
+        diagnostics is null ? "(no plan)" : diagnostics.Count == 0 ? "(none)" : string.Join("; ", diagnostics.Select(d => d.Rule + " " + d.Message));
 
     /// <summary>
     /// An apply run in both copies cancelled as soon as its skip check has decided, before anything renders: nothing is written, and

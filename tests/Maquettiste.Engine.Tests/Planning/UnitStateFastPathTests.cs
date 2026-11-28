@@ -156,6 +156,123 @@ public sealed class UnitStateFastPathTests
         Assert.Equal(2, store.FileReads);
     }
 
+    /// <summary>
+    /// States with every field (key hashes, static parts, element names, exports, non-ASCII and long strings) encode to the bytes the
+    /// encoder gave before the save started sizing its buffer per state and keeping names as table indexes: the hash below was taken
+    /// from that encoder, over a fresh encoding and four saves of loaded, re-rendered, dropped and added states.
+    /// </summary>
+    [Fact]
+    public void Encoding_states_with_every_field_gives_the_same_bytes_as_before()
+    {
+        var random = new Random(11);
+        var keys = Enumerable.Range(0, 80).Select(i => (i % 4) switch
+        {
+            0 => "e:K" + i.ToString("D3", System.Globalization.CultureInfo.InvariantCulture),
+            1 => "r:K" + i.ToString("D3", System.Globalization.CultureInfo.InvariantCulture),
+            2 => "s:é" + i.ToString("D3", System.Globalization.CultureInfo.InvariantCulture),
+            _ => "e:" + new string('L', 130) + i.ToString("D3", System.Globalization.CultureInfo.InvariantCulture),
+        }).ToArray();
+        var states = Enumerable.Range(0, 240).Select(i => RichState(random, keys, "u" + i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture))).ToList();
+        using var all = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        var bytes = UnitStateStore.Encode(states);
+        all.AppendData(bytes);
+        for (var round = 0; round < 4; round++)
+        {
+            var loaded = round % 2 == 0 ? UnitStateStore.Decode(bytes)!.Values.ToList() : states;
+            var next = new List<UnitState>();
+            foreach (var state in loaded)
+            {
+                switch (random.Next(8))
+                {
+                    case 0:
+                        next.Add(RichState(random, [.. keys, "e:NEW" + random.Next(4).ToString(System.Globalization.CultureInfo.InvariantCulture)], state.Key));
+                        break;
+                    case 1:
+                        break;
+                    default:
+                        next.Add(state);
+                        break;
+                }
+            }
+
+            next.Add(RichState(random, keys, "u9" + round.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            var indexed = new List<UnitState>();
+            bytes = UnitStateStore.Encode(next, indexed);
+            all.AppendData(bytes);
+
+            // The states kept after a save name the elements a load of the bytes names (a name of a key not read is not kept).
+            var decoded = UnitStateStore.Decode(bytes)!;
+            foreach (var state in indexed)
+                Assert.Equal(Named(decoded[state.Key]), Named(state));
+
+            states = indexed;
+        }
+
+        Assert.Equal("ddd17c1c35081866a30edfc5d70e9b8d199e449dcdea07226aae87dd4a80c98c", Convert.ToHexStringLower(all.GetHashAndReset()));
+
+        static string Named(UnitState state) =>
+            state.Names is null ? "-" : string.Join(";", state.Names.OrderBy(n => n.Key, StringComparer.Ordinal).Select(n => n.Key + "=" + n.Value));
+    }
+
+    [Fact]
+    public void States_kept_after_a_save_share_their_name_labels_with_the_key_table()
+    {
+        Dictionary<string, string> Names() => new(StringComparer.Ordinal)
+        {
+            ["e:1"] = new string("Customer (entity)".AsSpan()),
+            ["e:2"] = new string("Invoice (entity)".AsSpan()),
+            ["e:9"] = "Not read (entity)",
+        };
+
+        UnitState[] states =
+        [
+            new UnitState("p/a", "h1", ["e:1", "e:2", "k:entity"], []) { Names = Names() },
+            new UnitState("p/b", "h2", ["e:1", "e:2"], []) { Names = Names() },
+            new UnitState("p/c", "h3", ["e:1"], []) { Names = new Dictionary<string, string>(StringComparer.Ordinal) { ["e:9"] = "x" } },
+        ];
+        Assert.NotSame(states[0].Names!["e:1"], states[1].Names!["e:1"]);
+        var indexed = new List<UnitState>();
+        var bytes = UnitStateStore.Encode(states, indexed);
+
+        Assert.IsType<UnitStateStore.TableNames>(indexed[0].Names);
+        Assert.Same(indexed[0].Names!["e:1"], indexed[1].Names!["e:1"]);
+        Assert.Same(indexed[0].Names!["e:2"], indexed[1].Names!["e:2"]);
+        Assert.Equal(["e:1", "e:2"], indexed[0].Names!.Keys.Order(StringComparer.Ordinal)); // a name of a key not read is not kept
+        Assert.Null(indexed[2].Names);
+
+        // Saving the kept states again copies their records and keeps their names.
+        var again = new List<UnitState>();
+        Assert.Equal(bytes, UnitStateStore.Encode(indexed, again));
+        Assert.Equal("Invoice (entity)", again[1].Names!["e:2"]);
+        Assert.Same(again[0].Names!["e:1"], again[1].Names!["e:1"]);
+    }
+
+    private static UnitState RichState(Random random, IReadOnlyList<string> keys, string key)
+    {
+        var plain = State(random, keys, key);
+        var chosen = plain.ReadKeys;
+        var names = random.Next(3) == 0 ? null : chosen.Where(k => k.StartsWith("e:", StringComparison.Ordinal) && random.Next(4) != 0)
+            .Append("e:unread" + random.Next(3).ToString(System.Globalization.CultureInfo.InvariantCulture))
+            .ToDictionary(k => k, k => "Näme " + k[^3..] + " (entity)", StringComparer.Ordinal);
+        UnitExports? exports = null;
+        if (random.Next(3) == 0)
+        {
+            var exportKeys = random.Next(4) == 0 ? ["e:not-read"] : chosen.Where(_ => random.Next(2) == 0).ToList();
+            using var document = System.Text.Json.JsonDocument.Parse("{\"b\":" + random.Next(100).ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"a\":\"vé" + new string('x', random.Next(200)) + "\"}");
+            exports = new UnitExports(document.RootElement.Clone(), exportKeys, ContentHash.Of(key + "exports"));
+        }
+
+        var outputs = plain.Outputs.Select((o, i) => i == 0 && random.Next(3) == 0 ? o with { Path = "out/ü/" + new string('p', 140) + key } : o).ToList();
+        return plain with
+        {
+            Outputs = outputs,
+            KeyHashes = random.Next(4) == 0 ? default : KeyHashes.Of(chosen, k => ContentHash.Of(k + key[^1])),
+            StaticParts = random.Next(3) == 0 ? null : "pack-version=1.0." + random.Next(3).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\nunit=" + key[..2],
+            Names = names,
+            Exports = exports,
+        };
+    }
+
     private static UnitState State(Random random, IReadOnlyList<string> keys, string key)
     {
         var count = 1 + random.Next(12);
