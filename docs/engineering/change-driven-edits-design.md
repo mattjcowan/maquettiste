@@ -1,8 +1,9 @@
 # Change-driven edits: an edit costs what it changes
 
-Status: design, 2026-11-28, for the owner's approval. Nothing here is built. The owner asked for it on 2026-11-27, after
-measurements showed that one entity edit in a large model costs the whole model ("Models should not require that kind of
-memory"). Rulings needed are in section 8.
+Status: design, revision 2, 2026-11-28. The owner asked for it on 2026-11-27, after measurements showed that one entity
+edit in a large model costs the whole model ("Models should not require that kind of memory"). On 2026-11-28 the owner
+approved the order in section 9 (revision 2), which replaces the plan in sections 4 and 7 where they differ. Ruling R1
+(section 8) is still open and is needed before the skip check is built.
 
 ## 1. The problem
 
@@ -25,8 +26,8 @@ Every other stage still covers the whole model or every output. Measured on the 
 | **Total** | | **about 2.8 GB** |
 
 The wall time is about 1.9 s on a quiet machine and 3.6 s on a busy one; most of the spread is garbage collection. The
-live heap after the run is 1.41 GB, because the previous resolved model and snapshot stay alive while the new one is
-built. The cost grows with the model: about 0.56 MB per entity, so a few hundred entities stay under a second, but the
+live heap is about 2 GB. Revision 1 said most of it was the previous resolved model kept alive beside the new one; the
+measurement in section 9 shows the previous model is about 240 MB of it, and the rest is one model's own data. The cost grows with the model: about 0.56 MB per entity, so a few hundred entities stay under a second, but the
 waste is the same in kind at any size.
 
 The code already knows what changed. The rescan works out the list of changed files (`ModelStore.RescanAsync` returns a
@@ -36,7 +37,8 @@ whole model.
 ## 2. The goal
 
 - One entity edit in the 5,000-entity model allocates **under 100 MB** (target 30 to 60 MB) and takes **under 0.5 s**.
-- The live heap after an edit stays close to one model, not two.
+- The live heap after an edit stays close to one model, not two, and what one model holds is measured and reduced
+  (section 9, step 4).
 - Outputs, diagnostics, manifests and unit states stay **byte-identical** to a cold run of the same model. This is the
   rule that decides every step: where a stage cannot be sure what an edit reaches, it does the whole model, as today.
 - A cold run (first open, `generate` from the command line, `--check`) is unchanged. It covers the whole model by nature.
@@ -152,3 +154,52 @@ resolve; step 5 brings it to the goal.
 - **R2. Releases.** Recommended: release after pull request B (0.30.0), then again after C. Alternative: one release
   after C.
 - **R3. Start.** Recommended: start pull request A now.
+
+## 9. Revision 2 (2026-11-28): measured, re-planned, approved
+
+**Estimates were in human days.** Revision 1's "days" were human-engineer days. Elapsed AI time is far shorter: retiring
+projection, estimated at 14 to 17 days, went from its design commit to the 0.29.0 release in about 24 hours. Estimates
+below are elapsed AI hours, CI and review included.
+
+**Pull request A, built and measured** (bench, 5,000 entities, shared machine, two runs each):
+
+| One edit | Before | After A |
+|---|---:|---:|
+| Allocated | 2,683 MiB | 2,258 MiB |
+| Live heap at the next edit, before its resolve | about 2,090 MiB | about 1,850 MiB |
+| Time | 3.6 to 4.1 s | 3.4 to 3.6 s |
+
+A frees the previous model as soon as a new snapshot is published, keeps manifests and unit states in memory (read again
+only when a file's stat changes), and makes the database view and the query and binding SQL previews use the store's
+shared resolution: they used to validate and resolve the whole model on every call. The bench now reports allocated
+bytes and live heap.
+
+**Previews found to build the whole model.** The template preview, the seed rows preview, "explain this file" and the
+full Problems check build the whole model once per edit (shared until the next edit); the three views above did so on
+every call until A. Step 2 below gives previews the per-database resolve the engine already has.
+
+**A resolve-reuse spike** (5,000 entities, the bench's edit; scratch code, nothing kept):
+
+- The dependency keys already form a safe map of what an edit reaches: after a one-attribute edit, 440 of 854,409
+  resolved objects have a changed key; a rename gave the same; no changed object was missed.
+- Reusing the rest as they are is blocked by direct links: an unchanged object that links to a rebuilt one must be
+  re-created, which is 91% of all objects; with links to owners and reverse indexes as id lookups, 35%; only with every
+  link between elements as a lookup does it fall to the 440 (71 link fields on 23 types for the bench's features, 690
+  fields on 147 types in all).
+- About three quarters of what resolve allocates is short-lived working memory (collections and arrays 532 MB,
+  enumerators and closures 156 MB, delegates 140 MB, against 154 MB of resolved objects and 279 MB live).
+- Planning reads every element of every unit type, so building the resolved model on demand does not help generation;
+  it does help previews.
+
+**The order the owner approved:**
+
+1. **A** (built; review, then pull request).
+2. **B**: validate what the edit reaches, the skip check by key, a cheaper rescan, the resolver's working memory cut
+   (about 1.17 GB to about 0.5 GB, byte-identical by construction), and previews on the per-database resolve. About 1 to
+   1.5 days of elapsed AI time.
+3. **Measure what one model holds** (about 1.8 GB live at 5,000 entities: snapshot, indexes, manifests, unit states) and
+   why, with a plan to reduce it.
+4. **Decide on reuse** (links as lookups with a per-run scope, plus a partial resolve): about 45 to 70 elapsed AI hours,
+   against about 80 to 120 for the two-layer design in the Resolution README. Decided on the numbers after steps 2
+   and 3.
+
