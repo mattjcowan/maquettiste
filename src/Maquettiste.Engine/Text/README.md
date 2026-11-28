@@ -2,7 +2,8 @@
 
 **Owner:** W3 Resolver. See docs/engineering/engine-design.md section 18.
 
-Casing (`Casing`, D26) and the inflector (`Inflector`), shared with the renderer's helpers (W5).
+Casing (`Casing`, D26) and the inflector (`Inflector`), shared with the renderer's helpers (W5). `StringPool` (internal): one string
+instance per distinct value, thread-safe (striped locks), which the loader owns and bounds (Loading/README.md, memory notes).
 
 - Implements (complete):
   - `Casing.Words(name)`: split on non-alphanumerics, at lower→upper and at acronym→word boundaries; digits join the preceding

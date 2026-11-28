@@ -173,7 +173,8 @@ public sealed class ModelSnapshot
         IReadOnlyList<CustomKindDocument>? customKinds = null,
         IReadOnlyList<ScriptLibrarySource>? scriptLibraries = null,
         IReadOnlyList<ScriptSource>? calculationScripts = null,
-        IReadOnlyList<DeclaredRuleDocument>? declaredRules = null)
+        IReadOnlyList<DeclaredRuleDocument>? declaredRules = null,
+        Text.StringPool? strings = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(settings);
@@ -188,7 +189,7 @@ public sealed class ModelSnapshot
             [.. (customKinds ?? previous?.CustomKinds ?? []).OrderBy(k => k.Kind.Type, StringComparer.Ordinal).ThenBy(k => k.Path, StringComparer.Ordinal)];
         var propertySchemas = PropertySchemaSet.Create(sortedExtensions, previous?.PropertySchemas, [.. docs.Where(d => d.Element is Stereotype)], kinds);
         var stereotypeDefaults = new StereotypeDefaults(docs);
-        var index = ModelIndexer.Build(docs, propertySchemas, stereotypeDefaults, previous?.Index, parallelism, ct);
+        var index = ModelIndexer.Build(docs, propertySchemas, stereotypeDefaults, previous?.Index, parallelism, ct, strings);
         var diagnostics = (loadDiagnostics ?? []).ToImmutableArray();
         if (!index.Diagnostics.IsEmpty)
             diagnostics = [.. diagnostics.AddRange(index.Diagnostics).Order(Diagnostic.Order)];

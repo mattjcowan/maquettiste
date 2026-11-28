@@ -320,7 +320,7 @@ internal sealed class BindingWriteJsonConverter : JsonConverter<BindingWrite>
                     var name = reader.GetString();
                     reader.Read();
                     if (name == "table" && reader.TokenType == JsonTokenType.String)
-                        table = reader.GetString();
+                        table = Json.PooledStrings.ReadString(ref reader);
                     else
                         reader.Skip();
                 }

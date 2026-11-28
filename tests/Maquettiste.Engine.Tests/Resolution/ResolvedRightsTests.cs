@@ -580,8 +580,9 @@ public sealed class ResolvedRightsTests
     [Fact]
     public void Grids_over_many_lifecycles_on_one_entity_do_not_grow_quadratically()
     {
-        // Each lifecycle's grid asks the others that govern the entity once per actor and verb, and only the lifecycle in question: twice the
-        // lifecycles costs about twice the time, not four or eight times (finding 1 of the rights review: 30 took 1.1 s and 60 took 8.6 s).
+        // Each lifecycle's grid asks the others that govern the entity once per actor and verb, and only the lifecycle in question, so the
+        // grids of many lifecycles on one entity grow well below the square of their number (finding 1 of the rights review: 30 took 1.1 s and
+        // 60 took 8.6 s).
         static ModelSnapshot Many(int count)
         {
             List<Element> elements =
@@ -615,24 +616,37 @@ public sealed class ResolvedRightsTests
             return ModelSnapshot.Create(docs, new ProjectSettings { FormatVersion = EngineVersion.FormatVersion }, "", [], [], 1);
         }
 
-        static TimeSpan Time(int count)
+        // One pass over every lifecycle's grid, on a new snapshot (nothing is reused between passes): the bytes it allocates on this thread,
+        // and its time without the garbage collection pauses within it (they grow with what the test process holds, not with the grids' work).
+        static (long Bytes, TimeSpan Time) Pass(int count)
         {
-            var best = TimeSpan.MaxValue;
-            for (var run = 0; run < 3; run++)
-            {
-                var model = Many(count); // a new snapshot each time: nothing is reused between runs
-                var clock = System.Diagnostics.Stopwatch.StartNew();
-                foreach (var lifecycle in model.All<Process>())
-                    Assert.NotEmpty(RightsGrid.Rows(model, lifecycle, ct: TestContext.Current.CancellationToken));
-                best = clock.Elapsed < best ? clock.Elapsed : best;
-            }
-
-            return best;
+            var model = Many(count);
+            var allocated = GC.GetAllocatedBytesForCurrentThread();
+            var paused = GC.GetTotalPauseDuration();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            foreach (var lifecycle in model.All<Process>())
+                Assert.NotEmpty(RightsGrid.Rows(model, lifecycle, ct: TestContext.Current.CancellationToken));
+            return (GC.GetAllocatedBytesForCurrentThread() - allocated, clock.Elapsed - (GC.GetTotalPauseDuration() - paused));
         }
 
-        Time(5); // warm up
-        var thirty = Time(30);
-        var sixty = Time(60);
-        Assert.True(sixty < thirty * 3 + TimeSpan.FromMilliseconds(100), $"30 lifecycles took {thirty.TotalMilliseconds:F0} ms, 60 took {sixty.TotalMilliseconds:F0} ms");
+        // The work is judged by what a pass allocates, which no busy machine changes: four times the lifecycles allocate 6.2x (every grid
+        // still walks the others' cached answers); a grid that asks every other lifecycle again, without the cache, allocates 15.5x, and the
+        // review's finding grew with the cube. The time is a backstop for work that allocates nothing, loose enough for a loaded runner
+        // (the finding took 1.1 s at 30 lifecycles and 8.6 s at 60). Warm up first, alternate the sizes and keep each one's least.
+        for (var i = 0; i < 2; i++)
+            Pass(40);
+        (long Bytes, TimeSpan Time) few = (long.MaxValue, TimeSpan.MaxValue), many = few;
+        for (var run = 0; run < 3; run++)
+        {
+            var a = Pass(40);
+            few = (Math.Min(few.Bytes, a.Bytes), a.Time < few.Time ? a.Time : few.Time);
+            var b = Pass(160);
+            many = (Math.Min(many.Bytes, b.Bytes), b.Time < many.Time ? b.Time : many.Time);
+        }
+
+        Assert.True(many.Bytes < few.Bytes * 10,
+            $"40 lifecycles allocated {few.Bytes:N0} bytes, 160 allocated {many.Bytes:N0} ({(double)many.Bytes / few.Bytes:F1}x)");
+        Assert.True(many.Time < few.Time * 40 + TimeSpan.FromMilliseconds(500),
+            $"40 lifecycles took {few.Time.TotalMilliseconds:F1} ms, 160 took {many.Time.TotalMilliseconds:F1} ms (garbage collection pauses left out)");
     }
 }

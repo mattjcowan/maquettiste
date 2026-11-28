@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text.Json.Serialization.Metadata;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Hashing;
+using Maquettiste.Engine.Text;
 
 namespace Maquettiste.Engine.Model;
 
@@ -166,28 +167,31 @@ internal static class ModelIndexer
     /// <param name="parallelism">The most documents walked at once by a full build (the caller's
     /// <see cref="EngineOptions.EffectiveParallelism"/>; <see cref="DefaultParallelism"/> without one).</param>
     /// <param name="ct">Cancellation, observed between documents.</param>
+    /// <param name="strings">The pool the index takes its pointers and ids from (the loader's, so they are the instances its files hold);
+    /// <see langword="null"/> uses one for this build only.</param>
     /// <returns>The index.</returns>
     public static Result Build(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, StereotypeDefaults defaults, Result? previous,
-        int parallelism, CancellationToken ct)
+        int parallelism, CancellationToken ct, StringPool? strings = null)
     {
+        strings ??= new StringPool();
         ArgumentNullException.ThrowIfNull(schemas);
         ArgumentNullException.ThrowIfNull(defaults);
         ArgumentOutOfRangeException.ThrowIfLessThan(parallelism, 1);
         ct.ThrowIfCancellationRequested();
         if (previous is { Clean: true, Walks: not null } && string.Equals(previous.PropertySchemasHash, schemas.Hash, StringComparison.Ordinal)
-            && TryPatch(documents, schemas, defaults, previous) is { } patched)
+            && TryPatch(documents, schemas, defaults, previous, strings) is { } patched)
         {
             return patched;
         }
 
-        return BuildFull(documents, schemas, defaults, parallelism, ct) with { Patched = false };
+        return BuildFull(documents, schemas, defaults, parallelism, ct, strings) with { Patched = false };
     }
 
     /// <summary>The walk parallelism of a build whose caller has no engine options (the public <see cref="ModelSnapshot.Create"/>).</summary>
     internal static int DefaultParallelism => Math.Max(1, Math.Min(Environment.ProcessorCount, 8));
 
     private static Result BuildFull(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, StereotypeDefaults defaults, int parallelism,
-        CancellationToken ct)
+        CancellationToken ct, StringPool strings)
     {
         // Stereotype keys first, so every element's stereotypes[i] can be indexed as a reference to the stereotype's id.
         var stereotypes = new Dictionary<string, Stereotype>(StringComparer.Ordinal);
@@ -211,7 +215,7 @@ internal static class ModelIndexer
         var rows = new ElementSummary[documents.Length];
         Parallel.For(0, documents.Length, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, i =>
         {
-            var walk = new DocumentWalk(stereotypes, metadata, referenceData, schemas, defaults, ownVerbs);
+            var walk = new DocumentWalk(stereotypes, metadata, referenceData, schemas, defaults, ownVerbs, strings);
             walk.WalkElement(documents[i].Element);
             walks[i] = walk;
             rows[i] = Summarize(documents[i].Element, documents[i].Hash, documents[i].Path, schemas, null);
@@ -349,7 +353,8 @@ internal static class ModelIndexer
     /// walks used (a changed set rebuilds in full, even when no document changed). Unchanged documents (the same <see cref="ElementDocument"/> instance at the same
     /// path) keep their walks; every map ends up with exactly the content and order a full build gives.
     /// </summary>
-    private static Result? TryPatch(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, StereotypeDefaults defaults, Result previous)
+    private static Result? TryPatch(ImmutableArray<ElementDocument> documents, PropertySchemaSet schemas, StereotypeDefaults defaults, Result previous,
+        StringPool strings)
     {
         var old = previous.Documents;
         var oldWalks = previous.Walks!;
@@ -411,7 +416,7 @@ internal static class ModelIndexer
         var metadata = new MetadataCache();
         foreach (var a in added)
         {
-            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData, schemas, defaults, previous.OwnVerbs);
+            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData, schemas, defaults, previous.OwnVerbs, strings);
             walk.WalkElement(documents[a].Element);
             walks[a] = walk;
         }
@@ -1228,9 +1233,12 @@ internal static class ModelIndexer
         }
     }
 
-    /// <summary>The walk of one document: its sub-element entries (in walk order) and its references.</summary>
+    /// <summary>
+    /// The walk of one document: its sub-element entries (in walk order) and its references. Their pointers, and the ids it splits out of
+    /// keyed values, are taken from the build's string pool (<see cref="StringPool"/>), so equal values are one instance.
+    /// </summary>
     internal sealed class DocumentWalk(IReadOnlyDictionary<string, Stereotype> stereotypes, MetadataCache metadata, ReferenceDataIndex referenceData,
-        PropertySchemaSet schemas, StereotypeDefaults defaults, IReadOnlyDictionary<string, OwnVerb> ownVerbs)
+        PropertySchemaSet schemas, StereotypeDefaults defaults, IReadOnlyDictionary<string, OwnVerb> ownVerbs, StringPool strings)
     {
         public List<(string Id, IndexEntry Entry)> Entries { get; } = [];
 
@@ -1238,6 +1246,17 @@ internal static class ModelIndexer
 
         /// <summary>The ids of the element and sub-elements of this document whose status is retired, in walk order.</summary>
         public List<string> Retired { get; } = [];
+
+        /// <summary>The pool's instance of a pointer or an id the walk built.</summary>
+        private string Intern(string value) => strings.Intern(value);
+
+        /// <summary>
+        /// Adds a reference, its pointer the pool's instance. The target is the caller's: an id read from the element is the reader's pooled
+        /// instance already; an id the walk splits out of a value or reads from JSON is interned where it is made.
+        /// </summary>
+        private void Reference(string fromElementId, string fromId, string pointer, string field, string toId, bool owning = false, bool optional = false,
+            string? schema = null) =>
+            References.Add(new ReferenceInfo(fromElementId, fromId, strings.Intern(pointer), field, toId, owning, optional, schema));
 
         public void WalkElement(Element element)
         {
@@ -1257,7 +1276,7 @@ internal static class ModelIndexer
             foreach (var member in MembersOf(custom, schemas))
             {
                 if (member.Id is { } id)
-                    Entries.Add((id, new IndexEntry(id, custom.Id, "member", member.Pointer)));
+                    Entries.Add((id, new IndexEntry(id, custom.Id, "member", Intern(member.Pointer))));
             }
         }
 
@@ -1275,7 +1294,7 @@ internal static class ModelIndexer
                 foreach (var key in type.Storage.Keys.Order(StringComparer.Ordinal))
                 {
                     if (key != "*")
-                        References.Add(new ReferenceInfo(type.Id, type.Id, "/storage/" + Escape(key), "storage", key));
+                        Reference(type.Id, type.Id, "/storage/" + Escape(key), "storage", key);
                 }
             }
 
@@ -1317,7 +1336,7 @@ internal static class ModelIndexer
                     if (isEnd)
                     {
                         if (cell.ValueKind == System.Text.Json.JsonValueKind.String && cell.GetString() is { } rowId && IdFormat.IsValid(rowId))
-                            References.Add(new ReferenceInfo(seed.Id, row.Id, pointer, "values", rowId));
+                            Reference(seed.Id, row.Id, pointer, "values", Intern(rowId));
                     }
                     else
                     {
@@ -1358,7 +1377,7 @@ internal static class ModelIndexer
                     }
 
                     seen[(site.Pointer, id)] = References.Count;
-                    References.Add(new ReferenceInfo(element.Id, site.Host.Id, site.Pointer, site.Field, id, false, site.Ref.Optional, site.Source.Schema));
+                    Reference(element.Id, site.Host.Id, site.Pointer, site.Field, Intern(id), false, site.Ref.Optional, site.Source.Schema);
                 }
             }
         }
@@ -1374,7 +1393,7 @@ internal static class ModelIndexer
             foreach (var (pointer, xref) in keywords)
             {
                 if (xref.Of is { } of && of != XRef.ElementScope)
-                    References.Add(new ReferenceInfo(stereotypeId, stereotypeId, pointer + "/of", "of", of));
+                    Reference(stereotypeId, stereotypeId, pointer + "/of", "of", Intern(of));
             }
         }
 
@@ -1442,7 +1461,7 @@ internal static class ModelIndexer
                     foreach (var typeId in types)
                     {
                         if (referenceData.RowOf(typeId, code) is { } rowId) // each type at most once, and rows of two types never share an id
-                            References.Add(new ReferenceInfo(processId, state.Id, at + "/code", "code", rowId));
+                            Reference(processId, state.Id, at + "/code", "code", rowId);
                     }
                 }
 
@@ -1453,7 +1472,7 @@ internal static class ModelIndexer
         private void AddCode(string ownerId, string fromId, string pointer, string field, string typeId, System.Text.Json.JsonElement code)
         {
             if (referenceData.RowOf(typeId, code) is { } rowId)
-                References.Add(new ReferenceInfo(ownerId, fromId, pointer, field, rowId));
+                Reference(ownerId, fromId, pointer, field, rowId);
         }
 
         private void WalkObject(object value, string pointer, string ownerId, string fromId)
@@ -1461,7 +1480,7 @@ internal static class ModelIndexer
             var subKind = SubElementKind(value.GetType());
             if (subKind is not null && IdOf(value) is { } id)
             {
-                Entries.Add((id, new IndexEntry(id, ownerId, subKind, pointer)));
+                Entries.Add((id, new IndexEntry(id, ownerId, subKind, Intern(pointer))));
                 if (value is ElementBase { Status: ElementStatus.Retired })
                     Retired.Add(id);
                 fromId = id;
@@ -1482,19 +1501,19 @@ internal static class ModelIndexer
                 {
                     case PropertyRole.Reference when child is string id:
                         if (!property.IsWord(id))
-                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, id, property.Owning));
+                            Reference(ownerId, fromId, childPointer, property.Name, id, property.Owning);
                         break;
                     case PropertyRole.Reference when child is IDictionary map:
                         // A map keyed by ids (a scenario's context and payload values, guard assumptions): each key is a reference.
                         foreach (var key in map.Keys.Cast<string>().Order(StringComparer.Ordinal))
-                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/" + Escape(key), property.Name, key));
+                            Reference(ownerId, fromId, childPointer + "/" + Escape(key), property.Name, key);
                         break;
                     case PropertyRole.Reference when child is IEnumerable<string> ids:
                         var i = 0;
                         foreach (var item in ids)
                         {
                             if (!property.IsWord(item))
-                                References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/" + i, property.Name, item));
+                                Reference(ownerId, fromId, childPointer + "/" + i, property.Name, item);
                             i++;
                         }
 
@@ -1510,7 +1529,7 @@ internal static class ModelIndexer
                     case PropertyRole.StereotypeKeys when child is string single:
                         // One key (a subject entry's stereotype, stereotype-sets-design.md decision 2); an unknown key is no reference (MQ2003).
                         if (stereotypes.TryGetValue(single, out var named))
-                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, named.Id));
+                            Reference(ownerId, fromId, childPointer, property.Name, named.Id);
                         break;
                     case PropertyRole.StereotypeKeys when child is IEnumerable<string> stereotypeKeys:
                         var j = 0;
@@ -1518,7 +1537,7 @@ internal static class ModelIndexer
                         {
                             // An unknown key is no reference; validation reports it (MQ2003).
                             if (stereotypes.TryGetValue(item, out var stereotype))
-                                References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/" + j, property.Name, stereotype.Id));
+                                Reference(ownerId, fromId, childPointer + "/" + j, property.Name, stereotype.Id);
                             j++;
                         }
 
@@ -1526,7 +1545,7 @@ internal static class ModelIndexer
                     case PropertyRole.VerbKey when child is string verbKey:
                         // An own verb's key is a reference to its id (verbs-design.md decision 7); a built-in or unknown key is none (MQ9701).
                         if (ownVerbs.TryGetValue(verbKey, out var ownVerb))
-                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, ownVerb.Id));
+                            Reference(ownerId, fromId, childPointer, property.Name, ownVerb.Id);
                         break;
                     case PropertyRole.VerbKey when child is IEnumerable<string> verbKeys:
                         // A list of verb keys (a right's verbs, rights-design.md decision 5): each own verb's key is a reference, as above.
@@ -1534,13 +1553,13 @@ internal static class ModelIndexer
                         foreach (var item in verbKeys)
                         {
                             if (ownVerbs.TryGetValue(item, out var listed))
-                                References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/" + v, property.Name, listed.Id));
+                                Reference(ownerId, fromId, childPointer + "/" + v, property.Name, listed.Id);
                             v++;
                         }
 
                         break;
                     case PropertyRole.TypeRef when child is TypeRef { Ref: { } typeId }:
-                        References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/ref", property.Name, typeId));
+                        Reference(ownerId, fromId, childPointer + "/ref", property.Name, typeId);
                         break;
                     case PropertyRole.Record:
                         WalkObject(child, childPointer, ownerId, fromId);
@@ -1565,7 +1584,7 @@ internal static class ModelIndexer
             foreach (var segment in key.Split(['@', '.']))
             {
                 if (IdFormat.IsValid(segment) && segment != previous)
-                    References.Add(new ReferenceInfo(ownerId, fromId, pointer, field, segment));
+                    Reference(ownerId, fromId, pointer, field, Intern(segment));
                 previous = segment;
             }
         }

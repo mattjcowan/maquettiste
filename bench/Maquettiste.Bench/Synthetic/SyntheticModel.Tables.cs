@@ -46,10 +46,12 @@ internal sealed partial class SyntheticModel
 
             if (entities.Count == 0)
                 continue;
+            var paused = GC.GetTotalPauseDuration();
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var result = new Materializer(snapshot, resolver, ids).TablesAsync(database.Id, entities, null, null, null, CancellationToken.None)
                 .GetAwaiter().GetResult();
             CreateTablesTime += clock.Elapsed;
+            CreateTablesGcPause += GC.GetTotalPauseDuration() - paused;
             if (result.Refusal is { } refusal)
                 throw new InvalidOperationException($"Create tables refused the synthetic model's database '{database.Name}': {refusal}");
             Apply(result.Ops);
@@ -137,6 +139,12 @@ internal sealed partial class SyntheticModel
 
     /// <summary>The time "Create tables…" took over every database (tests: it stays roughly linear in the model).</summary>
     internal TimeSpan CreateTablesTime { get; private set; }
+
+    /// <summary>
+    /// The garbage collection pauses within <see cref="CreateTablesTime"/> (the process's, so any thread's): the scale test leaves them out,
+    /// since they grow with the heap the whole test holds rather than with the work Create tables does.
+    /// </summary>
+    internal TimeSpan CreateTablesGcPause { get; private set; }
 
     /// <summary>
     /// The model built so far as a snapshot: each element written canonically at the path the repo writer gives it. An element that neither

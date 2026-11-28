@@ -53,6 +53,15 @@ public static class IdFormat
         return true;
     }
 
+    /// <summary>Whether UTF-8 bytes are a valid id (<see cref="IsValid(string?)"/> without a string).</summary>
+    /// <param name="utf8">The bytes.</param>
+    /// <returns><see langword="true"/> when they match <see cref="Pattern"/>.</returns>
+    internal static bool IsValid(ReadOnlySpan<byte> utf8) =>
+        utf8.Length == Length && utf8[0] is >= (byte)'0' and <= (byte)'7' && utf8.IndexOfAnyExcept(AlphabetUtf8) < 0;
+
+    /// <summary>The alphabet's bytes, searched as one vectorized set.</summary>
+    private static readonly System.Buffers.SearchValues<byte> AlphabetUtf8 = System.Buffers.SearchValues.Create("0123456789ABCDEFGHJKMNPQRSTVWXYZ"u8);
+
     /// <summary>
     /// Formats a 48-bit timestamp and an 80-bit value as an id: 10 characters of time, 16 characters of randomness.
     /// Deterministic generators (tests, the benchmark) use it.

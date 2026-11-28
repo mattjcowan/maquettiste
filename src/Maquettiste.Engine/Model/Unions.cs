@@ -138,7 +138,7 @@ internal sealed class TypeRefJsonConverter : JsonConverter<TypeRef>
         switch (reader.TokenType)
         {
             case JsonTokenType.String:
-                return new TypeRef { Builtin = reader.GetString() };
+                return new TypeRef { Builtin = Json.PooledStrings.ReadString(ref reader) };
             case JsonTokenType.StartObject:
                 string? id = null;
                 while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
@@ -148,7 +148,7 @@ internal sealed class TypeRefJsonConverter : JsonConverter<TypeRef>
                     var name = reader.GetString();
                     reader.Read();
                     if (name == "ref" && reader.TokenType == JsonTokenType.String)
-                        id = reader.GetString();
+                        id = Json.PooledStrings.ReadString(ref reader);
                     else
                         throw new JsonException($"Unexpected property '{name}' in a type reference.");
                 }

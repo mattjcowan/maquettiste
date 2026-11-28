@@ -13,7 +13,14 @@ internal static class ElementReader
     /// <param name="document">The parsed file.</param>
     /// <returns>The element.</returns>
     /// <exception cref="JsonException">The document has no known <c>kind</c> or does not deserialize.</exception>
-    public static Element ReadElement(JsonElement document)
+    public static Element ReadElement(JsonElement document) => ReadElement(document, null);
+
+    /// <summary>Reads an element as <see cref="ReadElement(JsonElement)"/> does, its ids taken from a string pool (<see cref="PooledStrings"/>).</summary>
+    /// <param name="document">The parsed file.</param>
+    /// <param name="pool">The pool, or <see langword="null"/> to read as <see cref="ReadElement(JsonElement)"/>.</param>
+    /// <returns>The element.</returns>
+    /// <exception cref="JsonException">The document has no known <c>kind</c> or does not deserialize.</exception>
+    public static Element ReadElement(JsonElement document, Text.StringPool? pool)
     {
         if (document.ValueKind != JsonValueKind.Object
             || !document.TryGetProperty("kind", out var kind)
@@ -21,6 +28,7 @@ internal static class ElementReader
             || !KindInfo.TryGet(kind.GetString()!, out var info))
             throw new JsonException("The document has no known 'kind'.");
 
+        using var scope = PooledStrings.Use(pool);
         return (Element)(document.Deserialize(info.ClrType, EngineJson.Options) ?? throw new JsonException("The document is null."));
     }
 
