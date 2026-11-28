@@ -140,8 +140,20 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
         var byKey = new Dictionary<string, UnitState>(indexed.Count, StringComparer.Ordinal);
         foreach (var state in indexed)
             byKey[state.Key] = state;
-        _last[file] = new Decoded(head, body, new System.Collections.ObjectModel.ReadOnlyDictionary<string, UnitState>(byKey), Stamp.Of(file));
+        _last[file] = new Decoded(head, body, new System.Collections.ObjectModel.ReadOnlyDictionary<string, UnitState>(byKey), Stamp.Of(file)) { Saved = true };
     }
+
+    /// <summary>
+    /// Whether these are the states this store last saved for the pack and still hands out (the file kept its stat, or holds the same
+    /// bytes): states the engine computed in this process, each with the input hash of its own read keys, never states decoded from a
+    /// file another process or a hand edit could have written. The skip check trusts its record of the previous run only for those
+    /// (<see cref="SkipBaseline"/>).
+    /// </summary>
+    /// <param name="pack">The pack name.</param>
+    /// <param name="states">States <see cref="LoadAsync"/> returned.</param>
+    /// <returns><see langword="true"/> when this store saved them.</returns>
+    internal bool Saved(string pack, IReadOnlyDictionary<string, UnitState> states) =>
+        _last.TryGetValue(FileOf(pack), out var kept) && kept.Saved && ReferenceEquals(kept.States, states);
 
     /// <summary>
     /// The states this store last read or wrote for a pack, without reading the file again (the last-run record reads the states a
@@ -667,6 +679,9 @@ internal sealed class UnitStateStore(EngineOptions options, IOutputPathPolicy pa
     /// <param name="Stamp">The file's stat when it was read or written, or the default when it moved meanwhile (the file is then read again).</param>
     private sealed record Decoded(ReadOnlyMemory<byte> Head, ReadOnlyMemory<byte> Body, IReadOnlyDictionary<string, UnitState> States, Stamp Stamp)
     {
+        /// <summary>Whether <see cref="States"/> are what this store's own <see cref="SaveAsync"/> was given (not decoded from a file).</summary>
+        public bool Saved { get; init; }
+
         /// <summary>The file's length.</summary>
         public int Length => Head.Length + Body.Length;
 
