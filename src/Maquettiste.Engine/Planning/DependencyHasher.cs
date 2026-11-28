@@ -51,8 +51,28 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
         builder.Add(staticHash);
         foreach (var key in keys)
             builder.Add(key).Add(CurrentHash(key));
-        return builder.Finish();
+        var hash = builder.Finish();
+        if (InputHashes is { } record && UnitHash.TryParse(staticHash, out var parsed))
+            record.TryAdd(hash, parsed);
+        return hash;
     }
+
+    /// <summary>
+    /// When set (by the skip check, once it has run), every input hash <see cref="InputHash"/> computes from here on is recorded with
+    /// the static hash it was computed from: the hashes of the units this run renders, which the next run's skip check accepts without
+    /// computing them again while none of their keys changes (<see cref="SkipBaseline"/>).
+    /// </summary>
+    internal System.Collections.Concurrent.ConcurrentDictionary<string, UnitHash>? InputHashes { get; set; }
+
+    /// <summary>The run's cache of key hashes (key to hash), which the next run's skip check reads as the hashes this run saw.</summary>
+    internal System.Collections.Concurrent.ConcurrentDictionary<string, string> Cache => _cache;
+
+    /// <summary>The hash of the snapshot's settings.</summary>
+    internal string ModelSettingsHash => model.SettingsHash;
+
+    /// <summary>A hasher over the same inputs with a cache of its own (tests: a check that must not fill this run's cache).</summary>
+    /// <returns>The hasher.</returns>
+    internal DependencyHasher Fresh() => new(model, resolved, packs, schemaDiffs, baselineHash) { Exports = Exports };
 
     /// <summary>
     /// Whether <see cref="InputHash"/> of these inputs equals <paramref name="expected"/>, computed without allocating: the change
@@ -63,9 +83,11 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
     /// <param name="sortedReadKeys">The recorded read keys.</param>
     /// <param name="expected">The stored input hash.</param>
     /// <returns><see langword="true"/> when equal.</returns>
-    internal bool InputHashEquals(string staticHash, IReadOnlyList<string> sortedReadKeys, string expected)
+    /// <param name="viaTable">Whether keys decoded from a unit state file go through their file's key table (<see cref="FromTable"/>),
+    /// which pays a sort of the whole table once per run and is the faster way only when most of the file's units are checked.</param>
+    internal bool InputHashEquals(string staticHash, IReadOnlyList<string> sortedReadKeys, string expected, bool viaTable = true)
     {
-        if (sortedReadKeys is UnitStateStore.TableKeys indexed && expected.Length == ContentHash.Length
+        if (viaTable && sortedReadKeys is UnitStateStore.TableKeys indexed && expected.Length == ContentHash.Length
             && FromTable(staticHash, indexed, expected) is { } answer)
             return answer;
         if (expected.Length != ContentHash.Length || !IsSortedDistinct(sortedReadKeys))
@@ -197,13 +219,31 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
         return true;
     }
 
-    private string Compute(string key)
+    private string Compute(string key) => RestOf(key) is { } rest ? Compute(key, rest) : Absent;
+
+    /// <summary>The part of a key after its kind (<c>e:</c>, <c>r:</c>, ...), or <see langword="null"/> for a key without a kind, whose
+    /// hash is <see cref="Absent"/>.</summary>
+    /// <param name="key">The dependency key.</param>
+    /// <returns>The rest of the key.</returns>
+    internal static string? RestOf(string key)
     {
         var colon = key.IndexOf(':', StringComparison.Ordinal);
-        if (colon <= 0)
-            return Absent;
-        var rest = key[(colon + 1)..];
-        return key[..colon] switch
+        return colon <= 0 ? null : key[(colon + 1)..];
+    }
+
+    /// <summary>
+    /// The current hash of a key, computed as <see cref="CurrentHash"/> computes it but neither read from nor added to the run's cache:
+    /// the skip check compares every key its units read with the hash the previous run saw, and keeps the rest of each key
+    /// (<see cref="RestOf"/>) between runs, so a key whose element is unchanged costs a lookup and no allocation.
+    /// </summary>
+    /// <param name="key">The dependency key.</param>
+    /// <param name="rest">The key's <see cref="RestOf"/>.</param>
+    /// <returns>The hash.</returns>
+    internal string Uncached(string key, string? rest) => rest is null ? Absent : Compute(key, rest);
+
+    private string Compute(string key, string rest)
+    {
+        return key.AsSpan(0, key.Length - rest.Length - 1) switch
         {
             "e" => model.GetDocument(rest)?.DependencyHash ?? Absent,
             "k" => KindInfo.TryGet(rest, out var info) ? model.KindSetHash(info.Kind) : Absent,

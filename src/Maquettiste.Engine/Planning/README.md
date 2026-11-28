@@ -196,3 +196,24 @@ default script, type map or copy source comes from it (`CopySources` leaves it o
 pass and `PackFileRoles.Parse` skip it, and its includes make no partial, in the pack or across packs. A `scripts` entry
 or a unit or companion template under it is MQ6001; the check uses the resolved path, so `./tests/x` is caught too.
 `TemplateCache` refuses any template or include under it.
+
+## Performance notes (change-driven edits, step 3, 2026-11-28)
+
+- **Skip by key.** The change detector keeps a record of the previous run (`SkipBaseline`): each read key's hash, the input hashes
+  of the units it skipped (with their static hashes, as 32 bytes) and, through `DependencyHasher.InputHashes`, those of the units
+  it rendered. A unit whose stored state carries such an input hash with the same static hash, and none of whose keys changed hash,
+  is accepted without computing its input hash; the rest take the full check. The record is trusted only for states this process
+  saved or loaded: those the store saved itself (`UnitStateStore.Saved`), or the very states the previous run loaded and looked at,
+  passed or not (only an input hash the record holds as current is used); states decoded anew from a file, other settings, a new host, forced and check
+  runs check in full. Same decisions as the full check (`SkipByKeyTests` in the engine, packs and bench tests run both side by side
+  and check every acceptance again in full).
+- Every key a candidate reads is still hashed once per run (85,360 on the benchmark model): the hasher has no list of what changed,
+  and an `r:` key can change through a file no unit reads. `e:` keys cost a lookup (the record keeps the rest of each key, so no
+  string is cut); `r:` keys pay `ModelSnapshot.ReferrersHash`, about 17 MiB a run, the largest part left.
+- Measured on the benchmark model (100,050 units, one entity edit, busy shared machine): the skip stage went from about 87 MiB and
+  105 to 130 ms to about 30 MiB and 60 ms from the second edit of a host on (about 64 MiB and 110 ms on the first edit after a cold
+  run, which builds the record). Output checks no longer build a path string per output (22 MiB to 4 MiB).
+- Outputs (ruling R1 open): every unit whose inputs are unchanged still has its outputs checked. On the benchmark model that is
+  the stats taken beside resolve (`OutputStats.Collect`, about 55 MiB and 60 ms) plus the check itself (about 4 MiB, 50 ms on one
+  thread). R1's recommended option would skip both for units the edit does not reach.
+- Live memory: the record holds about 85,000 keys and 100,000 input hashes, roughly 20 MB on the benchmark model.
