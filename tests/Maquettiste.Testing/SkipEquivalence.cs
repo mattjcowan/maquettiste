@@ -117,15 +117,18 @@ public sealed class SkipEquivalence : IAsyncDisposable
         return differences;
     }
 
+    /// <summary>A plan's diagnostics on one line, for a difference report.</summary>
+    /// <param name="diagnostics">The diagnostics, or <see langword="null"/> when there is no plan.</param>
+    /// <returns>The line.</returns>
+    private static string Describe(IReadOnlyList<Diagnostic>? diagnostics) =>
+        diagnostics is null ? "(no plan)" : diagnostics.Count == 0 ? "(none)" : string.Join("; ", diagnostics.Select(d => d.Rule + " " + d.Message));
+
     /// <summary>
     /// An apply run in both copies cancelled as soon as its skip check has decided, before anything renders: nothing is written, and
     /// the record the keyed host keeps from it must still lead the next run to the full check's answer.
     /// </summary>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
-    private static string Describe(IReadOnlyList<Diagnostic>? diagnostics) =>
-        diagnostics is null ? "(no plan)" : diagnostics.Count == 0 ? "(none)" : string.Join("; ", diagnostics.Select(d => d.Rule + " " + d.Message));
-
     public async Task RunCancelledAsync(CancellationToken ct)
     {
         foreach (var (service, detector) in new[] { (_keyed, _detector), (_full, _fullDetector) })
