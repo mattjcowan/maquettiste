@@ -1,12 +1,12 @@
 // Database schemas (erratum E26): New schema… on a database row, then the database inspector's Schemas section renames it
-// and makes it the default; with two schemas the tree shows a row per schema and the entity tables follow the default.
+// and makes it the default; with two schemas the tree shows a row per schema; a table stays in the schema its file names.
 import { expect, openEditor, test, workspace } from "./fixtures";
 
 const explorer = (page: import("@playwright/test").Page) => page.getByRole("complementary", { name: "Explorer" });
 const chevron = (row: import("@playwright/test").Locator) => row.locator("span[aria-hidden]").first();
 
-test("New schema, rename, set default: an entity's table shows under the default schema", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
+test("New schema, rename, set default: a table stays under the schema its file names", async ({ page }) => {
+  await openEditor(page, "/");
   const side = explorer(page);
   const tree = side.getByTestId("explorer-tree");
   await workspace(page, "Databases");
@@ -37,7 +37,7 @@ test("New schema, rename, set default: an entity's table shows under the default
   if ((await main.getAttribute("aria-expanded")) !== "true") await chevron(main).click();
   const ledger = tree.getByTestId("explorer-folder-ledger");
   await expect(ledger).toContainText("default");
-  await chevron(ledger).click();
+  await chevron(tree.getByTestId("explorer-folder-billing")).click();
   await chevron(tree.getByTestId("explorer-folder-Tables").first()).click();
   await expect(tree.locator('[data-testid$="-invoices"]').first()).toBeVisible();
 });

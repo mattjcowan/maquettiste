@@ -10,7 +10,6 @@ namespace Maquettiste.Engine.Tests.Snapshots;
 /// The model diff (next-phase-2-design.md section 6.2): sides that are snapshots, folders or the working model, rows grouped by package
 /// and facts by database, and field changes that name their sub-element.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class ModelDiffTests
 {
     internal const string Billing = "01J92P0V01KDRN8GX5PGYCNKSX";
@@ -19,6 +18,8 @@ public sealed class ModelDiffTests
     internal const string InvoiceNumber = "01J92P0V0R3VSP7D5238DTNZX1";
     internal const string Customer = "01J92P0V0ETQKXXP951CMMNHH3";
     internal const string Main = "01J92P0V1QRN2181XM2ZWE02W4";
+    internal const string InvoicesTable = "01J92P0V1T0J6RH4MY9H81NYB4";
+    internal const string InvoiceNumberColumn = "01J92P0V1VQAA9FW71PKYWWHKN";
 
     private static readonly SnapshotCompareOptions Review = new() { ByPackage = true, FieldChanges = true };
 
@@ -40,7 +41,7 @@ public sealed class ModelDiffTests
         Assert.Equal(folder, fromFolder.From);
         Assert.False(fromFolder.PacksCompared);
         Assert.Equal(Json(fromSnapshot with { From = "" }), Json(fromFolder with { From = "" }));
-        Assert.Equal(3, fromFolder.Elements.Count);
+        Assert.Equal(4, fromFolder.Elements.Count);
     }
 
     [Fact]
@@ -122,11 +123,11 @@ public sealed class ModelDiffTests
 
         var comparison = (await f.Library.CompareAsync(snapshot.Id, SnapshotLibrary.Working, 0, 100, Review, Ct))!;
 
-        Assert.Equal(["Billing", "migrations of main"], comparison.Packages!.Select(p => p.Name));
-        Assert.Equal([Billing, null], comparison.Packages!.Select(p => p.Id));
+        Assert.Equal(["Billing", "(no package)", "migrations of main"], comparison.Packages!.Select(p => p.Name));
+        Assert.Equal([Billing, null, null], comparison.Packages!.Select(p => p.Id));
         var fact = comparison.Elements[^1];
         Assert.Equal(("migration", "added", Main, (string?)null), (fact.Kind, fact.Change, fact.Database, fact.Package));
-        Assert.Equal((2, 0, 1), (comparison.Added, comparison.Removed, comparison.Changed));
+        Assert.Equal((2, 0, 2), (comparison.Added, comparison.Removed, comparison.Changed));
     }
 
     [Fact]
@@ -178,7 +179,7 @@ public sealed class ModelDiffTests
 
         Assert.Equal(Json(whole.Elements), Json(pages));
         Assert.Equal(["Billing", "(no package)", "migrations of main"], whole.Packages!.Select(p => p.Name));
-        Assert.Equal(["entity", "table", "database", "migration"], whole.Elements.Select(e => e.Kind));
+        Assert.Equal(["entity", "table", "database", "table", "migration"], whole.Elements.Select(e => e.Kind));
     }
 
     [Fact]
@@ -230,7 +231,7 @@ public sealed class ModelDiffTests
         var empty = (await f.Library.CompareAsync(snapshot.Id, SnapshotLibrary.Working, 0, 100, new SnapshotCompareOptions(), Ct))!;
 
         Assert.Equal(Json(plain), Json(empty));
-        Assert.Equal(["entity", "migration", "table"], plain.Elements.Select(e => e.Kind));
+        Assert.Equal(["entity", "migration", "table", "table"], plain.Elements.Select(e => e.Kind));
         var json = Json(plain);
         foreach (var member in new[] { "\"package\"", "\"database\"", "\"label\"", "\"fields\"", "\"fieldsTruncated\"", "\"packages\"" })
             Assert.DoesNotContain(member, json, StringComparison.Ordinal);
@@ -291,8 +292,8 @@ public sealed class ModelDiffTests
     }
 
     /// <summary>
-    /// The review's change: in one batch, attribute number of Invoice renamed to code (which records a rename fact in main), and table
-    /// payment_method created in main with package Billing.
+    /// The review's change: in one batch, attribute number of Invoice renamed to code, the column number of the invoices table it is
+    /// bound to renamed to code (which records a rename fact in main), and table payment_method created in main with package Billing.
     /// </summary>
     internal static async Task ReviewChangeAsync(ModelStore store)
     {
@@ -300,10 +301,14 @@ public sealed class ModelDiffTests
         var invoice = model.GetDocument(Invoice)!;
         var node = JsonNode.Parse(invoice.Json.GetRawText())!.AsObject();
         node["attributes"]!.AsArray().Single(a => (string?)a!["id"] == InvoiceNumber)!["name"] = "code";
+        var invoices = model.GetDocument(InvoicesTable)!;
+        var table = JsonNode.Parse(invoices.Json.GetRawText())!.AsObject();
+        table["columns"]!.AsArray().Single(c => (string?)c!["id"] == InvoiceNumberColumn)!["name"] = "code";
         var batch = new JsonObject
         {
             ["operations"] = new JsonArray(
                 new JsonObject { ["op"] = "update", ["id"] = Invoice, ["expectedHash"] = invoice.Hash, ["element"] = node },
+                new JsonObject { ["op"] = "update", ["id"] = InvoicesTable, ["expectedHash"] = invoices.Hash, ["element"] = table },
                 JsonNode.Parse($$"""
                     { "op": "create", "element": { "kind": "table", "name": "payment_method", "database": "@database:main",
                       "schema": "@schema:billing", "package": "{{Billing}}",

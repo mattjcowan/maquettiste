@@ -93,16 +93,14 @@ public sealed class ModelIndexerPatchTests
     public void A_package_default_change_builds_the_index_in_full_and_matches_a_full_build()
     {
         // next-phase-2-design.md section 3.1: the walks type properties by each element's effective keys, defaults included, so a
-        // package that gains a default list, or an entity whose package moves the holder of a document the patch would keep (its
-        // overlay), builds in full; a change that moves no holder still patches. Each result equals a full build.
+        // package that gains a default list, or an entity whose package moves, builds in full; a change that moves no holder still
+        // patches. Each result equals a full build.
         var b = new ModelBuilder(31);
         b.Stereotype("owned").Parameters("""{ "partner": { "type": "string", "x-ref": { "kind": "entity" } } }""");
         var billing = b.Package("Billing");
         var stock = b.Package("Stock");
         var customer = b.Entity("Customer", stock).Key("id", "uuid");
         var invoice = b.Entity("Invoice", billing).Key("id", "uuid").Property("partner", customer.Id);
-        var main = b.Database("main", Dialect.PostgreSql);
-        var overlay = b.Table("invoices", main).OverlayFor(invoice).Property("partner", customer.Id);
         var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
         var previous = Full(documents);
         Assert.DoesNotContain(previous.ReferencesTo(customer.Id), r => r.Field == "partner");
@@ -111,7 +109,7 @@ public sealed class ModelIndexerPatchTests
         var withDefault = After(previous, documents, 2);
         Assert.False(withDefault.Index.Patched);
         AssertSameIndex(Full(documents), withDefault, "default added");
-        Assert.Equal(new[] { invoice.Id, overlay.Id }.Order(StringComparer.Ordinal),
+        Assert.Equal([invoice.Id],
             withDefault.ReferencesTo(customer.Id).Where(r => r.Field == "partner").Select(r => r.FromElementId).Order(StringComparer.Ordinal));
 
         documents = Change(documents, invoice.Id, e => e with { Name = "Bill" });
@@ -333,7 +331,6 @@ public sealed class ModelIndexerPatchTests
         }
 
         var main = b.Database("main", Dialect.PostgreSql);
-        b.Mapping(main, entities[1]).Storage("status", StorageKind.String);
         var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
         var ids = documents.Select(d => d.Element.Id).ToList();
         return (documents, ids);

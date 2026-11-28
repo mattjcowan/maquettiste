@@ -198,19 +198,13 @@ export class MockGeneration {
         view = null; // a shape the mock resolver cannot take while the model has errors
       }
     }
-    const kept = (view?.tables ?? []).filter(
-      (t) => !(t.entityId && failed.has(t.entityId)) && !(t.relationId && failed.has(t.relationId)) && !failed.has(t.key) && !failed.has(t.key.split("@")[0]),
-    );
+    const kept = (view?.tables ?? []).filter((t) => !(t.relationId && failed.has(t.relationId)) && !failed.has(t.key));
     this.tablesCache.views.set(id, new Map(kept.map((t) => [t.key, t])));
     const tables = kept.map((t) => ({
       key: t.key,
       name: t.name,
       schema: t.schema,
-      origin: t.origin,
-      entityId: t.entityId,
       relationId: t.relationId,
-      isJunction: t.isJunction,
-      isLookup: t.isLookup,
       columnCount: t.columns.length,
     }));
     const result: DatabaseTablesResult = { tables, diagnostics, partial: errors.length > 0 };

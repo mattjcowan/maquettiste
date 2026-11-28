@@ -1,10 +1,8 @@
 // A table's parts (its columns, primary key, unique constraints, indexes, foreign keys and checks), pure: how the table editor's
 // tabs, the explorer's table folders and the inspector name them, and the edits each makes to a table document
-// (schemas/v1/table.json). The database side knows tables only: a table the model still lays out by convention (not stored as a
-// table file yet) shows as the same document shape (`resolvedTableDoc`), its columns named by their resolved keys; the first
-// edit stores it as a table file, after which the edit runs again on that file with its columns renamed to the file's ids
-// (`withColumnIds`). Every gesture is one document change, so one save and one undo step.
-import type { ElementSummary, ModelJson, SaveResult, TableView } from "@/api/types";
+// (schemas/v1/table.json). The database side knows tables only, each its own file. Every gesture is one document change, so one
+// save and one undo step.
+import type { ModelJson, SaveResult, TableView } from "@/api/types";
 import type { UndoEntry } from "@/state/store";
 import { clone } from "@/lib/json";
 import { addTableColumn, deleteTableColumn, setEntryMember, tableColumns } from "@/editors/database/databaseDocs";
@@ -80,137 +78,8 @@ function setList(doc: Json, member: string, items: Json[]): void {
   else delete doc[member];
 }
 
-/** Whether a table key is a table the model lays out by convention (not a table file): its key names its database after `@`. */
-export const isLaidOutKey = (key: string): boolean => key.includes("@");
-
 /** "billing.customers". */
 export const qualifiedTable = (table: Pick<TableView, "schema" | "name">): string => (table.schema ? `${table.schema}.${table.name}` : table.name);
-
-/** The view's foreign key actions are words ("no action"); the document's are keywords ("no-action"). */
-const actionKeyword = (text: string | null | undefined): string | undefined => {
-  const keyword = (text ?? "").trim().toLowerCase().replace(/\s+/g, "-");
-  return keyword && keyword !== "no-action" ? keyword : undefined;
-};
-
-/**
- * A resolved table as a table document: what a table laid out by convention shows in the table editor before it is stored as a
- * file. Its columns are named by their resolved keys and its constraints by their names, so an edit made on it can be replayed
- * on the stored file (`withColumnIds`). Checks are not in the resolved view: none show until the table is a file.
- */
-export function resolvedTableDoc(table: TableView, database: string): Json {
-  const doc: Json = { kind: "table", id: table.key, name: table.name, database };
-  if (table.displayName) doc.displayName = table.displayName;
-  if (table.description) doc.description = table.description;
-  if (table.stereotypes.length) doc.stereotypes = [...table.stereotypes];
-  if (table.tags.length) doc.tags = [...table.tags];
-  if (table.comment) doc.comment = table.comment;
-  if (Object.keys(table.properties ?? {}).length) doc.properties = clone(table.properties);
-  doc.columns = table.columns.map((c) => {
-    const entry: Json = { id: c.key, name: c.name, type: c.type };
-    if (c.length !== null) entry.length = c.length;
-    if (c.precision !== null) entry.precision = c.precision;
-    if (c.scale !== null) entry.scale = c.scale;
-    if (!c.nullable) entry.nullable = false;
-    if (c.default !== null && c.default !== undefined) entry.default = c.default;
-    if (c.comment) entry.comment = c.comment;
-    if (c.description) entry.description = c.description;
-    return entry;
-  });
-  if (table.primaryKey) doc.primaryKey = { name: table.primaryKey.name, columns: [...table.primaryKey.columns] };
-  setList(
-    doc,
-    "uniques",
-    table.uniques.map((u) => ({ id: u.name, name: u.name, columns: [...u.columns] })),
-  );
-  setList(
-    doc,
-    "indexes",
-    table.indexes.map((ix) => {
-      const entry: Json = {
-        id: ix.name,
-        name: ix.name,
-        columns: ix.columns.map((c) => (c.descending ? { column: c.column, descending: true } : { column: c.column })),
-      };
-      if (ix.unique) entry.unique = true;
-      if (ix.where) entry.where = ix.where;
-      return entry;
-    }),
-  );
-  setList(
-    doc,
-    "foreignKeys",
-    table.foreignKeys.map((fk) => {
-      const entry: Json = { id: fk.name, name: fk.name, columns: [...fk.columns], referencesTable: fk.referencedTable };
-      if (fk.referencedColumns.length) entry.referencesColumns = [...fk.referencedColumns];
-      const onDelete = actionKeyword(fk.onDelete);
-      const onUpdate = actionKeyword(fk.onUpdate);
-      if (onDelete) entry.onDelete = onDelete;
-      if (onUpdate) entry.onUpdate = onUpdate;
-      return entry;
-    }),
-  );
-  return doc;
-}
-
-/** Old column key → new column id, matched by column name (a stored table keeps its columns' names). */
-export function columnIdMap(from: readonly { key: string; name: string }[], to: Json): Map<string, string> {
-  const byName = new Map(tableColumns(to).map((c) => [c.name, c.id]));
-  const out = new Map<string, string>();
-  for (const c of from) {
-    const id = byName.get(c.name);
-    if (id !== undefined) out.set(c.key, id);
-  }
-  return out;
-}
-
-/** The map the other way round. */
-export const invertMap = (map: ReadonlyMap<string, string>): Map<string, string> => new Map([...map].map(([a, b]) => [b, a]));
-
-/**
- * Renames a table document's column ids and every reference to them (the primary key, uniques, indexes and their include
- * columns, foreign keys, and the referenced columns of a foreign key to the table itself). Mutates and returns the document.
- */
-export function withColumnIds(doc: Json, map: ReadonlyMap<string, string>): Json {
-  const to = (id: unknown) => (typeof id === "string" ? (map.get(id) ?? id) : id);
-  const ids = (v: unknown) => (Array.isArray(v) ? v.map(to) : v);
-  for (const c of list(doc, "columns")) c.id = to(c.id);
-  const pk = doc.primaryKey as Json | undefined;
-  if (pk) pk.columns = ids(pk.columns);
-  for (const u of list(doc, "uniques")) u.columns = ids(u.columns);
-  for (const ix of list(doc, "indexes")) {
-    for (const c of Array.isArray(ix.columns) ? (ix.columns as Json[]) : []) if (c.column !== undefined) c.column = to(c.column);
-    if (Array.isArray(ix.include)) ix.include = ids(ix.include);
-  }
-  for (const fk of list(doc, "foreignKeys")) {
-    fk.columns = ids(fk.columns);
-    if (fk.referencesTable === doc.id && Array.isArray(fk.referencesColumns)) fk.referencesColumns = ids(fk.referencesColumns);
-  }
-  return doc;
-}
-
-/**
- * Runs an edit made against a resolved table's document (`resolvedTableDoc`) on its stored file: columns renamed both ways, and
- * the table's own key (`oldKey`, what a foreign key of the table to itself names in the resolved view) read as the file's id.
- * Returns the edited file, or null when the edit refused (returned false).
- */
-export function replayOnFile(
-  file: Json,
-  resolved: readonly { key: string; name: string }[],
-  edit: (doc: Json) => void | boolean,
-  oldKey?: string,
-): Json | null {
-  const map = columnIdMap(resolved, file);
-  const doc = withColumnIds(clone(file), invertMap(map));
-  const fileId = doc.id;
-  const self = (to: unknown, from: unknown) => {
-    if (!oldKey || oldKey === fileId) return;
-    for (const fk of list(doc, "foreignKeys")) if (fk.referencesTable === from) fk.referencesTable = to;
-  };
-  self(oldKey, fileId);
-  if (edit(doc) === false) return null;
-  self(fileId, oldKey);
-  return withColumnIds(doc, map);
-}
 
 /** The resolved name of the n-th entry of a list part (the view lists them in the file's order). */
 function resolvedNameAt(view: TableView | null | undefined, kind: ListPartKind, index: number): string | undefined {
@@ -551,38 +420,6 @@ export function partCrumb(table: Pick<TableView, "schema" | "name">, partLabel: 
   return partLabel ? `${qualifiedTable(table)} › ${partLabel}` : qualifiedTable(table);
 }
 
-/** What the materialize status says about one entity (the subset this module reads). */
-export interface StatusEntity {
-  id: string;
-  projected: boolean;
-}
-
-/**
- * The tables of a database that can be stored as table files, by key, with what the conversion names (an id the database side
- * never shows): a table the model lays out on its own for one element, whose element the status lists as laid out here and
- * which is in no hierarchy (an element with a base, or the base of another, is converted by hand). Child tables and junction
- * tables are not among them.
- */
-export function storableTables(
-  tables: readonly Pick<TableView, "key" | "origin" | "entityId" | "isJunction">[],
-  database: string,
-  status: readonly StatusEntity[] | undefined,
-  rows: readonly Pick<ElementSummary, "id" | "base">[] | undefined,
-): Map<string, string> {
-  const out = new Map<string, string>();
-  if (!status) return out;
-  const projected = new Set(status.filter((e) => e.projected).map((e) => e.id));
-  const bases = new Set((rows ?? []).map((r) => r.base).filter((b): b is string => typeof b === "string"));
-  const withBase = new Set((rows ?? []).filter((r) => typeof r.base === "string" && r.base).map((r) => r.id));
-  for (const t of tables) {
-    const owner = t.entityId;
-    if (t.origin !== "synthesized" || t.isJunction || !owner || t.key !== `${owner}@${database}`) continue;
-    if (!projected.has(owner) || bases.has(owner) || withBase.has(owner)) continue;
-    out.set(t.key, owner);
-  }
-  return out;
-}
-
 /**
  * The undo entry of a saved batch whose operations expanded into creates, updates and deletes: each item's document before
  * (`priors`, read before the batch; none for a create) and after (its current document; none for a delete).
@@ -610,7 +447,7 @@ export function existingIds(ids: readonly string[], exists: (id: string) => bool
 
 /**
  * A part's edit on a table document (`entry` is the part's entry in it): refused (false) when the table no longer has the part
- * or the change changes nothing, so nothing is written and a table not stored as a file yet is not stored for it.
+ * or the change changes nothing, so nothing is written.
  */
 export function editPart(doc: Json, entry: Json | undefined, change: (entry: Json, doc: Json) => void): false | undefined {
   if (!entry) return false;

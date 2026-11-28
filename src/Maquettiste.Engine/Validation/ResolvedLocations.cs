@@ -14,8 +14,8 @@ internal sealed record ResolvedLocation(string? FilePath, string? JsonPointer, b
 /// Locates the findings of the checks after resolution (next-phase-2-design.md section 5.5): the first rule that applies gives a
 /// resolved object its file and pointer. 1. an attribute whose site is <c>&lt;holder id&gt;/&lt;attribute id&gt;</c> takes its
 /// holder's location; 2. an id the index holds, its owner's file and the entry's pointer; 3. a column its table's location, and a table
-/// without an index entry its overlay file (<see cref="RTable.FileId"/>), else the location of its entity, relation or owning attribute;
-/// 4. any other synthesized key (<c>&lt;id&gt;.sequence@&lt;databaseId&gt;</c>, <c>&lt;a&gt;.&lt;b&gt;</c>, <c>&lt;a&gt;/&lt;b&gt;</c>)
+/// without an index entry its file (<see cref="RTable.FileId"/>), else the location of its relation;
+/// 4. any other key (<c>&lt;id&gt;.sequence@&lt;databaseId&gt;</c>, <c>&lt;a&gt;.&lt;b&gt;</c>, <c>&lt;a&gt;/&lt;b&gt;</c>)
 /// the location of the id it starts with; 5. otherwise no file.
 /// </summary>
 internal static class ResolvedLocations
@@ -61,11 +61,10 @@ internal static class ResolvedLocations
             case RColumn column:
                 return Locate(column.Table, snapshot, depth + 1) with { Holder = true };
             case RTable table:
-                if (table.FileId is { } file && OfId(file, snapshot) is { } overlay)
-                    return overlay with { Holder = true };
-                IResolvedObject? from = (IResolvedObject?)table.Entity ?? (IResolvedObject?)table.Relation ?? table.Attribute;
-                if (from is not null)
-                    return Locate(from, snapshot, depth + 1) with { Holder = true };
+                if (table.FileId is { } file && OfId(file, snapshot) is { } located)
+                    return located with { Holder = true };
+                if (table.Relation is { } relation)
+                    return Locate(relation, snapshot, depth + 1) with { Holder = true };
                 break;
         }
 

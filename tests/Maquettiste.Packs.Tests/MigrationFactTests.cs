@@ -17,7 +17,6 @@ namespace Maquettiste.Packs.Tests;
 /// of the billing fixture beside the model edits they describe; the PostgreSQL cases skip unless
 /// <c>MAQUETTISTE_TEST_POSTGRES_CONTAINER</c> names a running container.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed partial class MigrationFactTests
 {
     private const string Skip = "Name a PostgreSQL container in the environment to run the migrations on it (see DbServer).";
@@ -25,15 +24,17 @@ public sealed partial class MigrationFactTests
     private const string Notes = "01K6BND0000000000000000001";
     private const string NotesEntityType = "01K6BND0000000000000000003";
     private const string NotesBody = "01K6BND0000000000000000005";
-    private const string Invoices = "01J92P0V0FJ23CGSNKM7P1W5V7@" + MainId;
-    private const string InvoiceNumber = "01J92P0V0R3VSP7D5238DTNZX1";
-    private const string Payments = "01J92P0V0HEGSC6MW92CST5KA6@" + MainId;
-    private const string PaymentReference = "01J92P0V14NH6GF73G93R3E22D";
-    private const string InvoiceStatus = "01J92P0V0VB1Z49SWERMAGR4TV";
-    private const string Customers = "01J92P0V0ETQKXXP951CMMNHH3@" + MainId;
-    private const string CustomerSince = "01J92P0V0P4MBJRM6QN6H0RSVP";
+    private const string Invoices = "01J92P0V1T0J6RH4MY9H81NYB4";
+    private const string InvoiceNumber = "01J92P0V1VQAA9FW71PKYWWHKN";
+    private const string Payments = "01M8EJPZN9C4NZBD1KXE8NG70G";
+    private const string PaymentReference = "01M8EJPZN960X82Y22ZAEA6013";
+    private const string PaymentReferenceAttribute = "01J92P0V14NH6GF73G93R3E22D";
+    private const string Customers = "01M8EJPZN867GR1CJR5ZERBJ0V";
+    private const string CustomerSince = "01M8EJPZN8BGJ7KV30184YH61V";
+    private const string CustomerSinceAttribute = "01J92P0V0P4MBJRM6QN6H0RSVP";
     private const string NotesPath = ".maquettiste/model/databases/main/tables/notes.json";
-    private const string InvoiceOverlayPath = ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json";
+    private const string InvoicesPath = ".maquettiste/model/databases/main/tables/invoices.json";
+    private const string CustomersPath = ".maquettiste/model/databases/main/tables/customers.json";
 
     private const string RenameBody = "01JFDA00000000000000000001";
     private const string RenameEntityType = "01JFDA00000000000000000002";
@@ -236,19 +237,16 @@ public sealed partial class MigrationFactTests
         };
         using var repo = PackRepo.BillingDialects();
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
-        repo.EditJson(".maquettiste/model/entities/customer.json", customer =>
-        {
-            var attributes = customer["attributes"]!.AsArray();
-            attributes.Remove(attributes.First(a => (string?)a!["id"] == CustomerSince));
-        });
+        var stored = RemoveStoredAttribute(repo, ".maquettiste/model/entities/customer.json", CustomerSinceAttribute);
         void Hold(bool released)
         {
             foreach (var db in databases)
             {
+                var (table, column) = stored[db.Id];
                 repo.Write($".maquettiste/model/databases/{db.Name}/migrations/open/{db.Fact.ToLowerInvariant()}.json",
                     "{\n  \"$schema\": \"../../../../../.schema/v1/migration.json\",\n  \"kind\": \"migration\",\n  \"id\": \"" + db.Fact + "\",\n"
                     + "  \"database\": \"" + db.Id + "\",\n  \"fact\": \"drop\",\n  \"object\": {\n    \"kind\": \"column\",\n"
-                    + "    \"table\": \"01J92P0V0ETQKXXP951CMMNHH3@" + db.Id + "\",\n    \"key\": \"" + CustomerSince + "\",\n"
+                    + "    \"table\": \"" + table + "\",\n    \"key\": \"" + column + "\",\n"
                     + "    \"tableName\": \"customers\",\n    \"name\": \"customer_since\"\n  },\n"
                     + "  \"acknowledge\": \"Nobody reads the customer-since date any more.\",\n  \"held\": true,\n  \"released\": "
                     + (released ? "true" : "false") + "\n}\n");
@@ -362,9 +360,11 @@ public sealed partial class MigrationFactTests
     }
 
     [Fact]
-    public async Task A_value_map_writes_a_data_step_on_PostgreSQL_and_a_TODO_elsewhere()
+    public async Task A_value_map_writes_a_todo_outside_PostgreSQL()
     {
-        // Renaming the PaymentMethod code card records a value map in each database that stores the codes (payments.method).
+        // Renaming the PaymentMethod code card records a value map in each database whose tables store the codes: local, where
+        // payments.method declares a foreign key into payment_methods, the table PaymentMethod is bound to. A column only a CHECK guards
+        // (main, reporting) is not a holder, so those databases record none.
         using var repo = PackRepo.BillingDialects();
         await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
         await using (var store = new ModelStore(repo.Repo.Options))
@@ -372,33 +372,17 @@ public sealed partial class MigrationFactTests
             var parsed = store.ParseBatch("""{ "operations": [ { "op": "rename-code", "id": "01J92P0V2F0000000000000001", "code": "card", "to": "credit" } ] }"""u8);
             var applied = await store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Editor, TestContext.Current.CancellationToken);
             Assert.Equal(SaveOutcome.Saved, applied.Outcome);
-            Assert.Equal(3, applied.Facts!.Count);
+            Assert.Equal("01J92P0V2A0000000000000002", Assert.Single(applied.Facts!).Database);
         }
 
         var result = await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
-        var main = repo.Read(MigrationFiles.Added(result, "main"));
-        var id = Header(main, "Facts");
 
-        // PostgreSQL (a CHECK in main): the check is dropped, the stored codes mapped, the check created again, then the fact's row;
-        // all before the schema statements.
-        var step = $"-- Migration fact {id} (value-map): maps PaymentMethod codes card -> credit.\n\n"
-            + "ALTER TABLE billing.payments DROP CONSTRAINT IF EXISTS ck_payments_method_ref;\n"
-            + "ALTER TABLE billing.payments DROP CONSTRAINT IF EXISTS fk_payments_method_ref;\n\n"
-            + "UPDATE billing.payments SET method = CASE method WHEN 'card' THEN 'credit' ELSE method END WHERE method IN ('card');\n\n"
-            + "ALTER TABLE billing.payments ADD CONSTRAINT ck_payments_method_ref CHECK (method IN ('credit', 'transfer', 'cash'));\n\n"
-            + Row(repo, id);
-        Assert.Contains(step, main, StringComparison.Ordinal);
-        Assert.DoesNotContain("TODO: migration fact", main, StringComparison.Ordinal);
-
-        // SQL Server and SQLite have no step: a TODO line names the codes and the column, and no ledger row is written.
-        foreach (var (database, dialect) in new[] { ("reporting", "SQL Server"), ("local", "SQLite") })
-        {
-            var migration = repo.Read(MigrationFiles.Added(result, database));
-            var fact = Header(migration, "Facts");
-            Assert.Contains($"-- TODO: migration fact {fact} maps PaymentMethod codes card -> credit in payments.method; {dialect} has no value-map step in this pack: "
-                + "update the stored codes, and rename what is named after the type, by hand.", migration, StringComparison.Ordinal);
-            Assert.DoesNotContain("applied_fact", migration, StringComparison.Ordinal);
-        }
+        // SQLite has no step: a TODO line names the codes and the column, and no ledger row is written.
+        var migration = repo.Read(MigrationFiles.Added(result, "local"));
+        var fact = Header(migration, "Facts");
+        Assert.Contains($"-- TODO: migration fact {fact} maps PaymentMethod codes card -> credit in payments.method; SQLite has no value-map step in this pack: "
+            + "update the stored codes, and rename what is named after the type, by hand.", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("applied_fact", migration, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -550,7 +534,7 @@ public sealed partial class MigrationFactTests
 
     private static void NarrowInvoiceNumber(PackRepo repo, string id, string conversion, string? query, string? accept = null)
     {
-        repo.EditJson(InvoiceOverlayPath, table => table["columns"]![0]!["nativeType"] = "varchar(20)");
+        repo.EditJson(InvoicesPath, table => table["columns"]!.AsArray().Single(c => (string?)c!["id"] == InvoiceNumber)!["nativeType"] = "varchar(20)");
         var check = query is not null ? $$"""{ "query": { "*": "{{query}}" } }""" : $$"""{ "accept": "{{accept}}" }""";
         AddFact(repo, id, $$"""
               "database": "{{MainId}}",
@@ -581,7 +565,8 @@ public sealed partial class MigrationFactTests
     private static void FillCustomerSince(PackRepo repo)
     {
         repo.EditJson(".maquettiste/model/entities/customer.json",
-            customer => customer["attributes"]!.AsArray().First(a => (string?)a!["id"] == CustomerSince)!["required"] = true);
+            customer => customer["attributes"]!.AsArray().First(a => (string?)a!["id"] == CustomerSinceAttribute)!["required"] = true);
+        repo.EditJson(CustomersPath, table => table["columns"]!.AsArray().Single(c => (string?)c!["id"] == CustomerSince)!["nullable"] = false);
         AddFact(repo, FillSince, $$"""
               "database": "{{MainId}}",
               "fact": "backfill",
@@ -601,12 +586,7 @@ public sealed partial class MigrationFactTests
 
     private static void DropCustomerSince(PackRepo repo, bool held, bool released)
     {
-        repo.EditJson(".maquettiste/model/entities/customer.json", customer =>
-        {
-            var attributes = customer["attributes"]!.AsArray();
-            if (attributes.FirstOrDefault(a => (string?)a!["id"] == CustomerSince) is { } since)
-                attributes.Remove(since);
-        });
+        RemoveStoredAttribute(repo, ".maquettiste/model/entities/customer.json", CustomerSinceAttribute);
         AddFact(repo, HeldDrop, $$"""
               "database": "{{MainId}}",
               "fact": "drop",
@@ -624,13 +604,49 @@ public sealed partial class MigrationFactTests
             """);
     }
 
+    /// <summary>
+    /// Removes an attribute from an entity with what stores it: its field in each binding and the column the field maps in the binding's
+    /// table, so the table drops the column as the model does. Returns, per database id, the table and column it removed; nothing when the
+    /// attribute is gone already.
+    /// </summary>
+    private static Dictionary<string, (string Table, string Column)> RemoveStoredAttribute(PackRepo repo, string entityPath, string attributeId)
+    {
+        var removed = new Dictionary<string, (string Table, string Column)>(StringComparer.Ordinal);
+        repo.EditJson(entityPath, entity =>
+        {
+            var attributes = entity["attributes"]!.AsArray();
+            if (attributes.FirstOrDefault(a => (string?)a!["id"] == attributeId) is { } attribute)
+                attributes.Remove(attribute);
+            foreach (var binding in entity["bindings"]!.AsArray())
+            {
+                var fields = binding!["fields"]!.AsArray();
+                if (fields.FirstOrDefault(f => (string?)f!["attribute"] == attributeId) is not { } field)
+                    continue;
+                fields.Remove(field);
+                removed[(string)binding["database"]!] = ((string)binding["source"]!, (string)field["column"]!);
+                if (binding["provenance"]?["columns"] is JsonObject provenance)
+                    provenance.Remove((string)field["column"]!);
+            }
+        });
+        foreach (var file in Directory.EnumerateFiles(repo.PathOf(".maquettiste/model/databases"), "*.json", SearchOption.AllDirectories))
+        {
+            var table = JsonNode.Parse(File.ReadAllText(file))!;
+            if ((string?)table["kind"] != "table" || removed.Values.All(r => r.Table != (string?)table["id"]))
+                continue;
+            var column = removed.Values.Single(r => r.Table == (string?)table["id"]).Column;
+            repo.EditJson(Path.GetRelativePath(repo.Repo.RepoRoot, file), t =>
+            {
+                var columns = t["columns"]!.AsArray();
+                columns.Remove(columns.Single(c => (string?)c!["id"] == column));
+            });
+        }
+
+        return removed;
+    }
+
     private static void DropPaymentReference(PackRepo repo)
     {
-        repo.EditJson(".maquettiste/model/entities/payment.json", payment =>
-        {
-            var attributes = payment["attributes"]!.AsArray();
-            attributes.Remove(attributes.First(a => (string?)a!["id"] == PaymentReference));
-        });
+        RemoveStoredAttribute(repo, ".maquettiste/model/entities/payment.json", PaymentReferenceAttribute);
         AddFact(repo, DropReference, $$"""
               "database": "{{MainId}}",
               "fact": "drop",

@@ -7,7 +7,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>MQ6020, unit paths, explain, pack outputs, file move and pack settings (generation-ui.md sections 4.3, 5.1 to 5.3).</summary>
-[UsesProjectedFixtures]
 public sealed class PackAuthoringMoreTests
 {
     private static CancellationToken Ct => EditorRepo.Ct;
@@ -90,8 +89,8 @@ public sealed class PackAuthoringMoreTests
         Assert.StartsWith("Skipped: its ", skipped.Detail, StringComparison.Ordinal);
         Assert.NotNull(skipped.PlanId);
 
-        var entity = table.ElementId!.Split('@')[0];
-        var scope = await repo.Service.ExplainAsync("sql-ddl", "table", entity, null, Ct);
+        // An entity is not a table: the unit runs once per table.
+        var scope = await repo.Service.ExplainAsync("sql-ddl", "table", EditorRepo.InvoiceId, null, Ct);
         Assert.Equal(("scope", false), (scope!.Reason, scope.Planned));
         Assert.Contains("each table", scope.Detail, StringComparison.Ordinal);
         Assert.Equal("unknown-unit", (await repo.Service.ExplainAsync("sql-ddl", "ghost", null, null, Ct))!.Reason);

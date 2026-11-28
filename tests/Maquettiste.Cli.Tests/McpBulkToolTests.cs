@@ -7,7 +7,6 @@ namespace Maquettiste.Cli.Tests;
 /// The bulk read tools (docs/mcp.md "Reading a large model"): <c>get_model_kinds</c>, <c>get_elements</c>, <c>get_resolved_model</c>
 /// and the paged <c>get_model_index</c>, with the same bodies and paging as the editor API.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class McpBulkToolTests
 {
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
@@ -68,12 +67,11 @@ public sealed class McpBulkToolTests
         var rest = await session.OkAsync("get_resolved_model", new { scope = "entities", limit = 10, cursor = (string)entities["next"]! });
         Assert.Equal(["InvoiceLine", "InvoiceNote", "Payment", "Product", "RevenueMonth"], rest["items"]!.AsArray().Select(i => (string)i!["name"]!));
         var note = rest["items"]!.AsArray().Single(i => (string)i!["name"]! == "InvoiceNote")!;
-        Assert.Empty(note["mappings"]!.AsArray());
         Assert.Equal(("table", "notes", "key"), ((string)note["bindings"]![0]!["sourceKind"]!, (string)note["bindings"]![0]!["sourceName"]!, (string)note["bindings"]![0]!["delete"]!));
         Assert.Null(rest["next"]);
         var customer = entities["items"]![0]!;
         Assert.True((bool)customer["attributes"]!.AsArray().Single(a => (string)a!["name"]! == "id")!["isKey"]!);
-        Assert.Equal(MainDatabase, (string)customer["mappings"]![0]!["database"]!);
+        Assert.Equal(MainDatabase, (string)customer["bindings"]![0]!["database"]!);
 
         var databases = await session.OkAsync("get_resolved_model", new { scope = "databases", database = MainDatabase });
         var database = Assert.Single(databases["items"]!.AsArray())!;
@@ -87,28 +85,33 @@ public sealed class McpBulkToolTests
     [Fact]
     public async Task Bindings_preview_their_sql_and_materialize_previews_and_applies_through_a_batch()
     {
-        const string invoiceNote = "01K6BND0000000000000000010", binding = "01K6BND0000000000000000015";
-        await using var session = await McpSession.StartAsync(ct: TestContext.Current.CancellationToken);
+        const string invoiceNote = "01K6BND0000000000000000010", binding = "01K6BND0000000000000000015", coupon = "01K9CPN0000000000000000001";
+        using var repo = CliRepo.Billing();
+        ModelCommandTests.WriteCoupon(repo); // an entity bound to no table
+        await using var session = await McpSession.StartAsync(repo, TestContext.Current.CancellationToken);
 
         var sql = await session.OkAsync("preview_binding_sql", new { entity = invoiceNote, binding, dialect = "sqlserver" });
         Assert.Equal("sqlserver", (string)sql["preview"]!["dialect"]!);
         Assert.Contains("N'invoice'", (string)sql["preview"]!["insert"]!["sql"]!, StringComparison.Ordinal);
         Assert.Equal("not-a-binding", (await session.ErrorAsync("preview_binding_sql", new { entity = invoiceNote, binding = Unknown })).Code);
 
+        // The status lists the entities with no binding to the database, and the entities bound to each table.
         var status = await session.OkAsync("get_materialize_status", new { database = MainDatabase });
-        Assert.Contains(status["entities"]!.AsArray(), e => (string)e!["name"]! == "Invoice" && (bool)e["projected"]!);
+        Assert.Equal(["Coupon"], status["entities"]!.AsArray().Select(e => (string)e!["name"]!));
         Assert.Equal(2, status["sources"]!.AsArray().Single(s => (string)s!["name"]! == "notes")!["boundBy"]!.AsArray().Count);
 
-        var preview = await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice } });
+        var preview = await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { coupon } });
         Assert.True((bool)preview["valid"]!);
         // hierarchy and listStorage are a string or an object; anything else is a bad request, never ignored.
-        Assert.Equal("bad-request", (await session.ErrorAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice }, hierarchy = 5 })).Code);
-        Assert.True((bool)(await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { Invoice }, hierarchy = "per-type" }))["valid"]!);
-        Assert.Contains(preview["updates"]!.AsArray(), u => (string)u!["kind"]! == "table" && (string)u["name"]! == "invoices");
-        var applied = await session.OkAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { Invoice } } } });
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { coupon }, hierarchy = 5 })).Code);
+        Assert.True((bool)(await session.OkAsync("preview_materialize", new { database = MainDatabase, op = "materialize-tables", entities = new[] { coupon }, hierarchy = "per-type" }))["valid"]!);
+        Assert.Contains(preview["creates"]!.AsArray(), u => (string)u!["kind"]! == "table" && (string)u["name"]! == "coupons");
+        var applied = await session.OkAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { coupon } } } });
         Assert.Equal("saved", (string)applied["outcome"]!);
-        var again = await session.ErrorAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { Invoice } } } });
+        var again = await session.ErrorAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { coupon } } } });
         Assert.Equal("invalid", again.Code);
+        var invoice = await session.ErrorAsync("apply_batch", new { operations = new[] { new { op = "materialize-tables", database = MainDatabase, entities = new[] { Invoice } } } });
+        Assert.Equal("invalid", invoice.Code);
     }
 
     [Fact]

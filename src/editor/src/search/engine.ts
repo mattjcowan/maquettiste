@@ -53,7 +53,7 @@ export function encodeTables(db: string, tables: readonly TableSummary[]): strin
   const out: string[] = new Array(tables.length);
   for (let i = 0; i < tables.length; i++) {
     const t = tables[i] as TableSummary & { enumId?: string | null };
-    out[i] = [tableKeyOf(db, t.key), clean(t.name), clean(t.schema), t.entityId ?? t.relationId ?? t.enumId ?? ""].join(FS);
+    out[i] = [tableKeyOf(db, t.key), clean(t.name), clean(t.schema), t.relationId ?? t.enumId ?? ""].join(FS);
   }
   return out.join(RS);
 }

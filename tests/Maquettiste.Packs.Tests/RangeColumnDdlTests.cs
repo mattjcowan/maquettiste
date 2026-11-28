@@ -66,7 +66,6 @@ public sealed class RangeColumnDdlTests
             ["name"] = "slots",
             ["database"] = Id(1),
             ["schema"] = Id(2),
-            ["origin"] = "designed",
             ["columns"] = new JsonArray([Column(11, "id", "int64", more: c => c["nullable"] = false), .. columns]),
             ["primaryKey"] = new JsonObject { ["name"] = "pk_slots", ["columns"] = new JsonArray(Id(11)) },
         };

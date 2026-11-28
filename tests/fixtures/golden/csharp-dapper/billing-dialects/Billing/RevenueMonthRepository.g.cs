@@ -12,14 +12,14 @@ using Dapper;
 
 namespace App.Model.Billing;
 
-/// <summary>Reads and writes <see cref="RevenueMonth"/> rows in revenue_months (database local, sqlite).</summary>
+/// <summary>Reads and writes <see cref="RevenueMonth"/> rows through its binding to table revenue_months (database local, sqlite).</summary>
 public partial interface IRevenueMonthRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<RevenueMonth?> GetAsync(DateOnly month, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<RevenueMonth>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RevenueMonth>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(RevenueMonth entity, CancellationToken cancellationToken = default);
@@ -34,39 +34,44 @@ public partial interface IRevenueMonthRepository
 /// <summary>The Dapper implementation of <see cref="IRevenueMonthRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class RevenueMonthRepository(IDbConnection connection, IDbTransaction? transaction = null) : IRevenueMonthRepository
 {
-    private const string Columns = """
-        month AS Month,
-        invoice_count AS InvoiceCount,
-        revenue AS Revenue
+    private const string SelectSql = """
+        SELECT t.month AS month, t.invoice_count AS invoiceCount, t.revenue AS revenue
+        FROM revenue_months t
+        WHERE t.month = @month
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM revenue_months WHERE month = @Month";
-
-    private const string ListSql = "SELECT " + Columns + " FROM revenue_months ORDER BY month LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.month AS month, t.invoice_count AS invoiceCount, t.revenue AS revenue
+        FROM revenue_months t
+        ORDER BY month LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO revenue_months (month, invoice_count, revenue)
-        VALUES (@Month, @InvoiceCount, @Revenue)
+        VALUES (@month, @invoiceCount, @revenue)
         """;
 
     private const string UpdateSql = """
-        UPDATE revenue_months SET invoice_count = @InvoiceCount, revenue = @Revenue
-        WHERE month = @Month
+        UPDATE revenue_months SET invoice_count = @invoiceCount, revenue = @revenue
+        WHERE month = @month
         """;
 
-    private const string DeleteSql = "DELETE FROM revenue_months WHERE month = @Month";
+    private const string DeleteSql = """
+        DELETE FROM revenue_months
+        WHERE month = @month
+        """;
 
     /// <inheritdoc/>
     public async Task<RevenueMonth?> GetAsync(DateOnly month, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Month = month }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { month = month }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<RevenueMonth>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<RevenueMonth>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -87,28 +92,28 @@ public partial class RevenueMonthRepository(IDbConnection connection, IDbTransac
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(DateOnly month, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Month = month }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { month = month }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of revenue_months, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table revenue_months as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public DateOnly Month { get; set; }
-        public long InvoiceCount { get; set; }
-        public decimal Revenue { get; set; }
+        public DateOnly month { get; set; }
+        public long invoiceCount { get; set; }
+        public decimal revenue { get; set; }
 
         public static RevenueMonth ToEntity(Row row) => new()
         {
-            Month = row.Month,
-            InvoiceCount = row.InvoiceCount,
-            Revenue = row.Revenue,
+            Month = row.month,
+            InvoiceCount = row.invoiceCount,
+            Revenue = row.revenue,
         };
 
         public static Row From(RevenueMonth entity) => new()
         {
-            Month = entity.Month,
-            InvoiceCount = entity.InvoiceCount,
-            Revenue = entity.Revenue,
+            month = entity.Month,
+            invoiceCount = entity.InvoiceCount,
+            revenue = entity.Revenue,
         };
     }
 }

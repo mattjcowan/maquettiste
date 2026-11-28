@@ -9,7 +9,7 @@ namespace Maquettiste.Engine.Tests.Resolution;
 
 /// <summary>
 /// Relations with several types, part 2: storage in the team's designed tables (several-types-design.md section 19). A small invented model:
-/// Part, Assembly, Comment and Folder bound to designed tables of database 'main'; AttachedTo (a comment attached to one part or assembly)
+/// Part, Assembly, Comment and Folder bound to designed tables of database 'main' by their bindings; AttachedTo (a comment attached to one part or assembly)
 /// and Filed (a folder holds parts and assemblies). Each test writes one relation mapping and reads the resolved members, the run's findings
 /// (MQ4117, MQ4118, MQ4120, MQ4051) and the database's storage notes.
 /// </summary>
@@ -41,8 +41,10 @@ public sealed partial class RelationTypeStorageTests
     private static string Table(string id, string name, string columns, string foreignKeys = "", string extra = "") =>
         $$"""{"kind":"table","id":"{{id}}","name":"{{name}}","database":"{{Main}}","columns":[{{columns}}],"primaryKey":{"columns":["{{Col(id, 1)}}"]},"foreignKeys":[{{foreignKeys}}]{{extra}}}""";
 
-    private static string EntityMapping(int n, string entity, string table, string extra = "") =>
-        $$"""{"kind":"mapping","id":"{{N(P, 900 + n)}}","name":"m{{n.ToString(CultureInfo.InvariantCulture)}}","database":"{{Main}}","entity":"{{entity}}","table":"{{table}}"{{extra}}}""";
+    /// <summary>An entity with its key <c>id</c>, bound to <paramref name="table"/> of database 'main' (its key to the column <c>id</c>).</summary>
+    private static string BoundEntity(string id, string name, int key, string table, string bindingExtra = "") =>
+        EntityFile(id, name, attributes: $$""","key":{"attributes":["{{N(P, 100 + key)}}"]},"attributes":[{"id":"{{N(P, 100 + key)}}","name":"id","type":"uuid"}],"""
+            + $$""" "bindings":[{"id":"{{N(P, 810 + key)}}","database":"{{Main}}","source":"{{table}}","fields":[{"attribute":"{{N(P, 100 + key)}}","column":"id"}]{{bindingExtra}}}]""");
 
     private static string RelationMapping(string relation, string body) =>
         $$"""{"kind":"mapping","id":"{{N(P, 990)}}","name":"storage","database":"{{Main}}","relation":"{{relation}}"{{body}}}""";
@@ -52,16 +54,16 @@ public sealed partial class RelationTypeStorageTests
         string attachedAttributes = "", string assemblyMapping = "") =>
         ActorKit.OpenAsync(h =>
         {
-            h.Write("model/databases/main/database.json", $$"""{"kind":"database","id":"{{Main}}","name":"main","dialect":"postgresql"}""");
-            h.Write("model/entities/part.json", Entity(SPart, "Part", 1));
-            h.Write("model/entities/assembly.json", Entity(SAssembly, "Assembly", 2));
-            h.Write("model/entities/folder.json", Entity(SFolder, "Folder", 4));
+            h.Write("model/databases/main/database.json", $$"""{"kind":"database","id":"{{Main}}","name":"main","dialect":"postgresql","byConvention":"none"}""");
+            h.Write("model/entities/part.json", BoundEntity(SPart, "Part", 1, Parts));
+            h.Write("model/entities/assembly.json", BoundEntity(SAssembly, "Assembly", 2, Assemblies, assemblyMapping));
+            h.Write("model/entities/folder.json", BoundEntity(SFolder, "Folder", 4, Folders));
             h.Write("model/entities/comment.json", bindComment
                 ? EntityFile(SComment, "Comment", attributes: $$""","key":{"attributes":["{{N(P, 103)}}"]},"attributes":[{"id":"{{N(P, 103)}}","name":"id","type":"uuid"}],"""
                     + $$""" "bindings":[{"id":"{{N(P, 800)}}","database":"{{Main}}","source":"{{Comments}}","fields":[{"attribute":"{{N(P, 103)}}","column":"id"},"""
                     + $$"""{"attribute":"{{AttachedToEnd}}.type","column":"attached_type"},{"attribute":"{{AttachedToEnd}}","column":"part_id"}],"""
                     + """ "columns":[{"column":"attached_id","status":"ignored"},{"column":"assembly_id","status":"ignored"}]}]""")
-                : Entity(SComment, "Comment", 3));
+                : BoundEntity(SComment, "Comment", 3, Comments));
             h.Write("model/relations/attached-to.json", $$"""
                 {"kind":"relation","id":"{{Attached}}","name":"AttachedTo","package":"{{Sales}}","ends":[
                  {"id":"{{CommentEnd}}","entity":"{{SComment}}","role":"comment","navigation":"comments","max":"*"},
@@ -85,11 +87,6 @@ public sealed partial class RelationTypeStorageTests
                 string.Join(",", Column(Links, 1, "id", nullable: false), Column(Links, 2, "comment_id"), Column(Links, 3, "target_type", "string", 20),
                     Column(Links, 4, "target_id"), Column(Links, 5, "note", "string", 40), Column(Links, 6, "relation_code", "string", 10)),
                 ForeignKey(Links, 1, "fk_links_comment", 2, Comments)));
-            h.Write("model/mappings/folder.json", EntityMapping(1, SFolder, Folders));
-            h.Write("model/mappings/part.json", EntityMapping(2, SPart, Parts));
-            h.Write("model/mappings/assembly.json", EntityMapping(3, SAssembly, Assemblies, assemblyMapping));
-            if (!bindComment)
-                h.Write("model/mappings/comment.json", EntityMapping(4, SComment, Comments));
             prepare(h);
         });
 
@@ -197,9 +194,7 @@ public sealed partial class RelationTypeStorageTests
         Assert.Equal([("relation_code", (object?)"AT")], mapping.Constants.Select(c => (c.Column.Name, c.Values.Single())));
         Assert.Equal([("note", "note")], mapping.Attributes.Select(a => (a.Attribute.Name, a.Column.Name)));
         var links = model.Db("main").Table("links");
-        Assert.True(links.IsJunction);
         Assert.Equal("AttachedTo", links.Relation!.Name);
-        Assert.Equal("note", links.Columns.Single(c => c.Name == "note").Attribute!.Name);
         var gap = Assert.Single(Messages(model, "MQ4118"));
         Assert.Contains("CONSTRAINT uq_links_comment_id_target_type_target_id_relation_code UNIQUE (comment_id, target_type, target_id, relation_code)", gap, StringComparison.Ordinal);
         Assert.Equal(["no-foreign-key", "type-check", "link-unique"], model.Db("main").RelationStorage.Single(n => n.Relation.Id == Attached).Gaps.Select(g => g.Kind));

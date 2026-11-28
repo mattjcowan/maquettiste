@@ -19,20 +19,17 @@ import {
   deferrableNote,
   draftDefaultName,
   FK_ACTION_LABELS,
-  followStoredDraft,
   FK_ACTIONS,
   FK_DEFERRABLE,
   FK_DEFERRABLE_LABELS,
   fkNamePattern,
   fkProblems,
-  isLegacy,
   newColumnName,
   type FkAction,
   type FkDeferrable,
   type FkDraft,
 } from "./fkEdits";
 import { saveForeignKey } from "./foreignKeys";
-import { storedFileOf, storedViewOf } from "./storeTables";
 
 /** The dialog, mounted once by the app shell: the draft the store holds, saved through `saveForeignKey`. */
 export function ForeignKeyDialogHost() {
@@ -83,10 +80,6 @@ export function ForeignKeyDialog({
     setDraft(initial);
     setNameTyped(!!initial?.editing);
   }, [initial]);
-  // A table of the draft stored as a table file while the dialog is open (another edit stored it): the draft follows it there.
-  useEffect(() => {
-    setDraft((current) => (current ? (followStoredDraft(current, tables, storedFileOf, storedViewOf) ?? current) : current));
-  }, [tables]);
   const a = useMemo(() => tables.find((t) => t.key === draft?.table) ?? null, [tables, draft?.table]);
   const b = useMemo(() => tables.find((t) => t.key === draft?.referencedTable) ?? null, [tables, draft?.referencedTable]);
   if (!draft) return null;
@@ -273,11 +266,6 @@ export function ForeignKeyDialog({
           {note && (draft.deferrable ?? "not-deferrable") !== "not-deferrable" ? (
             <p className="text-11 text-secondary" data-testid="fk-dialog-deferrable-note">
               {note}
-            </p>
-          ) : null}
-          {a && isLegacy(a) ? (
-            <p className="rounded-control border border-default bg-app px-2 py-1 text-12" data-testid="fk-store-note">
-              {a.name} is not stored as a table file yet: {editing ? "saving" : "creating"} the key stores it as one first (one undo step).
             </p>
           ) : null}
           {problems.errors.length || problems.warnings.length ? (

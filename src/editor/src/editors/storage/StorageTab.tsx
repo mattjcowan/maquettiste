@@ -4,12 +4,11 @@
 // with no binding is domain only. Every gesture is one save of the entity and one undo step.
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, TriangleAlert } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
-import { applyBatchResult, useElements, useIndex, useValidation } from "@/api/queries";
+import { useElements, useIndex, useValidation } from "@/api/queries";
 import type { ElementSummary, EntityDoc } from "@/api/types";
 import { useServices } from "@/app/context";
-import { useEditorNavigation } from "@/app/navigation";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -18,7 +17,6 @@ import { SectionTitle } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { newId } from "@/lib/ids";
 import { indexLookup } from "@/model/index";
-import { relatedOf } from "@/editors/related";
 import type { EditorContext } from "@/editors/EditorFrame";
 import {
   applyMatches,
@@ -54,7 +52,7 @@ import { baseProblems, boundBaseOf } from "./baseTable";
 import { bindingShape } from "./bindingShape";
 import { BaseTableSection, ChildTablesSection, Problems, StoreWholeAsJson } from "./StorageShapes";
 import { plainTable, type TableDoc } from "./tableDoc";
-import { commitMaterialize, databasesOf, useBindingSources, useMaterializeStatuses, useRelationColumns, useStorageAttributes } from "./useStorage";
+import { commitMaterialize, databasesOf, useBindingSources, useRelationColumns, useStorageAttributes } from "./useStorage";
 import { STORAGE_LABELS } from "./labels";
 import { derivedOf, WALK_LIMITS } from "@/editors/refWalk";
 import {
@@ -96,13 +94,7 @@ export function StorageTab(ctx: EditorContext) {
   const { attributes, docs } = useStorageAttributes(ids, overrides);
   const attrs = attributes.get(id) ?? [];
   const databases = databasesOf(index.data);
-  const mappings = relatedOf(index.data, id).mappings;
   const unbound = databases.filter((d) => !bindings.some((b) => b.database === d.id));
-  const statuses = useMaterializeStatuses(
-    unbound.map((d) => d.id),
-    bindings.length === 0 || mappings.length > 0,
-  );
-  const projectedIn = unbound.filter((d) => statuses.statuses.some((s) => s.database === d.id && s.entities.some((e) => e.id === id && e.projected)));
   // The entities derived from this one, found through what references each (one element at a time, never a scan of the index).
   const qc = useQueryClient();
   const derivedQuery = useQuery({
@@ -155,22 +147,9 @@ export function StorageTab(ctx: EditorContext) {
       {bindings.length === 0 ? (
         <div className="rounded-control border border-default bg-app p-2 text-13" data-testid="storage-domain-only">
           <p className="font-medium">{STORAGE_LABELS.domainOnly}</p>
-          <p className="text-12 text-secondary">
-            Add a binding to read and write it through a table, a view or a query, or create a table for it.
-            {projectedIn.length
-              ? ` ${projectedIn.map((d) => d.name).join(", ")} still ${projectedIn.length === 1 ? "projects" : "project"} a table for it by convention (an older format); Create a table for this entity… makes that explicit.`
-              : ""}
-          </p>
+          <p className="text-12 text-secondary">Add a binding to read and write it through a table, a view or a query, or create a table for it.</p>
         </div>
       ) : null}
-      {mappings.map((m) => (
-        <LegacyMappingNote
-          key={m.id}
-          mapping={m}
-          databaseName={lookup.nameOf(m.database ?? "") ?? "a database"}
-          bound={bindings.some((b) => b.database === m.database)}
-        />
-      ))}
       {bindings.map((b, i) => (
         <BindingCard
           key={b.id}
@@ -210,8 +189,7 @@ function AddBinding({
   const [database, setDatabase] = useState("");
   const db = database || databases[0]?.id || "";
   const all = useBindingSources(open ? db : null);
-  // A projected table is left out: binding to it would end the projection that makes it (Create a table… is for that).
-  const sources = all.sources.filter((s) => !s.projected);
+  const sources = all.sources;
   const pending = all.pending;
   const guess = tableForEntity(
     entityName,
@@ -321,7 +299,6 @@ function SourceSelect({
         {list.map((s) => (
           <option key={s.id} value={s.id}>
             {s.schema ? `${s.schema}.${s.name}` : s.name}
-            {s.projected ? " (projected)" : ""}
           </option>
         ))}
       </optgroup>
@@ -335,50 +312,6 @@ function SourceSelect({
       {group("query", "Queries")}
     </Select>
   );
-}
-
-// ------------------------------------------------------------------ the legacy mapping element
-
-function LegacyMappingNote({ mapping, databaseName, bound }: { mapping: ElementSummary; databaseName: string; bound: boolean }) {
-  const services = useServices();
-  const { openEditor } = useEditorNavigation();
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className="flex items-center gap-2 rounded-control border border-default p-1 text-12" data-testid="storage-legacy-mapping">
-      <TriangleAlert className="size-3.5 shrink-0 text-warning" aria-hidden />
-      <span className="min-w-0 flex-1">
-        {bound
-          ? `This entity also has an older mapping element for ${databaseName}; its binding wins.`
-          : `An older mapping element places this entity in ${databaseName} by convention.`}
-      </span>
-      <Button size="sm" variant="ghost" onClick={() => openEditor(mapping, true)}>
-        Open
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={busy}
-        data-testid="storage-legacy-mapping-delete"
-        onClick={async () => {
-          setBusy(true);
-          const failed = await deleteWithUndo(services, mapping.id, `Delete ${mapping.name}`);
-          setBusy(false);
-          if (failed) services.store.getState().notify(failed, "error");
-        }}
-      >
-        Delete
-      </Button>
-    </div>
-  );
-}
-
-async function deleteWithUndo(services: ReturnType<typeof useServices>, id: string, label: string): Promise<string | null> {
-  const doc = await endpoints.getElement(id);
-  const result = await endpoints.applyBatch({ operations: [{ op: "delete", id, expectedHash: doc.hash }] } as never);
-  if (!endpoints.isBatchResult(result) || result.outcome !== "saved") return `${label} failed.`;
-  applyBatchResult(services.queryClient, result);
-  services.store.getState().pushUndo({ label, ids: [id], before: [doc.json], after: [null], afterHashes: [null] });
-  return null;
 }
 
 // ------------------------------------------------------------------ one binding
@@ -494,12 +427,7 @@ function BindingCard({
   // Columns for the attributes the binding leaves unmapped (materialize-columns): only a table file the binding reads and writes.
   const unmappedAttrs = fieldRows.filter((r) => (r.status === "unmapped" || r.status === "optional") && !r.attribute.json);
   const canAddColumns =
-    !!source &&
-    source.kind === "table" &&
-    !source.projected &&
-    (typeof binding.write !== "object" || binding.write.table === binding.source) &&
-    binding.write !== "none" &&
-    !adding;
+    !!source && source.kind === "table" && (typeof binding.write !== "object" || binding.write.table === binding.source) && binding.write !== "none" && !adding;
   const addColumns = async (refs: string[] | null) => {
     setAdding(true);
     const label =
@@ -531,7 +459,7 @@ function BindingCard({
         <Field label="Source" htmlFor={`${dom}-source`} className="w-72">
           <SourceSelect
             id={`${dom}-source`}
-            sources={sources.filter((s) => !s.projected || s.id === binding.source)}
+            sources={sources}
             value={binding.source}
             data-testid="binding-source"
             onChange={(v) => {
@@ -600,7 +528,7 @@ function BindingCard({
         bindingIndex={index}
         docs={hierarchyDocs}
         host={hostDoc}
-        tables={sources.filter((s) => s.kind === "table" && !s.projected).map((s) => ({ id: s.id, name: s.name, schema: s.schema }))}
+        tables={sources.filter((s) => s.kind === "table").map((s) => ({ id: s.id, name: s.name, schema: s.schema }))}
         server={childServer}
         databaseName={databaseName}
         onEdit={onEdit}
@@ -619,7 +547,7 @@ function BindingCard({
                 onClick={() => void addColumns(null)}
                 disabled={!canAddColumns || !unmappedAttrs.length}
                 title={
-                  !source || source.kind !== "table" || source.projected
+                  !source || source.kind !== "table"
                     ? "Columns are added to a table file: the source is not one."
                     : unmappedAttrs.length
                       ? `A column of ${source.name} per unmapped attribute (${unmappedAttrs.map((r) => r.attribute.name).join(", ")}), named and typed by the conventions, mapped to it.`

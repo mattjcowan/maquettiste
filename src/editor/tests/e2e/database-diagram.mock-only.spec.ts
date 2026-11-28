@@ -11,7 +11,7 @@ const tableCard = (page: Page, name: string) => canvas(page).getByTestId(`table-
 const row = (page: Page, table: string, column: string) => tableCard(page, table).getByTestId(`table-column-${column}`);
 
 async function openDiagram(page: Page) {
-  await page.goto("/database?mock=projected");
+  await page.goto("/database");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   // The first layout (elkjs, in a worker) and its fit are done: the cards are where they stay.
   await expect(canvas(page)).toHaveAttribute("data-layout", "settled");
@@ -77,11 +77,10 @@ test("a column dragged onto a key column creates a foreign key with crow's foot 
   const dialog = page.getByTestId("fk-dialog");
   await expect(dialog).toBeVisible();
   await expect(page.getByRole("dialog", { name: "New foreign key on notes" })).toBeVisible();
-  await expect(dialog.getByLabel("References table")).toHaveValue(/@/);
+  await expect(dialog.getByLabel("References table")).toHaveValue("01J92P0V1T0J6RH4MY9H81NYB4");
   await expect(dialog.getByLabel("Column 1", { exact: true })).toHaveValue("01K6BND0000000000000000004");
-  await expect(dialog.getByLabel("Referenced column 1", { exact: true })).toHaveValue("01J92P0V0Q9EK961M5HAQ3C5MY");
+  await expect(dialog.getByLabel("Referenced column 1", { exact: true })).toHaveValue("01M8EJPZN8P9AWRMABQ8VM73RS");
   await expect(dialog.getByLabel("Name")).toHaveValue("fk_notes_entity_id");
-  await expect(page.getByTestId("fk-store-note")).toHaveCount(0);
   await dialog.getByLabel("On delete").selectOption("cascade");
   await expect(dialog).toBeVisible();
   await page.getByTestId("fk-save").click();
@@ -96,40 +95,6 @@ test("a column dragged onto a key column creates a foreign key with crow's foot 
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(edge).toHaveCount(0);
   await expect(row(page, "notes", "entity_id")).toHaveAttribute("data-markers", "nn");
-});
-
-test("a key from a table not stored as a file yet stores it first and lands in the new file; undo and redo take both", async ({ page }) => {
-  await openDiagram(page);
-  const banner = page.getByTestId("store-tables-banner");
-  await expect(banner).toHaveText(/5 tables are not stored/);
-  // From customers' header handle (a laid-out table), by the keyboard, to notes: the key references notes.id.
-  const header = tableCard(page, "customers").locator("[data-table-header]");
-  const dialog = await newKeyByKeyboard(page, header.getByTestId("table-link-handle"), "billing.notes");
-  await expect(page.getByRole("dialog", { name: "New foreign key on customers" })).toBeVisible();
-  await expect(page.getByTestId("fk-store-note")).toContainText("customers is not stored as a table file yet");
-  await dialog.getByTestId("fk-add-column").first().click();
-  await expect(dialog.getByTestId("fk-new-column")).toHaveValue("note_id");
-  await dialog.getByLabel("Deferrable").selectOption("initially-deferred");
-  await expect(dialog).toBeVisible();
-  await page.getByTestId("fk-save").click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByTestId("notice")).toContainText("Foreign key fk_customers_note_id created.");
-  const edge = canvas(page).getByTestId("fk-edge-fk_customers_note_id");
-  await expect(edge).toHaveCount(1);
-  await expect(banner).toHaveText(/4 tables are not stored/);
-  await expect(row(page, "customers", "note_id")).toHaveAttribute("data-markers", "fk");
-  // The key is in the customers file (its deferrable kept), as the inspector shows it.
-  await edge.dispatchEvent("click");
-  await expect(page.getByTestId("table-inspector-part").getByLabel("Deferrable of fk_customers_note_id")).toHaveValue("initially-deferred");
-
-  // One undo puts customers back as it was laid out, without the key; redo stores it with the key again.
-  await page.getByRole("button", { name: "Undo" }).click();
-  await expect(edge).toHaveCount(0);
-  await expect(banner).toHaveText(/5 tables are not stored/);
-  await expect(row(page, "customers", "note_id")).toHaveCount(0);
-  await page.getByRole("button", { name: "Redo" }).click();
-  await expect(edge).toHaveCount(1);
-  await expect(banner).toHaveText(/4 tables are not stored/);
 });
 
 test("a selected foreign key shows alone in the inspector, edits in the dialog, and Delete removes it after a confirmation", async ({ page }) => {
@@ -247,7 +212,7 @@ test("the keyboard reaches a column's handle: Enter opens the dialog with that c
   await expect(page.getByTestId("fk-save")).toBeDisabled();
   await dialog.getByLabel("References table").selectOption({ label: "billing.invoices" });
   await expect(dialog.getByLabel("Column 1", { exact: true })).toHaveValue("01K6BND0000000000000000004");
-  await expect(dialog.getByLabel("Referenced column 1", { exact: true })).toHaveValue("01J92P0V0Q9EK961M5HAQ3C5MY");
+  await expect(dialog.getByLabel("Referenced column 1", { exact: true })).toHaveValue("01M8EJPZN8P9AWRMABQ8VM73RS");
   await expect(page.getByTestId("fk-save")).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);

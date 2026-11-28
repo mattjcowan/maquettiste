@@ -14,15 +14,12 @@ import {
   fkEntryOf,
   fkNamePattern,
   fkProblems,
-  legacyEntityOf,
   newColumnName,
   removeForeignKey,
 } from "@/workspaces/database/fkEdits";
 import { edgeHandles, keyColumns, shownColumns } from "@/canvas/tableColumns";
 import { isKeyOf, keysOfDocument, referencedKeyProblem } from "@/model/foreignKeyTarget";
 import { entryDiagnostics, globalsOf, type ModelEntry, type ValidationContext } from "@/mocks/model/validate";
-
-const DB = "01DB0000000000000000000000";
 
 const col = (key: string, name: string, over: Partial<ColumnView> = {}): ColumnView =>
   ({
@@ -436,10 +433,8 @@ describe("what a key may reference, and the dialog's starting points", () => {
     expect((doc.foreignKeys as Record<string, unknown>[])[0].deferrable).toBeUndefined();
   });
 
-  it("starts a new key from the explorer with nothing chosen, and names a legacy table's entity", () => {
+  it("starts a new key from the explorer with nothing chosen", () => {
     const draft = draftForTable(tables, "T_LINE", pattern);
     expect(draft).toMatchObject({ table: "T_LINE", referencedTable: "", editing: null, deferrable: "not-deferrable" });
-    expect(legacyEntityOf({ key: `ENT@${DB}`, entityId: "ENT", relationId: null, origin: "synthesized" }, DB)).toBe("ENT");
-    expect(legacyEntityOf({ key: "T_LINE", entityId: null, relationId: null, origin: "designed" }, DB)).toBeNull();
   });
 });

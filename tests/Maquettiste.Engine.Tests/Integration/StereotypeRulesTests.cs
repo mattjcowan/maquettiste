@@ -10,7 +10,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// element, and a stereotype's typed parameters check the values of the elements that carry it, with a pointer to the value.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class StereotypeRulesTests
 {
     private const string InvoiceRegisterTableId = "01J92P0V1T0J6RH4MY9H81NYB4";
@@ -40,7 +39,7 @@ public sealed class StereotypeRulesTests
         Assert.Equal(SaveOutcome.Invalid, saved.Outcome);
         var finding = Assert.Single(saved.Diagnostics, d => d.Rule == "MQ2013");
         Assert.Equal((DiagnosticSeverity.Error, InvoiceRegisterTableId, "/stereotypes/2"), (finding.Severity, finding.ElementId, finding.JsonPointer));
-        Assert.Equal(".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json", finding.FilePath);
+        Assert.Equal(".maquettiste/model/databases/main/tables/invoices.json", finding.FilePath);
         Assert.Contains("'hard-delete' is in group 'deletion'", finding.Message, StringComparison.Ordinal);
         Assert.Equal(before, repo.Repo.ListFiles().ToDictionary(p => p, repo.Repo.ReadFile, StringComparer.Ordinal));
 

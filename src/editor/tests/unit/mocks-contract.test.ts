@@ -149,7 +149,7 @@ describe("mock contract", () => {
     });
     expect(invoices.columns.filter((c) => c.name !== "number").every((c) => c.stereotypes.length === 0 && c.description === null)).toBe(true);
     // The database carries its own annotations (none in the fixture) and lists its schemas.
-    expect(view).toMatchObject({ quoting: "reserved", byConvention: "none", packages: [], stereotypes: [], displayName: null });
+    expect(view).toMatchObject({ quoting: "reserved", stereotypes: [], displayName: null });
     expect(view.schemas).toEqual([expect.objectContaining({ name: "billing", isDefault: true, isDeclared: true, stereotypes: [] })]);
   });
 
@@ -200,17 +200,18 @@ describe("mock contract", () => {
     expect((missing.payload as { table: unknown }).table).toBeNull();
   });
 
-  it("answers table summaries on a model with errors with partial: true, leaving out the broken entity's table", async () => {
+  it("answers table summaries on a model with errors with partial: true, leaving out the broken table", async () => {
     const database = mock.backend.model.index().find((e) => e.kind === "database")!;
-    mock.backend.model.externalEdit(IDS.payment, (json) => {
-      delete json.key;
+    const payments = mock.backend.model.index().find((e) => e.kind === "table" && e.name === "payments")!;
+    mock.backend.model.externalEdit(payments.id, (json) => {
+      json.columns = "not a list";
     });
     const { payload } = await call("get", `/api/databases/${database.id}/tables`, "/api/databases/{id}/tables");
-    const result = payload as { partial: boolean; tables: { name: string; entityId: string | null }[] };
+    const result = payload as { partial: boolean; tables: { name: string; relationId: string | null }[] };
     expect(result.partial).toBe(true);
-    // Tables are designed files that name no entity: a broken entity takes none of them away.
-    expect(result.tables.map((t) => t.name)).toEqual(expect.arrayContaining(["invoices", "payments"]));
-    expect(result.tables.every((t) => t.entityId === null)).toBe(true);
+    // The broken table file is left out; the others stay.
+    expect(result.tables.map((t) => t.name)).toContain("invoices");
+    expect(result.tables.map((t) => t.name)).not.toContain("payments");
   });
 
   it("publishes model.changed with each change's new index row (E5d), in contract shape", async () => {

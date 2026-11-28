@@ -69,7 +69,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
   // plan, diff, preview and database-view operations while the model is still that fixture, and
   // the in-house resolver answers once it has been edited (phase2-design.md 4.4).
   const seedVersion = model.version;
-  const fixtureSeed = !backend.seeded && !backend.scenarios.has("empty") && !backend.scenarios.has("medium") && !backend.scenarios.has("projected");
+  const fixtureSeed = !backend.seeded && !backend.scenarios.has("empty") && !backend.scenarios.has("medium");
   const pristine = () => ({ pristine: fixtureSeed && model.version === seedVersion });
   const answer = (r: Recording) =>
     /json/.test(r.contentType)

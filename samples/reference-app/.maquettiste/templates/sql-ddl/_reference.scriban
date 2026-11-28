@@ -2,14 +2,13 @@
 # Reference data and seeds for the sql-ddl pack (reference-types-seeds-localization.md sections 1.4, 1.6 and 2). Needs
 # _sql.scriban. Prints nothing.
 #
-# The engine adds no table, key, check or type for a reference type: a single-valued reference attribute is one column holding
-# the row's code, and a collection attribute has no column at all (mapping.template_defined). This pack realizes each type in
-# each database as "lookup-table" (a table keyed by code, a foreign key from each column, a junction table per collection),
-# "check" (a CHECK listing the codes) or "native" (a PostgreSQL enum type, arrays for collections; a CHECK elsewhere). These
-# strategy objects are not in the schema snapshot, so seed.sql reconciles them on every run: every statement can run again, and
-# every object has a deterministic name (ck_<table>_<column>_ref, fk_<table>_<column>_ref, <type snake>_t). SQLite cannot add or
-# drop constraints on an existing table, so there the check and the foreign key are triggers with the same names plus _i
-# (insert), _u (update) and _d (delete from the lookup table).
+# The engine adds no table, key, check or type for a reference type, and since 0.29.0 every table is a designed table: a column
+# that holds a type's codes declares its own foreign key or check. This pack realizes each type not bound to a table in each
+# database as "lookup-table" (a table keyed by code) or "native" (a PostgreSQL enum type); "check" keeps no object of its own.
+# These objects are not in the schema snapshot, so seed.sql reconciles them on every run: every statement can run again, and
+# every object has a deterministic name (<type snake>_t). The column objects a migration may still drop by name
+# (ck_<table>_<column>_ref, fk_<table>_<column>_ref; on SQLite, triggers with the same names plus _i, _u and _d) are the ones an
+# earlier seed.sql made for columns the engine laid out before 0.29.0.
 #
 # A type bound to a table file of the database (type.bindings, 2026-10-11) is realized as "table" there: the pack creates no lookup
 # table, CHECK or enum type for it, its rows go into the bound table with the table's other seed rows (_data.scriban, by each
@@ -25,17 +24,6 @@ func type_realization(rt, db)
   $choice = rt.storage[db.name]
   $r = ref_realization($choice ? $choice.strategy : null)
   if $r == "native" && db.dialect != "postgresql"
-    ret "check"
-  end
-  ret $r
-end
-
-# The realization of a column holding a type's codes: the type's (type_realization). Only a projected reference column (type
-# "reference") holds codes for the pack; a column of a table file never does, whatever the bindings map to it, since binding an
-# entity never changes storage. Any other column reads "native" as "check", so an enum type never replaces a type a table states.
-func column_realization(c, db)
-  $r = type_realization(c.reference_type, db)
-  if $r == "native" && c.type != "reference"
     ret "check"
   end
   ret $r
@@ -498,26 +486,6 @@ func pg_enum_has(name, label, db)
   ret "EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = " + pg_enum_type(name, db) + " AND enumlabel = " + label + ")"
 end
 
-# The strategy objects of one reference-typed column (table t, column name c) in the given realization (column_realization, or
-# type_realization for a junction table's code column), reconciled: the objects of every realization are dropped by name, then the
-# current realization's are created. On SQLite they are triggers; there the lookup table's _d trigger guards the retire DELETE.
-func column_objects_sql(t, c, rt, db, realization)
-  $r = realization
-  $s = ""
-  if $r == "check" && declared_realization(rt, db) == "native"
-    if type_realization(rt, db) == "native"
-      $s = "-- " + rt.name + " is stored as \"native\"; " + t.name + "." + c + " states its own type, so it gets a CHECK.\n"
-    else
-      $s = "-- " + rt.name + " is stored as \"native\"; " + dialect_title(db) + " has no enum type, so " + t.name + "." + c + " gets a CHECK.\n"
-    end
-  end
-  if $r == "table" && !ref_target(rt, db)
-    $s = "-- The key of " + rt.bindings[db.name].table.name + " is not its code column alone, so a foreign key from " + t.name + "." + c + " cannot name a row of " + rt.name + "; it gets none.\n"
-  end
-  $add = column_objects_add_sql(t, c, rt, db, $r)
-  ret $s + column_objects_drop_sql(t, c, db) + ($add == "" ? "" : "\n" + $add)
-end
-
 # The statements that drop the strategy objects of one reference-typed column (table t, column name c) by name, whatever realization
 # created them: its check and its foreign key (on SQLite, their triggers).
 func column_objects_drop_sql(t, c, db)
@@ -539,153 +507,8 @@ func column_objects_drop_sql(t, c, db)
   ret $alter + " DROP CONSTRAINT IF EXISTS " + q($ck, db) + ";\n" + $alter + " DROP CONSTRAINT IF EXISTS " + q($fk, db) + ";"
 end
 
-# The statements that create the strategy objects of one reference-typed column in the given realization: a check listing the codes,
-# or a foreign key to the lookup table or the bound table (on SQLite, triggers); "" for none ("native", or a bound table whose key is
-# not its code column alone).
-func column_objects_add_sql(t, c, rt, db, realization)
-  $d = db.dialect
-  $r = realization
-  $target = ref_target(rt, db)
-  $ck = "ck_" + t.name + "_" + c + "_ref"
-  $fk = "fk_" + t.name + "_" + c + "_ref"
-  $col = q(c, db)
-  if $d == "sqlite"
-    if $r == "check"
-      $when = "NEW." + $col + " IS NOT NULL AND NEW." + $col + " NOT IN (" + code_list(rt, db) + ")"
-      $raise = lit($ck + ": " + t.name + "." + c + " must be a code of " + rt.name, db)
-      ret "CREATE TRIGGER " + q($ck + "_i", db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n" + "CREATE TRIGGER " + q($ck + "_u", db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;"
-    else if $target
-      $code = q($target[1], db)
-      $when = "NEW." + $col + " IS NOT NULL AND NOT EXISTS (SELECT 1 FROM " + $target[0] + " WHERE " + $code + " = NEW." + $col + ")"
-      $raise = lit($fk + ": " + t.name + "." + c + " must be a code of " + rt.name, db)
-      $s = "CREATE TRIGGER " + q($fk + "_i", db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
-      $s = $s + "CREATE TRIGGER " + q($fk + "_u", db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n"
-      ret $s + "CREATE TRIGGER " + q($fk + "_d", db) + " BEFORE DELETE ON " + $target[0] + " WHEN EXISTS (SELECT 1 FROM " + qt(t) + " WHERE " + $col + " = OLD." + $code + ") BEGIN SELECT RAISE(ABORT, " + lit($fk + ": a code still stored in " + t.name + "." + c + " cannot be deleted", db) + "); END;"
-    end
-    ret ""
-  end
-  $alter = "ALTER TABLE " + qt(t)
-  if $r == "check"
-    ret $alter + " ADD CONSTRAINT " + q($ck, db) + " CHECK (" + $col + " IN (" + code_list(rt, db) + "));"
-  else if $target
-    ret $alter + " ADD CONSTRAINT " + q($fk, db) + " FOREIGN KEY (" + $col + ") REFERENCES " + $target[0] + " (" + q($target[1], db) + ");"
-  end
-  ret ""
-end
-
-# The collection attributes of reference types a database's templates realize: [table, attribute, owner name] for every mapped
-# entity and junction-mapped relation, in model order.
-func ref_collections(db)
-  $result = []
-  $seen = {}
-  for e in model.entities
-    $m = e.mappings[db.name]
-    if $m
-      for a in $m.template_defined
-        if a.type.kind == "reference" && !$seen[$m.table.key + "/" + a.id]
-          $seen[$m.table.key + "/" + a.id] = true
-          $result[$result.size] = [$m.table, a, e.name]
-        end
-      end
-    end
-  end
-  for rel in model.relations
-    $m = rel.mappings[db.name]
-    if $m && $m.junction_table
-      for a in $m.template_defined
-        if a.type.kind == "reference"
-          $result[$result.size] = [$m.junction_table, a, rel.name]
-        end
-      end
-    end
-  end
-  ret $result
-end
-
-# The junction table of a collection attribute: <table>_<attribute>, the owner's key columns prefixed with the owner's name,
-# and <attribute singular>_code.
-func junction_name(t, a)
-  ret t.name + "_" + (snake a.name)
-end
-
-func junction_code_column(a)
-  ret (singularize (snake a.name)) + "_code"
-end
-
-func junction_owner_column(owner, c)
-  ret (snake owner) + "_" + c.name
-end
-
-# The storage of one collection attribute: a junction table (lookup-table and check; its code column gets the same strategy
-# objects as a single-valued column), or an array column of the enum type ("native" on PostgreSQL).
-func collection_sql(t, a, owner, db)
-  $rt = a.type.reference_type
-  $d = db.dialect
-  if type_realization($rt, db) == "native"
-    ret "ALTER TABLE " + qt(t) + " ADD COLUMN IF NOT EXISTS " + q(snake a.name, db) + " " + q(native_type_name($rt), db) + "[] NOT NULL DEFAULT '{}';"
-  end
-  $name = junction_name(t, a)
-  $jt = { name: $name, schema: t.schema, database: db }
-  $body = ""
-  $keys = ""
-  $refs = ""
-  for c in t.primary_key.columns
-    $col = q(junction_owner_column(owner, c), db)
-    $body = $body + "    " + $col + " " + column_type(c) + " NOT NULL,\n"
-    $keys = $keys + (for.first ? "" : ", ") + $col
-    $refs = $refs + (for.first ? "" : ", ") + q(c.name, db)
-  end
-  $code = q(junction_code_column(a), db)
-  $body = $body + "    " + $code + " " + ref_sql_type($rt.code.type, $rt.code.length, $d) + " NOT NULL,\n"
-  $body = $body + "    CONSTRAINT " + q("pk_" + $name, db) + " PRIMARY KEY (" + $keys + ", " + $code + "),\n"
-  $body = $body + "    CONSTRAINT " + q("fk_" + $name + "_owner", db) + " FOREIGN KEY (" + $keys + ") REFERENCES " + qt(t) + " (" + $refs + ") ON DELETE CASCADE"
-  $create = "CREATE TABLE " + qn(t.schema, $name, db) + " (\n" + $body + "\n);"
-  if $d == "sqlserver"
-    $create = "IF OBJECT_ID(" + lit(qn(t.schema, $name, db), db) + ", N'U') IS NULL\n" + $create
-  else
-    $create = "CREATE TABLE IF NOT EXISTS " + ($create | string.remove_first "CREATE TABLE ")
-  end
-  ret $create + "\n" + column_objects_sql($jt, junction_code_column(a), $rt, db, type_realization($rt, db))
-end
-
-# The strategy objects of the reference-typed columns and the collections of a database: of the types bound to a table there
-# (bound true), or of the others. A bound type's objects come after the table rows (bound_reference_statements), since a foreign
-# key added to a column that already holds codes needs the bound table's rows. Every column with a reference_type is one: a
-# projected reference column. A column of a table file gets nothing here, whatever the bindings map to it (column.bound_type is
-# information only): its table's own declaration, its declared foreign keys and checks, is all its DDL.
-func reference_column_statements(db, bound, out)
-  for t in db.tables
-    for c in t.columns
-      if !c.reference_type
-        continue
-      end
-      $r = column_realization(c, db)
-      if ($r == "table") == bound
-        out[out.size] = "-- " + t.name + "." + c.name + " (" + c.reference_type.name + ", " + realization_words(c.reference_type, db) + ").\n" + column_objects_sql(t, c.name, c.reference_type, db, $r)
-      end
-    end
-  end
-  for x in ref_collections(db)
-    # Named by where the codes are kept (the array column, or the junction table), in the database's own words.
-    $rt = x[1].type.reference_type
-    if (type_realization($rt, db) == "table") != bound
-      continue
-    end
-    $where = type_realization($rt, db) == "native" ? x[0].name + "." + (snake x[1].name) : junction_name(x[0], x[1])
-    out[out.size] = "-- " + $where + " (codes of " + $rt.name + ", " + realization_words($rt, db) + ").\n" + collection_sql(x[0], x[1], x[2], db)
-  end
-end
-
-# The objects of the columns and collections holding the codes of types bound to a table of the database, for seed.sql after the
-# table rows (the bound tables' rows among them) and before the entity seeds.
-func bound_reference_statements(db, out)
-  reference_column_statements(db, true, out)
-end
-
 # Every reference-data statement of a database for seed.sql, in the order they must run: native types and their new codes;
-# lookup tables and their rows; the strategy objects of every reference-typed column (validating what the tables hold); the
-# collections; then the retire deletes and the native guards, which the objects above protect. The columns and collections of
-# bound types are left to bound_reference_statements.
+# lookup tables and their rows; then the retire deletes and the native guards.
 func reference_statements(db, out)
   $lookups = lookup_order(types_realized(db, "lookup-table"))
   $natives = types_realized(db, "native")
@@ -707,7 +530,6 @@ func reference_statements(db, out)
     end
     out[out.size] = $sql
   end
-  reference_column_statements(db, false, out)
   for rt in $lookups
     out[out.size] = "-- Codes no longer in the seeds of " + rt.name + ".\n" + lookup_retire_sql(rt, db)
   end
@@ -779,7 +601,7 @@ func insert_sql(t, cols, rows, db)
 end
 
 # Whether an end of a relation is an entity bound to database db: its seed rows then go through the relation's mapping in database.seed_tables
-# (data_statements in _data.scriban), not through seed_sql.
+# (data_statements in _data.scriban).
 func relation_bound_here(rel, db)
   for e in rel.ends
     if e.entity && e.entity.bindings[db.name]
@@ -789,182 +611,4 @@ func relation_bound_here(rel, db)
   ret false
 end
 
-# The inserts of one entity or relation seed in a database (null when the target is not mapped there, or is a relation stored as
-# a foreign key, whose values the referencing table's rows carry, or a relation with an end bound there, relation_bound_here): the
-# target's table, then the junction rows of its reference collections. Value-object cells are left to hand-written seed data. The
-# script speaks of tables and rows only: the seed's and its target's names are the model's, not the database's. A relation's rows
-# also set its mapping's constants, and when the mapping has its link (a designed link table with constants or attribute columns),
-# each end's key comes from it: a link table several relations share has one key per end for all of them, whose end names only one
-# relation's end.
-func seed_sql(seed, db)
-  $target = seed.target
-  if !$target || (seed.target.kind != "entity" && seed.target.kind != "relation")
-    ret null
-  end
-  $m = $target.mappings[db.name]
-  if !$m
-    ret null
-  end
-  if $target.kind == "relation"
-    if !$m.junction_table || relation_bound_here($target, db)
-      ret null
-    end
-    $t = $m.junction_table
-  else
-    $t = $m.table
-  end
-  # Columns, and per column [seed column, foreign key or link end, its column index; or -1 an attribute, -2 the discriminator,
-  # -3 a native collection, -4 a constant (then the constant in place of the seed column)].
-  $cols = []
-  $plan = []
-  $collections = []
-  for sc in seed.columns
-    if sc.kind == "attribute"
-      if sc.attribute.collection
-        if sc.attribute.type.kind == "reference"
-          $collections[$collections.size] = sc
-        end
-        continue
-      end
-      for c in $t.columns
-        if c.attribute && c.attribute.id == sc.attribute.id && sc.attribute.type.kind != "value-object"
-          $cols[$cols.size] = c
-          $plan[$plan.size] = [sc, null, -1]
-          break
-        end
-      end
-    else if sc.kind == "end"
-      # The foreign key of the end: the mapping's link names this relation's own; on a junction table it carries the end; on an
-      # entity's table it carries the opposite end.
-      $fk = null
-      if $target.kind == "relation" && $m.links.size == 1 && $m.links[0].table.id == $t.id
-        for le in $m.links[0].ends
-          if le.end.id == sc.end.id
-            $fk = le
-            break
-          end
-        end
-      end
-      if !$fk
-        for f in $t.foreign_keys
-          if f.end && f.end.id == sc.end.id
-            $fk = f
-            break
-          end
-        end
-      end
-      if !$fk
-        for f in $t.foreign_keys
-          if f.end && f.end.opposite && f.end.opposite.id == sc.end.id
-            $fk = f
-            break
-          end
-        end
-      end
-      if $fk
-        for fc in $fk.columns
-          $cols[$cols.size] = fc
-          $plan[$plan.size] = [sc, $fk, for.index]
-        end
-      end
-    end
-  end
-  if $target.kind == "entity" && $m.discriminator_column
-    $cols[$cols.size] = $m.discriminator_column
-    $plan[$plan.size] = [null, null, -2]
-  end
-  # Native collections (PostgreSQL arrays) are columns of the insert; the others are junction rows.
-  $junctions = []
-  for sc in $collections
-    if type_realization(sc.attribute.type.reference_type, db) == "native"
-      $cols[$cols.size] = { name: snake sc.attribute.name, identity: false }
-      $plan[$plan.size] = [sc, null, -3]
-    else
-      $junctions[$junctions.size] = sc
-    end
-  end
-  if $cols.size == 0
-    ret null
-  end
-  # A relation's constants: the values that make each row one of its links.
-  if $target.kind == "relation"
-    for k in $m.constants
-      $cols[$cols.size] = k.column
-      $plan[$plan.size] = [k, null, -4]
-    end
-  end
-  $rows = []
-  for r in seed.ordered_rows
-    $v = ""
-    for p in $plan
-      $sc = p[0]
-      if p[2] == -2
-        $cell = lit($m.discriminator_value, db)
-      else if p[2] == -4
-        $cell = column_cell_sql($sc.values[0], $cols[for.index], db)
-      else if p[2] == -3
-        $codes = r.values[$sc.name] ?? []
-        $items = ""
-        for code in $codes
-          $items = $items + (for.first ? "" : ", ") + lit(code, db)
-        end
-        $cell = $codes.size == 0 ? "'{}'" : "ARRAY[" + $items + "]::" + q(native_type_name($sc.attribute.type.reference_type), db) + "[]"
-      else if p[1]
-        $ref = r.refs[$sc.name]
-        $cell = $ref ? column_cell_sql(seed_value_of($ref, p[1].referenced_columns[p[2]].attribute), $cols[for.index], db) : "NULL"
-      else
-        $cell = column_cell_sql(r.values[$sc.name], $cols[for.index], db)
-      end
-      $v = $v + (for.first ? "" : ", ") + $cell
-    end
-    $rows[$rows.size] = "(" + $v + ")"
-  end
-  $s = "-- " + seed.rows.size + (seed.rows.size == 1 ? " row" : " rows") + " into " + $t.name + ".\n" + insert_sql($t, $cols, $rows, db)
-  for sc in $junctions
-    $jt = { name: junction_name($t, sc.attribute), schema: $t.schema, database: db }
-    $jcols = []
-    for pk in $t.primary_key.columns
-      $jcols[$jcols.size] = { name: junction_owner_column($target.name, pk), identity: false }
-    end
-    $jcols[$jcols.size] = { name: junction_code_column(sc.attribute), identity: false }
-    $jrows = []
-    for r in seed.ordered_rows
-      $key = ""
-      $known = true
-      for pk in $t.primary_key.columns
-        $cell = null
-        for c in $cols
-          if c.name == pk.name
-            $p = $plan[for.index]
-            $cell = column_cell_sql($p[2] == -4 ? $p[0].values[0] : r.values[$p[0].name], c, db)
-          end
-        end
-        if $cell == null
-          $known = false
-        end
-        $key = $key + $cell + ", "
-      end
-      if $known
-        for code in r.values[sc.name] ?? []
-          $jrows[$jrows.size] = "(" + $key + lit(code, db) + ")"
-        end
-      end
-    end
-    if $jrows.size > 0
-      $jt.primary_key = { columns: $jcols }
-      $s = $s + "\n" + insert_sql($jt, $jcols, $jrows, db)
-    end
-  end
-  ret $s
-end
-
-# The seed rows of every entity and relation mapped in a database, targets of referenced rows first.
-func seed_statements(db, out)
-  for seed in model.seeds_in_order
-    $sql = seed_sql(seed, db)
-    if $sql
-      out[out.size] = $sql
-    end
-  end
-end
 -}}

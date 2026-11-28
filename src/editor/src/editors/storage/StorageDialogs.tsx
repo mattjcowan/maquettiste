@@ -402,7 +402,7 @@ function EntitiesFromTablesDialog({ request, onClose }: { request: StorageReques
                       }}
                     />
                     <span className="font-mono">{s.schema ? `${s.schema}.${s.name}` : s.name}</span>
-                    <span className="text-12 text-secondary">{s.kind === "view" ? "view" : s.origin}</span>
+                    <span className="text-12 text-secondary">{s.kind === "view" ? "view" : "table"}</span>
                   </label>
                 </li>
               ))}
@@ -487,7 +487,7 @@ function AutoMapDialog({ request, onClose }: { request: StorageRequest; onClose:
     partial: rows.filter((r) => !r.bound && r.row.outcome === "partial").length,
     miss: rows.filter((r) => !r.bound && r.row.outcome === "miss").length,
   };
-  const choices = sources.filter((s) => !s.projected);
+  const choices = sources;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
@@ -544,7 +544,7 @@ function AutoMapDialog({ request, onClose }: { request: StorageRequest; onClose:
                           {choices.map((s) => (
                             <option key={s.id} value={s.id}>
                               {s.name}
-                              {s.kind !== "table" ? ` (${s.kind})` : s.projected ? " (projected)" : ""}
+                              {s.kind !== "table" ? ` (${s.kind})` : ""}
                             </option>
                           ))}
                         </Select>

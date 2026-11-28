@@ -17,13 +17,16 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// schema diff fails in a scoped run (MQ6033). Unknown or ambiguous unit values are MQ6032; a filter selecting nothing is MQ6034.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class ScopedGenerationTests
 {
     private const string CustomerId = EditorRepo.CustomerId;
     private const string MainDatabaseId = EditorRepo.MainDatabaseId;
     private const string SnapshotPath = ".maquettiste/snapshots/main.json";
     private const string RefundAttributeId = "01J92P0VZZ0000000000000010";
+    private const string RefundTableId = "01J92P0VZZ0000000000000020";
+    private const string RefundIdColumnId = "01J92P0VZZ0000000000000021";
+    private const string BillingSchemaId = "01J92P0V1RC04SKQ5353EAKHG2";
+    private const string CustomersTableId = E2ERepo.CustomersTableId;
     private static readonly string[] Packs = ["csharp-dapper", "sql-ddl"];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -71,6 +74,7 @@ public sealed class ScopedGenerationTests
         Assert.Contains(refundKeys, o => o.Unit.StartsWith("csharp-dapper/entity:", StringComparison.Ordinal));
         Assert.Contains(refundKeys, o => !o.Unit.StartsWith("csharp-dapper/entity:", StringComparison.Ordinal));
         await DeleteAsync(repo, refund);
+        await DeleteAsync(repo, RefundTableId);
         var files = repo.Files();
 
         var scoped = await ApplyAsync(repo, new GenerationRequest { Units = ["csharp-dapper/entity"] });
@@ -95,13 +99,14 @@ public sealed class ScopedGenerationTests
         var refund = await CreateRefundAsync(repo);
         await SettleAsync(repo);
         var outputs = await RefundOutputsAsync(repo, refund);
-        var table = refund + "@" + MainDatabaseId;
-        Assert.Contains(outputs, o => o.Unit.EndsWith(":" + table, StringComparison.Ordinal)); // the synthesized table, keyed by its id
+        const string table = RefundTableId;
+        Assert.Contains(outputs, o => o.Unit.EndsWith(":" + table, StringComparison.Ordinal)); // the table it is bound to, keyed by its id
         await DeleteAsync(repo, refund);
+        await DeleteAsync(repo, table);
         var files = repo.Files();
 
-        // The entity's id and its synthesized table's key: their outputs go, and nothing else changes (the schema keeps the table
-        // until a run selects it).
+        // The entity's id and its table's id: their outputs go, and nothing else changes (the schema keeps the table until a run
+        // selects it).
         var scoped = await ApplyAsync(repo, new GenerationRequest { Elements = [refund, table] });
         Assert.All(scoped.Changes, c => Assert.True(c.UnitKey.EndsWith(":" + refund, StringComparison.Ordinal) || c.UnitKey.EndsWith(":" + table, StringComparison.Ordinal), c.UnitKey));
         Assert.Equal(0, scoped.UnitsRendered);
@@ -380,7 +385,7 @@ public sealed class ScopedGenerationTests
 
     private static EditorRepo CreateWithoutFacts()
     {
-        // Without migration facts: deleting an entity drops its table, whose pending fact would stop generation.
+        // Without migration facts: deleting a table records a pending drop, which would stop generation.
         var repo = EditorRepo.Create();
         repo.EditSettingsOnDisk(E2ERepo.RecordOff);
         return repo;
@@ -419,23 +424,41 @@ public sealed class ScopedGenerationTests
         return states;
     }
 
-    /// <summary>Widens Customer.name from 120 to 150: the customer's units, its table, the schema and the migration render again.</summary>
+    /// <summary>
+    /// Widens Customer.name and the column it is bound to from 120 to 150: the customer's units, its table, the schema and the migration
+    /// render again.
+    /// </summary>
     private static async Task WidenCustomerNameAsync(EditorRepo repo)
     {
-        var document = await repo.Store.GetElementAsync(CustomerId, Ct);
+        await EditAsync(repo, CustomerId, node => node["attributes"]![1]!["length"] = 150);
+        await EditAsync(repo, CustomersTableId, node => node["columns"]!.AsArray().Single(c => (string?)c!["name"] == "name")!["length"] = 150);
+    }
+
+    private static async Task EditAsync(EditorRepo repo, string id, Action<JsonObject> edit)
+    {
+        var document = await repo.Store.GetElementAsync(id, Ct);
         Assert.NotNull(document);
         var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
-        node["attributes"]![1]!["length"] = 150;
-        var saved = await repo.Store.SaveAsync(CustomerId, Encoding.UTF8.GetBytes(node.ToJsonString()), document.Hash, ChangeSource.Editor, Ct);
+        edit(node);
+        var saved = await repo.Store.SaveAsync(id, Encoding.UTF8.GetBytes(node.ToJsonString()), document.Hash, ChangeSource.Editor, Ct);
         Assert.True(saved.Outcome == SaveOutcome.Saved, saved.Outcome + ": " + string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
     }
 
+    /// <summary>Creates table refunds and entity Refund bound to it; answers the entity's id.</summary>
     private static async Task<string> CreateRefundAsync(EditorRepo repo)
     {
+        var table = await repo.Store.CreateAsync(Encoding.UTF8.GetBytes($$"""
+            {"kind": "table", "id": "{{RefundTableId}}", "name": "refunds", "database": "{{MainDatabaseId}}", "schema": "{{BillingSchemaId}}",
+             "columns": [{"id": "{{RefundIdColumnId}}", "name": "id", "type": "uuid", "nullable": false}],
+             "primaryKey": {"columns": ["{{RefundIdColumnId}}"]} }
+            """), ChangeSource.Editor, Ct);
+        Assert.True(table.Outcome == SaveOutcome.Saved, table.Outcome + ": " + string.Join("; ", table.Diagnostics.Select(d => d.Rule + " " + d.Message)));
         var created = await repo.Store.CreateAsync(Encoding.UTF8.GetBytes($$"""
             {"kind": "entity", "name": "Refund", "package": "{{EditorRepo.BillingPackageId}}",
              "key": {"attributes": ["{{RefundAttributeId}}"]},
-             "attributes": [{"id": "{{RefundAttributeId}}", "name": "id", "type": "uuid", "required": true}]}
+             "attributes": [{"id": "{{RefundAttributeId}}", "name": "id", "type": "uuid", "required": true}],
+             "bindings": [{"database": "{{MainDatabaseId}}", "source": "{{RefundTableId}}",
+               "fields": [{"attribute": "{{RefundAttributeId}}", "column": "{{RefundIdColumnId}}"}]}] }
             """), ChangeSource.Editor, Ct);
         Assert.True(created.Outcome == SaveOutcome.Saved, created.Outcome + ": " + string.Join("; ", created.Diagnostics.Select(d => d.Rule + " " + d.Message)));
         return created.Id!;
@@ -449,13 +472,13 @@ public sealed class ScopedGenerationTests
         Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
     }
 
-    /// <summary>Every manifest entry of a unit of the element or of its synthesized table, as (path, unit key).</summary>
+    /// <summary>Every manifest entry of a unit of the element or of its table, as (path, unit key).</summary>
     private static async Task<List<(string Path, string Unit)>> RefundOutputsAsync(EditorRepo repo, string refund)
     {
         var outputs = new List<(string, string)>();
         foreach (var (key, state) in await StatesAsync(repo))
         {
-            if (key.EndsWith(":" + refund, StringComparison.Ordinal) || key.EndsWith(":" + refund + "@" + MainDatabaseId, StringComparison.Ordinal))
+            if (key.EndsWith(":" + refund, StringComparison.Ordinal) || key.EndsWith(":" + RefundTableId, StringComparison.Ordinal))
                 outputs.AddRange(state.Outputs.Select(o => (o.Path, key)));
         }
 

@@ -82,6 +82,7 @@ import {
   childKeys,
   type ExplorerId,
   type Forest,
+  type IndexRow,
   type TablesInput,
   type TreeNode,
   type VisibleRow,
@@ -151,6 +152,15 @@ const DOUBLE_CLICK_SLOP = 4;
  * arrives the row (or the explorer) may re-render or re-mount, and the tree may move, so the browser's dblclick cannot
  * be relied on to reach the row the user double-clicked, nor the second click to land on a row at all. */
 const rowClicks = { explorer: "", key: "", at: 0, x: 0, y: 0, doubled: 0 };
+
+/** The first table (or view) file an entity's bindings name, from its index row's boundTo. */
+function boundTableRow(forest: Forest, entity: string): IndexRow | undefined {
+  for (const id of forest.byId.get(entity)?.boundTo ?? []) {
+    const row = forest.byId.get(id);
+    if (row && (row.kind === "table" || row.kind === "view")) return row;
+  }
+  return undefined;
+}
 
 /** The forest every explorer renders, from the index, the validation report, the table summaries and the settings. */
 export function useForest(): { forest: Forest | null; rows: readonly ElementSummary[] | undefined; pending: boolean; error: Error | null } {
@@ -890,7 +900,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       const database = node.type === "table" && node.table ? databaseOf(forest, key) : undefined;
       if (database && node.table) {
         if (how === "open") {
-          if (node.id && forest.byId.has(node.id) && node.table.origin !== "synthesized") store.getState().noteRecent(node.id);
+          if (node.id && forest.byId.has(node.id)) store.getState().noteRecent(node.id);
           openTableEditor(store, database, node.table.key, { explorerItem: key });
           return;
         }
@@ -1035,7 +1045,9 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
     (key: string): MenuTarget | null => {
       const node = forest ? nodeOf(forest, key) : undefined;
       if (!node || !forest) return null;
-      const linked = node.kind === "entity" ? !!node.id && (forest.related.tablesOf.get(node.id)?.length ?? 0) > 0 : false;
+      // An entity has a table through its binding: a loaded table node, else the bound table's own row (tables load with their database).
+      const linked =
+        node.kind === "entity" ? !!node.id && ((forest.related.tablesOf.get(node.id)?.length ?? 0) > 0 || !!boundTableRow(forest, node.id)) : false;
       const element = idOf(key);
       const domainGroup = node.type === "group" && !!node.id && forest.byId.get(node.id)?.kind === "package";
       const creates = node.type === "group" && !domainGroup && (key === NOT_IN_DOMAIN_KEY || node.explorer !== "domain-model");
@@ -1049,7 +1061,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         explorer: creates || domainGroup ? node.explorer : undefined,
         processDiagram: node.kind === "diagram" && !!element && isProcessDiagram(forest.byId.get(element)),
         home: node.explorer,
-        designed: node.type === "table" && !!element && !!node.table && node.table.origin !== "synthesized",
+        designed: node.type === "table" && !!element && !!node.table,
         part: node.part?.kind,
         incoming: !!node.partTable || key.endsWith("/referenced-by"),
       };
@@ -1200,6 +1212,13 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
           const database = databaseOf(forest, table);
           if (t?.table && database) store.getState().inspectTable({ database, key: t.table.key, column: null }, table);
           else if (t?.id) select([t.id]);
+        } else {
+          // The database's tables are not loaded yet: the bound table's file, by its id, which is its key.
+          const row = node?.id ? boundTableRow(forest, node.id) : undefined;
+          if (row?.database) {
+            store.getState().setSidebar("databases");
+            store.getState().inspectTable({ database: row.database, key: row.id, column: null }, null);
+          }
         }
         break;
       }

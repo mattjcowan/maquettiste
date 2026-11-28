@@ -87,7 +87,7 @@ export function TableBindings({ typeId, databases }: { typeId: string; databases
   const choices = useRef(new Map<string, string>());
   if (!type || !databases.length) return null;
   const tablesOf = (databaseId: string) =>
-    (index.data ?? []).filter((r) => r.kind === "table" && r.database === databaseId && !r.entity).sort((a, b) => a.name.localeCompare(b.name));
+    (index.data ?? []).filter((r) => r.kind === "table" && r.database === databaseId).sort((a, b) => a.name.localeCompare(b.name));
 
   const change = (mutate: (list: TypeBinding[]) => TypeBinding[]) => {
     edit((j) => {

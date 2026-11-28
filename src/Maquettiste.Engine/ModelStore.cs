@@ -1203,8 +1203,8 @@ public sealed partial class ModelStore : IAsyncDisposable
 
         if (plan.Candidate is not { } candidate)
             return [];
-        // A deleted database or mapping is not among the changed ids, but the entities it placed are revisited (7.2a); they are in the
-        // baseline too, so their pre-existing errors never block the delete.
+        // A deleted entity is not among the changed ids, but the databases whose MQ4146 counts it are revisited; they are in the baseline
+        // too, so their pre-existing errors never block the delete.
         var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
         var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
         var followers = FormerFactFollowers(changed, before, candidate).Concat(FormerActorPeers(changed, before, candidate))
@@ -1283,30 +1283,17 @@ public sealed partial class ModelStore : IAsyncDisposable
     }
 
     /// <summary>
-    /// The entities whose MQ4012 a change may have altered through what the model had before it (engine-design 7.2a): every entity
-    /// when a database changed or went, and the entity a changed or deleted mapping named before (a mapping retargeted from A to B
-    /// revisits A; B is in the scope through the validator's peers). The candidate's own elements cover the rest.
+    /// The databases whose MQ4146 a change may have altered through what the model had before it: when an entity changed or went (its
+    /// bindings decide whether it is bound), every database file of the candidate that has no <c>byConvention</c>.
     /// </summary>
     private static IEnumerable<string> FormerPlacements(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
     {
-        var everyEntity = false;
-        foreach (var id in changedIds)
+        if (!changedIds.Any(id => before.GetDocument(id)?.Element is Entity || candidate.GetDocument(id)?.Element is Entity))
+            yield break;
+        foreach (var database in candidate.All<Database>())
         {
-            switch (before.GetDocument(id)?.Element)
-            {
-                case Database:
-                    everyEntity = true;
-                    break;
-                case Mapping { Entity: { } entity } when candidate.GetDocument(entity) is { Element: Entity }:
-                    yield return entity;
-                    break;
-            }
-        }
-
-        if (everyEntity)
-        {
-            foreach (var entity in candidate.All<Entity>())
-                yield return entity.Id;
+            if (database.ByConvention is null)
+                yield return database.Id;
         }
     }
 
@@ -1780,7 +1767,7 @@ public enum BatchOp
 
     /// <summary>
     /// <c>remove-schema</c>: removes schema <c>schema</c> of database <c>id</c>. Refused (MQ4015, listing what lives there) while tables,
-    /// views, sequences, convention entries or mappings live in it, unless <c>target</c> names the schema they move to; the default
+    /// views, sequences, routines, database types or SQL objects live in it, unless <c>target</c> names the schema they move to; the default
     /// schema is refused unless <c>default</c> names the schema that becomes the default.
     /// </summary>
     [JsonStringEnumMemberName("remove-schema")] RemoveSchema,
@@ -1908,7 +1895,7 @@ public enum BatchOp
     /// that is not an ASCII letter or digit ignored): an attribute's name, <c>attributeMember</c> for a value object member, a to-one
     /// navigation's name plus <c>Id</c> (or without it). Fields name a table file's columns by id and a view's by name; a table file's
     /// binding records the provenance of the columns it maps. It writes no attribute and no column. Refused (MQ4089) for an entity with
-    /// no binding to the database, a source it cannot read (a query, a projected table), or when nothing matches for every entity.
+    /// no binding to the database, a source it cannot read (a query), or when nothing matches for every entity.
     /// </summary>
     [JsonStringEnumMemberName("map-by-name")] MapByName,
 

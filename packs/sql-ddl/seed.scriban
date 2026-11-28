@@ -1,6 +1,6 @@
 {{-
-# One seed script per database in "regions" mode, regenerated on every run and safe to run again: the reference data of reference types (lookup tables, check constraints and native types reconciled
-# with the current rows, _reference.scriban; a type bound to a table of the database writes its rows with the table seeds), and the rows of entity and relation seeds (inserts that skip existing keys); then the
+# One seed script per database in "regions" mode, regenerated on every run and safe to run again: the reference data of reference types (lookup tables and native types reconciled
+# with the current rows, _reference.scriban; a type bound to a table of the database writes its rows with the table seeds), and the rows of table, entity and relation seeds; then the
 # protected region keeps the team's own seed data. Everything between the maquettiste:keep and maquettiste:end-keep lines
 # survives regeneration; edits anywhere else are reported as hand edits.
 include "_sql.scriban"
@@ -11,12 +11,8 @@ db = database
 go = db.dialect == "sqlserver" ? "\nGO" : ""
 references = []
 reference_statements(db, references)
-seeds = []
-seed_statements(db, seeds)
 rows = []
 data_statements(db, "", rows)
-bound = []
-bound_reference_statements(db, bound)
 # The checks of columns holding lifecycle states (_lifecycle.scriban), only with the lifecycleChecks parameter.
 states = []
 if pack.params.lifecycleChecks
@@ -46,22 +42,6 @@ end
 
 -- Table seeds, the seeds of entities bound to a table and the rows of reference types stored in one, referenced tables first.
 {{- for s in rows }}
-
-{{ s }}{{ go }}
-{{- end }}
-{{- end }}
-{{- if bound.size > 0 }}
-
--- Columns holding the codes of reference types stored in a table, pointed at it now that its rows are there.
-{{- for s in bound }}
-
-{{ s }}{{ go }}
-{{- end }}
-{{- end }}
-{{- if seeds.size > 0 }}
-
--- Seed rows, targets of referenced rows first; rows whose key is already there are skipped.
-{{- for s in seeds }}
 
 {{ s }}{{ go }}
 {{- end }}

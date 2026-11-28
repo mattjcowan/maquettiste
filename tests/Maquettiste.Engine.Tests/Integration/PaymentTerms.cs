@@ -7,9 +7,11 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// <summary>
 /// The shared setup of the reference-type refactor tests (next-phase-2-design.md section 3.5, "Tests"), over a billing copy
 /// (<see cref="E2ERepo"/>): the reference type <c>PaymentTerm</c> (codes <c>net30</c>, <c>net60</c> and <c>due</c>; a string code of
-/// length 8), which types <c>Invoice.paymentTerm</c> (default <c>net30</c>), so <c>invoices.payment_term</c> in <c>main</c> holds its codes;
-/// and <c>CreditTerm</c> (codes <c>net30</c> and <c>n90</c>), which types <c>Customer.creditTerm</c> and <c>InvoiceNote.term</c>, which
-/// InvoiceNote's binding maps to the column <c>term</c> added to the notes table, so the column holds its codes. The settings declare the strategies <c>lookup-table</c>, <c>check</c> and <c>native</c> and choose <c>lookup-table</c>.
+/// length 8), bound to the table <c>payment_terms</c> in <c>main</c>, which types <c>Invoice.paymentTerm</c> (default <c>net30</c>); the
+/// column <c>invoices.payment_term</c> declares a foreign key into <c>payment_terms.code</c>, so it holds its codes. <c>CreditTerm</c> (codes
+/// <c>net30</c> and <c>n90</c>), which keeps its rows in its seed (no table), types <c>Customer.creditTerm</c> and <c>InvoiceNote.term</c>;
+/// InvoiceNote's binding maps <c>term</c> to the column <c>term</c> added to the notes table, which declares no key and so holds no codes.
+/// The settings declare the strategies <c>lookup-table</c>, <c>check</c> and <c>native</c> and choose <c>lookup-table</c>.
 /// </summary>
 internal static class PaymentTerms
 {
@@ -29,11 +31,19 @@ internal static class PaymentTerms
     public const string InvoiceNote = "01K6BND0000000000000000010";
     public const string NotesTable = "01K6BND0000000000000000001";
 
-    /// <summary>The invoices table's key in main (a synthesized table with an overlay).</summary>
-    public const string InvoicesTable = E2ERepo.InvoiceId + "@" + E2ERepo.MainDatabaseId;
+    /// <summary>The invoices table's key in main.</summary>
+    public const string InvoicesTable = E2ERepo.InvoicesTableId;
 
     /// <summary>The customers table's key in main.</summary>
-    public const string CustomersTable = E2ERepo.CustomerId + "@" + E2ERepo.MainDatabaseId;
+    public const string CustomersTable = E2ERepo.CustomersTableId;
+
+    /// <summary>The table PaymentTerm is bound to in main.</summary>
+    public const string PaymentTermsTable = "01KAPT00000000000000000030";
+
+    /// <summary>The column of invoices that holds PaymentTerm codes.</summary>
+    public const string InvoicePaymentTermColumn = "01KAPT00000000000000000034";
+
+    private const string BillingSchema = "01J92P0V1RC04SKQ5353EAKHG2";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -60,16 +70,25 @@ internal static class PaymentTerms
     });
 
     /// <summary>
-    /// Adds the two types, their seeds, the attributes and the notes column they type, through the store; then restarts it, so no
-    /// capture is cached.
+    /// Adds the two types with their seeds (and PaymentTerm's table), the attributes, the column that holds PaymentTerm codes and the notes column, through
+    /// the store; then restarts it, so no capture is cached.
     /// </summary>
     /// <param name="repo">The billing copy (<see cref="Create"/>).</param>
     /// <param name="creditTerm">Extra keys of <c>CreditTerm</c> (such as its <c>storage</c>), JSON text after a comma.</param>
     public static async Task AddAsync(E2ERepo repo, string creditTerm = "")
     {
         await repo.CreateElementAsync($$"""
+            { "kind": "table", "id": "{{PaymentTermsTable}}", "name": "payment_terms", "database": "{{E2ERepo.MainDatabaseId}}", "schema": "{{BillingSchema}}",
+              "columns": [ { "id": "01KAPT00000000000000000031", "name": "code", "type": "string", "length": 8, "nullable": false },
+                           { "id": "01KAPT00000000000000000032", "name": "label", "type": "string", "length": 64, "nullable": false } ],
+              "primaryKey": { "columns": [ "01KAPT00000000000000000031" ] } }
+            """);
+
+        await repo.CreateElementAsync($$"""
             { "kind": "reference-type", "id": "{{PaymentTerm}}", "name": "PaymentTerm",
-              "code": { "id": "01KAPT00000000000000000002", "length": 8 }, "label": { "id": "01KAPT00000000000000000003", "length": 64 } }
+              "code": { "id": "01KAPT00000000000000000002", "length": 8 }, "label": { "id": "01KAPT00000000000000000003", "length": 64 },
+              "bindings": [ { "id": "01KAPT00000000000000000033", "database": "{{E2ERepo.MainDatabaseId}}", "table": "{{PaymentTermsTable}}",
+                "fields": [ { "attribute": "code", "column": "01KAPT00000000000000000031" }, { "attribute": "label", "column": "01KAPT00000000000000000032" } ] } ] }
             """);
         await repo.CreateElementAsync($$"""
             { "kind": "seed", "id": "{{PaymentTermSeed}}", "name": "PaymentTerms", "target": "{{PaymentTerm}}", "columns": ["code", "label"],
@@ -90,6 +109,15 @@ internal static class PaymentTerms
         await repo.EditAsync(E2ERepo.CustomerId, e => e["attributes"]!.AsArray().Add(JsonNode.Parse($$"""
             { "id": "{{CustomerCreditTerm}}", "name": "creditTerm", "type": { "ref": "{{CreditTerm}}" } }
             """)));
+        await repo.EditAsync(InvoicesTable, e =>
+        {
+            e["columns"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{InvoicePaymentTermColumn}}", "name": "payment_term", "type": "string", "length": 8 }"""));
+            e["foreignKeys"]!.AsArray().Add(JsonNode.Parse($$"""
+                { "id": "01KAPT00000000000000000035", "name": "fk_invoices_payment_term", "columns": [ "{{InvoicePaymentTermColumn}}" ],
+                  "referencesTable": "{{PaymentTermsTable}}", "referencesColumns": [ "01KAPT00000000000000000031" ] }
+                """));
+        });
+
         await repo.EditAsync(NotesTable, e => e["columns"]!.AsArray().Add(JsonNode.Parse($$"""
             { "id": "{{NotesTerm}}", "name": "term", "type": "string", "length": 8 }
             """)));

@@ -26,14 +26,14 @@ const queryDoc = (page: Page, name: string) =>
     return doc?.json ?? null;
   }, name);
 
-const INVOICE_ID = "01J92P0V0Q9EK961M5HAQ3C5MY";
-const CUSTOMER_KEY = "01J92P0V0KGPC29TQQG8R57EBM";
-const INVOICE_TO_CUSTOMER = "01J92P0V1EHF7PB28CZJG9C5SN";
+const INVOICE_ID = "01M8EJPZN8P9AWRMABQ8VM73RS";
+const CUSTOMER_KEY = "01M8EJPZN8472RRANF8A5EA8GT";
+const INVOICE_CUSTOMER_COLUMN = "01M8EJPZN80NTY1M4QZCPKETNX";
 
 test("New query… creates a query, the editor joins, fills, filters and orders it with the SQL following, undo steps back, and the plan deletes it", async ({
   page,
 }) => {
-  await page.goto("/database?mock=projected");
+  await page.goto("/database");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await page.getByTestId("database-new-menu").click();
   await page.getByTestId("database-new-query").click();
@@ -45,7 +45,7 @@ test("New query… creates a query, the editor joins, fills, filters and orders 
   await expect(dialog.getByLabel("Result entity")).toHaveCount(0);
   await expect(dialog).not.toContainText(/entit/i);
   // The alias follows the source's name.
-  await dialog.getByLabel("From").selectOption(`01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4`);
+  await dialog.getByLabel("From").selectOption("01J92P0V1T0J6RH4MY9H81NYB4");
   await expect(dialog.getByLabel("Alias")).toHaveValue("i");
   await page.getByTestId("new-db-create").click();
   await expect(dialog).toHaveCount(0);
@@ -63,9 +63,9 @@ test("New query… creates a query, the editor joins, fills, filters and orders 
   await expect
     .poll(async () => ((await queryDoc(page, "CustomerInvoices"))?.joins as unknown[] | undefined)?.[0])
     .toEqual({
-      source: "01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4",
+      source: "01M8EJPZN867GR1CJR5ZERBJ0V",
       alias: "c",
-      on: { op: "eq", left: { column: `i.${INVOICE_TO_CUSTOMER}.${CUSTOMER_KEY}` }, right: { column: `c.${CUSTOMER_KEY}` } },
+      on: { op: "eq", left: { column: `i.${INVOICE_CUSTOMER_COLUMN}` }, right: { column: `c.${CUSTOMER_KEY}` } },
     });
   await expect(editor(page).getByLabel("Query join 1 on left: column").locator("option:checked")).toHaveText("i.customer_id");
 

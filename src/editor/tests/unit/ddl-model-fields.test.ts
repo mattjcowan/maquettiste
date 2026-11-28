@@ -17,7 +17,6 @@ import {
   setIndexColumnOrder,
   setIndexExpression,
   toggleIndexColumn,
-  withColumnIds,
 } from "@/workspaces/database/tableParts";
 import { inferredViewDependencies, setViewOption, sqlIdentifierTokens, viewOptionNote } from "@/editors/database/databaseDocs";
 import { keysOfDocument } from "@/model/foreignKeyTarget";
@@ -32,33 +31,32 @@ const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
 const OUTSTANDING = "01J92P0V1YZ4YP352KD1A50FXS";
 
 const col = (key: string, type: string, name = "c") => ({ key, name, type }) as ColumnView;
-const newId = () => "N1";
 
 describe("an identity's seed, increment and generated always", () => {
   it("sets each into the column's identity object, in the schema's order, and makes the column an identity", () => {
     const doc: Json = { kind: "table", columns: [{ id: "c1", name: "id", type: "int64" }] };
     const c = col("c1", "int64", "id");
     const entry = () => (doc.columns as Json[])[0];
-    expect(setColumnField(doc, c, "identityAlways", true, newId)).toBe(true);
-    expect(setColumnField(doc, c, "identityIncrement", " 5 ", newId)).toBe(true);
-    expect(setColumnField(doc, c, "identitySeed", "-10", newId)).toBe(true);
+    expect(setColumnField(doc, c, "identityAlways", true)).toBe(true);
+    expect(setColumnField(doc, c, "identityIncrement", " 5 ")).toBe(true);
+    expect(setColumnField(doc, c, "identitySeed", "-10")).toBe(true);
     expect(entry().generated).toBe("identity");
     expect(entry().identity).toEqual({ seed: -10, increment: 5, always: true });
     expect(Object.keys(entry().identity as Json)).toEqual(["seed", "increment", "always"]);
     expect(columnGeneration(entry(), c as never, "postgresql")).toMatchObject({ identitySeed: "-10", identityIncrement: "5", identityAlways: true });
     // Cleared one by one, the object goes with the last.
-    setColumnField(doc, c, "identitySeed", "", newId);
-    setColumnField(doc, c, "identityIncrement", "", newId);
+    setColumnField(doc, c, "identitySeed", "");
+    setColumnField(doc, c, "identityIncrement", "");
     expect(entry().identity).toEqual({ always: true });
-    setColumnField(doc, c, "identityAlways", false, newId);
+    setColumnField(doc, c, "identityAlways", false);
     expect("identity" in entry()).toBe(false);
     expect(entry().generated).toBe("identity");
     // Another way to get values drops the identity's options.
-    setColumnField(doc, c, "identitySeed", "100", newId);
-    setColumnField(doc, c, "generated", "", newId);
+    setColumnField(doc, c, "identitySeed", "100");
+    setColumnField(doc, c, "generated", "");
     expect("identity" in entry() || "generated" in entry()).toBe(false);
-    setColumnField(doc, c, "identitySeed", "100", newId);
-    setColumnField(doc, c, "sequence", "SEQ1", newId);
+    setColumnField(doc, c, "identitySeed", "100");
+    setColumnField(doc, c, "sequence", "SEQ1");
     expect(entry()).toMatchObject({ generated: "sequence", sequence: "SEQ1" });
     expect("identity" in entry()).toBe(false);
   });
@@ -70,7 +68,7 @@ describe("an identity's seed, increment and generated always", () => {
     expect(columnFieldProblem("identityIncrement", "x")).toBe("The identity increment is a whole number, or empty.");
     expect(columnFieldProblem("identityIncrement", "")).toBeNull();
     const doc: Json = { kind: "table", columns: [{ id: "c1", name: "id", type: "int64", generated: "identity" }] };
-    expect(setColumnField(doc, col("c1", "int64"), "identityIncrement", "0", newId)).toBe(false);
+    expect(setColumnField(doc, col("c1", "int64"), "identityIncrement", "0")).toBe(false);
     expect((doc.columns as Json[])[0].identity).toBeUndefined();
   });
 
@@ -123,7 +121,7 @@ describe("an index column that is an expression or takes a prefix length", () =>
     expect(indexLengthProblem("")).toBeNull();
   });
 
-  it("names an expression column by its dialect's text, renames columns around it, and is no foreign key target", () => {
+  it("names an expression column by its dialect's text, and is no foreign key target", () => {
     const nameOf = (id: string) => ({ C1: "name" })[id] ?? id;
     expect(indexColumnText({ column: "C1" }, "postgresql", nameOf)).toBe("name");
     expect(indexColumnText({ expression: { postgresql: "lower(name)", "*": "x" } }, "postgresql", nameOf)).toBe("(lower(name))");
@@ -131,11 +129,9 @@ describe("an index column that is an expression or takes a prefix length", () =>
     expect(indexColumnText({ expression: { oracle: "x" } }, "mysql", nameOf)).toBe("(no expression for mysql)");
     const doc: Json = {
       id: "T",
-      columns: [{ id: "a", name: "name" }],
-      indexes: [{ id: "I", unique: true, columns: [{ expression: { "*": "lower(name)" } }, { column: "a" }] }],
+      columns: [{ id: "A1", name: "name" }],
+      indexes: [{ id: "I", unique: true, columns: [{ expression: { "*": "lower(name)" } }, { column: "A1" }] }],
     };
-    withColumnIds(doc, new Map([["a", "A1"]]));
-    expect((doc.indexes as Json[])[0].columns).toEqual([{ expression: { "*": "lower(name)" } }, { column: "A1" }]);
     expect(keysOfDocument(doc).uniqueIndexes).toEqual([]);
     expect(indexColumnNote("sqlserver", { expression: true, length: false })).toContain("MQ4056");
     expect(indexColumnNote("mysql", { expression: true, length: true })).toContain("8.0.13");

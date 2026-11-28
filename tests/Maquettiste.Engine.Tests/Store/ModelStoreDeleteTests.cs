@@ -6,7 +6,6 @@ using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
 
-[UsesProjectedFixtures]
 public sealed class ModelStoreDeleteTests
 {
     private const string ScratchId = "01K9XRF00000000000000000E1";
@@ -25,9 +24,15 @@ public sealed class ModelStoreDeleteTests
 
         Assert.Equal(SaveOutcome.Referenced, result.Outcome);
         var kinds = result.Referrers.Select(r => s.Model.GetDocument(r.FromElementId)!.Element.KindName).Distinct().Order(StringComparer.Ordinal);
-        Assert.Equal(["diagram", "mapping", "query", "relation", "table"], kinds);
-        // Sub-element references count too: the overlay table's index and column name invoice attributes.
-        Assert.Contains(result.Referrers, r => r.ToId != invoice.Element.Id);
+        Assert.Equal(["diagram", "relation"], kinds);
+        Assert.Equal(before, s.Files());
+        Assert.Empty(s.Notifications);
+
+        // Sub-element references count too: queries, bindings and foreign keys name the invoices table's columns and keys.
+        var invoices = s.Doc("table", "invoices");
+        var table = await s.Store.DeleteAsync(invoices.Element.Id, invoices.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Referenced, table.Outcome);
+        Assert.Contains(table.Referrers, r => r.ToId != invoices.Element.Id);
         Assert.Equal(before, s.Files());
         Assert.Empty(s.Notifications);
     }
@@ -64,7 +69,8 @@ public sealed class ModelStoreDeleteTests
         Assert.Equal([softDelete.Element.Id], result.Changes!.Deleted);
         // The stereotype's columns go with it: their drops are recorded as migration facts in the same change.
         Assert.Equal([invoice, product], result.Changes.Changed.Where(c => c.Kind != "migration").Select(c => c.Id).Order(StringComparer.Ordinal));
-        Assert.Equal(2, result.Referrers.Count);
+        // Each entity names it among its stereotypes, and its binding maps the stereotype's attribute.
+        Assert.Equal(4, result.Referrers.Count);
         Assert.Single(s.Notifications);
 
         var catalog = s.Doc("package", "Catalog");

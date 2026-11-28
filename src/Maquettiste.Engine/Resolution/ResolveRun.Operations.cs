@@ -56,7 +56,7 @@ internal sealed partial class ResolveRun
             .Distinct()
             .OrderBy(o => order[o])];
 
-        foreach (var entity in _entities.Values.Concat(_promoted.Values).Where(e => e.Id.Length > 0))
+        foreach (var entity in _entities.Values.Where(e => e.Id.Length > 0))
             entity.Operations = new RList<ROperation>(Referrers(entity.Id, "subject"), [Keys.Referrers(entity.Id), OperationKind]);
 
         // An empty fired_by keys on the event's referrers only (processes-operations-design.md section 9): an operation that starts firing the

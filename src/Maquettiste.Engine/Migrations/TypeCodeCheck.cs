@@ -89,11 +89,6 @@ internal static class TypeCodeCheck
                 : (entity.Name, entity.Id, "/name");
         }
 
-        var mapping = model.All<Mapping>()
-            .Where(m => string.Equals(m.Entity, entity.Id, StringComparison.Ordinal) && string.Equals(m.Database, databaseId, StringComparison.Ordinal))
-            .OrderBy(m => m.Id, StringComparer.Ordinal).FirstOrDefault();
-        if (mapping is not null && DatabaseRun.CodeValue(mapping.DiscriminatorValue) is { } mapped)
-            return (mapped, mapping.Id, "/discriminatorValue");
         return (entity.Name, entity.Id, "/name");
     }
 
@@ -149,7 +144,7 @@ internal static class TypeCodeCheck
     private static string? TypeColumnOf(ModelSnapshot model, string databaseId, TypeCodeHolder holder) =>
         model.All<Mapping>()
             .Where(m => string.Equals(m.Relation, holder.RelationId, StringComparison.Ordinal) && string.Equals(m.Database, databaseId, StringComparison.Ordinal))
-            .OrderBy(m => m.Id, StringComparer.Ordinal).FirstOrDefault() is { Ignore: false } mapping
+            .OrderBy(m => m.Id, StringComparer.Ordinal).FirstOrDefault() is { } mapping
             ? mapping.Ends.FirstOrDefault(e => string.Equals(e.End, holder.EndId, StringComparison.Ordinal))?.TypeColumn
             : null;
 

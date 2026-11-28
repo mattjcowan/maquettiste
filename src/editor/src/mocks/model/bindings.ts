@@ -13,7 +13,6 @@ import type {
   MaterializePlan,
   MaterializeStatus,
   BindingSqlResult,
-  TableView,
 } from "@/api/types";
 import {
   bindingProblems,
@@ -31,6 +30,7 @@ import { bindingShape } from "@/editors/storage/bindingShape";
 import { childAttribute, childProblems, itemAttributes } from "@/editors/storage/childTables";
 import { columnIds, plainTable, tableDocColumns, type TableDoc } from "@/editors/storage/tableDoc";
 import { applyCase, resolveDatabase, type PhysicalInput } from "./physical";
+import { shapeTables, type ShapeTable } from "./tableShape";
 import { sqlDialectOf, unwrapSqlText } from "@/model/sqlText";
 import { splitWith } from "./querySql";
 import { docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
@@ -77,26 +77,19 @@ export function materializeStatus(input: PhysicalInput, databaseId: string): Mat
       .filter((e) => !bindingsOf(e).some((b) => b.database === databaseId))
       .sort(byName)
       .map((e) => {
-        // The entity's own projected table (not an attribute's or a junction), by name, as the engine says it.
-        const table = view?.tables.find((t) => t.origin === "synthesized" && t.key === `${String(e.id)}@${databaseId}`);
         return {
           id: String(e.id),
           name: String(e.name ?? ""),
           package: typeof e.package === "string" ? e.package : null,
-          projected: !!table,
-          table: table?.name ?? null,
         };
       }),
     sources: [
-      ...(view?.tables ?? [])
-        .filter((t) => t.origin !== "synthesized")
-        .map((t) => ({ id: t.key, kind: "table" as const, name: t.name, schema: t.schema, origin: t.origin, boundBy: bindersOf(input.docs, t.key) })),
+      ...(view?.tables ?? []).map((t) => ({ id: t.key, kind: "table" as const, name: t.name, schema: t.schema, boundBy: bindersOf(input.docs, t.key) })),
       ...(view?.views ?? []).map((v) => ({
         id: v.id,
         kind: "view" as const,
         name: v.name,
         schema: v.schema,
-        origin: "designed",
         boundBy: bindersOf(input.docs, v.id),
       })),
     ],
@@ -183,9 +176,6 @@ interface Outcome {
   choices?: MaterializeChoices;
 }
 
-const ANNOTATIONS = ["displayName", "pluralName", "description", "stereotypes", "tags", "category", "properties", "generation"] as const;
-/** The column facets an overlay entry may set that the resolved column view does not carry (the DDL facets among them). */
-const COLUMN_FACETS = ["unicode", "fixedLength", "defaultName", "sequence"] as const;
 const actionKeyword = (text: string): string => text.trim().toLowerCase().replace(/\s+/g, "-") || "no-action";
 
 /**
@@ -223,51 +213,36 @@ function materializeTables(input: BindingInput, databaseId: string, request: Mat
   const shaped = tableChoices(input, databaseId, picked, request);
   out.choices = shaped.choices;
   if (shaped.special) return materializeShaped(input, db, picked, request, shaped, out);
-  // Every picked entity projected into the database (a mapping added in memory, an ignoring one made placing).
+  // The shape each picked entity takes as a table.
   const all = [...docs.values()];
-  const projected = new Map(docs);
-  const mappingOf = (entity: string) => all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === entity);
+  const view = shapeTables(input, databaseId, picked);
+  const tableOf = new Map<string, ShapeTable>();
   for (const id of picked) {
-    const m = mappingOf(id);
-    if (m) projected.set(String(m.id), { ...m, ignore: false });
-    else projected.set(`tmp-${id}`, { kind: "mapping", id: `tmp-${id}`, name: "tmp", database: databaseId, entity: id });
-  }
-  const view = resolveDatabase({ ...input, docs: projected }, databaseId);
-  const tableOf = new Map<string, TableView>();
-  for (const id of picked) {
-    const t = view?.tables.find((x) => x.key === `${id}@${databaseId}`);
+    const t = view.tables.find((x) => x.key === `${id}@${databaseId}`);
     if (!t) out.diagnostics.push(refusal(`${String(docs.get(id)?.name)} has no table of its own in ${String(db.name)}.`, id));
     else tableOf.set(id, t);
   }
   if (out.diagnostics.length) return out;
   const schemaId = (name: string | null) => arr(db.schemas).find((s) => s.name === name)?.id as string | undefined;
-  const overlayOf = (entity: string) =>
-    all.find((d) => d.kind === "table" && d.database === databaseId && d.origin === "synthesized" && d.entity === entity && !d.attribute && !d.relation);
-  // Each picked table's new id (its overlay's, else a new one) and its column ids (the overlay entries', else new), drawn
+  // Each picked table's new id and its column ids, drawn
   // before any table is written so the foreign keys between them name each other's files and columns.
   const stored = new Map<string, { id: string; columns: Map<string, string> }>();
   for (const id of picked) {
     const t = tableOf.get(id)!;
-    const overlay = overlayOf(id);
-    const entries = new Map(arr(overlay?.columns).map((c) => [String(c.attribute ?? ""), c]));
-    const columns = new Map(t.columns.map((c) => [c.key, String(entries.get(c.key)?.id ?? input.newId())]));
-    stored.set(t.key, { id: String(overlay?.id ?? input.newId()), columns });
+    const columns = new Map(t.columns.map((c) => [c.key, input.newId()]));
+    stored.set(t.key, { id: input.newId(), columns });
   }
   const relationMappings = new Map<string, Json>();
   for (const id of picked) {
     const entity = docs.get(id)!;
     const t = tableOf.get(id)!;
-    const overlay = overlayOf(id);
     const { id: tableId, columns: colId } = stored.get(t.key)!;
-    const entries = new Map(arr(overlay?.columns).map((c) => [String(c.attribute ?? ""), c]));
     const ids = (keys: readonly string[]) => keys.map((k) => colId.get(k) ?? k);
     const columns = t.columns.map((c) => {
-      const entry = entries.get(c.key);
       const col: Json = { id: colId.get(c.key)!, name: c.name, type: c.type };
       if (c.length !== null) col.length = c.length;
       if (c.precision !== null) col.precision = c.precision;
       if (c.scale !== null) col.scale = c.scale;
-      if (typeof entry?.nativeType === "string") col.nativeType = entry.nativeType;
       if (!c.nullable) col.nullable = false;
       if (c.default !== null && c.default !== undefined) col.default = clone(c.default);
       if (c.defaultSql) col.defaultSql = { "*": c.defaultSql };
@@ -275,13 +250,10 @@ function materializeTables(input: BindingInput, databaseId: string, request: Mat
       if (c.computed) col.computed = c.computed;
       if (c.collation) col.collation = c.collation;
       if (c.comment) col.comment = c.comment;
-      for (const k of COLUMN_FACETS) if (entry?.[k] !== undefined) col[k] = clone(entry[k]);
-      for (const k of ANNOTATIONS) if (entry?.[k] !== undefined) col[k] = clone(entry[k]);
       return col;
     });
     const doc: Json = { kind: "table", id: tableId, name: t.name, database: databaseId };
-    for (const k of ANNOTATIONS) if (overlay?.[k] !== undefined) doc[k] = clone(overlay[k]);
-    const schema = request.schema ?? (typeof overlay?.schema === "string" ? overlay.schema : schemaId(t.schema));
+    const schema = request.schema ?? schemaId(t.schema);
     if (schema) doc.schema = schema;
     if (t.comment) doc.comment = t.comment;
     doc.columns = columns;
@@ -306,7 +278,6 @@ function materializeTables(input: BindingInput, databaseId: string, request: Mat
       return json;
     });
     if (foreignKeys.length) doc.foreignKeys = foreignKeys;
-    if (arr(overlay?.checks).length) doc.checks = clone(overlay!.checks);
     if (t.indexes.length)
       doc.indexes = t.indexes.map((x) => {
         const entry: Json = {
@@ -341,18 +312,8 @@ function materializeTables(input: BindingInput, databaseId: string, request: Mat
     updated.bindings = [...bindingsOf(entity), binding];
     out.writes.updates.push(updated);
     out.because.set(id, `bound to ${t.name}`);
-    if (overlay) {
-      out.writes.updates.push(doc);
-      out.because.set(tableId, `the overlay of ${String(entity.name)} becomes the designed table ${t.name}`);
-    } else {
-      out.writes.creates.push(doc);
-      out.because.set(tableId, `the designed table of ${String(entity.name)}`);
-    }
-    const mapping = mappingOf(id);
-    if (mapping) {
-      out.writes.deletes.push(String(mapping.id));
-      out.because.set(String(mapping.id), `${String(entity.name)} is bound to ${String(db.name)} now`);
-    }
+    out.writes.creates.push(doc);
+    out.because.set(tableId, `the designed table of ${String(entity.name)}`);
   }
   // Relations whose foreign key is now in a designed table name it in their relation mapping.
   for (const [relation, patch] of relationMappings) {
@@ -376,72 +337,6 @@ function materializeTables(input: BindingInput, databaseId: string, request: Mat
       out.writes.creates.push(json);
       out.because.set(String(json.id), "names the foreign key of the new table");
     }
-  }
-  const written = new Set([...out.writes.creates, ...out.writes.updates].map((d) => String(d.id)));
-  // The database's queries read the stored tables by their files, and their columns by the files' column ids.
-  const storedOf = (source: unknown) => {
-    if (typeof source !== "string") return undefined;
-    const direct = stored.get(source);
-    if (direct) return direct;
-    // A source naming the entity or its overlay names the same projected table.
-    const id = picked.find((p) => p === source || String(overlayOf(p)?.id ?? "") === source);
-    return id ? stored.get(`${id}@${databaseId}`) : undefined;
-  };
-  for (const q of all) {
-    if (q.kind !== "query" || q.database !== databaseId || written.has(String(q.id))) continue;
-    const next = clone(q);
-    const aliases = new Map<string, { id: string; columns: Map<string, string> }>();
-    let touched = false;
-    const sources = (node: unknown): void => {
-      if (Array.isArray(node)) return node.forEach(sources);
-      if (!node || typeof node !== "object") return;
-      const rec = node as Json;
-      const hit = storedOf(rec.source);
-      if (hit) {
-        if (rec.source !== hit.id) {
-          rec.source = hit.id;
-          touched = true;
-        }
-        if (typeof rec.alias === "string") aliases.set(rec.alias, hit);
-      }
-      Object.values(rec).forEach(sources);
-    };
-    const columns = (node: unknown): void => {
-      if (Array.isArray(node)) return node.forEach(columns);
-      if (!node || typeof node !== "object") return;
-      const rec = node as Json;
-      if (typeof rec.column === "string") {
-        const dot = rec.column.indexOf(".");
-        const hit = dot > 0 ? aliases.get(rec.column.slice(0, dot)) : undefined;
-        const cid = hit?.columns.get(rec.column.slice(dot + 1));
-        if (hit && cid) {
-          rec.column = `${rec.column.slice(0, dot)}.${cid}`;
-          touched = true;
-        }
-      }
-      Object.values(rec).forEach(columns);
-    };
-    sources(next);
-    columns(next);
-    if (touched) {
-      out.writes.updates.push(next);
-      written.add(String(q.id));
-      out.because.set(String(q.id), `query ${String(q.name)} reads the designed table by its id`);
-    }
-  }
-  // Other table files' foreign keys that named a projected table by its key follow it.
-  for (const d of all) {
-    if (d.kind !== "table" || d.database !== databaseId || d.origin === "synthesized" || written.has(String(d.id))) continue;
-    if (!arr(d.foreignKeys).some((fk) => stored.has(String(fk.referencesTable)))) continue;
-    const next = clone(d);
-    for (const fk of arr(next.foreignKeys)) {
-      const target = stored.get(String(fk.referencesTable));
-      if (!target) continue;
-      fk.referencesTable = target.id;
-      if (Array.isArray(fk.referencesColumns)) fk.referencesColumns = (fk.referencesColumns as string[]).map((c) => target.columns.get(c) ?? c);
-    }
-    out.writes.updates.push(next);
-    out.because.set(String(d.id), "its foreign keys name the new tables");
   }
   return out;
 }
@@ -483,10 +378,6 @@ function materializeEntities(input: BindingInput, databaseId: string, request: M
     const v = view?.views.find((x) => x.id === id);
     if (!table && !v) {
       out.diagnostics.push(refusal(`'${id}' is not a table or view of ${String(db.name)}.`, id));
-      continue;
-    }
-    if (table?.origin === "synthesized") {
-      out.diagnostics.push(refusal(`${table.name} is projected from an entity: it already has one.`, id));
       continue;
     }
     if (bindersOf(docs, id).length) {
@@ -731,13 +622,8 @@ function materializeColumns(input: BindingInput, databaseId: string, request: Ma
   if (!picked.length) out.diagnostics.push(refusal("Name at least one entity to add columns for.", databaseId));
   if (named && picked.length > 1) out.diagnostics.push(refusal("Name the attributes for one entity at a time.", databaseId));
   if (out.diagnostics.length) return out;
-  // The entities projected as if never bound to the database: their tables give the columns' shapes.
-  const unbound = new Map(docs);
-  for (const id of picked) {
-    const doc = docs.get(id);
-    if (doc?.kind === "entity") unbound.set(id, { ...doc, bindings: bindingsOf(doc).filter((b) => b.database !== databaseId) });
-  }
-  const projected = resolveDatabase({ ...input, docs: unbound }, databaseId);
+  // The tables the entities would take on their own give the columns' shapes.
+  const projected = shapeTables(input, databaseId, picked);
   for (const id of picked) {
     const doc = docs.get(id);
     if (doc?.kind !== "entity") {
@@ -751,7 +637,7 @@ function materializeColumns(input: BindingInput, databaseId: string, request: Ma
     }
     const binding = bindingsOf(doc)[index];
     const tableDoc = docs.get(binding.source);
-    if (tableDoc?.kind !== "table" || tableDoc.database !== databaseId || tableDoc.origin === "synthesized") {
+    if (tableDoc?.kind !== "table" || tableDoc.database !== databaseId) {
       out.diagnostics.push(
         refusal(
           `Entity '${String(doc.name)}' does not read a designed or imported table of database '${String(db.name)}': columns are added to a table file.`,
@@ -764,7 +650,7 @@ function materializeColumns(input: BindingInput, databaseId: string, request: Ma
       out.diagnostics.push(refusal(`Entity '${String(doc.name)}' writes another table than it reads: add the columns to the tables by hand.`, id));
       continue;
     }
-    const shape = projected?.tables.find((t) => t.origin === "synthesized" && t.entityId === id && !t.isJunction);
+    const shape = projected.tables.find((t) => t.entityId === id && !t.isJunction);
     if (!shape) {
       out.diagnostics.push(
         refusal(`Entity '${String(doc.name)}' has no table of its own in database '${String(db.name)}' to take the columns' shapes from.`, id),
@@ -1132,7 +1018,7 @@ export function bindingFindings(view: DatabaseView, docs: ReadonlyMap<string, Js
     if (ends.length !== 2 || !ends.every((e) => boundTable(e.entity))) continue;
     const mapping = relationMappings.get(String(r.id));
     const manyToMany = ends.every((e) => (e.max ?? "*") === "*");
-    if (manyToMany || mapping?.ignore === true || mapping?.foreignKey) continue;
+    if (manyToMany || mapping?.foreignKey) continue;
     out.push({
       rule: "MQ4011",
       severity: "error",
@@ -1189,8 +1075,7 @@ function tableChoices(input: BindingInput, databaseId: string, picked: string[],
   }
   for (const [root, members] of [...byRoot].sort((a, b) => name(a[0]).localeCompare(name(b[0])))) {
     const ordered = [...members].sort((a, b) => (a === root ? -1 : b === root ? 1 : name(a).localeCompare(name(b))));
-    const inheritance = all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === root)?.inheritance;
-    const fallback: HierarchyShape = inheritance === "tpc" ? "per-concrete" : inheritance === "tpt" ? "per-type" : "one-table";
+    const fallback: HierarchyShape = "one-table";
     const shape = choiceOf(request.hierarchy, root) ?? fallback;
     out.shapeOf.set(root, shape);
     out.hierarchies.set(root, ordered);
@@ -1199,12 +1084,9 @@ function tableChoices(input: BindingInput, databaseId: string, picked: string[],
   }
   for (const id of [...picked].sort((a, b) => name(a).localeCompare(name(b)))) {
     const entity = docs.get(id);
-    const mapping = all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === id);
     for (const attr of arr(entity?.attributes)) {
       if (attr.collection !== true) continue;
-      const own = arr(mapping?.attributes).find((a) => a.attribute === attr.id)?.storage;
-      const fromConventions = conventions.valueObjectCollectionStorage;
-      const fallback: ListStorage = own === "json" || (own === undefined && fromConventions === "json") ? "json" : "table";
+      const fallback: ListStorage = conventions.valueObjectCollectionStorage === "json" ? "json" : "table";
       const storage = choiceOf(request.listStorage, String(attr.id)) ?? fallback;
       out.storageOf.set(String(attr.id), storage);
       out.choices.lists.push({ entity: id, entityName: name(id), attribute: String(attr.id), attributeName: String(attr.name), storage, default: fallback });
@@ -1214,7 +1096,7 @@ function tableChoices(input: BindingInput, databaseId: string, picked: string[],
   return out;
 }
 
-type Column = TableView["columns"][number];
+type Column = ShapeTable["columns"][number];
 
 /**
  * materialize-tables for entities in a hierarchy or with lists: the hierarchy's tables in the shape asked for, a child table or
@@ -1238,22 +1120,11 @@ function materializeShaped(input: BindingInput, db: Json, picked: string[], requ
     }
   }
   if (out.diagnostics.length) return out;
-  // The columns each entity's own attributes give, by projecting it (abstract ones too).
-  const projected = new Map(docs);
+  // The columns each entity's own attributes give (abstract ones too).
+  const view = shapeTables(input, databaseId, picked);
+  const own = new Map<string, { table: ShapeTable; columns: Column[] }>();
   for (const id of picked) {
-    const e = docs.get(id)!;
-    projected.set(id, { ...e, abstract: false });
-    if (!all.some((d) => d.kind === "mapping" && d.database === databaseId && d.entity === id))
-      projected.set(`tmp-${id}`, { kind: "mapping", id: `tmp-${id}`, name: "tmp", database: databaseId, entity: id });
-    else {
-      const m = all.find((d) => d.kind === "mapping" && d.database === databaseId && d.entity === id)!;
-      projected.set(String(m.id), { ...m, ignore: false });
-    }
-  }
-  const view = resolveDatabase({ ...input, docs: projected }, databaseId);
-  const own = new Map<string, { table: TableView; columns: Column[] }>();
-  for (const id of picked) {
-    const t = view?.tables.find((x) => x.key === `${id}@${databaseId}`);
+    const t = view.tables.find((x) => x.key === `${id}@${databaseId}`);
     if (!t) {
       out.diagnostics.push(refusal(`${name(id)} has no table of its own in ${dbName}.`, id));
       continue;

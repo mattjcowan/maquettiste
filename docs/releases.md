@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.29.0 (not released yet)
+## 0.29.0 (2026-11-27)
 
 - **The reference sample and the test fixtures use designed tables and bindings.** Each was converted once with "Create
   tables…": designed tables, a binding per entity and a relation mapping per relation, with `byConvention` set to `none`.
@@ -130,6 +130,85 @@ one.
   "Create tables…" seed.sql no longer manages them.
 - "Create tables…" refuses, naming the attribute, a list attribute of a relationship kept in a table, a list of a reference
   type kept in a PostgreSQL enum array, and a table inside a child table: these shapes have no binding form yet.
+
+**Projection is removed (pull request 3 of 3).**
+
+- **Tables are no longer laid out from entities.** Every table is a designed table, and a database holds only the tables
+  written for it. These keys are gone: a database's `byConvention: all|packages` and `packages`; an entity mapping's
+  `entity`, `table`, `schema`, `ignore`, `inheritance` (tph, tpt, tpc) and `discriminatorValue`, and an attribute's
+  `storage`, `prefix` and `ignore`; a table file's `origin`, `entity`, `attribute` and `relation` (overlays) and a column's
+  `attribute`; and the relation shape `promoted` with `promotedName` and the setting `relationsWithAttributes: promoted`.
+  Relation mappings stay: `relation`, `shape` (`foreign-key` or `junction`), `foreignKey`, `foreignKeyEnd`,
+  `junctionTable`, `ends`, `constants` and `attributes[].column`.
+- **What replaces each key.** An entity's binding names the table it reads and writes. One table for a hierarchy is the
+  binding's `discriminatorColumn`. A table per type is `baseForeignKey`. A table per concrete entity is each entity
+  binding its own table. A list, or a single value object, in a table of its own is `childTables`. Embedded or JSON value
+  objects are binding field paths. What an overlay added (renames, native types, indexes, checks, extra columns) is now the
+  designed table's own definition. A promoted relation becomes an entity of its own, with a relation to each end. For
+  example, a `Billing.InvoiceLine` that links an invoice and a product is an entity with one relation to each.
+- **Old files do not load.** A file that still has a removed key is error MQ4145, one per file. It names the key and what
+  replaces it. No setting turns it off and it cannot be suppressed. `"byConvention": "none"` is still accepted: the editor
+  keeps writing it on new databases and the formatter keeps it.
+- **A database with no `byConvention` gets warning MQ4146** while some entity is not bound to that database. Before 0.29.0
+  such a database laid out a table for every entity not bound to it, so a model still on an older release would lose those
+  tables at the next migration. A database converted with "Create tables…" on 0.28.0 has no key either, so a new entity
+  shows the warning until it has a table. It never blocks a save, and its quick fix writes `"byConvention": "none"`. It
+  cannot be turned off.
+- **Older baselines and snapshots.** A baseline or a model snapshot taken before 0.29.0 is read with the removed keys
+  dropped. A baseline whose tables were all designed (every entity bound) still works with `validate --against` and
+  `generate --against`. A baseline that laid out tables by convention (an entity mapping, an overlay, `byConvention` other
+  than `none`, or no `byConvention` while some entity was not bound) is refused with MQ4145: "This baseline laid out
+  tables by convention. Compare it on 0.28.0, or take a new baseline after Create tables." Read without those keys it holds
+  none of those tables, so the comparison would create every one of them again. Model comparisons of snapshots
+  (`compare_snapshots`) still read old snapshots. Importing an old snapshot still checks its files as they are.
+- **Rules removed from the catalog:** MQ4007, MQ4012, MQ4013, MQ4014, MQ4054 and MQ4079. Their ids are not reused. MQ4004,
+  MQ4009 and MQ4011 now speak only of relation mappings. A relationship stored in a junction table whose mapping names no
+  designed junction table is MQ4011.
+- **Template members removed from the resolved model, and what to read instead:**
+  - `entity.mappings`: `entity.bindings` (per database: `source_table`, `fields`, `write` and the rest).
+  - `entity.is_promoted`, `entity.promoted_from` and `relation_mapping.promoted_entity`: none. A promoted relation is now an
+    entity of its own.
+  - `key.sequences`: the column's `sequence` on the bound table.
+  - On a table: `origin` (every table is designed or imported), `entity` and `attribute` (the entities that bind the table,
+    `entity.bindings`), `is_lookup` (a reference type's binding names its table). `is_junction` stays, now derived: it is
+    true when a relation mapping names the table as its junction table, and `table.relation` says which relation.
+  - On a column: `attribute` and `attribute_path` (a binding's `fields` map attributes to columns; a relationship's own
+    attributes on a junction table or foreign key are `relation.mappings[db].attributes`, each with its `column`),
+    `is_discriminator` (the binding's `discriminator_column`), `reference_type`, `reference_binding` and `code_type` (the
+    column's `bound_type`, and the attribute's type through the binding), `strategy` (the attribute's key strategy).
+  - `relation_mapping.template_defined`: none.
+  - `database.by_convention` and `database.packages`: none. Every database holds only the tables written for it.
+  `relation.mappings` stays. The `sql-ddl` pack no longer reads an attribute's default, or a reference-type list's
+  template-defined storage, from the model. A template that reads a removed member must drop that branch.
+- **Database view records.** `get_database_view` and the editor's table records no longer have `origin`, `entityId`,
+  `isJunction` or `isLookup`. Read `relationId` for a junction table and `boundBy` for the entities that read or write a
+  table.
+- **`where: { database }` now matches bound entities (a change in output).** A unit `for: each entity` or
+  `each attribute` with `where: { database: <name> }` used to match only entities with an entity mapping there. It now
+  matches every entity with a binding to that database, and their attributes. A pack that filters this way renders more
+  files after the update: one per entity bound there.
+- **Editor.** The Settings › Conventions panel "Older projects", the overlay mode of the table screens and the mock
+  projection are gone. The materialize status has no `projected` flag. **Go to table** on an entity's menu now follows the
+  entity's bindings: it opens the table a binding writes, or else reads. An entity's index row has a new `boundTo` list for
+  this (the table each binding writes, else its source), left out when the entity has no binding.
+
+**When you update to 0.29.0:**
+
+- A team whose entities are all bound and whose databases say `"byConvention": "none"` changes nothing.
+- Any other team, on 0.28.0: run "Create tables…" (`materialize-tables`) for every entity still projected, in each database.
+  It writes designed tables, bindings and relation mappings, folds overlays in and deletes entity mappings. Take a
+  snapshot. Then set `"byConvention": "none"` on each database and upgrade to 0.29.0.
+- Templates that read `entity.mappings` or the other removed members must drop those branches.
+- Refresh the project's copies of the `sql-ddl` and `csharp-dapper` packs. `init` keeps files that exist, so move your
+  copy aside (keep any change you made to it), then run `maquettiste init --pack sql-ddl` (and `--pack csharp-dapper`), or
+  copy the pack folders from the release's `packs/`. A 0.28.0 copy of `sql-ddl/_reference.scriban` fails with MQ6006 on
+  `e.mappings`.
+- The project's copy of the JSON schemas (`.maquettiste/.schema/v1/`) gives warning MQ1008 until you run `maquettiste
+  init`, which rewrites it.
+- **Known: edits of very large models.** After one edit, only the files the edit affects are rendered again, but the steps
+  before rendering (reading the model folder, validation, resolve, and checking which outputs changed) still cover the whole
+  model. On a model of 5,000 entities one edit takes about 3.6 s and allocates about 2.8 GB; on a few hundred entities it
+  stays well under a second. Making those steps cover only what the edit changed is the next piece of work.
 
 ## 0.28.0 (2026-11-26)
 

@@ -76,6 +76,7 @@
       "zoom": 0.9
     },
     "$schema": "../../.schema/v1/diagram.json",
+    "excludeStereotypes": null,
     "suppressions": [],
     "id": "01J92P0V2164SDBW687ZV6E1MV",
     "name": "Billing overview",
@@ -95,6 +96,7 @@
   "path": ".maquettiste/model/diagrams/billing-overview.json",
   "hash": "a29e751129658af7503fb429afb3b382538a96bd8adee116e98b08a17152840c",
   "dependencyHash": "a721359c5937c7c963407f917a79fb5f9dc2bdb918e7438ff7372cc59ca4df73",
+  "sidecarText": null,
   "json": {
     "$schema": "../../.schema/v1/diagram.json",
     "kind": "diagram",
@@ -141,6 +143,5 @@
     "viewport": {
       "zoom": 0.9
     }
-  },
-  "sidecarText": null
+  }
 }

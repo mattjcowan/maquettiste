@@ -29,6 +29,7 @@ import {
   type TreeInput,
   type TreeNode,
 } from "@/explorer/tree";
+import { menuFor } from "@/explorer/menus";
 import { IDS } from "./harness";
 
 const strictTiming = process.env.MQ_SCALE_STRICT === "1";
@@ -256,11 +257,11 @@ describe("tree over the billing fixture", () => {
     const invoice = relatedKeys(forest, IDS.invoice);
     for (const name of ["contains", "places", "settles", "InvoiceLine", "Customer", "Payment"]) expect(invoice.has(idOf(rows, name))).toBe(true);
     const invoicesTable = find(forest, "databases", "main", "billing", "Tables", "invoices").key;
-    // A table names no entity (storage is a warehouse): the designed invoices table relates to nothing.
-    expect(invoice.has(invoicesTable)).toBe(false);
+    // A table names no entity (storage is a warehouse), but Invoice's binding names the invoices table: they relate through it.
+    expect(invoice.has(invoicesTable)).toBe(true);
     const settles = relatedKeys(forest, idOf(rows, "settles"));
     expect(settles).toEqual(new Set([IDS.payment, IDS.invoice, find(forest, "databases", "main", "billing", "Tables", "payment_invoice").key]));
-    expect(relatedKeys(forest, invoicesTable)).toEqual(new Set());
+    expect(relatedKeys(forest, invoicesTable)).toEqual(new Set([IDS.invoice]));
     const counts = relatedCounts(forest, invoice);
     expect(counts.get(find(forest, "domain-model", "Billing", "Entities").key)).toBe(3);
     expect(counts.get(find(forest, "domain-model", "Billing", "Relationships").key)).toBe(3);
@@ -585,4 +586,25 @@ describe.skipIf(!fs.existsSync(largeSeed))("tree over the large mock (?mock=larg
     console.info(`expand ${largest.count} tables: ${ms.toFixed(1)} ms`);
     if (strictTiming) expect(ms).toBeLessThanOrEqual(16 * 1.25);
   }, 120_000);
+});
+
+describe("an entity's tables through its bindings", () => {
+  it("links each bound entity to the table its binding writes, so Go to table is offered and leads there", () => {
+    const { rows, tables } = billing();
+    const forest = buildForest({ rows, tables });
+    const invoiceRow = rows.find((r) => r.id === IDS.invoice)!;
+    expect(invoiceRow.boundTo?.length).toBeGreaterThan(0);
+    const invoicesTable = find(forest, "databases", "main", "billing", "Tables", "invoices").key;
+    expect(forest.related.tablesOf.get(IDS.invoice)).toEqual([invoicesTable]);
+    expect(forest.related.mappedBy.get(invoicesTable)).toBe(IDS.invoice);
+    expect(menuFor([{ type: "element", kind: "entity", element: true, linked: true }]).map((i) => i.id)).toContain("go-to-table");
+    expect(menuFor([{ type: "element", kind: "entity", element: true, linked: false }]).map((i) => i.id)).not.toContain("go-to-table");
+  });
+
+  it("leaves an entity without a binding unlinked", () => {
+    const { rows, tables } = billing();
+    const unbound = rows.map((r) => (r.id === IDS.invoice ? { ...r, boundTo: undefined } : r));
+    const forest = buildForest({ rows: unbound, tables });
+    expect(forest.related.tablesOf.get(IDS.invoice) ?? []).toEqual([]);
+  });
 });

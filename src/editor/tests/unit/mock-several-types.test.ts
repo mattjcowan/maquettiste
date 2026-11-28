@@ -2,7 +2,6 @@
 // MQ4115 with the design's texts, the references of an entry, and the cascade when an entity or stereotype is deleted.
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
-import { billingProjectedSeed } from "@/mocks/model/seed";
 
 type Json = Record<string, unknown>;
 
@@ -24,7 +23,7 @@ const types = (...entries: Json[]) => entries;
 
 /** The model with the entities and the relation. The relation is created plain, then edited into the form under test, as an outside edit would. */
 function backendWith(ends: [Json, Json], relation: Json = {}, stereotypes: boolean = false) {
-  const backend = new MockBackend({ seed: billingProjectedSeed() });
+  const backend = new MockBackend();
   const make = (json: Json) => expect(backend.model.create(json).outcome).toBe("saved");
   make(entity(ID.part, "Part"));
   make(entity(ID.purchased, "PurchasedPart", { base: ID.part }));
@@ -165,26 +164,23 @@ describe("MQ3042 and MQ3043", () => {
 });
 
 describe("MQ4115", () => {
-  it("is info for a database that places a type of every end, and silenced by a mapping that ignores the relation", () => {
+  it("is info for a database that holds a type of every end", () => {
     const backend = backendWith([near, far({ types: types({ entity: ID.part }, { entity: ID.assembly }) })]);
     const database = [...backend.model.entries.values()].find((e) => e.json.kind === "database")!;
+    const table = backend.model.index().find((r) => r.kind === "table" && r.database === database.id)!;
+    // A type of every end is held by the database once an entity of each is bound to one of its tables.
+    expect(found(backend, "MQ4115")).toEqual([]);
+    [ID.part, ID.assembly, ID.comment].forEach((id, i) =>
+      backend.model.externalEdit(id, (json) => {
+        json.bindings = [{ id: `01J92P0V0JR8BE8253SKT29BB${i}`, database: database.id, source: table.id }];
+      }),
+    );
     const messages = found(backend, "MQ4115");
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
       severity: "info",
       message: `Relation 'AttachedTo' has an end with several types, so database '${String(database.json.name)}' stores nothing for it.`,
     });
-    expect(
-      backend.model.create({
-        kind: "mapping",
-        id: "01J92P0V0JR8BE8253SKT29B0C",
-        name: "AttachedTo ignored",
-        database: database.id,
-        relation: ID.rel,
-        ignore: true,
-      }).outcome,
-    ).toBe("saved");
-    expect(found(backend, "MQ4115")).toEqual([]);
   });
 
   it("never fires for a one-type relation", () => {

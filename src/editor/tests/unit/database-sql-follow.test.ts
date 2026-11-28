@@ -4,13 +4,11 @@
 // objects listed to check, a table's rename listing what names its old name; and the small rules around them (a refused part
 // edit, a foreign key dialog whose table was stored meanwhile).
 import { describe, expect, it } from "vitest";
-import type { TableView } from "@/api/types";
 import { mentions, mentionsColumn, renameIdentifier, renameOutputColumn, selectsAll } from "@/workspaces/database/sqlIdentifiers";
 import { planColumnRename, planTableRename, renameViewOutput } from "@/workspaces/database/renames";
 import { queryReadsColumn, queryTable, renameInQuery } from "@/workspaces/database/queryColumns";
 import { planPartDelete } from "@/workspaces/database/partDelete";
 import { editPart } from "@/workspaces/database/tableParts";
-import { followStoredDraft, type FkDraft } from "@/workspaces/database/fkEdits";
 import { renameNotice } from "@/workspaces/database/columnRename";
 
 type Json = Record<string, unknown>;
@@ -259,54 +257,5 @@ describe("the small rules", () => {
     expect(editPart(doc, undefined, () => undefined)).toBe(false);
     expect(editPart(doc, entry, (e) => void (e.columns = ["A"]))).toBe(false);
     expect(editPart(doc, entry, (e) => void (e.columns = ["A", "B"]))).toBeUndefined();
-  });
-
-  it("follows a foreign key draft to the files its tables were stored as while the dialog was open", () => {
-    const view = (key: string, name: string, cols: [string, string][]) =>
-      ({ key, name, schema: null, columns: cols.map(([k, n]) => ({ key: k, name: n })), primaryKey: null, foreignKeys: [] }) as unknown as TableView;
-    const before = new Map([
-      [
-        "c@DB",
-        view("c@DB", "customers", [
-          ["A_ID", "id"],
-          ["A_NOTE", "note_id"],
-        ]),
-      ],
-      ["n@DB", view("n@DB", "notes", [["N_ID", "id"]])],
-    ]);
-    const tables = [
-      view("F_C", "customers", [
-        ["C1", "id"],
-        ["C2", "note_id"],
-      ]),
-      view("n@DB", "notes", [["N_ID", "id"]]),
-    ];
-    const draft: FkDraft = {
-      table: "c@DB",
-      editing: null,
-      name: "fk",
-      referencedTable: "n@DB",
-      pairs: [{ column: "A_NOTE", referenced: "N_ID" }],
-      onDelete: "no-action",
-      onUpdate: "no-action",
-      deferrable: "not-deferrable",
-    };
-    const files = new Map([["c@DB", "F_C"]]);
-    const next = followStoredDraft(
-      draft,
-      tables,
-      (k) => files.get(k),
-      (k) => before.get(k),
-    );
-    expect(next).toMatchObject({ table: "F_C", referencedTable: "n@DB", pairs: [{ column: "C2", referenced: "N_ID" }] });
-    // Nothing stored: nothing moves.
-    expect(
-      followStoredDraft(
-        next!,
-        tables,
-        (k) => files.get(k),
-        (k) => before.get(k),
-      ),
-    ).toBeNull();
   });
 });

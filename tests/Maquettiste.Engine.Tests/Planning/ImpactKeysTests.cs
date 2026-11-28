@@ -8,7 +8,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Planning;
 
 /// <summary>When a dry run's change touches a stored read key (next-phase-2-design.md section 6.1, decision 3).</summary>
-[UsesProjectedFixtures]
 public sealed class ImpactKeysTests
 {
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
@@ -270,7 +269,8 @@ public sealed class ImpactKeysTests
         Assert.True(reshaping.IsTouched("k:migration"));
         Assert.True(reshaping.IsTouched("r:" + Main));
 
-        var (describing, described) = await KeysAsync(s, Update(s, Invoice, e => e["description"] = "A bill."));
+        // A description of an element that names no database (a bound entity names its database through its binding).
+        var (describing, described) = await KeysAsync(s, Update(s, BillingPackage, e => e["description"] = "What we bill."));
         Assert.Empty(described.Facts!);
         Assert.False(describing.IsTouched("k:migration"));
         Assert.False(describing.IsTouched("r:" + Main));

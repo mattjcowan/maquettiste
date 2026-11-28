@@ -242,14 +242,12 @@ internal static class OutputImpact
 
     /// <summary>
     /// The <c>for</c> scope an element enters: <c>each &lt;kind&gt;</c> by its kind name, <c>each custom:&lt;type&gt;</c> for a
-    /// custom element, <c>each attribute</c> for an attribute. A table that binds an entity or a relation makes no table of its own
-    /// (resolution names the table), so it enters none.
+    /// custom element, <c>each attribute</c> for an attribute.
     /// </summary>
     private static string? ScopeOf(Element? element) => element switch
     {
         null => "each attribute",
         Custom custom => UnitRules.CustomScopePrefix + custom.Type,
-        Table { Entity: not null } or Table { Relation: not null } => null,
         _ => "each " + element.KindName.Replace('-', ' '),
     };
 

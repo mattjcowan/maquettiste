@@ -125,7 +125,6 @@ internal static class PostgresFeatures
     private static JsonObject Table(int n, string name, JsonArray columns)
     {
         var table = Element("table", n, name);
-        table["origin"] = "designed";
         table["columns"] = columns;
         return table;
     }

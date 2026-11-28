@@ -65,7 +65,7 @@ export function isPrimaryOrUnique(table: TableDoc | undefined, columns: readonly
   return (table?.uniques ?? []).some((u) => sameSet(columnIds(table, u.columns), columns));
 }
 
-/** The table key a binding keeps its rows in, as a plain table id; undefined for a projected (`key@database`) table. */
+/** The table key a binding keeps its rows in, as a plain table id; undefined for a key that is not one. */
 export function plainTable(key: string | undefined | null): string | undefined {
   return key && !key.includes("@") ? key : undefined;
 }

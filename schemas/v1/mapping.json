@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Mapping",
-  "description": "Binds one entity or relation to one database.",
+  "description": "Says how one relation is stored in one database: the foreign key or the designed junction table that holds its links.",
   "type": "object",
   "x-order": [
     "$schema",
@@ -12,10 +12,7 @@
     "pluralName",
     "package",
     "database",
-    "entity",
     "relation",
-    "table",
-    "schema",
     "description",
     "rationale",
     "decision",
@@ -25,9 +22,6 @@
     "excludeStereotypes",
     "tags",
     "category",
-    "ignore",
-    "inheritance",
-    "discriminatorValue",
     "attributes",
     "shape",
     "foreignKeyEnd",
@@ -35,7 +29,6 @@
     "junctionTable",
     "ends",
     "constants",
-    "promotedName",
     "properties",
     "generation",
     "source"
@@ -67,17 +60,7 @@
     "database": {
       "$ref": "common.json#/$defs/id"
     },
-    "entity": {
-      "$ref": "common.json#/$defs/id"
-    },
     "relation": {
-      "$ref": "common.json#/$defs/id"
-    },
-    "table": {
-      "$ref": "common.json#/$defs/id"
-    },
-    "schema": {
-      "description": "For an entity mapping: the id of the database schema the entity's conventional table goes to; it wins over the database's convention package entry and its default schema.",
       "$ref": "common.json#/$defs/id"
     },
     "description": {
@@ -116,39 +99,19 @@
     "category": {
       "$ref": "common.json#/$defs/id"
     },
-    "ignore": {
-      "type": "boolean",
-      "default": false
-    },
-    "inheritance": {
-      "enum": ["tph", "tpt", "tpc"]
-    },
-    "discriminatorValue": {
-      "type": ["string", "integer"]
-    },
     "attributes": {
       "type": "array",
       "items": {
         "title": "Attribute mapping",
         "type": "object",
-        "x-order": ["attribute", "column", "storage", "prefix", "ignore"],
+        "x-order": ["attribute", "column"],
         "properties": {
           "attribute": {
             "$ref": "common.json#/$defs/id"
           },
           "column": {
-            "description": "The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). On a relation mapping of the foreign-key shape: a column of the table that holds the foreign key, not one of the key's own columns (MQ4009).",
+            "description": "The id of the column that stores the relation attribute. With a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). On the foreign-key shape: a column of the table that holds the foreign key, not one of the key's own columns (MQ4009).",
             "$ref": "common.json#/$defs/id"
-          },
-          "storage": {
-            "enum": ["int", "string", "embedded", "table", "json"]
-          },
-          "prefix": {
-            "type": "string"
-          },
-          "ignore": {
-            "type": "boolean",
-            "default": false
           }
         },
         "required": ["attribute"],
@@ -157,7 +120,7 @@
       "default": []
     },
     "shape": {
-      "enum": ["foreign-key", "junction", "promoted"]
+      "enum": ["foreign-key", "junction"]
     },
     "foreignKeyEnd": {
       "$ref": "common.json#/$defs/id"
@@ -272,9 +235,6 @@
       },
       "default": []
     },
-    "promotedName": {
-      "$ref": "common.json#/$defs/identifier"
-    },
     "properties": {
       "$ref": "common.json#/$defs/properties",
       "default": {}
@@ -287,14 +247,6 @@
       "$ref": "common.json#/$defs/source"
     }
   },
-  "required": ["kind", "id", "name", "database"],
-  "additionalProperties": false,
-  "oneOf": [
-    {
-      "required": ["entity"]
-    },
-    {
-      "required": ["relation"]
-    }
-  ]
+  "required": ["kind", "id", "name", "database", "relation"],
+  "additionalProperties": false
 }

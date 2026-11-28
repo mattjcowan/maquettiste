@@ -424,7 +424,7 @@ internal sealed partial class ModelTools(ModelStore store, GenerationService gen
     public Task<CallToolResult> Plan(
         [Description("Only these packs (default: every enabled pack).")] string[]? packs = null,
         [Description("Only these units: \"<pack>/<unit>\" (sql-ddl/schema), or a unit id that exactly one run pack has (default: every unit).")] string[]? units = null,
-        [Description("Only the units of these elements, by id, never by name (a synthesized table's id is <entityId>@<databaseId>); units that run once for the whole model never match (default: every element).")] string[]? elements = null,
+        [Description("Only the units of these elements, by id, never by name; units that run once for the whole model never match (default: every element).")] string[]? elements = null,
         [Description("Render every unit, ignoring the unit cache.")] bool force = false,
         [Description("fail, overwrite or skip: overrides the project's hand-edit policy.")] string? handEdits = null,
         [Description("Parallelism for this run (at least 1).")] int? jobs = null,

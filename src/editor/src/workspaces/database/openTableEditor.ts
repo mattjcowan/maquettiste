@@ -1,4 +1,4 @@
-// Opens a table's editor (every table has one: a table file by its id, a table the model lays out by its key) on a tab, with a
+// Opens a table's editor (every table has one, by its file's id) on a tab, with a
 // part picked: the inspector then shows that part alone.
 import { openTab, setView } from "@/editors/tabs";
 import { tableKeyOf } from "@/search/engine";

@@ -8,12 +8,12 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Store;
 
 /// <summary>A batch's dry run: diffs, the diagnostics the change adds and removes, and its facts (next-phase-1-design.md section 5.1).</summary>
-[UsesProjectedFixtures]
 public sealed class BatchPreviewTests
 {
     private const string Customer = "01J92P0V0ETQKXXP951CMMNHH3";
     private const string Product = "01J92P0V0JR8BE8253SKT29ZG7";
-    private const string InvoiceOverlay = "01J92P0V1T0J6RH4MY9H81NYB4";
+    private const string InvoicesTable = "01J92P0V1T0J6RH4MY9H81NYB4";
+    private const string CustomersTable = "01M8EJPZN867GR1CJR5ZERBJ0V";
     private const string FindCustomers = "01K6QRY0000000000000000003";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -89,7 +89,7 @@ public sealed class BatchPreviewTests
     public async Task A_dry_run_of_a_delete_lists_its_vanished_diagnostics_as_removed()
     {
         await using var s = await BillingStore.OpenAsync(validate: true);
-        await RetireAsync(s, Customer);
+        await RetireAsync(s, CustomersTable);
         var query = s.Model.GetDocument(FindCustomers)!;
         var validator = EngineServices.Create(s.Harness.Options).Validator;
         var own = (await validator.ValidateAsync(s.Model, new ValidationScope([FindCustomers], IncludeReferrers: false), null, Ct)).Diagnostics;
@@ -165,7 +165,7 @@ public sealed class BatchPreviewTests
 
         // A name that finds nothing: refused before anything is planned.
         var unnamed = await s.Store.PreviewBatchAsync(Parse(s, """
-            { "operations": [ { "op": "create", "element": { "kind": "mapping", "name": "m", "database": "@database:archive" } } ] }
+            { "operations": [ { "op": "create", "element": { "kind": "mapping", "name": "m", "database": "@database:archive", "relation": "01J92P0V1ACKN3G6TK3NJDTM82" } } ] }
             """), Ct);
         // A change that brings a new error (a dangling reference), next to one that would clear warnings.
         var dangling = await s.Store.PreviewBatchAsync(Parse(s, $$"""
@@ -197,13 +197,13 @@ public sealed class BatchPreviewTests
               "byConvention": "none" }
             """u8.ToArray(), ChangeSource.Cli, Ct);
         Assert.True(archive.Outcome == SaveOutcome.Saved, string.Join("; ", archive.Diagnostics.Select(d => d.Message)));
-        // The invoice number's column is varchar(32) in the Invoice table's overlay, which has no stored name: it is reached by id.
-        var overlay = s.Model.GetDocument(InvoiceOverlay)!;
+        // The invoice number's column is varchar(32) in the invoices table, reached by id.
+        var invoices = s.Model.GetDocument(InvoicesTable)!;
         var files = s.Files();
 
         var preview = await s.Store.PreviewBatchAsync(Parse(s, $$"""
-            { "operations": [ { "op": "update", "id": "{{InvoiceOverlay}}", "expectedHash": "{{overlay.Hash}}",
-                "element": {{Edited(overlay, e => e["columns"]![0]!["nativeType"] = "varchar(20)")}} } ] }
+            { "operations": [ { "op": "update", "id": "{{InvoicesTable}}", "expectedHash": "{{invoices.Hash}}",
+                "element": {{Edited(invoices, e => e["columns"]!.AsArray().Single(c => (string?)c!["name"] == "number")!["nativeType"] = "varchar(20)")}} } ] }
             """), Ct);
 
         Assert.True(preview.Outcome == SaveOutcome.Saved, string.Join("; ", preview.Items.SelectMany(i => i.Diagnostics).Select(d => d.Message)));
@@ -214,55 +214,11 @@ public sealed class BatchPreviewTests
         Assert.Equal(("created", "migration"), (factFile.Action, factFile.Kind));
         Assert.StartsWith($"--- a/{fact.Path}\n+++ b/{fact.Path}\n@@ -0,0 +1,", factFile.Diff, StringComparison.Ordinal);
         Assert.Equal(["/conversion", "/dataCheck"], fact.Missing.Select(m => "/" + m));
-        Assert.Contains(preview.Files, f => f.Id == InvoiceOverlay && f.Action == "changed");
+        Assert.Contains(preview.Files, f => f.Id == InvoicesTable && f.Action == "changed");
         var pending = preview.DiagnosticsAdded.Where(d => d.Rule == "MQ4101").ToList();
         Assert.NotEmpty(pending);
         Assert.All(pending, d => Assert.Equal((fact.Id, DiagnosticSeverity.Error), (d.ElementId, d.Severity)));
         Assert.Empty(preview.DiagnosticsRemoved);
-    }
-
-    [Fact]
-    public async Task A_resync_dry_run_lists_the_facts_of_a_projected_entity()
-    {
-        await using var s = await BillingStore.OpenAsync(validate: true);
-        const string InvoiceNote = "01K6BND0000000000000000010", Notes = "01K6BND0000000000000000001", NotesBody = "01K6BND0000000000000000005";
-        // InvoiceNote is bound to notes in main and also projected into archive by a mapping element; a third database keeps the
-        // write's reach to some databases, so the dry run computes their facts.
-        string archive = "";
-        foreach (var name in new[] { "archive", "scratch" })
-        {
-            var created = await s.Store.CreateAsync(Encoding.UTF8.GetBytes($$"""
-                { "kind": "database", "name": "{{name}}", "dialect": "postgresql", "version": "16", "defaultSchema": "{{name}}", "schemas": [ { "name": "{{name}}" } ],
-                  "byConvention": "none" }
-                """), ChangeSource.Cli, Ct);
-            Assert.True(created.Outcome == SaveOutcome.Saved, string.Join("; ", created.Diagnostics.Select(d => d.Message)));
-            if (name == "archive")
-                archive = created.Id!;
-        }
-
-        var mapping = await s.Store.CreateAsync(Encoding.UTF8.GetBytes($$"""{ "kind": "mapping", "name": "notes in archive", "database": "{{archive}}", "entity": "{{InvoiceNote}}" }"""),
-            ChangeSource.Cli, Ct);
-        Assert.True(mapping.Outcome == SaveOutcome.Saved, string.Join("; ", mapping.Diagnostics.Select(d => d.Message)));
-        var resync = $$"""{ "operations": [ { "op": "resync-binding", "database": "01J92P0V1QRN2181XM2ZWE02W4", "entities": ["{{InvoiceNote}}"] } ] }""";
-        // A re-sync from scratch records the provenance of every column of notes; then the body column is renamed.
-        var recorded = await s.Store.ApplyBatchAsync(Parse(s, resync), ChangeSource.Cli, Ct);
-        Assert.True(recorded.Outcome == SaveOutcome.Saved, string.Join("; ", recorded.Items.SelectMany(i => i.Diagnostics).Select(d => d.Message)));
-        var notes = s.Model.GetDocument(Notes)!;
-        var renamed = await s.Store.SaveAsync(Notes, BillingStore.Edit(notes, t => t["columns"]!.AsArray().Single(c => c!["id"]!.GetValue<string>() == NotesBody)!["name"] = "note_text"),
-            notes.Hash, ChangeSource.Cli, Ct);
-        Assert.True(renamed.Outcome == SaveOutcome.Saved, string.Join("; ", renamed.Diagnostics.Select(d => d.Message)));
-        var files = s.Files();
-
-        var preview = await s.Store.PreviewBatchAsync(Parse(s, resync), Ct);
-
-        Assert.True(preview.Outcome == SaveOutcome.Saved, string.Join("; ", preview.Items.SelectMany(i => i.Diagnostics).Select(d => d.Message)));
-        Assert.Equal(files, s.Files());
-        var entity = Assert.Single(preview.Files, f => f.Id == InvoiceNote);
-        Assert.Contains("\"name\": \"noteText\"", entity.After, StringComparison.Ordinal);
-        // The attribute's new name renames the column InvoiceNote's projection has in archive: the dry run lists that fact.
-        var fact = Assert.Single(preview.Facts!);
-        Assert.Equal((archive, "rename"), (fact.Database, fact.Fact));
-        Assert.Contains(preview.Files, f => f.Path == fact.Path && f.Action == "created");
     }
 
     [Fact]

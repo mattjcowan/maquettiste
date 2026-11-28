@@ -9,7 +9,6 @@ namespace Maquettiste.Packs.Tests;
 /// missing, and a seed of one environment goes to that environment's script (seed.dev.sql) when the pack names the environment.
 /// On SQLite the scripts run, twice, when sqlite3 is on the PATH.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class TableSeedSqlTests
 {
     private const string MainId = "01J92P0V1QRN2181XM2ZWE02W4";
@@ -83,7 +82,7 @@ public sealed class TableSeedSqlTests
     internal static string N(int n) => Natural + n.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Billing with schema sales in main (billing projects its own customers and invoices into schema billing), holding customers
+    /// Billing with schema sales in main (billing keeps its own customers and invoices in schema billing), holding customers
     /// (id, name, email unique as uq_customers_email) and invoices (id, number unique as uq_invoices_number, issued_on, customer_id
     /// with fk_invoices_customer to customers(id)); a seed of Ada and Grace keyed by email, and one of INV-1 and INV-3 for Ada and
     /// INV-2 for Grace keyed by number whose customer is the foreign-key entry. The ids take stable ids, or with
@@ -95,18 +94,19 @@ public sealed class TableSeedSqlTests
         var repo = sqlite ? PackRepo.BillingDialects() : PackRepo.Billing();
         var database = sqlite ? LocalId : MainId;
         var schema = sqlite ? "" : $",\"schema\":\"{N(99)}\"";
-        var (folder, prefix) = sqlite ? ("local", "sl_") : ("main", ""); // billing projects customers and invoices into local too
+        // billing keeps its own customers and invoices tables in both databases: these files take other names
+        var (folder, prefix, file) = sqlite ? ("local", "sl_", "sl_") : ("main", "", "sales-");
         if (!sqlite)
             repo.EditJson(".maquettiste/model/databases/main/database.json", db => db["schemas"]!.AsArray().Add(new JsonObject { ["id"] = N(99), ["name"] = "sales" }));
         var customerId = identity ? "\"type\":\"int64\",\"nullable\":false,\"generated\":\"identity\"" : "\"type\":\"uuid\",\"nullable\":false,\"stableId\":true";
-        repo.Write($".maquettiste/model/databases/{folder}/tables/{prefix}customers.json", $$"""
+        repo.Write($".maquettiste/model/databases/{folder}/tables/{file}customers.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{N(1)}}","name":"{{prefix}}customers","database":"{{database}}"{{schema}},"columns":[
               {"id":"{{N(2)}}","name":"id",{{customerId}}},
               {"id":"{{N(3)}}","name":"name","type":"string","nullable":false},
               {"id":"{{N(4)}}","name":"email","type":"string","length":254,"nullable":false}],
              "primaryKey":{"columns":["{{N(2)}}"]},"uniques":[{"id":"{{N(5)}}","name":"uq_customers_email","columns":["{{N(4)}}"]}]}
             """);
-        repo.Write($".maquettiste/model/databases/{folder}/tables/{prefix}invoices.json", $$"""
+        repo.Write($".maquettiste/model/databases/{folder}/tables/{file}invoices.json", $$"""
             {"$schema":"../../../../.schema/v1/table.json","kind":"table","id":"{{N(10)}}","name":"{{prefix}}invoices","database":"{{database}}"{{schema}},"columns":[
               {"id":"{{N(11)}}","name":"id","type":"uuid","nullable":false,"stableId":true},
               {"id":"{{N(12)}}","name":"number","type":"string","length":32,"nullable":false},

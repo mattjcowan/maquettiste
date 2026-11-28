@@ -8,7 +8,7 @@ namespace Maquettiste.Engine.Tests.Migrations;
 
 /// <summary>
 /// MQ4119 (several-types-design.md decision 52): a type code a relation mapping's type column holds that changed since the baseline. Codes come
-/// from the files on each side (the binding's <c>discriminatorValue</c>, then the mapping's, then the name), what each type column holds from
+/// from the files on each side (the binding's <c>discriminatorValue</c>, then the name), what each type column holds from
 /// the database run; an entity the baseline lacks, or a code that didn't change, gives nothing; the finding sits where the code is set.
 /// </summary>
 public sealed class TypeCodeCheckTests
@@ -22,8 +22,7 @@ public sealed class TypeCodeCheckTests
     private const string AttachedTo = "01JRXN00000000000000000001", AttachedToEnd = "01JEND00000000000000000002";
     private const string TypeColumn = "01JCMN00000000000000000001";
 
-    private static ModelSnapshot Model(string partName, JsonElement? bindingCode = null, JsonElement? mappingCode = null, bool bound = false,
-        string? typeColumn = TypeColumn)
+    private static ModelSnapshot Model(string partName, JsonElement? bindingCode = null, bool bound = false, string? typeColumn = TypeColumn)
     {
         var b = new ModelBuilder().Add(Db);
         b.Add(new Entity
@@ -32,8 +31,6 @@ public sealed class TypeCodeCheckTests
             Bindings = bindingCode is null && !bound ? [] : [new EntityBinding { Id = "01JBND00000000000000000001", Database = Main, Source = "parts", DiscriminatorValue = bindingCode }],
         });
         b.Add(new Entity { Id = Assembly, Name = "Assembly" });
-        if (mappingCode is not null)
-            b.Add(new Mapping { Id = "01JMAP00000000000000000001", Name = "Part in main", Database = Main, Entity = Part, DiscriminatorValue = mappingCode });
         // The relation mapping whose type column holds the codes; the baseline's tells whether links were stored with them.
         if (typeColumn is not null)
         {
@@ -59,18 +56,18 @@ public sealed class TypeCodeCheckTests
     };
 
     [Fact]
-    public void A_code_read_from_files_takes_the_binding_then_the_mapping_then_the_name()
+    public void A_code_read_from_files_takes_the_binding_then_the_name()
     {
         Assert.Equal(("Part", Part, "/name"), Simple(TypeCodeCheck.CodeOf(Model("Part"), Get(Model("Part")), Main)));
-        var mapped = Model("Part", mappingCode: Json("17"));
-        Assert.Equal(((object)17L, "01JMAP00000000000000000001", "/discriminatorValue"), Simple(TypeCodeCheck.CodeOf(mapped, Get(mapped), Main)));
-        var bound = Model("Part", Json("\"P\""), Json("17"));
+        var bound = Model("Part", Json("\"P\""));
         Assert.Equal(((object)"P", Part, "/bindings/0/discriminatorValue"), Simple(TypeCodeCheck.CodeOf(bound, Get(bound), Main)));
+        var numbered = Model("Part", Json("17"));
+        Assert.Equal(((object)17L, Part, "/bindings/0/discriminatorValue"), Simple(TypeCodeCheck.CodeOf(numbered, Get(numbered), Main)));
 
-        // A binding wins (MQ4054): with no value of its own the name is the code, and the mapping's leftover value is ignored, as the run does.
-        var boundNoCode = Model("Part", mappingCode: Json("\"P\""), bound: true);
+        // A binding with no value of its own: the name is the code.
+        var boundNoCode = Model("Part", bound: true);
         Assert.Equal(((object)"Part", Part, "/name"), Simple(TypeCodeCheck.CodeOf(boundNoCode, Get(boundNoCode), Main)));
-        Assert.Empty(TypeCodeCheck.Findings(Model("Part", bound: true), boundNoCode, [Db], Held, "main@v1"));
+        Assert.Empty(TypeCodeCheck.Findings(Model("Part", bound: true), Model("Part"), [Db], Held, "main@v1"));
 
         static Entity Get(ModelSnapshot m) => m.Get<Entity>(Part)!;
         static (object, string, string) Simple((object Code, string ElementId, string Pointer) x) => (x.Code is int i ? (long)i : x.Code, x.ElementId, x.Pointer);
@@ -92,10 +89,10 @@ public sealed class TypeCodeCheckTests
     [Fact]
     public void Keeping_the_stored_code_clears_it_and_an_unchanged_code_gives_nothing()
     {
-        Assert.Empty(TypeCodeCheck.Findings(Model("Item", mappingCode: Json("\"Part\"")), Model("Part"), [Db], Held, "main@v1"));
+        Assert.Empty(TypeCodeCheck.Findings(Model("Item", Json("\"Part\"")), Model("Part"), [Db], Held, "main@v1"));
         Assert.Empty(TypeCodeCheck.Findings(Model("Part"), Model("Part"), [Db], Held, "main@v1"));
         // A text code and an integer code with the same digits differ.
-        var found = TypeCodeCheck.Findings(Model("Part", mappingCode: Json("17")), Model("Part", mappingCode: Json("\"17\"")), [Db], Held, "main@v1");
+        var found = TypeCodeCheck.Findings(Model("Part", Json("17")), Model("Part", Json("\"17\"")), [Db], Held, "main@v1");
         Assert.Contains("changed from '17' to 17,", Assert.Single(found).Message, StringComparison.Ordinal);
     }
 

@@ -1,7 +1,6 @@
 // The Database screen's column editor: the selected table's resolved columns in a dense grid (name, type, length, precision,
 // scale, native type, nullable, default, comment, description), each edit written to the table's file through the same path as
-// the table inspector (useTableFile), so every committed cell is one save and one undo step; a table the model lays out is
-// stored as a table file on its first edit, in the same step. Arrow keys move, Enter or F2 edits (Enter again commits), Escape
+// the table inspector (useTableFile), so every committed cell is one save and one undo step. Arrow keys move, Enter or F2 edits (Enter again commits), Escape
 // cancels, Tab moves right, Space toggles Null.
 import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronUp, KeyRound, Link2 } from "lucide-react";
@@ -13,7 +12,6 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { columnText, physicalHint, type ColumnField } from "./columnEdits";
 import { useTableFile } from "./useTableFile";
-import { tableIdentity } from "./storeTables";
 import { tableKeyOf } from "@/search/engine";
 
 type GridColumn = {
@@ -79,8 +77,7 @@ export function ColumnPanel({ table, databaseId }: { table: TableView | null; da
           {collapsed ? <ChevronUp /> : <ChevronDown />}
         </Button>
       </div>
-      {/* Keyed by the table across its store as a file: a cell being edited when the store lands stays open. */}
-      {!collapsed && table && databaseId ? <ColumnGrid key={tableIdentity(table.key)} table={table} databaseId={databaseId} /> : null}
+      {!collapsed && table && databaseId ? <ColumnGrid key={table.key} table={table} databaseId={databaseId} /> : null}
     </section>
   );
 }
@@ -91,9 +88,7 @@ export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId
   const { write, busy } = useTableFile(table, databaseId);
   const columns = table.columns;
   // The row the inspector shows: the one picked here (a click, the arrow keys), none until then.
-  // The inspected table is this one by its key, or by its file's while the grid still shows it by the key it was stored from.
-  const isThisTable = (shown: { key: string; database: string } | null) =>
-    !!shown && shown.database === databaseId && tableIdentity(shown.key) === tableIdentity(table.key);
+  const isThisTable = (shown: { key: string; database: string } | null) => !!shown && shown.database === databaseId && shown.key === table.key;
   const picked = useEditor(store, (s) => (s.inspectedTable && isThisTable(s.inspectedTable) ? s.inspectedTable.column : null));
   const [active, setActiveCell] = useState(() => ({
     row: Math.max(
@@ -306,6 +301,6 @@ export function ColumnGrid({ table, databaseId }: { table: TableView; databaseId
 /** A cell's hover text: a long text in full; on a physical cell, what the column's type is. */
 function cellTitle(gc: GridColumn, text: string, column: ColumnView): string | undefined {
   if (gc.kind === "long" || gc.key === "comment") return text || undefined;
-  if (gc.physical) return physicalHint(column, null);
+  if (gc.physical) return physicalHint(column);
   return undefined;
 }

@@ -170,12 +170,12 @@ internal static class RelationTypeRules
             return;
         foreach (var database in model.All<Database>())
         {
-            // A mapping that sets ignore, or that stores the relation (a junctionTable or an ends entry), silences it (decision 49).
-            if (context.MappingsOf(database.Id, relation.Id).Any(d => d.Element is Mapping m && (m.Ignore || m.JunctionTable is not null || m.Ends.Count > 0)))
+            // A mapping that stores the relation (a junctionTable or an ends entry) silences it (decision 49).
+            if (context.MappingsOf(database.Id, relation.Id).Any(d => d.Element is Mapping m && (m.JunctionTable is not null || m.Ends.Count > 0)))
                 continue;
             var placed = relation.Ends.All(end => end.HasSeveralTypes
-                ? EndCoverage.CoveredBy(model, end).Any(id => model.Get<Entity>(id) is { } entity && Placed(context, database, entity))
-                : end.SingleEntity is { } single && model.Get<Entity>(single) is { } entity && Placed(context, database, entity));
+                ? EndCoverage.CoveredBy(model, end).Any(id => model.Get<Entity>(id) is { } entity && Placed(database, entity))
+                : end.SingleEntity is { } single && model.Get<Entity>(single) is { } entity && Placed(database, entity));
             if (placed)
             {
                 report.Add("MQ4115", $"Relation '{relation.Name}' has an end with several types, so database '{database.Name}' stores nothing for it.",
@@ -184,15 +184,9 @@ internal static class RelationTypeRules
         }
     }
 
-    // Whether an entity lands in a database: a binding there, else a mapping that does not ignore it, else the database's convention
-    // (as the database run places entities, erratum E43).
-    private static bool Placed(ValidationContext context, Database database, Entity entity)
-    {
-        if (entity.Bindings.Any(b => string.Equals(b.Database, database.Id, StringComparison.Ordinal)))
-            return true;
-        var mappings = context.MappingsOf(database.Id, entity.Id);
-        return Resolution.DatabaseScope.Places(context.Model, database, entity.Package, mappings.Length > 0 ? mappings[0].Element as Mapping : null);
-    }
+    // Whether an entity lands in a database: a binding there (as the database run places entities).
+    private static bool Placed(Database database, Entity entity) =>
+        entity.Bindings.Any(b => string.Equals(b.Database, database.Id, StringComparison.Ordinal));
 
     /// <summary>
     /// MQ4009 on an entity's bindings: a <c>discriminatorValue</c> on an entity outside an inheritance hierarchy that no relation end with

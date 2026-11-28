@@ -5,32 +5,23 @@ import type { ColumnView, ModelJson, SaveResult, TableView } from "@/api/types";
 import {
   addPart,
   batchUndoEntry,
-  columnIdMap,
   existingIds,
   findPart,
   incomingForeignKeys,
-  isLaidOutKey,
   moveIndexColumn,
   partCrumb,
   partIdAt,
   partName,
   removePart,
   renamePart,
-  replayOnFile,
-  resolvedTableDoc,
   setIndexColumnOrder,
-  storableTables,
-  withColumnIds,
 } from "@/workspaces/database/tableParts";
 import { MockBackend } from "@/mocks/backend";
 import { schemaValidator } from "@/mocks/contract";
 import { createEditorStore } from "@/state/store";
-import { billingProjectedSeed } from "@/mocks/model/seed";
 
 type Json = Record<string, unknown>;
 const DB = "01J92P0V1QRN2181XM2ZWE02W4";
-const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
-const INVOICE = "01J92P0V0FJ23CGSNKM7P1W5V7";
 
 const column = (over: Partial<ColumnView>): ColumnView =>
   ({
@@ -45,11 +36,8 @@ const column = (over: Partial<ColumnView>): ColumnView =>
     defaultSql: null,
     identity: false,
     computed: null,
-    attributeId: null,
-    attributePath: null,
     isPrimaryKey: false,
     isForeignKey: false,
-    isDiscriminator: false,
     position: 1,
     default: null,
     comment: null,
@@ -89,52 +77,6 @@ const table = (over: Partial<TableView> = {}): TableView =>
 
 let n = 0;
 const newId = () => `N${++n}`;
-
-describe("a laid-out table as a document, and an edit replayed on its stored file", () => {
-  it("shows the resolved table in the table document's shape, its columns by key and its constraints by name", () => {
-    const doc = resolvedTableDoc(table(), DB);
-    expect(isLaidOutKey(String(doc.id))).toBe(true);
-    expect(doc.columns).toEqual([
-      { id: "a.id", name: "id", type: "uuid", length: 255, nullable: false },
-      { id: "a.email", name: "email", type: "string", length: 255 },
-    ]);
-    expect(doc.primaryKey).toEqual({ name: "pk_customers", columns: ["a.id"] });
-    expect(doc.uniques).toEqual([{ id: "uq_customers_email", name: "uq_customers_email", columns: ["a.email"] }]);
-    expect(doc.indexes).toEqual([{ id: "ix_customers_email", name: "ix_customers_email", columns: [{ column: "a.email" }] }]);
-    expect(doc).not.toHaveProperty("foreignKeys");
-  });
-
-  it("renames column ids and every reference to them, both ways, by column name", () => {
-    const file: Json = {
-      kind: "table",
-      id: "T",
-      columns: [
-        { id: "C1", name: "id" },
-        { id: "C2", name: "email" },
-      ],
-      primaryKey: { columns: ["C1"] },
-      uniques: [{ id: "U", columns: ["C2"] }],
-      indexes: [{ id: "I", columns: [{ column: "C2" }], include: ["C1"] }],
-      foreignKeys: [{ id: "F", columns: ["C2"], referencesTable: "T", referencesColumns: ["C1"] }],
-    };
-    const map = columnIdMap(table().columns, file);
-    expect([...map]).toEqual([
-      ["a.id", "C1"],
-      ["a.email", "C2"],
-    ]);
-    const back = withColumnIds(structuredClone(file), new Map([...map].map(([a, b]) => [b, a])));
-    expect(back.primaryKey).toEqual({ columns: ["a.id"] });
-    expect((back.indexes as Json[])[0]).toEqual({ id: "I", columns: [{ column: "a.email" }], include: ["a.id"] });
-    expect((back.foreignKeys as Json[])[0]).toMatchObject({ columns: ["a.email"], referencesColumns: ["a.id"] });
-    // An edit written against the resolved document (old keys) lands on the file's own ids; new columns keep theirs.
-    const edited = replayOnFile(file, table().columns, (doc) => {
-      (doc.uniques as Json[])[0].columns = ["a.id", "a.email"];
-      addPart(doc, "column", () => "NEW");
-    });
-    expect((edited!.uniques as Json[])[0].columns).toEqual(["C1", "C2"]);
-    expect((edited!.columns as Json[]).map((c) => c.id)).toEqual(["C1", "C2", "NEW"]);
-  });
-});
 
 describe("a table's parts", () => {
   const designed = (): Json => ({
@@ -218,29 +160,7 @@ describe("a table's parts", () => {
   });
 });
 
-describe("which tables can be stored as table files", () => {
-  it("names a laid-out table of one element that the status lists, outside any hierarchy; never a child or a junction table", () => {
-    const tables = [
-      { key: `E1@${DB}`, origin: "synthesized" as const, entityId: "E1", isJunction: false },
-      { key: `E1.attr@${DB}`, origin: "synthesized" as const, entityId: "E1", isJunction: false },
-      { key: `R@${DB}`, origin: "synthesized" as const, entityId: null, isJunction: true },
-      { key: `E2@${DB}`, origin: "synthesized" as const, entityId: "E2", isJunction: false },
-      { key: `E3@${DB}`, origin: "synthesized" as const, entityId: "E3", isJunction: false },
-      { key: "T", origin: "designed" as const, entityId: null, isJunction: false },
-    ];
-    const status = [
-      { id: "E1", projected: true },
-      { id: "E2", projected: true },
-      { id: "E3", projected: false },
-    ];
-    expect([...storableTables(tables, DB, status, [{ id: "E1", base: undefined }])]).toEqual([
-      [`E1@${DB}`, "E1"],
-      [`E2@${DB}`, "E2"],
-    ]);
-    expect([...storableTables(tables, DB, status, [{ id: "E9", base: "E2" }])]).toEqual([[`E1@${DB}`, "E1"]]);
-    expect(storableTables(tables, DB, undefined, []).size).toBe(0);
-  });
-
+describe("the undo step of a batch", () => {
   it("builds the undo step of a stored batch: a create undoes to nothing, a delete to its document", () => {
     const item = (id: string, json: Json | null): SaveResult =>
       ({
@@ -272,49 +192,42 @@ describe("which tables can be stored as table files", () => {
   });
 });
 
-describe("the mock stores laid-out tables as table files (materialize-tables)", () => {
-  it("lists what can be stored, previews it and stores it in one batch; each file holds every column", () => {
-    const backend = new MockBackend({ seed: billingProjectedSeed() });
+describe("the mock creates tables for entities (materialize-tables)", () => {
+  it("lists the entities with no binding, previews their tables and writes them in one batch", () => {
+    const backend = new MockBackend();
+    const id = "01J92P0V0JR8BE8253SKT29T01";
+    const key = "01J92P0V0JR8BE8253SKT29T02";
+    expect(
+      backend.model.create({
+        kind: "entity",
+        id,
+        name: "Widget",
+        key: { attributes: [key] },
+        attributes: [
+          { id: key, name: "id", type: "uuid", required: true },
+          { id: "01J92P0V0JR8BE8253SKT29T03", name: "label", type: "string", length: 40 },
+        ],
+      }).outcome,
+    ).toBe("saved");
     const status = backend.model.materializeStatus(DB)!;
     expect(schemaValidator("MaterializeStatus")(status)).toBe(true);
-    expect(status.entities.find((e) => e.id === CUSTOMER)).toMatchObject({ projected: true, table: "customers" });
-    const plan = backend.model.previewMaterialize(DB, { op: "materialize-tables", entities: [CUSTOMER, INVOICE] });
+    expect(status.entities.find((e) => e.id === id)).toMatchObject({ name: "Widget" });
+    const plan = backend.model.previewMaterialize(DB, { op: "materialize-tables", entities: [id] });
     expect(schemaValidator("MaterializePlan")(plan)).toBe(true);
     expect(plan.valid).toBe(true);
-    // The invoices table's adjusting file becomes its table file (same id); customers gets a new one; the mapping goes; the
-    // relationship whose foreign key is now in a table file gets a mapping naming that key (the engine's plan, one for both flows).
-    expect(plan.creates.filter((c) => c.kind === "table").map((c) => c.name)).toEqual(["customers"]);
-    const relationMapping = plan.creates.find((c) => c.kind === "mapping");
-    expect(relationMapping?.element?.foreignKey).toBeTruthy();
-    expect(plan.creates.map((c) => c.kind).sort()).toEqual(["mapping", "table"]);
-    expect(
-      plan.updates
-        .filter((c) => c.kind !== "query")
-        .map((c) => c.kind)
-        .sort(),
-    ).toEqual(["entity", "entity", "table"]);
-    // The queries over the stored tables read them by their files.
-    expect(plan.updates.some((c) => c.kind === "query")).toBe(true);
-    expect(plan.deletes.map((c) => c.kind)).toEqual(["mapping"]);
-    // Every storable table at once (as Store as table files does): the foreign keys between them are written in the files.
-    const all = status.entities.filter((e) => e.projected).map((e) => e.id);
-    const { status: code, body } = backend.model.batch({ operations: [{ op: "materialize-tables", database: DB, entities: all }] });
+    expect(plan.creates.filter((c) => c.kind === "table").map((c) => c.name)).toEqual(["widgets"]);
+    expect(plan.updates.map((c) => c.kind)).toEqual(["entity"]);
+    const { status: code, body } = backend.model.batch({ operations: [{ op: "materialize-tables", database: DB, entities: [id] }] });
     expect(code).toBe(200);
     expect("outcome" in body && body.outcome).toBe("saved");
     const view = backend.generation.databaseView(DB)!.view!;
-    const customers = view.tables.find((t) => t.name === "customers")!;
-    expect(customers.origin).toBe("designed");
-    expect(isLaidOutKey(customers.key)).toBe(false);
-    const file = backend.model.docs().get(customers.key)!;
-    expect((file.columns as Json[]).length).toBe(customers.columns.length);
-    expect((file.columns as Json[]).length).toBeGreaterThan(1);
-    expect(view.tables.find((t) => t.name === "invoices")?.origin).toBe("designed");
-    // The one materialize serves the database side's Store as table files as it does the entity side's Create tables: the
-    // model stays valid (the many-to-many keeps the junction table the database lays out for it).
+    const widgets = view.tables.find((t) => t.name === "widgets")!;
+    const file = backend.model.docs().get(widgets.key)!;
+    expect((file.columns as Json[]).length).toBe(2);
     expect(backend.model.validate().diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-    // Stored once: the next store of the same table is refused, and the status no longer lists it as laid out.
-    expect(backend.model.materializeStatus(DB)!.entities.some((e) => e.id === CUSTOMER)).toBe(false);
-    const again = backend.model.previewMaterialize(DB, { op: "materialize-tables", entities: [CUSTOMER] });
+    // Created once: the next try is refused, and the status no longer lists the entity.
+    expect(backend.model.materializeStatus(DB)!.entities.some((e) => e.id === id)).toBe(false);
+    const again = backend.model.previewMaterialize(DB, { op: "materialize-tables", entities: [id] });
     expect(again.valid).toBe(false);
     expect(again.diagnostics[0].rule).toBe("MQ4055");
   });

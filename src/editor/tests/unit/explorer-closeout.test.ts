@@ -10,7 +10,7 @@ import { menuFor } from "@/explorer/menus";
 import { canvasCounts, childKeys, forestOf, nodeOf, type Forest, type TablesInput } from "@/explorer/tree";
 import { mergeCategoryTrees } from "@/model/vocabularies";
 import { inspectorContext } from "@/inspector/context";
-import { baseChoices, setDiscriminator, setInheritance, setRelationShape, wouldCycle } from "@/editors/inheritance";
+import { baseChoices, setRelationShape, wouldCycle } from "@/editors/inheritance";
 import { CANVAS_CAP, scopeTables } from "@/workspaces/database/tableList";
 
 const counter = () => {
@@ -195,19 +195,12 @@ describe("the Inheritance and Mappings tabs, editable", () => {
     expect(wouldCycle(baseOf, "cat", "dog")).toBe(false);
     expect(baseChoices(entities, "dog").map((e) => e.id)).toEqual(["animal", "cat"]);
   });
-  it("sets and clears the strategy, the discriminator and a relation's shape", () => {
-    const m: Record<string, unknown> = {};
-    setInheritance(m, "tpt");
-    setDiscriminator(m, " D ");
-    expect(m).toEqual({ inheritance: "tpt", discriminatorValue: "D" });
-    setInheritance(m, null);
-    setDiscriminator(m, "");
-    expect(m).toEqual({});
+  it("sets and clears a relation's shape", () => {
     const r: Record<string, unknown> = {};
     setRelationShape(r, { shape: "junction", junctionTable: "tbl" });
     expect(r).toEqual({ shape: "junction", junctionTable: "tbl" });
-    setRelationShape(r, { shape: "promoted", promotedName: " Link " });
-    expect(r).toEqual({ shape: "promoted", promotedName: "Link" });
+    setRelationShape(r, { shape: "foreign-key" });
+    expect(r).toEqual({ shape: "foreign-key" });
     setRelationShape(r, { shape: null });
     expect(r).toEqual({});
   });

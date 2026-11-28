@@ -18,11 +18,11 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// plan renders once the batch is applied, and it resolves, plans and renders nothing on the way.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class ImpactBeforeApplyTests
 {
     private const string Number = "01J92P0V0R3VSP7D5238DTNZX1";
     private const string Overlay = EditorRepo.OverlayTableId;
+    private const string NumberColumn = "01J92P0V1VQAA9FW71PKYWWHKN";
     private const string InvoicesByCustomer = "01K6QRY0000000000000000001";
     private const string Main = EditorRepo.MainDatabaseId;
 
@@ -40,14 +40,22 @@ public sealed class ImpactBeforeApplyTests
         }
     }
 
-    /// <summary>The batch that renames Invoice's attribute <c>number</c> to <c>code</c>, keeping its id.</summary>
+    /// <summary>
+    /// The batch that renames Invoice's attribute <c>number</c> to <c>code</c>, and the column of the invoices table it is bound to, keeping
+    /// their ids.
+    /// </summary>
     private static async Task<ModelBatch> RenameNumberAsync(ModelStore store)
     {
         var document = (await store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
         var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
         node["attributes"]!.AsArray().Single(a => (string?)a!["id"] == Number)!["name"] = "code";
+        var table = (await store.GetElementAsync(Overlay, Ct))!;
+        var tableNode = JsonNode.Parse(table.Json.GetRawText())!.AsObject();
+        tableNode["columns"]!.AsArray().Single(c => (string?)c!["id"] == NumberColumn)!["name"] = "code";
         var parsed = store.ParseBatch(Encoding.UTF8.GetBytes($$"""
-            { "operations": [ { "op": "update", "id": "@entity:Billing.Invoice", "expectedHash": "{{document.Hash}}", "element": {{node.ToJsonString()}} } ] }
+            { "operations": [
+              { "op": "update", "id": "@entity:Billing.Invoice", "expectedHash": "{{document.Hash}}", "element": {{node.ToJsonString()}} },
+              { "op": "update", "id": "{{Overlay}}", "expectedHash": "{{table.Hash}}", "element": {{tableNode.ToJsonString()}} } ] }
             """));
         Assert.True(parsed.Batch is not null, string.Join("; ", parsed.Diagnostics.Select(d => d.Rule + " " + d.Message)));
         return parsed.Batch;
@@ -70,7 +78,7 @@ public sealed class ImpactBeforeApplyTests
         Assert.Null(preview.Facts);
         var impact = preview.Impact!;
         Assert.Equal([new ImpactDatabase(Main, "main")], impact.Databases);
-        Assert.Equal([(Overlay, Number, "changed"), (InvoicesByCustomer, Number, "changed")],
+        Assert.Equal([(InvoicesByCustomer, NumberColumn, "changed")],
             impact.Referrers.Select(r => (r.Reference.FromElementId, r.Target, r.Change)).Distinct());
         Assert.DoesNotContain(impact.Referrers, r => r.FromKind == "relation");
         Assert.Equal([("csharp-dapper", "known"), ("sql-ddl", "known")], impact.Packs!.Select(p => (p.Pack, p.State)));

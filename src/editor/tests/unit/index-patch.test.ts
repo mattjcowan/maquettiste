@@ -28,7 +28,7 @@ function snapshot(forest: Forest) {
   return {
     trees,
     headers: forest.headers,
-    related: [r.relationsOf, r.endsOf, r.tablesOf, r.mappedBy, r.junctionOf, r.lookupOf, r.baseOf, r.derivedOf, r.seedsOf, r.mappingsOf].map((m) =>
+    related: [r.relationsOf, r.endsOf, r.tablesOf, r.mappedBy, r.junctionOf, r.lookupOf, r.baseOf, r.derivedOf, r.seedsOf].map((m) =>
       sorted(m as Map<string, string[] | string>),
     ),
     byId: [...forest.byId.keys()].sort(),

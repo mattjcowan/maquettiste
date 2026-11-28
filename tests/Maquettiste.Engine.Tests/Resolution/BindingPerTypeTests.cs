@@ -382,7 +382,7 @@ public sealed class BindingPerTypeTests
     public void Binding_an_entity_per_type_changes_no_table()
     {
         // Storage never points at the model: the tables resolve the same with the bindings as without them.
-        static string Tables(ResolvedModel model) => string.Join("\n", model.Db("main").Tables.Where(t => t.Origin != "synthesized").Select(t =>
+        static string Tables(ResolvedModel model) => string.Join("\n", model.Db("main").Tables.Select(t =>
             t.Name + ":" + string.Join(",", t.Columns.Select(c => c.Name + " " + c.Type + (c.Nullable ? "?" : ""))) + ";" + string.Join(",", t.ForeignKeys.Select(f => f.Name)) + ";" + t.Checks.Count));
         var bound = new Payments().Resolve();
         var unbound = new Payments((s, entity, b) => b with { Database = s.B.NewId() }).Resolve();
@@ -923,7 +923,6 @@ public sealed class BindingPerTypeTests
         var stored = Assert.Single(mapping.Attributes);
         Assert.Equal(("termsNote", "terms_note", "invoices"), (stored.Attribute.Name, stored.Column.Name, stored.Column.Table.Name));
         // The column stays the table's; the invoice's binding counts it as the relation's.
-        Assert.Null(stored.Column.Attribute);
         var binding = model.Entity("Invoice").Bindings["main"];
         Assert.Equal("relation", Assert.Single(binding.Columns, c => c.Name == "terms_note").Status);
         Assert.Contains("e:" + invoices.Mapping, binding.Dependencies);

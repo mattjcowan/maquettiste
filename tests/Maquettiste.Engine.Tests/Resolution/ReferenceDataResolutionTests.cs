@@ -163,66 +163,6 @@ public sealed class ReferenceDataResolutionTests
     }
 
     [Fact]
-    public async Task A_uuid_code_types_its_reference_columns_with_the_dialects_uuid_type()
-    {
-        var model = await ResolveAsync(prepare: repo => EditFile(repo, "model/reference-types/unit-of-measure.json", n =>
-        {
-            n["code"]!["type"] = "uuid";
-            n["code"]!.AsObject().Remove("length");
-            n["code"]!.AsObject().Remove("pattern");
-        }));
-
-        Assert.Equal("uuid", Type(model, UnitOfMeasure).Code.Type);
-        var main = model.Db("main").Table("ingredients").Column("default_unit");
-        var reporting = model.Db("reporting").Table("ingredients").Column("default_unit");
-        Assert.Equal(("reference", "uuid", (int?)null), (main.Type, main.CodeType, main.Length));
-        Assert.Equal(("uuid", "uuid"), (main.NativeType, reporting.CodeType));
-        Assert.Equal("text", reporting.NativeType); // the sqlite dialect map
-    }
-
-    [Fact]
-    public async Task A_single_reference_attribute_maps_to_one_reference_column_and_a_collection_to_none()
-    {
-        var model = await ResolveAsync();
-        var main = model.Db("main");
-        var ingredients = main.Table("ingredients");
-
-        var column = ingredients.Column("default_unit");
-        Assert.Equal(("reference", "string", 8, "check", false), (column.Type, column.CodeType, column.Length, column.Strategy, column.Nullable));
-        Assert.Same(Type(model, UnitOfMeasure), column.ReferenceType);
-        Assert.Equal("varchar(8)", column.NativeType);
-        Assert.Equal("g", column.Default);
-        Assert.Contains(ResolveRun.ReferenceDataKey, column.Dependencies);
-        Assert.Contains("e:" + UnitOfMeasure, column.Dependencies);
-        Assert.True(ingredients.Column("preferred_unit").Nullable);
-
-        // Collections: no column, no child table; the mapping lists them for the templates.
-        Assert.DoesNotContain(ingredients.Columns, c => c.Name is "allergens" or "pack_units");
-        Assert.DoesNotContain(main.Tables, t => t.Name.Contains("allergen", StringComparison.Ordinal) || t.Name.Contains("unit", StringComparison.Ordinal));
-        Assert.Equal(["allergens", "packUnits"], model.Entity("Ingredient").Mappings["main"].TemplateDefined.Select(a => a.Name));
-        Assert.Empty(model.Entity("Recipe").Mappings["main"].TemplateDefined);
-
-        var contains = model.Relation("contains").Mappings["main"];
-        Assert.Empty(contains.TemplateDefined);
-        var junction = contains.JunctionTable!;
-        Assert.Equal("reference", junction.Column("unit_of_measure").Type);
-        Assert.Equal("check", model.Db("reporting").Table("ingredients").Column("default_unit").Strategy);
-    }
-
-    [Fact]
-    public async Task An_ignored_collection_is_not_template_defined()
-    {
-        var model = await ResolveAsync(prepare: repo => WriteFile(repo, "model/mappings/ingredient-main.json", new JsonObject
-        {
-            ["$schema"] = "../../.schema/v1/mapping.json", ["kind"] = "mapping", ["id"] = "01JRDM00000000000000000001",
-            ["name"] = "Ingredient in main", ["database"] = MainDatabaseId, ["entity"] = Ingredient,
-            ["attributes"] = new JsonArray(new JsonObject { ["attribute"] = "01JRDE00000000000000000025", ["ignore"] = true }),
-        }, "mapping.json"));
-        Assert.Equal(["packUnits"], model.Entity("Ingredient").Mappings["main"].TemplateDefined.Select(a => a.Name));
-        Assert.Equal(["allergens", "packUnits"], model.Entity("Ingredient").Mappings["reporting"].TemplateDefined.Select(a => a.Name));
-    }
-
-    [Fact]
     public async Task Seeds_resolve_columns_cells_refs_and_orders()
     {
         var model = await ResolveAsync();
@@ -276,34 +216,6 @@ public sealed class ReferenceDataResolutionTests
             rows[1]!["values"]!.AsArray().Add("tree_nut"); // nut -> tree_nut -> nut
         }));
         Assert.Equal(["gluten", "nut", "tree_nut"], cyclic.Seeds.Single(s => s.Name == "Allergen").OrderedRows.Select(r => r.Values["code"]));
-    }
-
-    [Fact]
-    public async Task The_snapshot_records_a_reference_column_as_type_reference_with_its_strategy()
-    {
-        var model = await ResolveAsync();
-        var snapshot = SnapshotCapture.Capture(model.Db("main"), 1, ct: TestContext.Current.CancellationToken);
-        var column = snapshot.Tables.Single(t => t.Name == "ingredients").Columns.Single(c => c.Name == "default_unit");
-        Assert.Equal(("reference", 8, UnitOfMeasure, "check"), (column.Type, column.Length, column.ReferenceType, column.Strategy));
-        var sku = snapshot.Tables.Single(t => t.Name == "ingredients").Columns.Single(c => c.Name == "sku");
-        Assert.Null(sku.ReferenceType);
-        var json = Encoding.UTF8.GetString(TestServices.Json.Serialize(SnapshotCapture.Sorted(snapshot), "snapshot.json", "snapshots/main.json"));
-        Assert.Contains("\"referenceType\": \"" + UnitOfMeasure + "\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"strategy\": \"check\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"type\": \"reference\"", json, StringComparison.Ordinal);
-
-        // A strategy change is an Altered column with a strategy property change; the code facets ride along the same way.
-        var changed = await ResolveAsync(prepare: repo => EditFile(repo, "model/reference-types/unit-of-measure.json", n =>
-        {
-            n["storage"]!["*"]!["strategy"] = "lookup-table";
-            n["code"]!["length"] = 12;
-        }));
-        var diff = SchemaDiffer.Compare(snapshot, SnapshotCapture.Capture(changed.Db("main"), 2, ct: TestContext.Current.CancellationToken), changed.Db("main"), ct: TestContext.Current.CancellationToken);
-        var ingredients = diff.Tables.Single(t => t.Table?.Name == "ingredients");
-        var change = ingredients.Columns.Single(c => c.Key.EndsWith("01JRDE00000000000000000023", StringComparison.Ordinal));
-        Assert.Equal(ChangeKind.Altered, change.Kind);
-        Assert.Contains(change.Changes, p => p.Property == "strategy" && Equals(p.Old, "check") && Equals(p.New, "lookup-table"));
-        Assert.Contains(change.Changes, p => p.Property == "length" && Equals(p.New, 12));
     }
 
     [Fact]

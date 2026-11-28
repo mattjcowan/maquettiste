@@ -230,35 +230,6 @@ public sealed class BatchNamesTests
     }
 
     [Fact]
-    public async Task A_rename_earlier_in_the_batch_does_not_requalify_untouched_elements()
-    {
-        await using var s = await BillingStore.OpenAsync();
-        var catalog = s.Model.GetDocument(CatalogPackage)!;
-        var renamed = Edited(catalog, p => p["name"] = "Catalog2");
-        string Batch(string entity) => $$"""
-            { "operations": [
-              { "op": "update", "id": "@package:Billing.Catalog", "expectedHash": "{{catalog.Hash}}", "element": {{renamed}} },
-              { "op": "create", "element": { "kind": "mapping", "name": "product-in-main", "package": "@package:Billing.Catalog2", "entity": "{{entity}}",
-                  "database": "@database:main" } }
-            ] }
-            """;
-        var files = s.Files();
-
-        var stale = await s.Store.ApplyBatchAsync(Parse(s, Batch("@entity:Catalog2.Product")), ChangeSource.Cli, Ct);
-
-        Assert.Equal(SaveOutcome.Invalid, stale.Outcome);
-        Assert.Equal([("MQ1012", "/operations/1/element/entity")], Failures(stale));
-        Assert.Equal(files, s.Files());
-
-        var result = await s.Store.ApplyBatchAsync(Parse(s, Batch("@entity:Catalog.Product")), ChangeSource.Cli, Ct);
-
-        Assert.True(result.Outcome == SaveOutcome.Saved, Explain(result));
-        var mapping = s.Model.Get<Mapping>(result.Items[1].Id!)!;
-        Assert.Equal((Product, CatalogPackage, Main), (mapping.Entity, mapping.Package, mapping.Database));
-        Assert.Equal("Catalog2", s.Model.Get<Package>(CatalogPackage)!.Name);
-    }
-
-    [Fact]
     public async Task Placeholders_reach_forward_so_two_new_tables_reference_each_other()
     {
         await using var s = await BillingStore.OpenAsync();
@@ -354,31 +325,6 @@ public sealed class BatchNamesTests
     }
 
     [Fact]
-    public async Task An_ambiguous_name_is_MQ1013_listing_the_candidates()
-    {
-        await using var s = await BillingStore.OpenAsync();
-        var other = await s.Store.CreateAsync(Encoding.UTF8.GetBytes($$"""
-            { "kind": "entity", "name": "Product", "package": "{{BillingPackage}}", "attributes": [ { "name": "id", "type": "uuid" } ] }
-            """), ChangeSource.Cli, Ct);
-        Assert.Equal(SaveOutcome.Saved, other.Outcome);
-        string Batch(string entity) => $$"""
-            { "operations": [ { "op": "create", "element": { "kind": "mapping", "name": "product-in-main", "entity": "{{entity}}", "database": "@database:main" } } ] }
-            """;
-
-        var ambiguous = await s.Store.ApplyBatchAsync(Parse(s, Batch("@entity:Product")), ChangeSource.Cli, Ct);
-
-        Assert.Equal(SaveOutcome.Invalid, ambiguous.Outcome);
-        var diagnostic = Assert.Single(ambiguous.Items[0].Diagnostics);
-        Assert.Equal(("MQ1013", "/operations/0/element/entity"), (diagnostic.Rule, diagnostic.JsonPointer));
-        Assert.Contains($"@entity:Billing.Catalog.Product ({Product}), @entity:Billing.Product ({other.Id})", diagnostic.Message, StringComparison.Ordinal);
-
-        var result = await s.Store.ApplyBatchAsync(Parse(s, Batch("@entity:Catalog.Product")), ChangeSource.Cli, Ct);
-
-        Assert.True(result.Outcome == SaveOutcome.Saved, Explain(result));
-        Assert.Equal(Product, s.Model.Get<Mapping>(result.Items[0].Id!)!.Entity);
-    }
-
-    [Fact]
     public async Task A_placeholder_declared_twice_or_misplaced_as_is_MQ1014()
     {
         await using var s = await BillingStore.OpenAsync();
@@ -417,7 +363,7 @@ public sealed class BatchNamesTests
 
         var result = await s.Store.ApplyBatchAsync(new ModelBatch(
         [
-            new BatchOperation(BatchOp.Create, null, null, Element("""{ "kind": "mapping", "name": "m", "database": "@Database:main" }""")),
+            new BatchOperation(BatchOp.Create, null, null, Element("""{ "kind": "mapping", "name": "m", "database": "@Database:main", "relation": "01J92P0V1ACKN3G6TK3NJDTM82" }""")),
             new BatchOperation(BatchOp.Create, "@entity:Refund", null, Element("""{ "kind": "entity", "name": "Refund", "attributes": [ { "name": "id", "type": "uuid" } ] }""")),
             new BatchOperation(BatchOp.Update, "$customer", customer.Hash, Element(customer.Json.GetRawText())),
             new BatchOperation(BatchOp.MaterializeColumns, null, null, null, Database: Main, Entities: [Invoice], ExpectedHashes: new Dictionary<string, string> { ["$x"] = "a" }),

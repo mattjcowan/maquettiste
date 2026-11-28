@@ -11,7 +11,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// W2), resolver identifier-limit errors surfaced by the orchestrator (W3 → W6), and the stereotype-key save rule (W2 → W1).
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class DiagnosticsTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -50,19 +49,20 @@ public sealed class DiagnosticsTests
     [Fact]
     public async Task Resolver_identifier_limit_errors_stop_the_run()
     {
-        await using var repo = E2ERepo.Create(demo: false, settings: s => s["conventions"] = new JsonObject
-        {
-            ["tableName"] = "{entity}_with_an_extremely_long_suffix_that_goes_well_past_the_identifier_limit",
-        });
+        // The customers table renamed on disk to a name past PostgreSQL's 63-byte limit.
+        await using var repo = E2ERepo.Create(demo: false);
+        const string path = ".maquettiste/model/databases/main/tables/customers.json";
+        var text = repo.Repo.ReadFile(path);
+        repo.Repo.WriteFile(path, text.Replace("\"name\": \"customers\"",
+            "\"name\": \"customers_with_an_extremely_long_suffix_that_goes_well_past_the_identifier_limit\"", StringComparison.Ordinal));
+        await repo.RestartAsync();
 
         var result = await repo.RunAsync();
 
         E2ERepo.AssertOutcome(RunOutcome.Invalid, result);
-        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ4001" && d.FilePath == ".maquettiste/model/entities/customer.json"
+        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ4001" && d.FilePath == path
             && d.Message.Contains("Table name 'customers_with_an_extremely_long", StringComparison.Ordinal));
-        // PostgreSQL keeps the first 63 bytes of a name, so the over-long foreign key names of one table also collide (MQ4068).
-        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ4068" && d.Message.Contains("first 63 bytes", StringComparison.Ordinal));
-        Assert.All(result.Diagnostics, d => Assert.Contains(d.Rule, (string[])["MQ4001", "MQ4068"]));
+        Assert.All(result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), d => Assert.Contains(d.Rule, (string[])["MQ4001", "MQ4068"]));
         Assert.Empty(repo.Outputs());
     }
 

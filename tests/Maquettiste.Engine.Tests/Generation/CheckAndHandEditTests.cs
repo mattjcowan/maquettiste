@@ -26,7 +26,7 @@ public sealed class CheckAndHandEditTests
         await f.RunAsync();
         var before = f.Outputs();
         var manifest = f.CommittedManifest("basic");
-        await f.WriteModelAsync(b => Models.Shop(b, extra: (m, customer, main) => m.Mapping(main, customer).Ignore()));
+        await f.WriteModelAsync(b => Models.Shop(b, extra: (m, customer, main) => customer.Attr("email", "string")));
         var check = await f.RunAsync(GenerationMode.Check);
         Assert.Equal(RunOutcome.Drift, check.Outcome);
         Assert.Contains(check.Changes, c => c.Path == "out/entities/Customer.txt" && c.Kind == FileChangeKind.Modified);

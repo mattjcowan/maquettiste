@@ -523,8 +523,6 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
     {
         foreach (var entity in model.Entities)
         {
-            if (entity.IsPromoted)
-                continue;
             foreach (var attribute in entity.OwnAttributes)
             {
                 if (!attribute.IsVirtual && !attribute.IsInherited)
@@ -725,11 +723,11 @@ internal sealed class UnitPlanner(EngineOptions options) : IUnitPlanner
 
 /// <summary>
 /// The <c>where</c> filters of a unit (engine-design.md section 2.5): every set filter must match; lists match any value. Tags,
-/// stereotypes, categories and packages are those of the element; a table uses its own file (designed, imported, or the overlay of a
-/// synthesized table) together with the entity or relation it comes from; a view, sequence or database uses its own file, an attribute
+/// stereotypes, categories and packages are those of the element; a table, view, sequence or database uses its own file, an attribute
 /// its own entry (and its owner's package). Categories and packages match by id or name (qualified name for packages) and include
-/// descendants. <c>database</c>: a table, view or sequence in that database; the database of that name; an entity or relation mapped
-/// (not ignored) there, and an attribute through its entity or relation owner; any other element when the database exists. <c>abstract</c>
+/// descendants. <c>database</c>: a table, view, sequence, routine, database type, SQL object or query in that database; the database of
+/// that name; an entity with a binding there, a relation with a relation mapping there, and an attribute through its entity or relation
+/// owner; any other element when the database exists. <c>abstract</c>
 /// matches entities by <see cref="REntity.IsAbstract"/> and other elements as not abstract. <c>script</c> calls a JavaScript filter.
 /// </summary>
 internal sealed class UnitFilter
@@ -746,11 +744,7 @@ internal sealed class UnitFilter
         foreach (var category in model.Source.CategoryTrees.SelectMany(t => t.Categories))
             _categories.TryAdd(category.Id, category);
         foreach (var table in model.Source.All<Table>())
-        {
-            var key = table.Origin == TableOrigin.Synthesized ? SynthesizedKey(table) : table.Id;
-            if (key is not null)
-                _tableFiles.TryAdd(key, table);
-        }
+            _tableFiles.TryAdd(table.Id, table);
     }
 
     /// <summary>
@@ -819,15 +813,6 @@ internal sealed class UnitFilter
         return true;
     }
 
-    private static string? SynthesizedKey(Table table)
-    {
-        if (table.Entity is { } entity)
-            return table.Attribute is { } attribute ? entity + "." + attribute + "@" + table.Database : entity + "@" + table.Database;
-        if (table.Relation is { } relation)
-            return relation + "@" + table.Database;
-        return null;
-    }
-
     private bool InDatabase(IResolvedObject? element, string database) => element switch
     {
         RTable table => string.Equals(table.Database.Name, database, StringComparison.Ordinal),
@@ -838,10 +823,10 @@ internal sealed class UnitFilter
         RSqlObject obj => string.Equals(obj.Database.Name, database, StringComparison.Ordinal),
         RQuery query => string.Equals(query.Database.Name, database, StringComparison.Ordinal),
         RDatabase db => string.Equals(db.Name, database, StringComparison.Ordinal),
-        REntity entity => entity.Mappings.ContainsKey(database),
+        REntity entity => entity.Bindings.ContainsKey(database),
         RRelation relation => relation.Mappings.ContainsKey(database),
         // An attribute matches through its owner; a value object's or reference type's takes the default arm.
-        RAttribute { Owner: REntity owner } => owner.Mappings.ContainsKey(database),
+        RAttribute { Owner: REntity owner } => owner.Bindings.ContainsKey(database),
         RAttribute { Owner: RRelation owner } => owner.Mappings.ContainsKey(database),
         _ => _model.Databases.Any(d => string.Equals(d.Name, database, StringComparison.Ordinal)),
     };
@@ -849,7 +834,7 @@ internal sealed class UnitFilter
     private static RElement? SourceOf(IResolvedObject element) => element switch
     {
         RElement conceptual => conceptual,
-        RTable table => (RElement?)table.Entity ?? table.Relation,
+        RTable table => table.Relation,
         _ => null,
     };
 

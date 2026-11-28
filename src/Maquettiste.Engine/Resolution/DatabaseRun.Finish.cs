@@ -6,19 +6,15 @@ using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Resolution;
 
-/// <summary>Constraints, entity mappings, join paths, identifier limits and the published database.</summary>
+/// <summary>Constraints, join paths, identifier limits and the published database.</summary>
 internal sealed partial class DatabaseRun
 {
-    private readonly Dictionary<string, SortedDictionary<string, RJoinPath>> _joinsByEntity = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, REntityMapping> _mappingByEntity = new(StringComparer.Ordinal);
-
     private void FinishTables()
     {
         foreach (var t in _tableOrder)
         {
-            // A table file's own package wins; a table without one is in its entity's or relation's (next-phase-1-design.md 4.3).
-            t.Table.Package ??= t.Table.Entity?.Package ?? t.Table.Relation?.Package;
-            AddOverlayExtraColumns(t);
+            // A table file's own package wins; a junction table without one is in its relation's (next-phase-1-design.md 4.3).
+            t.Table.Package ??= t.Table.Relation?.Package;
             // Inherited members follow the own ones (next-phase-2-design.md section 3.1), before positions and keys.
             AddInheritedMembers(t);
             for (var i = 0; i < t.Columns.Count; i++)
@@ -106,9 +102,8 @@ internal sealed partial class DatabaseRun
                     Include: i.Include.Select(t.Resolve).ToList()))
                 .Where(x => x.Columns.Count > 0 && x.Columns.All(c => c.Column is not null || c.Expression is not null) && x.Include.All(c => c is not null))
                 .ToList();
-            // An index a table file declares (overlay or designed table) overrides the index an attribute's `indexed` flag synthesizes on the
-            // same columns, so a file can change its sort order, method or name without producing a second index of the same name. An
-            // expression is named "expr" in a conventional index name.
+            // An index the table file declares overrides an index a stereotype gives on the same columns, so a file can change its sort
+            // order, method or name without producing a second index of the same name. An expression is named "expr" in a conventional index name.
             static string IndexColumnNames(IEnumerable<(RColumn? Column, bool Descending, string? Expression, int? Length, string? OperatorClass, string? Nulls)> columns) =>
                 string.Join('_', columns.Select(c => c.Column?.Name ?? "expr"));
             var fileColumnSets = indexes.Where(x => x.Spec.FromFile && x.Columns.All(c => c.Column is not null)).Select(x => Joined(x.Columns.Select(c => c.Column!))).ToHashSet(StringComparer.Ordinal);
@@ -166,31 +161,26 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// The <c>comments</c> convention: with <c>descriptions</c> (the default), a table without an explicit comment takes its own
-    /// description, else the description of what it stores (a child table's attribute, an entity table's entity, a junction's
-    /// relation), and a column without one takes its own entry's description, else its attribute's. Those elements are already
-    /// among the table's dependencies (the entity, value object or relation that produced the table and its columns, and the
-    /// conventions key), so a changed description replans the table.
+    /// description, else, for a junction table, its relation's, and a column without one takes its own entry's description. The relation is
+    /// already among the junction table's dependencies, so a changed description replans the table.
     /// </summary>
     private void FillComments(TableBuild t)
     {
         if (_conv.Comments != CommentSource.Descriptions)
             return;
         var table = t.Table;
-        table.Comment ??= Text(table.Description)
-            ?? (table.Attribute is { } attribute ? Text(attribute.Description) : Text(table.Entity?.Description) ?? Text(table.Relation?.Description));
+        table.Comment ??= Text(table.Description) ?? Text(table.Relation?.Description);
         foreach (var column in t.Columns)
-            column.Comment ??= Text(column.Description) ?? Text(column.Attribute?.Description);
+            column.Comment ??= Text(column.Description);
 
         static string? Text(string? description) => string.IsNullOrWhiteSpace(description) ? null : description.Trim();
     }
 
     /// <summary>
     /// MQ4005 over the resolved columns: each foreign key column has the referenced column's type, length, precision, scale and native type,
-    /// so the generated key is valid DDL. An attribute's logical type is never compared with its column's (the attribute's length is
-    /// validation, the column's is storage). A mismatch is reported on the file that pins it: the foreign key column's overlay entry, its
-    /// designed or imported table, the referenced column's overlay entry or table, else the relation end (or the attribute's entity) that
-    /// produced the column. Validation's file-level MQ4005 already covers a column whose table and referenced table are both files that
-    /// declare both types; such a column is not reported again.
+    /// so the generated key is valid DDL. A mismatch is reported on the file that pins it: the foreign key column's table file, else the
+    /// referenced column's. Validation's file-level MQ4005 already covers a column whose table and referenced table both declare both
+    /// types; such a column is not reported again.
     /// </summary>
     private void CheckForeignKeyColumns()
     {
@@ -207,7 +197,7 @@ internal sealed partial class DatabaseRun
                     var referenced = fk.ReferencedColumns[i];
                     if (SamePhysicalType(column, referenced) || ReportedByValidation(t, target, column, referenced))
                         continue;
-                    var (elementId, pointer) = PinOf(t, column) ?? PinOf(target, referenced) ?? Origin(t, fk, column);
+                    var (elementId, pointer) = PinOf(t, column);
                     _run.AddDiagnostic("MQ4005",
                         $"Foreign key column '{t.Table.Name}.{column.Name}' is {Describe(column)} but references '{target.Table.Name}.{referenced.Name}', which is {Describe(referenced)} (database '{_db.Name}').",
                         elementId, pointer);
@@ -218,18 +208,18 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// MQ4061 over the resolved columns: a foreign key a table file declares with on-delete set-null, or set-default, sets columns that
-    /// can take NULL (set-default: or have a default), so deleting a referenced row does not fail on a not-null column. Nullability
-    /// is the resolved one (an overlay column, or the attribute behind it). A relation's set-null on a required end is MQ3011.
+    /// can take NULL (set-default: or have a default), so deleting a referenced row does not fail on a not-null column. A relation's
+    /// set-null on a required end is MQ3011.
     /// </summary>
     private void CheckOnDeleteSets()
     {
         foreach (var t in _tableOrder)
         {
-            var file = t.Source ?? t.Overlay;
+            var file = t.Source;
             foreach (var spec in t.ForeignKeys)
             {
                 var fk = spec.Result;
-                if (!spec.Resolved || file is null || spec.FileId != file.Id || fk.OnDelete is not ("set-null" or "set-default"))
+                if (!spec.Resolved || spec.FileId != file.Id || fk.OnDelete is not ("set-null" or "set-default"))
                     continue;
                 var setDefault = fk.OnDelete == "set-default";
                 var refused = (fk.OnDeleteColumns.Count > 0 ? fk.OnDeleteColumns : fk.Columns)
@@ -264,45 +254,15 @@ internal sealed partial class DatabaseRun
 
     /// <summary>Whether validation's file-level MQ4005 reports the pair: both tables are files and both columns declare differing types.</summary>
     private static bool ReportedByValidation(TableBuild t, TableBuild target, RColumn column, RColumn referenced) =>
-        t.Source?.Columns.FirstOrDefault(c => c.Id == column.Key)?.Type is { } a
-        && target.Source?.Columns.FirstOrDefault(c => c.Id == referenced.Key)?.Type is { } b
+        t.Source.Columns.FirstOrDefault(c => c.Id == column.Key)?.Type is { } a
+        && target.Source.Columns.FirstOrDefault(c => c.Id == referenced.Key)?.Type is { } b
         && !string.Equals(a, b, StringComparison.Ordinal);
 
-    /// <summary>The file and pointer that pin a column's physical type: its overlay entry, or its entry in a designed or imported table.</summary>
-    private static (string ElementId, string Pointer)? PinOf(TableBuild t, RColumn column)
+    /// <summary>The file and pointer that pin a column's physical type: its entry in its table file.</summary>
+    private static (string ElementId, string Pointer) PinOf(TableBuild t, RColumn column)
     {
-        if (t.Source is { } source)
-        {
-            var at = IndexOf(source.Columns, c => c.Id == column.Key);
-            return at < 0 ? (source.Id, "/columns") : (source.Id, ColumnPointer(at));
-        }
-
-        if (t.Overlay is { } overlay)
-        {
-            var at = IndexOf(overlay.Columns, c => c.Attribute == column.Key || (c.Attribute is null && c.Id == column.Key));
-            if (at >= 0 && (overlay.Columns[at].Attribute is null || PinsType(overlay.Columns[at])))
-                return (overlay.Id, ColumnPointer(at));
-        }
-
-        return null;
-    }
-
-    /// <summary>Where a synthesized foreign key column comes from: the relation end of its key, else the entity that declares its attribute, else the table's element.</summary>
-    private (string? ElementId, string? Pointer) Origin(TableBuild t, RForeignKey fk, RColumn column)
-    {
-        if (fk.Relation is { } relation && _run.RelationSource(relation.Id) is { } source)
-        {
-            var at = fk.End is { } end ? IndexOf(source.Ends, e => e.Id == end.Id) : -1;
-            return (source.Id, at < 0 ? "/ends" : "/ends/" + at.ToString(CultureInfo.InvariantCulture));
-        }
-
-        if (column.Attribute is { DeclaringEntity: { } declaring } attribute)
-        {
-            var at = _run.Model.Get<Entity>(declaring.Id) is { } entity ? IndexOf(entity.Attributes, a => a.Id == attribute.Id) : -1;
-            return (declaring.Id, at < 0 ? null : "/attributes/" + at.ToString(CultureInfo.InvariantCulture));
-        }
-
-        return (t.SourceElementId, null);
+        var at = IndexOf(t.Source.Columns, c => c.Id == column.Key);
+        return at < 0 ? (t.Source.Id, "/columns") : (t.Source.Id, ColumnPointer(at));
     }
 
     private static string ColumnPointer(int index) => "/columns/" + index.ToString(CultureInfo.InvariantCulture);
@@ -375,14 +335,7 @@ internal sealed partial class DatabaseRun
             var deps = _run.DepsOf(relation);
             foreach (var spec in phys.Foreign.Where(s => s.Resolved))
             {
-                var host = spec.Host;
-                deps.Add(Conventions).Add(InflectionKey).Element(_db.Id);
-                if (host.Source is { } source)
-                    deps.Element(source.Id);
-                if (host.Overlay is { } overlay)
-                    deps.Element(overlay.Id);
-                if (host.Table.Entity is { } hostEntity)
-                    deps.AddRange(_run.DepsOf(hostEntity).ToList());
+                deps.Add(Conventions).Element(_db.Id).Element(spec.Host.Source.Id);
                 if (phys.Principal is { } principal && _placements.TryGetValue(principal.OneEntity.Id, out var pp))
                     deps.AddRange(KeyDeps(pp));
             }
@@ -416,128 +369,19 @@ internal sealed partial class DatabaseRun
         return list;
     }
 
-    /// <summary>MQ4009: a table overlay that targets nothing this database synthesizes (for example a TPH-derived entity) is unused.</summary>
-    private void ReportUnusedOverlays()
-    {
-        var used = new HashSet<string>(_tableOrder.Where(t => t.Overlay is not null).Select(t => t.Overlay!.Id), StringComparer.Ordinal);
-        foreach (var (target, overlay) in _overlays.OrderBy(p => p.Value.Id, StringComparer.Ordinal))
-        {
-            if (used.Contains(overlay.Id))
-                continue;
-            var reason = target.StartsWith("entity:", StringComparison.Ordinal) && _bindingByEntity.ContainsKey(target["entity:".Length..])
-                ? "the entity has a binding to this database, which wins over projection: materialize its table"
-                : target.StartsWith("entity:", StringComparison.Ordinal) && _placements.TryGetValue(target["entity:".Length..], out var p)
-                ? p.Bound ? "the entity is bound to a designed or imported table"
-                : p.Strategy == InheritanceStrategy.Tph ? "the entity is TPH-derived and its rows live in the root entity's table; put the overlay on the root entity"
-                : "the entity has no table of its own (TPC abstract)"
-                : "its target has no synthesized table in this database";
-            _run.AddDiagnostic("MQ4009", $"Table overlay '{overlay.Name}' in database '{_db.Name}' is not applied: {reason}.", overlay.Id);
-        }
-    }
-
     private string RenderWithName(string pattern, TableBuild t, IEnumerable<RColumn?> columns, string? name) => name is null
         ? Render(pattern, ("table", t.Table.Name), ("columns", Joined(columns.OfType<RColumn>())))
         : Render(pattern, ("table", t.Table.Name), ("columns", Joined(columns.OfType<RColumn>())), ("name", name));
 
     private static string Joined(IEnumerable<RColumn> columns) => string.Join('_', columns.Select(c => c.Name));
 
-    private void BuildEntityMappings()
-    {
-        // Column mappings read finished tables only: computed in parallel, committed in placement order.
-        var columns = new List<RColumnMapping>?[_placementOrder.Count];
-        _run.ForEach(_placementOrder.Count, i =>
-        {
-            var p = _placementOrder[i];
-            if (p.Table is not null && !p.ViaBinding)
-                columns[i] = ColumnMappings(TablesOf(p), p.Entity.Attributes);
-        });
-
-        for (var i = 0; i < _placementOrder.Count; i++)
-        {
-            var p = _placementOrder[i];
-            if (p.Table is null || p.ViaBinding)
-                continue;
-            var tph = p.Strategy == InheritanceStrategy.Tph && !p.Bound;
-            var mapping = new REntityMapping
-            {
-                Database = _rdb,
-                Table = p.Table.Table,
-                Inheritance = p.Strategy is { } strategy ? ResolutionValues.Kebab(strategy) : null,
-                DiscriminatorColumn = tph ? _discriminators.GetValueOrDefault(p.Table.Table.Key) : null,
-                DiscriminatorValue = tph ? ResolutionValues.Plain(p.Mapping?.DiscriminatorValue) ?? p.Entity.Name : null,
-                Columns = columns[i]!,
-            };
-            _mappingByEntity[p.Entity.Id] = mapping;
-            _run.SetEntityMapping(p.Entity, _db.Name, mapping);
-        }
-
-        foreach (var (entity, t) in _promotedTables)
-        {
-            var mapping = new REntityMapping { Database = _rdb, Table = t.Table, Columns = ColumnMappings([t], entity.Attributes) };
-            _mappingByEntity[entity.Id] = mapping;
-            _run.SetEntityMapping(entity, _db.Name, mapping);
-        }
-    }
-
-    /// <summary>The tables of a placement's rows: its table, or for TPT the tables of its chain, root first.</summary>
-    private static List<TableBuild> TablesOf(Placement p)
-    {
-        var tables = new List<TableBuild>();
-        if (p.Strategy == InheritanceStrategy.Tpt && !p.Bound)
-        {
-            var chain = new List<Placement>();
-            for (var x = p; x is not null && !chain.Contains(x); x = x.Base)
-                chain.Add(x);
-            chain.Reverse();
-            tables.AddRange(chain.Select(x => x.Table).OfType<TableBuild>().Distinct());
-        }
-        else
-        {
-            tables.Add(p.Table!);
-        }
-
-        return tables;
-    }
-
-    private static List<RColumnMapping> ColumnMappings(List<TableBuild> tables, IReadOnlyList<RAttribute> attributes)
-    {
-        var ids = new HashSet<string>(attributes.Select(a => a.Id), StringComparer.Ordinal);
-        var all = new List<TableBuild>();
-        foreach (var t in tables)
-            AddWithChildren(t);
-        var result = new List<RColumnMapping>();
-        foreach (var t in all)
-        {
-            foreach (var column in t.Columns)
-            {
-                if (column.AttributePath is not { } path)
-                    continue;
-                var top = path.IndexOf('.', StringComparison.Ordinal) is var dot and >= 0 ? path[..dot] : path;
-                if (ids.Contains(top))
-                    result.Add(new RColumnMapping { AttributePath = path, Column = column });
-            }
-        }
-
-        return result;
-
-        void AddWithChildren(TableBuild t)
-        {
-            if (all.Contains(t))
-                return;
-            all.Add(t);
-            foreach (var child in t.Children)
-                AddWithChildren(child);
-        }
-    }
-
-    private TableBuild? TableOf(string entityId) =>
-        _placements.TryGetValue(entityId, out var p) ? p.Table : _promotedTables.FirstOrDefault(x => string.Equals(x.Entity.Id, entityId, StringComparison.Ordinal)).Table;
+    private TableBuild? TableOf(string entityId) => _placements.TryGetValue(entityId, out var p) ? p.Table : null;
 
     private void BuildJoins()
     {
         // Join paths read finished tables and foreign keys only: computed per entity in parallel, recorded in entity order. A relation stored
         // as TypeLinks (an end with several types) takes its pairs from there, with conditions and type_joins (BuildTypeJoins, decision 48).
-        var owners = _placementOrder.Select(p => p.Entity).Concat(_promotedTables.Select(x => x.Entity)).ToList();
+        var owners = _placementOrder.Select(p => p.Entity).ToList();
         var paths = new List<(RNavigation Navigation, RJoinPath Path)>[owners.Count];
         _run.ForEach(owners.Count, i =>
         {
@@ -559,32 +403,13 @@ internal sealed partial class DatabaseRun
             {
                 if (ReferenceEquals(navigation.From.Entity, entity))
                     _run.SetJoin(navigation, _db.Name, path);
-                if (!_joinsByEntity.TryGetValue(entity.Id, out var joins))
-                {
-                    joins = new SortedDictionary<string, RJoinPath>(StringComparer.Ordinal);
-                    _joinsByEntity[entity.Id] = joins;
-                }
-
-                joins.TryAdd(navigation.Name, path);
             }
         }
 
         BuildTypeJoins();
-        foreach (var (entityId, mapping) in _mappingByEntity)
-        {
-            mapping.Joins = _joinsByEntity.TryGetValue(entityId, out var joins)
-                ? joins.ToImmutableSortedDictionary(StringComparer.Ordinal)
-                : ImmutableSortedDictionary<string, RJoinPath>.Empty;
-        }
-
-        PublishEntityTypeJoins();
     }
 
     /// <summary>The join path of a navigation read from an entity (the declaring entity or one that inherits the navigation).</summary>
-    /// <remarks>
-    /// An entity without a table of its own (TPC abstract) has no path: its rows live in several tables, and each concrete entity's
-    /// <see cref="REntityMapping.Joins"/> holds its own. Likewise a path towards a TPC abstract dependent's several tables is none.
-    /// </remarks>
     private RJoinPath? JoinFor(RNavigation navigation, RelationPhysical phys, string fromEntityId)
     {
         if (TableOf(fromEntityId) is null)
@@ -761,14 +586,13 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>
-    /// A table's index and constraint names in the order MQ4068 visits them, each with where to report it: the table file (designed
-    /// table or overlay) that declares it, at <c>/&lt;list&gt;/&lt;i&gt;/name</c> when the file names it, else at
-    /// <c>/&lt;list&gt;/&lt;i&gt;</c>; a key or index no file declares (a synthesized key, an index an attribute's <c>indexed</c> flag
-    /// made) is reported on the table's source element without a pointer.
+    /// A table's index and constraint names in the order MQ4068 visits them, each with where to report it: the table file that declares
+    /// it, at <c>/&lt;list&gt;/&lt;i&gt;/name</c> when the file names it, else at <c>/&lt;list&gt;/&lt;i&gt;</c>; a key or index the file
+    /// does not declare (a stereotype's) is reported on the table without a pointer.
     /// </summary>
     private IEnumerable<NameHolder> HoldersOf(TableBuild t)
     {
-        var file = t.Source ?? t.Overlay;
+        var file = t.Source;
         var table = t.Table;
         if (table.PrimaryKey is { } pk)
         {

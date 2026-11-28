@@ -73,7 +73,7 @@ public sealed class ResumeTests
     public async Task A_plan_apply_that_crashes_mid_write_resumes_when_the_plan_is_applied_again()
     {
         await using var repo = await CheckTests.AppliedAsync();
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         await repo.EditAsync(E2ERepo.ProductId, n => n["attributes"]![1]!["length"] = 50);
         var plan = (await repo.Service.PlanAsync(new GenerationRequest { Jobs = 2 }, null, Ct)).Plan!;
         var crashing = new GenerationService(repo.Store, repo.Options, CrashingServices(repo, afterUnits: 3));
@@ -99,7 +99,7 @@ public sealed class ResumeTests
     /// </summary>
     private static async Task AssertResumesWithoutHandEditsAsync(E2ERepo repo, IReadOnlyDictionary<string, string> written)
     {
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         await repo.EditAsync(E2ERepo.InvoiceId, n => n["displayName"] = "Bill");
 
         var resumed = await repo.RunAsync();

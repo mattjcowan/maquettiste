@@ -10,8 +10,9 @@ namespace Maquettiste.Packs.Tests;
 /// </summary>
 public sealed class FreezingNamingTests
 {
-    // The verbs case uses no rights and doesn't freeze: an operation's description renders the seven units 0.15.0 rendered. Part 2 as
-    // first written rendered nine, since the interpreter and Freezing.cs read every verb's events.
+    // The verbs case uses no rights and doesn't freeze: an operation's description renders six units (0.15.0 rendered seven; one fewer
+    // since 0.29.0, when the repository unit stopped reading entity mappings). Part 2 as first written rendered nine, since the
+    // interpreter and Freezing.cs read every verb's events.
     [Fact]
     public async Task An_operation_edit_in_the_verbs_case_renders_what_it_rendered_before_freezing()
     {
@@ -19,7 +20,7 @@ public sealed class FreezingNamingTests
         await repo.GenerateCleanlyAsync();
         Edit(repo, ".maquettiste/model/operations/assign-reviewer.json", o => o["description"] = "Assigns a reviewer to the document.");
         var again = await repo.GenerateCleanlyAsync();
-        Assert.Equal(7, again.UnitsRendered);
+        Assert.Equal(6, again.UnitsRendered);
     }
 
     // The rights case uses rights and doesn't freeze: a named right's description renders the nine units 0.15.0 rendered. Part 2 as first

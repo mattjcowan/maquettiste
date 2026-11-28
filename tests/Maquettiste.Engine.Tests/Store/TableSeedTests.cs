@@ -988,7 +988,7 @@ public sealed class TableSeedTests
     {
         await using var r = await RepoAsync();
         const string Edge = "01K6TSP0000000000000000099";
-        await CreateAsync(r, $$"""{"kind":"database","id":"{{Edge}}","name":"edge","dialect":"sqlite"}""");
+        await CreateAsync(r, $$"""{"kind":"database","id":"{{Edge}}","name":"edge","dialect":"sqlite","byConvention":"none"}""");
         await NaturalKeyTablesAsync(r, identity: true, database: Edge, prefix: OnSqlite);
         var saved = await CreateAsync(r, InvoiceSeedJson(OnSqlite, ("INV-1", "\"ada@example.com\"")));
 
@@ -1006,7 +1006,7 @@ public sealed class TableSeedTests
     {
         await using var r = await RepoAsync();
         const string Edge = "01K6TSP0000000000000000099";
-        await CreateAsync(r, $$"""{"kind":"database","id":"{{Edge}}","name":"edge","dialect":"sqlite"}""");
+        await CreateAsync(r, $$"""{"kind":"database","id":"{{Edge}}","name":"edge","dialect":"sqlite","byConvention":"none"}""");
         await NaturalKeyTablesAsync(r, identity: true, database: Edge, prefix: OnSqlite);
         await CreateAsync(r, InvoiceSeedJson(OnSqlite, ("INV-1", "\"ada@example.com\"")));
         Assert.Equal(SaveOutcome.Saved, (await EditAsync(r, N(10, OnSqlite), node => node["uniques"]!.AsArray().Add(new JsonObject
@@ -1046,7 +1046,7 @@ public sealed class TableSeedTests
     {
         await using var r = await RepoAsync();
         const string Edge = "01K6TSP0000000000000000099";
-        await CreateAsync(r, $$"""{"kind":"database","id":"{{Edge}}","name":"edge","dialect":"sqlite"}""");
+        await CreateAsync(r, $$"""{"kind":"database","id":"{{Edge}}","name":"edge","dialect":"sqlite","byConvention":"none"}""");
 
         // nodes.twin references nodes(twin) and the seed fills it through that foreign key, so judging what a row's twin holds leads
         // back to twin itself: the judgement stops there instead of following the loop for ever.

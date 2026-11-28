@@ -5,7 +5,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>Removing a pack (engine-design.md 12.3a) and the element names of unit paths.</summary>
-[UsesProjectedFixtures]
 public sealed class PackRemoveTests
 {
     private static CancellationToken Ct => EditorRepo.Ct;
@@ -113,7 +112,7 @@ public sealed class PackRemoveTests
     {
         await using var repo = EditorRepo.Create();
 
-        var key = EditorRepo.CustomerId + "@" + EditorRepo.MainDatabaseId;
+        const string key = "01M8EJPZN867GR1CJR5ZERBJ0V"; // the customers table
         var listed = await repo.Service.PathsAsync("sql-ddl", "table", null, null, 0, Ct);
         var element = listed.Elements.Single(e => e.Id == key);
         Assert.Equal("table", element.Kind);

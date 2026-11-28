@@ -6,7 +6,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 
 /// <summary>Full and repeated runs over the billing fixture with real packs (integration tasks 1 and 2).</summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class FullRunTests
 {
     [Fact]
@@ -156,7 +155,7 @@ public sealed class FullRunTests
         AssertSameBytes(stable, repo.Tree());
 
         // A physical change: check reports the pending diff as drift (MQ6018) and saves nothing; apply writes migration 2.
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var drift = await repo.RunAsync(GenerationMode.Check);
         E2ERepo.AssertOutcome(RunOutcome.Drift, drift);
         Assert.Contains(drift.Diagnostics, d => d.Rule == "MQ6018");

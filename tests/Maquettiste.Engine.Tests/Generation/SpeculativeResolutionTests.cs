@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -56,28 +55,31 @@ public sealed class SpeculativeResolutionTests
     }
 
     [Fact]
-    public void The_resolver_terminates_on_a_value_object_containment_cycle()
+    public async Task The_resolver_terminates_on_a_value_object_containment_cycle()
     {
         var b = new ModelBuilder(3);
-        b.Database("main", Dialect.PostgreSql);
+        var main = b.Database("main", Dialect.PostgreSql);
         var node = b.ValueObject("Node");
         var edge = b.ValueObject("Edge");
         node.Attr("a", node).Attr("b", edge).Attr("c", node).Attr("d", edge);
         edge.Attr("from", node).Attr("to", node).Attr("self", edge);
-        b.Entity("Site").Key("id", "uuid").Attr("n", node).Attr("e", edge);
-        var clock = Stopwatch.StartNew();
+        var site = b.Entity("Site").Key("id", "uuid").Attr("n", node).Attr("e", edge);
+        b.Table("sites", main).Column("id", "uuid", nullable: false).PrimaryKey("id").Binds(site);
+        var built = b.Build();
 
-        var table = Resolution.ResolutionKit.Resolve(b).Db("main").Table("sites");
+        // Bounded, so a resolver that does not terminate fails the test instead of hanging the run.
+        var resolve = Task.Run(() => new ModelResolver(ResolutionKit.Options).ResolveAsync(built, null, TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken);
+        var finished = await Task.WhenAny(resolve, Task.Delay(Bound, TestContext.Current.CancellationToken));
+        Assert.Same(resolve, finished);
+        var model = await resolve;
 
-        Assert.True(clock.Elapsed < Bound, "resolution took " + clock.Elapsed);
-        Assert.InRange(table.Columns.Count, 2, 200); // each containment path embeds a value object at most once
+        Assert.Equal(["id", "n", "e"], model.Entity("Site").Attributes.Select(a => a.Name));
+        Assert.Single(model.Db("main").Table("sites").Columns);
     }
 
-    [Theory]
-    [InlineData(InheritanceStrategy.Tph)]
-    [InlineData(InheritanceStrategy.Tpt)]
-    [InlineData(InheritanceStrategy.Tpc)]
-    public async Task The_resolver_terminates_on_an_inheritance_cycle_mapped_to_a_database(InheritanceStrategy strategy)
+    [Fact]
+    public async Task The_resolver_terminates_on_an_inheritance_cycle_in_a_database()
     {
         var b = new ModelBuilder(4);
         var db = b.Database("main", Dialect.PostgreSql);
@@ -87,9 +89,9 @@ public sealed class SpeculativeResolutionTests
         a.Base(gamma); // Alpha → Gamma → Beta → Alpha (MQ3002)
         b.Entity("Owner").Key("id", "uuid");
         b.Relation("owns", b.Entity("Holder").Key("id", "uuid"), beta);
-        b.Mapping(db, a).Inheritance(strategy);
-        b.Mapping(db, beta).Inheritance(strategy);
-        b.Mapping(db, gamma).Inheritance(strategy);
+        b.Table("alphas", db).Column("id", "uuid", nullable: false).Column("code", "string").PrimaryKey("id").Binds(a);
+        b.Table("betas", db).Column("id", "uuid", nullable: false).Column("size", "int32").PrimaryKey("id").Binds(beta);
+        b.Table("gammas", db).Column("id", "uuid", nullable: false).Column("rank", "int32").PrimaryKey("id").Binds(gamma);
         var model = b.Build();
 
         var resolve = Task.Run(() => new ModelResolver(ResolutionKit.Options).ResolveAsync(model, null, TestContext.Current.CancellationToken),

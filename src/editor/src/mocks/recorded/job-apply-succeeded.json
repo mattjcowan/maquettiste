@@ -1,5 +1,5 @@
 {
-  "id": "01M6G7D59SESYNWQTKJ5Z823V8",
+  "id": "01M8FRSBK3KGJ0B8YV261714FS",
   "kind": "apply",
   "state": "succeeded",
   "queuePosition": null,
@@ -7,7 +7,7 @@
     "stage": "write",
     "done": 43,
     "total": 43,
-    "currentPath": "db/main/billing/tables/payments.sql",
+    "currentPath": "db/main/billing/tables/payment_invoice.sql",
     "pack": "sql-ddl"
   },
   "planResult": null,
@@ -16,11 +16,11 @@
     "staleUnits": [],
     "stalePaths": [],
     "result": {
-      "runId": "01M6G7D59VHAYF85M39ZPPN2Y8",
+      "runId": "01M8FRSBK73Z0Y3YY3KFD5K94B",
       "mode": "apply",
       "outcome": "succeeded",
       "changes": [],
-      "unitsRendered": 46,
+      "unitsRendered": 59,
       "unitsSkipped": 0,
       "filesWritten": 43,
       "filesDeleted": 0,
@@ -28,39 +28,39 @@
       "timings": [
         {
           "stage": "load",
-          "wall": "00:00:00.0012116",
-          "busy": "00:00:00.0012116",
-          "items": 33
+          "wall": "00:00:00.0144598",
+          "busy": "00:00:00.0144598",
+          "items": 40
         },
         {
           "stage": "validate",
-          "wall": "00:00:00.0006668",
-          "busy": "00:00:00.0006668",
-          "items": 33
+          "wall": "00:00:00.0026549",
+          "busy": "00:00:00.0026549",
+          "items": 40
         },
         {
           "stage": "resolve",
-          "wall": "00:00:00.0031750",
-          "busy": "00:00:00.0031750",
-          "items": 33
+          "wall": "00:00:00.0000147",
+          "busy": "00:00:00.0000147",
+          "items": 40
         },
         {
           "stage": "plan",
-          "wall": "00:00:00.0892058",
-          "busy": "00:00:00.0848249",
-          "items": 48
+          "wall": "00:00:00.4623770",
+          "busy": "00:00:00.4604877",
+          "items": 61
         },
         {
           "stage": "write",
-          "wall": "00:00:00.0292689",
-          "busy": "00:00:00.0292689",
+          "wall": "00:00:00.2430861",
+          "busy": "00:00:00.2430861",
           "items": 43
         }
       ]
     }
   },
   "error": null,
-  "queuedUtc": "2026-11-03T08:11:28.4413692+00:00",
-  "startedUtc": "2026-11-03T08:11:28.4415208+00:00",
-  "finishedUtc": "2026-11-03T08:11:28.5953421+00:00"
+  "queuedUtc": "2026-11-28T00:27:23.1077112+00:00",
+  "startedUtc": "2026-11-28T00:27:23.1087106+00:00",
+  "finishedUtc": "2026-11-28T00:27:24.0802197+00:00"
 }

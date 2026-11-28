@@ -9,7 +9,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>E5 to E5e (explorer-redesign.md section 4.1): index rows, batched reads, the index tag and table summaries.</summary>
-[UsesProjectedFixtures]
 public sealed class ExplorerScaleTests
 {
     private const string OverviewDiagramId = "01J92P0V2164SDBW687ZV6E1MV";
@@ -34,21 +33,20 @@ public sealed class ExplorerScaleTests
         Assert.Equal(snapshot.Get<Diagram>(OverviewDiagramId)!.Members.Count, diagram.MemberCount);
         Assert.True(diagram.MemberCount > 0);
 
-        var overlay = index.Single(s => s.Id == EditorRepo.OverlayTableId);
-        Assert.Equal(EditorRepo.MainDatabaseId, overlay.Database);
-        Assert.Equal(EditorRepo.InvoiceId, overlay.Entity);
-        var mapping = index.Single(s => s.Id == InvoiceInMainMappingId);
-        Assert.Equal(EditorRepo.MainDatabaseId, mapping.Database);
-        Assert.Equal(EditorRepo.InvoiceId, mapping.Entity);
+        var invoices = index.Single(s => s.Id == EditorRepo.OverlayTableId);
+        Assert.Equal(EditorRepo.MainDatabaseId, invoices.Database);
         foreach (var summary in index.Where(s => s.Kind is "view" or "sequence"))
             Assert.Equal(EditorRepo.MainDatabaseId, summary.Database);
 
         var invoice = index.Single(s => s.Id == EditorRepo.InvoiceId);
         Assert.Null(invoice.Ends);
         Assert.Null(invoice.Database);
-        Assert.Null(invoice.Entity);
         Assert.Null(invoice.MemberCount);
         Assert.Equal(snapshot.Get<Entity>(EditorRepo.InvoiceId)!.DisplayName, invoice.DisplayName);
+        // An entity's tables come through its bindings: the row names the table its binding writes, which "Go to table" follows.
+        Assert.Equal([EditorRepo.OverlayTableId], invoice.BoundTo);
+        Assert.Null(places.BoundTo);
+        Assert.Null(invoices.BoundTo);
     }
 
     [Fact]
@@ -157,9 +155,9 @@ public sealed class ExplorerScaleTests
         Assert.False(result.Partial);
         Assert.DoesNotContain(result.Diagnostics, Outcomes.IsInvalid);
         Assert.Equal(
-            view.Tables.Select(t => new TableSummary(t.Key, t.Name, t.Schema, t.Origin, t.EntityId, t.RelationId, t.IsJunction, t.IsLookup, t.Columns.Count)),
+            view.Tables.Select(t => new TableSummary(t.Key, t.Name, t.Schema, t.RelationId, t.Columns.Count)),
             result.Tables);
-        Assert.Contains(result.Tables, t => t.IsJunction);
+        Assert.Contains(result.Tables, t => t.RelationId is not null);
     }
 
     [Fact]
@@ -178,28 +176,10 @@ public sealed class ExplorerScaleTests
 
         Assert.True(result.Partial);
         Assert.Contains(result.Diagnostics, d => d.Rule == "MQ3005" && d.ElementId == EditorRepo.PaymentId && d.Severity == DiagnosticSeverity.Error);
-        Assert.DoesNotContain(result.Tables, t => t.EntityId == EditorRepo.PaymentId);
-        Assert.Contains(complete.Tables, t => t.EntityId == EditorRepo.PaymentId);
-        Assert.Contains(result.Tables, t => t.EntityId == EditorRepo.CustomerId);
-    }
-
-    [Fact]
-    public async Task A_broken_mapping_leaves_out_its_entitys_table()
-    {
-        await using var repo = EditorRepo.Create(packs: false);
-        var tables = new DatabaseTables(repo.Service);
-        var mapping = (await repo.Store.GetElementAsync(InvoiceInMainMappingId, EditorRepo.Ct))!;
-        var node = JsonNode.Parse(mapping.Json.GetRawText())!.AsObject();
-        node["attributes"] = new JsonArray(new JsonObject { ["attribute"] = "01J92P0V0FJ23CGSNKM7P1W5V9", ["storage"] = "string" });
-        File.WriteAllText(repo.Repo.PathOf(mapping.Path), node.ToJsonString(), new UTF8Encoding(false));
-        await repo.Store.RescanAsync(false, EditorRepo.Ct); // what the host's watcher does
-
-        var result = await tables.GetAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct);
-
-        Assert.True(result.Partial);
-        Assert.Contains(result.Diagnostics, d => d.ElementId == InvoiceInMainMappingId && Outcomes.IsInvalid(d));
-        Assert.DoesNotContain(result.Tables, t => t.EntityId == EditorRepo.InvoiceId);
-        Assert.Contains(result.Tables, t => t.EntityId == EditorRepo.CustomerId);
+        // A table carries its own definition: an entity with errors leaves the table it is bound to in place.
+        Assert.Contains(complete.Tables, t => t.Name == "payments");
+        Assert.Contains(result.Tables, t => t.Name == "payments");
+        Assert.Contains(result.Tables, t => t.Name == "customers");
     }
 
     [Fact]
@@ -258,22 +238,25 @@ public sealed class ExplorerScaleTests
     }
 
     [Fact]
-    public async Task Table_detail_of_a_table_whose_entity_has_errors_is_null_and_partial()
+    public async Task Table_detail_of_a_table_with_errors_is_null_and_partial()
     {
+        // The payments table names one column twice (MQ4003): its detail is left out, and the answer says it is partial.
         await using var repo = EditorRepo.Create(packs: false);
         var tables = new DatabaseTables(repo.Service);
-        var key = (await tables.GetAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct)).Tables.First(t => t.EntityId == EditorRepo.PaymentId).Key;
-        var payment = (await repo.Store.GetElementAsync(EditorRepo.PaymentId, EditorRepo.Ct))!;
-        var node = JsonNode.Parse(payment.Json.GetRawText())!.AsObject();
-        node.Remove("key");
-        File.WriteAllText(repo.Repo.PathOf(payment.Path), node.ToJsonString(), new UTF8Encoding(false));
+        var key = (await tables.GetAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct)).Tables.First(t => t.Name == "payments").Key;
+        var payments = (await repo.Store.GetElementAsync(key, EditorRepo.Ct))!;
+        var node = JsonNode.Parse(payments.Json.GetRawText())!.AsObject();
+        var twice = node["columns"]![1]!.DeepClone().AsObject();
+        twice["id"] = "01K6XSC0000000000000000001";
+        node["columns"]!.AsArray().Add(twice);
+        File.WriteAllText(repo.Repo.PathOf(payments.Path), node.ToJsonString(), new UTF8Encoding(false));
         await repo.Store.RescanAsync(false, EditorRepo.Ct);
 
         var detail = await tables.GetTableAsync(EditorRepo.MainDatabaseId, key, EditorRepo.Ct);
 
         Assert.Null(detail.Table);
         Assert.True(detail.Partial);
-        Assert.Contains(detail.Diagnostics, d => d.Rule == "MQ3005" && d.ElementId == EditorRepo.PaymentId);
+        Assert.Contains(detail.Diagnostics, d => d.Rule == "MQ4003" && d.Message.Contains("amount_amount", StringComparison.Ordinal));
     }
 
     [Fact]

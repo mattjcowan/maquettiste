@@ -28,8 +28,7 @@ const bindingOf = (docs: ReadonlyMap<string, Json>, id: string, database: string
   ((docs.get(id)?.bindings as Binding[] | undefined) ?? []).find((b) => b.database === database);
 
 /**
- * Where a binding's rows are kept: the table it writes, else (writing nowhere or writing its source) its source. A projected table's key
- * `key@database` is the same table as `key`, as the engine finds it.
+ * Where a binding's rows are kept: the table it writes, else (writing nowhere or writing its source) its source.
  */
 export function hostOf(binding: Binding): string {
   const key = binding.write === "none" ? binding.source : typeof binding.write === "object" && binding.write ? binding.write.table : binding.source;

@@ -4,10 +4,8 @@ import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
 import type { ElementSummary } from "@/api/types";
 import { WORKSPACES, type EditorStore, type SidebarView, type Workspace } from "@/state/store";
-import { keys, loadElement, type TablesState } from "@/api/queries";
+import { keys } from "@/api/queries";
 import { tableKeyOf } from "@/search/engine";
-import { tableKeyOfFile } from "@/workspaces/database/tableList";
-import { tableKeyOfDoc } from "@/workspaces/database/columnEdits";
 import { placeOf } from "@/search/engine";
 import { useServices } from "./context";
 import { activate, hasEditor, openTab, setView } from "@/editors/tabs";
@@ -47,14 +45,13 @@ export function buildUrl(workspace: Workspace, segment: string | null, selection
   return `/${workspace}${segment ? `/${segment}` : ""}${query ? `?${query}` : ""}`;
 }
 
-/** The column a pointer into a table file names (`/columns/<n>/…`): an overlay entry's synthesized key, else the entry's id. */
+/** The column a pointer into a table file names (`/columns/<n>/…`): the entry's id. */
 export function columnAt(doc: unknown, pointer: string | null): string | null {
   const n = pointer ? /^\/columns\/(\d+)/.exec(pointer)?.[1] : undefined;
   if (n === undefined) return null;
-  const columns = (doc as { json?: { columns?: { id?: unknown; attribute?: unknown }[] } } | undefined)?.json?.columns;
+  const columns = (doc as { json?: { columns?: { id?: unknown }[] } } | undefined)?.json?.columns;
   const entry = Array.isArray(columns) ? columns[Number(n)] : undefined;
-  if (!entry) return null;
-  return typeof entry.attribute === "string" ? entry.attribute : typeof entry.id === "string" ? entry.id : null;
+  return typeof entry?.id === "string" ? entry.id : null;
 }
 
 /** Navigation that keeps the store and the URL in step. */
@@ -162,22 +159,8 @@ export function useEditorNavigation() {
         openDatabase(database);
         openTableEditor(store, database, key, { tab: "data", pin: true });
       };
-      // A table's key is its schema and name: read from its document, else from the database's table list. When neither is
-      // cached the document is fetched; the editor opens once it is there.
-      const doc = queryClient.getQueryData<{ json?: unknown }>(keys.element(summary.id));
-      const key =
-        tableKeyOfDoc(doc?.json as Record<string, unknown> | undefined)?.key ??
-        tableKeyOfFile(summary, queryClient.getQueryData<TablesState>(keys.databaseTables(database))?.tables);
-      if (key) go(key);
-      else
-        void queryClient
-          .fetchQuery({ queryKey: keys.element(summary.id), queryFn: () => loadElement(summary.id) })
-          .then((fetched) => {
-            const fetchedKey = tableKeyOfDoc(fetched.json as Record<string, unknown> | undefined)?.key;
-            if (fetchedKey) go(fetchedKey);
-            else store.getState().notify("The table could not be found to open its rows.", "error");
-          })
-          .catch(() => store.getState().notify("The table could not be read to open its rows.", "error"));
+      // A table's key is its file's id.
+      go(summary.id);
       return true;
     },
     [queryClient, store, openDatabase],
@@ -206,16 +189,11 @@ export function useEditorNavigation() {
         return;
       }
       // A table file (a search result, a problem, a where-used row) is its table on the Databases side: the Database screen
-      // focused on it, the inspector on the table. A file whose table the summaries do not name yet shows as the file.
+      // focused on it, the inspector on the table.
       if (summary.kind === "table" && summary.database) {
         const doc = queryClient.getQueryData<{ json?: unknown }>(keys.element(summary.id));
-        const key =
-          tableKeyOfDoc(doc?.json as Record<string, unknown> | undefined)?.key ??
-          tableKeyOfFile(summary, queryClient.getQueryData<TablesState>(keys.databaseTables(summary.database))?.tables);
-        if (key) {
-          openTable(summary.database, key, columnAt(doc, pointer));
-          return;
-        }
+        openTable(summary.database, summary.id, columnAt(doc, pointer));
+        return;
       }
       // Reference types, and the seeds of reference types, live only in the Reference data screen (RT 1.9).
       const target =

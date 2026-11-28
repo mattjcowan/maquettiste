@@ -15,18 +15,8 @@ const savedNativeTypes = (page: Page) =>
   }, EMAIL_ADDRESS);
 
 /** The native type of the customers.email column in the main database's view. */
-const emailColumnNativeType = (page: Page) =>
-  page.evaluate(async () => {
-    const index = (await (await fetch("/api/model/index")).json()) as { id: string; kind: string; name: string }[];
-    const main = index.find((r) => r.kind === "database" && r.name === "main")!;
-    const body = (await (await fetch(`/api/databases/${main.id}/view`)).json()) as {
-      view: { tables: { name: string; columns: { name: string; nativeType: string }[] }[] };
-    };
-    return body.view.tables.find((t) => t.name === "customers")?.columns.find((c) => c.name === "email")?.nativeType ?? null;
-  });
-
 test("a custom type's native types: one row per database dialect, another dialect added, each value one undo step", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
+  await openEditor(page, "/");
   const side = explorer(page);
   await side.getByLabel("Search the model").fill("EmailAddress");
   await side.getByTestId("explorer-row-EmailAddress").dblclick();
@@ -44,7 +34,6 @@ test("a custom type's native types: one row per database dialect, another dialec
   await postgresql.fill("citext");
   await postgresql.press("Tab");
   await expect.poll(() => savedNativeTypes(page)).toEqual({ postgresql: "citext" });
-  await expect.poll(() => emailColumnNativeType(page)).toBe("citext");
 
   // Another dialect: a row appears; its value saves next to the first, in key order.
   await section.getByLabel("Add a dialect").selectOption("oracle");
@@ -59,7 +48,6 @@ test("a custom type's native types: one row per database dialect, another dialec
   await page.getByRole("button", { name: "Undo" }).click();
   await expect.poll(() => savedNativeTypes(page)).toBeNull();
   await expect(postgresql).toHaveValue("");
-  await expect.poll(() => emailColumnNativeType(page)).toBe("varchar(254)");
 
   // Clearing a value with its button is one step too.
   await postgresql.fill("text");

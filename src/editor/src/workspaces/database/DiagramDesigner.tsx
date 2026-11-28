@@ -26,7 +26,7 @@ import {
 import type { TableFlowNode } from "@/canvas/TableNode";
 import type { ForeignKeyFlowEdge } from "@/canvas/ForeignKeyEdge";
 import { loadDatabaseDisplay, saveDatabaseDisplay, type DatabaseDisplay, type TableDisplay } from "@/canvas/tableColumns";
-import { draftForTable, draftFromDrop, END_WORDS, FK_ACTION_LABELS, asAction, fkEnds, fkNamePattern, isLegacy, type FkDraft } from "./fkEdits";
+import { draftForTable, draftFromDrop, END_WORDS, FK_ACTION_LABELS, asAction, fkEnds, fkNamePattern, type FkDraft } from "./fkEdits";
 import { openEditForeignKey } from "./foreignKeys";
 
 type XY = { x: number; y: number };
@@ -160,13 +160,9 @@ export function useDiagramDesigner(input: {
       const table = allTables.find((t) => t.key === selectedTable);
       if (!table) return;
       e.preventDefault();
-      if (isLegacy(table)) {
-        store.getState().notify(`Table ${table.name} is not stored as a table file yet; store the database's tables as files to delete it.`, "error");
-        return;
-      }
       requestDelete({ ids: [table.key], names: new Map([[table.key, table.name]]) });
     },
-    [picked, allTables, selectedTable, store],
+    [picked, allTables, selectedTable],
   );
 
   // New table: the existing New table dialog; the table it creates lands where the canvas was double-clicked (else where the
@@ -227,10 +223,7 @@ export function useDiagramDesigner(input: {
       <Dialog open={!!confirming} onOpenChange={(open) => !open && setConfirming(null)}>
         {confirming ? (
           <DialogContent title={`Delete foreign key ${confirming.fk.name}?`}>
-            <p data-testid="fk-delete-confirm">
-              The key is removed from table {confirming.table.name}
-              {isLegacy(confirming.table) ? ", which is stored as a table file first" : ""}; its columns stay. Undo brings it back.
-            </p>
+            <p data-testid="fk-delete-confirm">The key is removed from table {confirming.table.name}; its columns stay. Undo brings it back.</p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setConfirming(null)}>
                 Cancel

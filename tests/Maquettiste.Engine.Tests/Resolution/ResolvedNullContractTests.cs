@@ -31,9 +31,8 @@ public sealed class ResolvedNullContractTests
         ["REnd.AnyEntity"] = "true when the end writes anyEntity, else false",
 
         // Physical objects.
-        ["RDatabase.ByConvention"] = "the file's byConvention, else all without convention packages and packages with them",
-        ["RColumn.Key"] = "the attribute path of a synthesized column (its overlay entry's attribute), else the column's own key",
-        ["RColumn.Type"] = "the file's type, else the column type keyword its attribute's type maps to",
+        ["RColumn.Key"] = "the column's own id, else an inherited column's keyed id <tableKey>.<memberId>",
+        ["RColumn.Type"] = "the file's type, else string for an inherited column that states none",
         ["RColumn.NativeType"] = "the file's nativeType (a database type's native name), else the dialect's type map for the type and facets",
         ["RColumn.Identity"] = "the file's identity or generated: identity, else true for the key column of an identity key strategy",
         ["RPrimaryKey.Name"] = "the file's name, else the naming conventions'",
@@ -52,7 +51,7 @@ public sealed class ResolvedNullContractTests
         ["RQueryField.Nullable"] = "the file's nullable, else inferred from the expression and the joins it reads through",
         ["RQueryExpression.Null"] = "true for the null literal, false for every other node (the schema allows only true)",
         ["RNamedQuery.Query"] = "always set: a named query's where, having and other clauses are its Query's, each null or empty when the file has none",
-        ["RColumn.Sensitive"] = "the column's own sensitive, else a projected column's attribute's own, else the strongest own value of the attributes bindings map to it",
+        ["RColumn.Sensitive"] = "the column's own sensitive, else the strongest own value of the attributes bindings map to it",
 
         // Conceptual objects and their parts.
         ["RAttribute.Order"] = "the file's order, else the attribute's position among its owner's",
@@ -91,8 +90,6 @@ public sealed class ResolvedNullContractTests
     {
         // What a failed calculated value throws (next-phase-2-design.md section 5.5): an exception, not a view; no object holds one.
         ["CalculatedValueException"] = "an exception that reads of calculated values throw: CalculationEvaluationTests",
-        // No fixture takes packages by convention since 0.29.0; pull request 3 of retiring projection removes the record.
-        ["RConventionPackage"] = "a database's convention packages: ExplicitMappingTests",
         // Migration facts need a baseline and a recorded change; MigrationResolutionTests resolves them.
         ["RMigration"] = "migration facts: MigrationResolutionTests",
         ["RMigrationObject"] = "migration facts: MigrationResolutionTests",

@@ -7,10 +7,9 @@ namespace Maquettiste.Engine.Tests.Resolution;
 
 /// <summary>
 /// The billing model used by the resolver's golden test: nested packages, a scalar type, two value objects, an enum, two
-/// stereotypes with virtual attributes, five entities, one-to-many, composition, many-to-one, many-to-many and self relations,
-/// two databases (PostgreSQL with everything, SQL Server scoped to the Billing package with storage overrides), and an overlay that
-/// annotates the invoice table in PostgreSQL (display name, description, stereotype, tag, category, property) and its number column
-/// (description, stereotype, property).
+/// stereotypes with virtual attributes, five entities, one-to-many, composition, many-to-one, many-to-many and self relations, and
+/// two databases (PostgreSQL and SQL Server) with no tables: since 0.29.0 a database holds only the tables written for it, which the
+/// file fixture <c>tests/fixtures/models/billing</c> covers.
 /// </summary>
 internal static class BillingFixture
 {
@@ -68,28 +67,8 @@ internal static class BillingFixture
         b.Relation("has parent", category, category, toMax: MaxCardinality.One, fromRole: "child", toRole: "parent",
             fromNavigation: "children", toNavigation: "parent", package: catalog);
 
-        var main = b.Database("main", Dialect.PostgreSql);
-        var reporting = b.Database("reporting", Dialect.SqlServer).Packages(billing);
-        b.Mapping(reporting, invoice).Storage("status", StorageKind.String).Storage("total", StorageKind.Json);
-
-        // The invoice table's overlay carries annotations only: they reach the resolved table, not the entity; its entry for the number
-        // column annotates that column, not the attribute.
-        var receivables = b.Category("Receivables");
-        b.Add(new Table
-        {
-            Id = b.NewId(), Database = main.Id, Origin = TableOrigin.Synthesized, Entity = invoice.Id, DisplayName = "Invoice register",
-            Description = new Description { Text = "One row per issued invoice." }, Stereotypes = ["audited"], Tags = ["billing"],
-            Category = receivables, Properties = ImmutableDictionary<string, JsonElement>.Empty.Add("tablespace", JsonDocument.Parse("\"billing_data\"").RootElement),
-            Columns =
-            [
-                new Column
-                {
-                    Id = b.NewId(), Attribute = invoice.AttrId("number"), Description = new Description { Text = "The number printed on the invoice." },
-                    Stereotypes = ["audited"],
-                    Properties = ImmutableDictionary<string, JsonElement>.Empty.Add("classification", JsonDocument.Parse("\"internal\"").RootElement),
-                },
-            ],
-        });
+        b.Database("main", Dialect.PostgreSql);
+        b.Database("reporting", Dialect.SqlServer);
         return b;
     }
 }

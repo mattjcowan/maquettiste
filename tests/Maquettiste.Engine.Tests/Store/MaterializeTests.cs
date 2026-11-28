@@ -1,12 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using Maquettiste.Engine.Diagnostics;
-using Maquettiste.Engine.Ledger;
 using Maquettiste.Engine.Model;
-using Maquettiste.Engine.Pipeline;
-using Maquettiste.Engine.Resolution;
-using Maquettiste.Engine.Tests.Expressions;
 using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Engine.Validation;
 using Maquettiste.Testing;
@@ -14,21 +9,18 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Store;
 
 /// <summary>
-/// Materialize, both directions (erratum E43), over the billing fixture: <c>materialize-tables</c> turns a projected table into a
-/// designed table with the same shape and binds the entity to it (the overlay folds in and keeps its id, the mapping element goes,
-/// the relations keep their foreign keys, queries and other tables follow, the committed snapshot is read under the new keys so the
-/// next migration changes no table: it carries only the write's <c>rekey</c> fact); <c>materialize-entities</c> makes an entity per table with relations for the foreign keys; <c>materialize-attributes</c>
-/// adds to a bound entity an attribute per column its binding leaves without one, <c>materialize-columns</c> a column of its table per
-/// attribute its binding leaves unmapped; each previews without
-/// writing and refuse what is already bound; deletes drop bindings and keep the entities.
+/// Materialize, both directions (erratum E43), over the billing fixture, whose entities are all bound: <c>materialize-tables</c> designs
+/// a table for an entity bound to no database and binds the entity to it (a relation to a bound entity gets a foreign key to its table
+/// and a relation mapping naming it); <c>materialize-entities</c> makes an entity per table with relations for the foreign keys;
+/// <c>materialize-attributes</c> adds to a bound entity an attribute per column its binding leaves without one, <c>materialize-columns</c>
+/// a column of its table per attribute its binding leaves unmapped; each previews without writing and refuses what is already bound;
+/// deletes drop bindings and keep the entities.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class MaterializeTests
 {
     private const string NotesTableId = "01K6BND0000000000000000001";
     private const string InvoiceNoteId = "01K6BND0000000000000000010";
     private const string CustomerNoteId = "01K6BND0000000000000000020";
-    private const string InvoiceMappingId = "01J92P0V200XW93JQYSRCT2SE3";
 
     private static CancellationToken Ct => EditorRepo.Ct;
 
@@ -42,15 +34,30 @@ public sealed class MaterializeTests
     private static string Tables(params string[] entities) =>
         $$"""{"op":"materialize-tables","database":"{{EditorRepo.MainDatabaseId}}","entities":[{{string.Join(",", entities.Select(e => "\"" + e + "\""))}}]}""";
 
+    private const string ShipmentId = "01K6MSH0000000000000000001";
+
+    /// <summary>
+    /// Creates Shipment, an entity bound to no database (id, reference, shippedOn and the attributes in <paramref name="more"/>), in
+    /// package Billing unless <paramref name="package"/> says another; <paramref name="top"/> adds members to the entity.
+    /// </summary>
+    private static Task CreateShipmentAsync(EditorRepo r, string more = "", string package = EditorRepo.BillingPackageId, string top = "") =>
+        CreateAsync(r, $$"""
+            {"kind":"entity","id":"{{ShipmentId}}","name":"Shipment","package":"{{package}}"{{top}},
+             "key":{"attributes":["01K6MSH0000000000000000002"],"strategy":"uuid-v7"},
+             "attributes":[{"id":"01K6MSH0000000000000000002","name":"id","type":"uuid","required":true},
+               {"id":"01K6MSH0000000000000000003","name":"reference","type":"string","length":40,"required":true},
+               {"id":"01K6MSH0000000000000000004","name":"shippedOn","type":"date"}{{more}}]}
+            """);
+
     [Fact]
     public async Task The_status_lists_unbound_entities_and_every_table_with_the_entities_bound_to_it()
     {
         await using var r = EditorRepo.Create(packs: false);
+        await CreateShipmentAsync(r);
 
         var status = (await r.Store.GetMaterializeStatusAsync(EditorRepo.MainDatabaseId, Ct))!;
 
-        Assert.Equal(["Customer", "Invoice", "InvoiceLine", "Payment", "Product"], status.Entities.Select(e => e.Name));
-        Assert.All(status.Entities, e => Assert.True(e.Projected));
+        Assert.Equal(["Shipment"], status.Entities.Select(e => e.Name));
         var notes = Assert.Single(status.Sources, s => s.Id == NotesTableId);
         Assert.Equal(["CustomerNote", "InvoiceNote"], notes.BoundBy.Select(b => b.EntityName));
         Assert.Equal("entity_type", notes.BoundBy[0].Constants[0].Column);
@@ -62,111 +69,24 @@ public sealed class MaterializeTests
     public async Task A_preview_writes_nothing_and_lists_what_the_operation_would_do()
     {
         await using var r = EditorRepo.Create(packs: false);
+        await CreateShipmentAsync(r);
         var files = r.Files();
 
-        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [EditorRepo.InvoiceId]), Ct);
+        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [ShipmentId]), Ct);
 
         Assert.True(plan.Valid, string.Join("; ", plan.Diagnostics.Select(d => d.Rule + " " + d.Message)));
         Assert.Equal(files, r.Files());
-        var table = Assert.Single(plan.Updates, u => u.Kind == "table");
-        Assert.Equal((EditorRepo.OverlayTableId, "invoices"), (table.Id, table.Name));
-        Assert.Contains(plan.Updates, u => u.Id == EditorRepo.InvoiceId);
-        Assert.Equal([InvoiceMappingId], plan.Deletes.Select(d => d.Id));
-        var mapping = Assert.Single(plan.Creates);
-        Assert.Equal(("mapping", "places in main"), (mapping.Kind, mapping.Name));
-        Assert.Contains(plan.Notes, n => n.Contains("still projects", StringComparison.Ordinal));
+        var table = Assert.Single(plan.Creates, c => c.Kind == "table");
+        Assert.Equal("shipments", table.Name);
+        Assert.Equal([ShipmentId], plan.Updates.Select(u => u.Id));
+        Assert.Empty(plan.Deletes);
         Assert.DoesNotContain(plan.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
-    }
-
-    [Fact]
-    public async Task Materializing_tables_keeps_the_shape_folds_the_overlay_and_binds_every_column()
-    {
-        await using var r = EditorRepo.Create(packs: false);
-        var before = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
-
-        var result = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));
-
-        Assert.Equal(SaveOutcome.Saved, result.Outcome);
-        var snapshot = r.Store.Current!;
-        Assert.Null(snapshot.GetDocument(InvoiceMappingId));
-        var invoices = snapshot.Get<Table>(EditorRepo.OverlayTableId)!;
-        Assert.Equal((TableOrigin.Designed, "invoices", "Invoice register"), (invoices.Origin, invoices.Name, invoices.DisplayName));
-        Assert.Null(invoices.Entity);
-        var invoice = snapshot.Get<Entity>(EditorRepo.InvoiceId)!;
-        var binding = Assert.Single(invoice.Bindings);
-        Assert.Equal((EditorRepo.MainDatabaseId, EditorRepo.OverlayTableId), (binding.Database, binding.Source));
-        var places = snapshot.All<Mapping>().Single(m => m.Relation == EditorRepo.PlacesRelationId);
-        Assert.Equal(invoices.ForeignKeys.Single().Id, places.ForeignKey);
-        var customers = snapshot.All<Table>().Single(t => t.Name == "customers");
-        Assert.Equal(customers.Id, invoices.ForeignKeys.Single().ReferencesTable);
-
-        var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
-        Assert.DoesNotContain(validation.Diagnostics, d => d.Severity != DiagnosticSeverity.Info && d.Rule.StartsWith("MQ40", StringComparison.Ordinal));
-        Assert.DoesNotContain(validation.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
-
-        // The physical model is the same, column by column, under new keys; the bound entities are no longer projected.
-        var after = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
-        foreach (var name in new[] { "invoices", "customers" })
-        {
-            var old = before.Tables.Single(t => t.Name == name);
-            var now = after.Tables.Single(t => t.Name == name);
-            Assert.Equal(("designed", (string?)null), (now.Origin, now.EntityId));
-            Assert.Equal(old.Columns.Select(c => (c.Name, c.NativeType, c.Nullable, c.DefaultSql)), now.Columns.Select(c => (c.Name, c.NativeType, c.Nullable, c.DefaultSql)));
-            Assert.Equal(old.PrimaryKey!.Name, now.PrimaryKey!.Name);
-            Assert.Equal(old.ForeignKeys.Select(f => f.Name), now.ForeignKeys.Select(f => f.Name));
-            Assert.Equal(old.Indexes.Select(i => i.Name), now.Indexes.Select(i => i.Name));
-            Assert.Single(now.BoundBy);
-        }
-
-        Assert.Equal("01J92P0V1ACKN3G6TK3NJDTM82", after.Tables.Single(t => t.Name == "invoices").ForeignKeys.Single().RelationId);
-        Assert.All(after.Queries, q => Assert.NotEqual("", q.Sql)); // the queries over the invoices follow the new column ids
-    }
-
-    [Fact]
-    public async Task Materializing_tables_points_sql_text_declarations_and_named_queries_at_the_designed_tables()
-    {
-        // A query written as SQL text that reads Customer by its entity id and writes Payment's table by its key, and a built query
-        // whose named query reads Customer by its entity id: each entry follows the table to its new id (no MQ4021 afterwards).
-        await using var r = EditorRepo.Create(packs: false);
-        var payments = EditorRepo.PaymentId + "@" + EditorRepo.MainDatabaseId;
-        void Write(string file, string json) =>
-            File.WriteAllText(r.Repo.PathOf(".maquettiste/model/databases/main/queries/" + file), json, new UTF8Encoding(false));
-        Write("pay-customers.json", $$"""
-            {"kind": "query", "id": "01KAAAA0000000000000000001", "name": "PayCustomers", "database": "{{EditorRepo.MainDatabaseId}}",
-             "sql": {"*": "INSERT INTO billing.payments (id) SELECT id FROM billing.customers"},
-             "reads": ["{{EditorRepo.CustomerId}}"], "writes": ["{{payments}}"]}
-            """);
-        Write("customer-ids.json", $$"""
-            {"kind": "query", "id": "01KAAAA0000000000000000002", "name": "CustomerIds", "database": "{{EditorRepo.MainDatabaseId}}",
-             "with": [{"name": "picked", "from": {"source": "{{EditorRepo.CustomerId}}", "alias": "c"}, "select": [{"name": "cid", "expression": {"column": "c.id"} }] }],
-             "from": {"source": "picked", "alias": "p"}, "select": [{"name": "cid", "expression": {"column": "p.cid"} }] }
-            """);
-        var before = await r.Store.ValidateAsync(ValidationScope.All, Ct);
-        Assert.DoesNotContain(before.Diagnostics, d => d.Rule == "MQ4021");
-
-        var result = await ApplyAsync(r, Tables(EditorRepo.CustomerId, EditorRepo.PaymentId));
-
-        Assert.Equal(SaveOutcome.Saved, result.Outcome);
-        var snapshot = r.Store.Current!;
-        var customers = snapshot.All<Table>().Single(t => t.Name == "customers").Id;
-        var paymentsTable = snapshot.All<Table>().Single(t => t.Name == "payments").Id;
-        var text = snapshot.Get<Query>("01KAAAA0000000000000000001")!;
-        Assert.Equal([customers], text.Reads);
-        Assert.Equal([paymentsTable], text.Writes);
-        Assert.Equal(customers, snapshot.Get<Query>("01KAAAA0000000000000000002")!.With.Single().From.Source);
-        var after = await r.Store.ValidateAsync(ValidationScope.All, Ct);
-        Assert.DoesNotContain(after.Diagnostics, d => d.Rule is "MQ4021" or "MQ4022" or "MQ4023");
-        Assert.DoesNotContain(after.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
     }
 
     [Fact]
     public async Task Materializing_an_entity_already_bound_is_refused_and_the_next_one_follows_a_foreign_key_to_it()
     {
         await using var r = EditorRepo.Create(packs: false);
-        Assert.Equal(SaveOutcome.Saved, (await ApplyAsync(r, Tables(EditorRepo.InvoiceId))).Outcome);
-        var invoices = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!;
-        Assert.Equal(EditorRepo.CustomerId + "@" + EditorRepo.MainDatabaseId, invoices.ForeignKeys.Single().ReferencesTable);
-
         var again = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
         Assert.Equal(SaveOutcome.Invalid, again.Outcome);
         var refusal = Assert.Single(again.Items.SelectMany(i => i.Diagnostics));
@@ -175,224 +95,42 @@ public sealed class MaterializeTests
         var bound = await ApplyAsync(r, Tables(InvoiceNoteId));
         Assert.Contains("already bound", bound.Items.SelectMany(i => i.Diagnostics).Single().Message, StringComparison.Ordinal);
 
-        // Materializing the customer later points the invoices' foreign key at its designed table.
-        Assert.Equal(SaveOutcome.Saved, (await ApplyAsync(r, Tables(EditorRepo.CustomerId))).Outcome);
-        var customers = r.Store.Current!.All<Table>().Single(t => t.Name == "customers");
-        var fk = r.Store.Current.Get<Table>(EditorRepo.OverlayTableId)!.ForeignKeys.Single();
+        // A shipment goes to one customer, who is bound: the shipments table gets a foreign key to the customers table, and a relation
+        // mapping names it.
+        await CreateShipmentAsync(r);
+        const string ShipsTo = "01K6MSH0000000000000000010";
+        await CreateAsync(r, $$"""
+            {"kind":"relation","id":"{{ShipsTo}}","name":"shipsTo","package":"{{EditorRepo.BillingPackageId}}","ends":[
+              {"id":"01K6MSH0000000000000000011","entity":"{{EditorRepo.CustomerId}}","role":"customer","navigation":"customer","min":1,"max":1},
+              {"id":"01K6MSH0000000000000000012","entity":"{{ShipmentId}}","role":"shipments","navigation":"shipments"}]}
+            """);
+        var stored = await ApplyAsync(r, Tables(ShipmentId));
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var snapshot = r.Store.Current!;
+        var customers = snapshot.Get<Table>(CustomersTableId)!;
+        var fk = snapshot.All<Table>().Single(t => t.Name == "shipments").ForeignKeys.Single();
         Assert.Equal(customers.Id, fk.ReferencesTable);
         Assert.Equal(customers.PrimaryKey!.Columns, fk.ReferencesColumns);
+        Assert.Equal(fk.Id, snapshot.All<Mapping>().Single(m => m.Relation == ShipsTo).ForeignKey);
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
         Assert.DoesNotContain(validation.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
-    }
-
-    [Fact]
-    public async Task The_committed_snapshot_is_rekeyed_so_the_next_migration_changes_no_table()
-    {
-        await using var r = EditorRepo.Create();
-        var first = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
-        Assert.Equal(RunOutcome.Succeeded, first.Outcome);
-        var migrations = r.Repo.ListFiles().Count(IsMigrationScript);
-
-        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
-        var rekey = Assert.Single(stored.Facts!, f => f.Fact == "rekey").Id;
-        var second = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
-
-        // The rekey fact alone makes the diff non-empty (next-phase-1-design.md section 3.2): its migration changes no table, and the
-        // snapshot lists the fact as rendered.
-        Assert.Equal(RunOutcome.Succeeded, second.Outcome);
-        Assert.Equal(migrations + 1, r.Repo.ListFiles().Count(IsMigrationScript));
-        AssertNoTableChange(r, second);
-        var snapshotPath = r.Repo.ListFiles().Single(p => p.EndsWith("snapshots/main.json", StringComparison.Ordinal));
-        Assert.Equal([rekey], JsonNode.Parse(r.Repo.ReadFile(snapshotPath))!["facts"]!.AsArray().Select(f => (string)f!));
-        // A table's script says nothing of the entity laid out on it, so storing the tables as files changes no table script; the
-        // schema script records the rekey fact, which a build reaches, in the migration ledger (section 3.3).
-        Assert.Equal(["db/main/schema.sql"], second.Changes.Where(c => c.Kind == FileChangeKind.Modified).Select(c => c.Path));
-        Assert.Contains($"VALUES ('{rekey}', ", r.Repo.ReadFile("db/main/schema.sql"), StringComparison.Ordinal);
-        foreach (var table in new[] { "customers", "invoices" })
-            Assert.DoesNotContain("entity", r.Repo.ReadFile($"db/main/billing/tables/{table}.sql"), StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task Undoing_and_redoing_a_materialize_writes_migrations_that_change_no_table()
-    {
-        await using var r = EditorRepo.Create();
-        Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
-        int Migrations() => r.Repo.ListFiles().Count(IsMigrationScript);
-        var migrations = Migrations();
-        var snapshotPath = r.Repo.ListFiles().Single(p => p.EndsWith("snapshots/main.json", StringComparison.Ordinal));
-        string Keys() => string.Join(",", JsonNode.Parse(r.Repo.ReadFile(snapshotPath))!["tables"]!.AsArray().Select(t => (string)t!["key"]!));
-        var keys = Keys();
-
-        // The editor's way: what the operation will change is read first; undo puts it back, redo applies the result again.
-        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [EditorRepo.InvoiceId, EditorRepo.CustomerId]), Ct);
-        var priors = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => r.Store.Current!.GetDocument(c.Id)!.Json.GetRawText(), StringComparer.Ordinal);
-        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
-        var items = stored.Items.Where(i => i.Id is not null).ToList();
-        var after = items.ToDictionary(i => i.Id!, i => i.Current?.Json.GetRawText(), StringComparer.Ordinal);
-        var hashes = items.ToDictionary(i => i.Id!, i => i.Hash, StringComparer.Ordinal);
-
-        // The materialize leaves the snapshot's keys and records the aliases.
-        Assert.Equal(keys, Keys());
-        var aliases = JsonNode.Parse(r.Repo.ReadFile(snapshotPath))!["aliases"]!.AsArray();
-        Assert.Contains(aliases, a => (string)a!["key"]! == EditorRepo.InvoiceId + "@" + EditorRepo.MainDatabaseId && (string)a["alias"]! == EditorRepo.OverlayTableId);
-
-        async Task Step(Func<string, string?> from, Func<string, string?> to, Func<string, string?> hash)
-        {
-            var ops = new List<string>();
-            foreach (var id in after.Keys.Concat(priors.Keys).Distinct(StringComparer.Ordinal))
-            {
-                var (was, becomes) = (from(id), to(id));
-                if (becomes is null)
-                    ops.Add($$"""{"op":"delete","id":"{{id}}","expectedHash":"{{hash(id)}}"}""");
-                else if (was is null)
-                    ops.Add($$"""{"op":"create","element":{{becomes}}}""");
-                else
-                    ops.Add($$"""{"op":"update","id":"{{id}}","expectedHash":"{{hash(id)}}","element":{{becomes}}}""");
-            }
-
-            var result = await ApplyAsync(r, string.Join(",", ops));
-            Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
-            foreach (var item in result.Items.Where(i => i.Id is not null))
-                hashes[item.Id!] = item.Hash;
-        }
-
-        // Each step records one rekey fact (the undo, its move back), so each run writes one migration, which changes no table; the
-        // snapshot it saves takes the keys the model gives the tables then.
-        foreach (var round in new[] { "stored", "undone", "redone" })
-        {
-            if (round == "undone")
-                await Step(id => after.GetValueOrDefault(id), id => priors.GetValueOrDefault(id), id => hashes.GetValueOrDefault(id));
-            else if (round == "redone")
-                await Step(id => priors.GetValueOrDefault(id), id => after.GetValueOrDefault(id), id => hashes.GetValueOrDefault(id));
-            var run = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
-            Assert.Equal(RunOutcome.Succeeded, run.Outcome);
-            Assert.True(++migrations == Migrations(), $"{round}: " + string.Join(", ", run.Changes.Select(c => c.Path)));
-            AssertNoTableChange(r, run);
-            Assert.Equal(round == "undone", keys == Keys());
-            Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Check, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
-        }
-    }
-
-    /// <summary>
-    /// Storing a table again after an undo (a new materialize, not a redo) reuses the ids the committed snapshot's alias recorded for
-    /// the projected key: the table's (customers has no overlay, so the store draws it) and every column's (invoices keeps its overlay's
-    /// table id, but most of its columns have no overlay entry). The snapshot then reads as the same table, so the next migration drops
-    /// only the column added and undone in between, and without that column there is no migration at all; twice over.
-    /// </summary>
-    [Theory]
-    [InlineData("customers", true)]
-    [InlineData("invoices", true)]
-    [InlineData("customers", false)]
-    [InlineData("invoices", false)]
-    public async Task Storing_a_table_again_after_an_undo_reuses_its_ids_so_the_next_migration_drops_only_what_was_undone(string tableName, bool addColumn)
-    {
-        await using var r = EditorRepo.Create();
-        async Task<IReadOnlyList<string>> Generate()
-        {
-            var run = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
-            Assert.Equal(RunOutcome.Succeeded, run.Outcome);
-            return [.. run.Changes.Where(c => c.Kind == FileChangeKind.Added && c.Path.Contains("/migrations/", StringComparison.Ordinal))
-                .Select(c => r.Repo.ReadFile(c.Path))];
-        }
-
-        await Generate();
-        string[] entities = [EditorRepo.InvoiceId, EditorRepo.CustomerId];
-        string? firstId = null;
-        for (var cycle = 1; cycle <= 2; cycle++)
-        {
-            var undoStore = await StoreAsync(r, entities);
-            var table = r.Store.Current!.All<Table>().Single(t => t.Name == tableName);
-            firstId ??= table.Id;
-            Assert.Equal(firstId, table.Id);
-            if (addColumn)
-            {
-                var document = (await r.Store.GetElementAsync(table.Id, Ct))!;
-                var stored = document.Json.GetRawText();
-                var edited = JsonNode.Parse(stored)!.AsObject();
-                edited["columns"]!.AsArray().Add(new JsonObject { ["id"] = "01K6REST00000000000000000" + cycle, ["name"] = "scratch_" + cycle, ["type"] = "string", ["length"] = 20 });
-                var added = await r.Store.SaveAsync(table.Id, Encoding.UTF8.GetBytes(edited.ToJsonString()), document.Hash, ChangeSource.Editor, Ct);
-                Assert.True(added.Outcome == SaveOutcome.Saved, string.Join("; ", added.Diagnostics.Select(d => d.Rule + " " + d.Message)));
-                var adding = Assert.Single(await Generate());
-                Assert.Contains("scratch_" + cycle, adding, StringComparison.Ordinal);
-                var undone = await r.Store.SaveAsync(table.Id, Encoding.UTF8.GetBytes(stored), added.Hash!, ChangeSource.Editor, Ct);
-                Assert.Equal(SaveOutcome.Saved, undone.Outcome);
-                // The column's drop is a migration fact pending its acknowledgement, which generation waits for.
-                await AcknowledgeAsync(r, Assert.Single(undone.Facts!, f => f.Fact == "drop"));
-            }
-            else
-            {
-                AssertNoTableChange(await Generate()); // the store's rekey fact only
-            }
-
-            await undoStore();
-            var undoAgain = await StoreAsync(r, entities);
-            Assert.Equal(firstId, r.Store.Current!.All<Table>().Single(t => t.Name == tableName).Id);
-            var migrations = await Generate();
-            if (addColumn)
-            {
-                // (PostgreSQL: dropping a column drops every view first and creates it again after, whichever table it reads.) The
-                // migration records its facts, so it opens with the ledger DDL, whose tables are no table of the model.
-                var migration = Assert.Single(migrations).Replace(LedgerContract.Ddl(Dialect.PostgreSql, LedgerContract.DefaultSchema), "", StringComparison.Ordinal);
-                Assert.Single(Regex.Matches(migration, "DROP COLUMN"));
-                Assert.Contains("scratch_" + cycle, migration, StringComparison.Ordinal);
-                foreach (var statement in new[] { "DROP TABLE", "CREATE TABLE", "ADD COLUMN", "ADD CONSTRAINT", "DROP CONSTRAINT", "INDEX" })
-                    Assert.False(migration.Contains(statement, StringComparison.Ordinal), $"cycle {cycle}, {statement}:\n{migration}");
-            }
-            else
-            {
-                AssertNoTableChange(migrations); // the undo's and the new store's rekey facts only
-            }
-
-            // Back to the projection for the next cycle; generating there changes no table either.
-            await undoAgain();
-            AssertNoTableChange(await Generate());
-        }
-    }
-
-    /// <summary>Applies materialize-tables the editor's way and returns its undo (what the operation changed, put back).</summary>
-    private static async Task<Func<Task>> StoreAsync(EditorRepo r, string[] entities)
-    {
-        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, entities), Ct);
-        var priors = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => r.Store.Current!.GetDocument(c.Id)!.Json.GetRawText(), StringComparer.Ordinal);
-        var stored = await ApplyAsync(r, Tables(entities));
-        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
-        var after = stored.Items.Where(i => i.Id is not null).ToDictionary(i => i.Id!, i => i.Current?.Json.GetRawText(), StringComparer.Ordinal);
-        return async () =>
-        {
-            var ops = new List<string>();
-            foreach (var id in after.Keys.Concat(priors.Keys).Distinct(StringComparer.Ordinal))
-            {
-                var (was, becomes) = (after.GetValueOrDefault(id), priors.GetValueOrDefault(id));
-                var hash = r.Store.Current!.GetDocument(id)?.Hash;
-                if (becomes is null)
-                    ops.Add($$"""{"op":"delete","id":"{{id}}","expectedHash":"{{hash}}"}""");
-                else if (was is null)
-                    ops.Add($$"""{"op":"create","element":{{becomes}}}""");
-                else
-                    ops.Add($$"""{"op":"update","id":"{{id}}","expectedHash":"{{hash}}","element":{{becomes}}}""");
-            }
-
-            var result = await ApplyAsync(r, string.Join(",", ops));
-            Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
-        };
     }
 
     [Fact]
     public async Task With_the_hashes_the_caller_read_a_document_changed_since_or_not_read_is_a_conflict()
     {
         await using var r = EditorRepo.Create(packs: false);
-        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [EditorRepo.InvoiceId]), Ct);
+        await CreateShipmentAsync(r);
+        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [ShipmentId]), Ct);
         var read = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => r.Store.Current!.GetDocument(c.Id)!.Hash, StringComparer.Ordinal);
         string Op(IReadOnlyDictionary<string, string> hashes) =>
-            Tables(EditorRepo.InvoiceId)[..^1] + ",\"expectedHashes\":{" + string.Join(",", hashes.Select(p => $"\"{p.Key}\":\"{p.Value}\"")) + "}}";
+            Tables(ShipmentId)[..^1] + ",\"expectedHashes\":{" + string.Join(",", hashes.Select(p => $"\"{p.Key}\":\"{p.Value}\"")) + "}}";
 
-        // Another save changes the invoice entity after it was read: the operation is a conflict and writes nothing.
-        var invoice = (await r.Store.GetElementAsync(EditorRepo.InvoiceId, Ct))!;
-        var edited = JsonNode.Parse(invoice.Json.GetRawText())!.AsObject();
-        edited["displayName"] = "Invoice (edited)";
-        var save = await r.Store.SaveAsync(EditorRepo.InvoiceId, Encoding.UTF8.GetBytes(edited.ToJsonString()), invoice.Hash, ChangeSource.Editor, Ct);
+        // Another save changes the shipment entity after it was read: the operation is a conflict and writes nothing.
+        var shipment = (await r.Store.GetElementAsync(ShipmentId, Ct))!;
+        var edited = JsonNode.Parse(shipment.Json.GetRawText())!.AsObject();
+        edited["displayName"] = "Shipment (edited)";
+        var save = await r.Store.SaveAsync(ShipmentId, Encoding.UTF8.GetBytes(edited.ToJsonString()), shipment.Hash, ChangeSource.Editor, Ct);
         Assert.Equal(SaveOutcome.Saved, save.Outcome);
         var files = r.Files();
         var stale = await ApplyAsync(r, Op(read));
@@ -401,7 +139,7 @@ public sealed class MaterializeTests
 
         // Not naming a document the operation changes is a conflict too; the hashes read now go through.
         var fresh = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => r.Store.Current!.GetDocument(c.Id)!.Hash, StringComparer.Ordinal);
-        Assert.Equal(SaveOutcome.Conflict, (await ApplyAsync(r, Op(fresh.Where(p => p.Key != EditorRepo.InvoiceId).ToDictionary(p => p.Key, p => p.Value)))).Outcome);
+        Assert.Equal(SaveOutcome.Conflict, (await ApplyAsync(r, Op(fresh.Where(p => p.Key != ShipmentId).ToDictionary(p => p.Key, p => p.Value)))).Outcome);
         Assert.Equal(SaveOutcome.Saved, (await ApplyAsync(r, Op(fresh))).Outcome);
     }
 
@@ -528,14 +266,15 @@ public sealed class MaterializeTests
         Assert.Contains("already mapped", await RefusedAsync(Attributes($"\"{SupplierId}\"")), StringComparison.Ordinal);
         Assert.Contains("a constant", await RefusedAsync(
             $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{InvoiceNoteId}}"],"columns":["entity_type"]}"""), StringComparison.Ordinal);
+        await CreateShipmentAsync(r);
         Assert.Contains("has no binding", await RefusedAsync(
-            $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{EditorRepo.InvoiceId}}"]}"""), StringComparison.Ordinal);
+            $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{ShipmentId}}"]}"""), StringComparison.Ordinal);
         Assert.Contains("one entity at a time", await RefusedAsync(
             $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Supplier}}","{{InvoiceNoteId}}"],"columns":["note"]}"""), StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Materializing_columns_adds_one_per_unmapped_attribute_shaped_as_the_projection_and_mapped()
+    public async Task Materializing_columns_adds_one_per_unmapped_attribute_shaped_and_mapped()
     {
         await using var r = EditorRepo.Create(packs: false);
         const string Vendors = "01K6MAC0000000000000000001", VendorId = "01K6MAC0000000000000000002", VendorName = "01K6MAC0000000000000000003";
@@ -571,8 +310,8 @@ public sealed class MaterializeTests
         var table = snapshot.Get<Table>(Vendors)!;
         Assert.Equal(["id", "name", "created_at", "status"], table.Columns.Select(c => c.Name));
         Assert.False(table.Columns[2].Nullable);
-        // The shape is the projection's: the names follow the conventions (snake case), and the enum is stored as the project
-        // stores enums by default (its member values).
+        // The names follow the conventions (snake case), and the enum is stored as the project stores enums by default (its member
+        // values).
         Assert.Equal("datetimeoffset", table.Columns[2].Type);
         Assert.Equal("int32", table.Columns[3].Type);
         var binding = snapshot.Get<Entity>(Vendor)!.Bindings.Single();
@@ -594,8 +333,9 @@ public sealed class MaterializeTests
             $$"""{"op":"materialize-columns","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Vendor}}"],"attributes":["{{CreatedAttribute}}"]}"""), StringComparison.Ordinal);
         Assert.Contains("map the attribute to it instead", await RefusedAsync(
             $$"""{"op":"materialize-columns","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Vendor}}"],"attributes":["{{NameAttribute}}"]}"""), StringComparison.Ordinal);
+        await CreateShipmentAsync(r);
         Assert.Contains("has no binding", await RefusedAsync(
-            $$"""{"op":"materialize-columns","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{EditorRepo.InvoiceId}}"]}"""), StringComparison.Ordinal);
+            $$"""{"op":"materialize-columns","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{ShipmentId}}"]}"""), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -627,8 +367,7 @@ public sealed class MaterializeTests
     // ---- stereotypes that contribute structure (next-phase-2-design.md section 3.1, D16) ------------------------------------------
 
     private const string AuditedPath = ".maquettiste/model/vocabularies/stereotypes/audited.json";
-    private const string OverlayPath = ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json";
-    private const string ProductId = "01J92P0V0JR8BE8253SKT29ZG7";
+    private const string CustomersTableId = "01M8EJPZN867GR1CJR5ZERBJ0V";
     private const string CreatedAt = "01JC7AVD1TC0000000000000C1", UpdatedAt = "01JC7AVD1TC0000000000000C2", CreatedIndex = "01JC7AVD1TC0000000000000X1";
 
     /// <summary>Rewrites a model file on disk before the store reads it.</summary>
@@ -641,7 +380,8 @@ public sealed class MaterializeTests
 
     /// <summary>
     /// The design's billing example: audited gains created_at and updated_at and an index on created_at; with <paramref name="schemaDefault"/>,
-    /// schema billing gives audited to every table, and notes keeps its own created_at by excluding the member and the index.
+    /// schema billing gives audited to every table. A table audited reaches that has its own created_at or updated_at (notes, and the
+    /// tables of the entities that carry audited) keeps it by excluding the member, and the index with created_at.
     /// </summary>
     private static void AuditedMembers(EditorRepo r, bool schemaDefault)
     {
@@ -653,10 +393,26 @@ public sealed class MaterializeTests
                 """);
             s["indexes"] = JsonNode.Parse($$"""[{"id": "{{CreatedIndex}}", "columns": [{"column": "{{CreatedAt}}"}]}]""");
         });
-        if (!schemaDefault)
-            return;
-        EditOnDisk(r, ".maquettiste/model/databases/main/database.json", d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("audited"));
-        EditOnDisk(r, ".maquettiste/model/databases/main/tables/notes.json", t => t["excludes"] = new JsonArray(CreatedAt, CreatedIndex));
+        if (schemaDefault)
+            EditOnDisk(r, ".maquettiste/model/databases/main/database.json", d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("audited"));
+        foreach (var file in Directory.EnumerateFiles(r.Repo.PathOf(".maquettiste/model/databases/main/tables"), "*.json").Order(StringComparer.Ordinal))
+        {
+            EditOnDisk(r, ".maquettiste/model/databases/main/tables/" + Path.GetFileName(file), t =>
+            {
+                if (!schemaDefault && !(t["stereotypes"]?.AsArray().Any(k => (string?)k == "audited") ?? false))
+                    return;
+                var names = t["columns"]!.AsArray().Select(c => (string?)c!["name"]).ToHashSet(StringComparer.Ordinal);
+                var excludes = new JsonArray();
+                if (names.Contains("created_at"))
+                    excludes.Add(CreatedAt);
+                if (names.Contains("updated_at"))
+                    excludes.Add(UpdatedAt);
+                if (names.Contains("created_at"))
+                    excludes.Add(CreatedIndex);
+                if (excludes.Count > 0)
+                    t["excludes"] = excludes;
+            });
+        }
     }
 
     private static string Errors(ValidationReport report) =>
@@ -666,160 +422,76 @@ public sealed class MaterializeTests
     public async Task Materialize_tables_writes_no_index_an_inherited_index_replaces()
     {
         // An inherited index covers only its stereotype's own columns (an index redefinition cannot change them, MQ2027), so it meets an
-        // indexed attribute's index only when the attribute's column takes a stereotype column's name, which validation already reports
-        // (MQ4003). The projection then let the inherited index stand for both (it counts as a declared one); the designed table writes
-        // no index of its own for the column either, so no second index of the same name appears.
+        // indexed attribute's index only when the attribute's column takes a stereotype column's name, which validation reports (MQ4003).
+        // The inherited index then stands for both: the designed table writes no index of its own for the column, so no second index of
+        // the same name appears.
         await using var r = EditorRepo.Create(packs: false);
         AuditedMembers(r, schemaDefault: true);
-        EditOnDisk(r, ".maquettiste/model/entities/product.json", e => e["attributes"]!.AsArray().Add(JsonNode.Parse("""
-            { "id": "01K9MATER00000000000000080", "name": "createdAt", "type": "datetimeoffset", "indexed": true }
-            """)));
-        async Task<IReadOnlyList<string>> IndexNames() => [.. (await r.Store.Services.Resolver.ResolveAsync(await r.Store.GetSnapshotAsync(Ct), null, Ct))
-            .Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).Tables.Single(t => t.Name == "products").Indexes.Select(i => i.Name)];
-        Assert.Single(await IndexNames(), n => n == "ix_products_created_at");
+        await CreateShipmentAsync(r, """,{ "id": "01K9MATER00000000000000080", "name": "createdAt", "type": "datetimeoffset", "indexed": true }""");
 
-        // The model already has MQ4003, so the change cannot be saved; the plan shows the table it would write.
-        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [ProductId]), Ct);
-        var products = JsonNode.Parse(plan.Creates.Single(u => u.Kind == "table" && u.Name == "products").Element!.Value.GetRawText())!;
-        var created = products["columns"]!.AsArray().Single(c => (string?)c!["name"] == "created_at")!["id"]!.GetValue<string>();
-        Assert.DoesNotContain(products["indexes"]!.AsArray(), i => i!["columns"]!.AsArray().Any(c => (string?)c!["column"] == created));
-        Assert.Single(await IndexNames(), n => n == "ix_products_created_at");
+        // The change would add MQ4003, so it cannot be saved; the plan shows the table it would write.
+        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [ShipmentId]), Ct);
+        var shipments = JsonNode.Parse(plan.Creates.Single(u => u.Kind == "table" && u.Name == "shipments").Element!.Value.GetRawText())!;
+        var created = shipments["columns"]!.AsArray().Single(c => (string?)c!["name"] == "created_at")!["id"]!.GetValue<string>();
+        Assert.DoesNotContain(shipments["indexes"]?.AsArray() ?? [], i => i!["columns"]!.AsArray().Any(c => (string?)c!["column"] == created));
     }
 
     [Fact]
-    public async Task Materialize_tables_keeps_inherited_members_and_moves_their_keys()
+    public async Task Materialize_tables_keeps_inherited_members()
     {
-        // products inherits audited's columns and index from schema billing's default; its designed table leaves them inherited, keyed by
-        // the new table id, and the rekey moves their keys with the table, so the next migration changes no table.
-        await using var r = EditorRepo.Create();
+        // The shipments table inherits audited's columns and index from schema billing's default; its designed table leaves them
+        // inherited, keyed by the new table id.
+        await using var r = EditorRepo.Create(packs: false);
         AuditedMembers(r, schemaDefault: true);
-        var first = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
-        Assert.Equal(RunOutcome.Succeeded, first.Outcome);
-        var before = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!.Tables.Single(t => t.Name == "products");
-        var projectedKey = ProductId + "@" + EditorRepo.MainDatabaseId;
-        Assert.Equal(projectedKey + "." + CreatedAt, before.Columns.Single(c => c.Name == "created_at").Key);
+        await CreateShipmentAsync(r);
 
-        var stored = await ApplyAsync(r, Tables(ProductId));
+        var stored = await ApplyAsync(r, Tables(ShipmentId));
 
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
         var snapshot = r.Store.Current!;
-        var file = snapshot.All<Table>().Single(t => t.Name == "products");
+        var file = snapshot.All<Table>().Single(t => t.Name == "shipments");
         // The file holds the own members only: no audit column, no index on created_at, and no stereotype (the default still reaches it).
         Assert.DoesNotContain(file.Columns, c => c.Name is "created_at" or "updated_at");
         Assert.DoesNotContain(file.Indexes, i => i.Columns.Any(c => c.Column?.Contains(CreatedAt, StringComparison.Ordinal) == true));
         Assert.Empty(file.Stereotypes);
         Assert.Empty(file.Excludes);
-        var binding = snapshot.Get<Entity>(ProductId)!.Bindings.Single();
-        Assert.Contains(binding.Columns, c => c.Column == file.Id + "." + UpdatedAt);
         Assert.Equal(0, (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
 
-        var after = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!.Tables.Single(t => t.Name == "products");
-        Assert.Equal(before.Columns.Select(c => (c.Name, c.NativeType, c.Nullable, c.DefaultSql)), after.Columns.Select(c => (c.Name, c.NativeType, c.Nullable, c.DefaultSql)));
-        Assert.Equal(before.Indexes.Select(i => i.Name), after.Indexes.Select(i => i.Name));
+        var after = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!.Tables.Single(t => t.Name == "shipments");
         var created = after.Columns.Single(c => c.Name == "created_at");
         Assert.Equal((file.Id + "." + CreatedAt, "schema-default"), (created.Key, created.MemberOrigin!.Source));
+        Assert.Contains(after.Columns, c => c.Name == "updated_at" && c.Key == file.Id + "." + UpdatedAt);
         var index = after.Indexes.Single(i => i.MemberOrigin is not null);
         Assert.Equal((CreatedIndex, created.Key), (index.MemberOrigin!.MemberId, Assert.Single(index.Columns).Column));
-
-        // The write's rekey moves the inherited columns' keys with the table key.
-        var rekey = snapshot.Get<Migration>(Assert.Single(stored.Facts!, f => f.Fact == "rekey").Id)!;
-        Assert.Contains(rekey.Keys, k => k.Kind == "column" && k.From == projectedKey + "." + CreatedAt && k.To == file.Id + "." + CreatedAt);
-        Assert.Contains(rekey.Keys, k => k.Kind == "column" && k.From == projectedKey + "." + UpdatedAt && k.To == file.Id + "." + UpdatedAt);
-        var second = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
-        Assert.Equal(RunOutcome.Succeeded, second.Outcome);
-        AssertNoTableChange(r, second);
-    }
-
-    [Fact]
-    public async Task Materialize_tables_carries_the_overlays_redefines_and_excludes()
-    {
-        // Product's overlay lists versioned (a column and a unique), drops the tracked default, makes created_at nullable, redefines the
-        // unique's columns and excludes updated_at: all of it moves into the designed table, the unique's column list by the new ids.
-        await using var r = EditorRepo.Create(packs: false);
-        const string Overlay = "01JC7AVD1TC0000000000000T2", Version = "01JC7AVD1TC0000000000000V1", VersionUnique = "01JC7AVD1TC0000000000000Q3";
-        const string ProductKeyAttribute = "01J92P0V15PMP0E4P5DSNZVETR";
-        var projectedKey = ProductId + "@" + EditorRepo.MainDatabaseId;
-        AuditedMembers(r, schemaDefault: true);
-        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/vocabularies/stereotypes/tracked.json"),
-            """{"kind": "stereotype", "id": "01JC7AVD1TC0000000000000S2", "key": "tracked", "name": "Tracked", "appliesTo": ["table"]}""", new UTF8Encoding(false));
-        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/vocabularies/stereotypes/versioned.json"), $$"""
-            {"kind": "stereotype", "id": "01JC7AVD1TC0000000000000S3", "key": "versioned", "name": "Versioned", "appliesTo": ["table"],
-             "columns": [{"id": "{{Version}}", "name": "row_version", "type": "int64", "nullable": false, "default": 0}],
-             "uniques": [{"id": "{{VersionUnique}}", "columns": ["{{Version}}"]}]}
-            """, new UTF8Encoding(false));
-        EditOnDisk(r, ".maquettiste/model/databases/main/database.json", d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("audited", "tracked"));
-        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/databases/main/tables/products-overlay.json"), $$"""
-            {"kind": "table", "id": "{{Overlay}}", "database": "{{EditorRepo.MainDatabaseId}}", "origin": "synthesized", "entity": "{{ProductId}}",
-             "stereotypes": ["versioned"], "excludeStereotypes": ["tracked"],
-             "redefines": [{"member": "{{CreatedAt}}", "nullable": true},
-               {"member": "{{VersionUnique}}", "columns": ["{{projectedKey}}.{{Version}}", "{{ProductKeyAttribute}}"]}],
-             "excludes": ["{{UpdatedAt}}"]}
-            """, new UTF8Encoding(false));
-        Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
-
-        var stored = await ApplyAsync(r, Tables(ProductId));
-
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
-        var file = r.Store.Current!.Get<Table>(Overlay)!;
-        Assert.Equal((TableOrigin.Designed, "products"), (file.Origin, file.Name));
-        Assert.Equal(["versioned"], file.Stereotypes);
-        Assert.Equal(["tracked"], file.ExcludeStereotypes!);
-        Assert.Equal([UpdatedAt], file.Excludes);
-        Assert.Equal([CreatedAt, VersionUnique], file.Redefines.Select(x => x.Member));
-        Assert.True(file.Redefines[0].Nullable);
-        var idColumn = file.Columns.Single(c => c.Name == "id").Id;
-        Assert.Equal([Overlay + "." + Version, idColumn], file.Redefines[1].Columns!);
-        Assert.DoesNotContain(file.Columns, c => c.Name is "created_at" or "row_version");
-        Assert.DoesNotContain(file.Uniques, u => u.Columns.Any(c => c.Contains(Version, StringComparison.Ordinal)));
-        Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
-
-        var table = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!.Tables.Single(t => t.Name == "products");
-        Assert.Equal(["audited", "versioned"], table.Stereotypes);
-        var created = table.Columns.Single(c => c.Name == "created_at");
-        Assert.Equal((Overlay + "." + CreatedAt, true), (created.Key, created.Nullable));
-        Assert.Equal(["nullable"], created.MemberOrigin!.Redefined);
-        Assert.DoesNotContain(table.Columns, c => c.Name == "updated_at");
-        var unique = table.Uniques.Single(u => u.MemberOrigin is not null);
-        Assert.Equal([Overlay + "." + Version, idColumn], unique.Columns);
-        Assert.Equal(["columns"], unique.MemberOrigin!.Redefined);
     }
 
     [Fact]
     public async Task Materialize_tables_excludes_the_members_a_stereotype_realizes_through_attributes()
     {
-        // invoices (whose overlay lists audited) and customers (which schema billing's default reaches) store audited's attributes as
-        // columns, so they inherit no member; their designed tables hold those columns as their own and exclude every member of audited.
-        await using var r = EditorRepo.Create();
+        // Shipment carries audited, and schema billing's default reaches its table: the entity stores audited's attributes as columns,
+        // so its table inherits no member; the designed table holds those columns as its own and excludes every member of audited.
+        await using var r = EditorRepo.Create(packs: false);
         AuditedMembers(r, schemaDefault: true);
-        var first = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
-        Assert.Equal(RunOutcome.Succeeded, first.Outcome);
+        await CreateShipmentAsync(r, top: ",\"stereotypes\":[\"audited\"]");
 
-        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));
+        var stored = await ApplyAsync(r, Tables(ShipmentId));
 
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
         var snapshot = r.Store.Current!;
-        foreach (var name in new[] { "invoices", "customers" })
-        {
-            var file = snapshot.All<Table>().Single(t => t.Name == name);
-            Assert.Equal([CreatedAt, UpdatedAt, CreatedIndex], file.Excludes);
-            Assert.Contains(file.Columns, c => c.Name == "created_at");
-            Assert.Contains(file.Columns, c => c.Name == "updated_at");
-        }
-
-        Assert.Equal(["audited"], snapshot.Get<Table>(EditorRepo.OverlayTableId)!.Stereotypes);
+        var file = snapshot.All<Table>().Single(t => t.Name == "shipments");
+        Assert.Equal([CreatedAt, UpdatedAt, CreatedIndex], file.Excludes);
+        Assert.Contains(file.Columns, c => c.Name == "created_at");
+        Assert.Contains(file.Columns, c => c.Name == "updated_at");
         Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
         var view = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
-        Assert.All(view.Tables.Where(t => t.Name is "invoices" or "customers").SelectMany(t => t.Columns), c => Assert.Null(c.MemberOrigin));
-        var second = await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct);
-        Assert.Equal(RunOutcome.Succeeded, second.Outcome);
-        AssertNoTableChange(r, second);
+        Assert.All(view.Tables.Single(t => t.Name == "shipments").Columns, c => Assert.Null(c.MemberOrigin));
     }
 
     [Fact]
-    public async Task Materialize_tables_keeps_the_package_whose_default_reaches_the_projected_table()
+    public async Task Materialize_tables_states_the_package_whose_default_reaches_the_table()
     {
-        // Package Catalog gives its tables stamped, which only tables take; products took it through Product's package, which a designed
-        // table does not fall back to, so the designed table states the package and keeps inheriting the member.
+        // Package Catalog gives its tables stamped, which only tables take; a designed table does not fall back to its entity's package,
+        // so the table of an entity of Catalog states the package and inherits the member.
         await using var r = EditorRepo.Create(packs: false);
         const string Catalog = "01J92P0V025DRFTXKMS240G2NG", StampedAt = "01JC7AVD1TC0000000000000C3";
         File.WriteAllText(r.Repo.PathOf(".maquettiste/model/vocabularies/stereotypes/stamped.json"), $$"""
@@ -827,215 +499,24 @@ public sealed class MaterializeTests
              "columns": [{"id": "{{StampedAt}}", "name": "stamped_at", "type": "datetimeoffset"}]}
             """, new UTF8Encoding(false));
         EditOnDisk(r, ".maquettiste/model/packages/catalog.json", p => p["defaultStereotypes"] = new JsonArray("stamped"));
+        await CreateShipmentAsync(r, package: Catalog);
 
-        var stored = await ApplyAsync(r, Tables(ProductId));
+        var stored = await ApplyAsync(r, Tables(ShipmentId));
 
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
-        var file = r.Store.Current!.All<Table>().Single(t => t.Name == "products");
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var file = r.Store.Current!.All<Table>().Single(t => t.Name == "shipments");
         Assert.Equal(Catalog, file.Package);
         Assert.DoesNotContain(file.Columns, c => c.Name == "stamped_at");
         Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
-        var table = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!.Tables.Single(t => t.Name == "products");
+        var table = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!.Tables.Single(t => t.Name == "shipments");
         var stamped = table.Columns.Single(c => c.Name == "stamped_at");
         Assert.Equal((file.Id + "." + StampedAt, "package-default"), (stamped.Key, stamped.MemberOrigin!.Source));
     }
 
     [Fact]
-    public async Task Materialize_tables_moves_an_overlay_tree_check_on_a_contributed_column_to_the_new_key()
-    {
-        // The overlay's check reads stamp, which stamped contributes, by its keyed id under the projected table's key; the designed
-        // table's check reads it under the table's id, as its columns, keys and redefinitions do, so the write is not refused.
-        await using var r = EditorRepo.Create(packs: false);
-        const string Stamp = "01K9EXR0000000000000000M02", CheckId = "01K9EXR0000000000000000M03";
-        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/vocabularies/stereotypes/stamped.json"), $$"""
-            {"kind": "stereotype", "id": "01K9EXR0000000000000000M01", "key": "stamped", "name": "Stamped", "appliesTo": ["table"],
-             "columns": [{"id": "{{Stamp}}", "name": "stamp", "type": "datetimeoffset"}]}
-            """, new UTF8Encoding(false));
-        EditOnDisk(r, OverlayPath, t =>
-        {
-            t["stereotypes"] = new JsonArray("audited", "stamped");
-            t["checks"]!.AsArray().Add(JsonNode.Parse($$"""
-                {"id": "{{CheckId}}", "name": "ck_invoices_stamp",
-                 "condition": {"op": "isNotNull", "args": [{"path": ["{{EditorRepo.InvoiceId}}@{{EditorRepo.MainDatabaseId}}.{{Stamp}}"] }] } }
-                """));
-        });
-
-        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
-
-        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
-        var check = Assert.Single(r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!.Checks, c => c.Id == CheckId);
-        Assert.Equal(EditorRepo.OverlayTableId + "." + Stamp, check.Condition!.Args![0].Path![0]);
-        Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
-        var resolved = await new ModelResolver(r.Repo.Options).ResolveAsync(r.Store.Current!, null, Ct);
-        var invoices = resolved.Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).Tables.Single(t => t.Name == "invoices");
-        Assert.Contains(invoices.Checks, c => c.Name == "ck_invoices_stamp" && c.Expression == "stamp IS NOT NULL");
-    }
-
-    [Fact]
-    public async Task Materialize_tables_keeps_an_overlay_tree_check_the_DDL_of_its_dialect_leaves_out()
-    {
-        // On SQL Server a tree check is MQ4056 and out of the DDL, so the projected table has no such check; the designed table still
-        // holds it as the overlay defined it.
-        await using var r = EditorRepo.Create(packs: false);
-        const string Flag = "01K9EXR0000000000000000M11", CheckId = "01K9EXR0000000000000000M12";
-        EditOnDisk(r, ".maquettiste/model/databases/main/database.json", d => d["dialect"] = "sqlserver");
-        EditOnDisk(r, OverlayPath, t =>
-        {
-            t["columns"]!.AsArray().Add(JsonNode.Parse($$"""{"id": "{{Flag}}", "name": "extra_flag", "type": "bool"}"""));
-            t["checks"]!.AsArray().Add(JsonNode.Parse($$"""
-                {"id": "{{CheckId}}", "name": "ck_invoices_extra", "condition": {"op": "eq", "args": [{"path": ["{{Flag}}"]}, {"value": true}] } }
-                """));
-        });
-        Assert.Contains((await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ4056" && d.ElementId == EditorRepo.OverlayTableId);
-
-        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
-
-        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
-        var file = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!;
-        Assert.Equal(["ck_invoice_status", "ck_invoices_extra"], file.Checks.Select(c => c.Name));
-        var check = file.Checks.Single(c => c.Id == CheckId);
-        Assert.Equal((Flag, true), (check.Condition!.Args![0].Path![0], check.Expression.Count == 0));
-    }
-
-    [Fact]
-    public async Task Materialize_tables_turns_an_overlay_check_on_attributes_into_one_on_the_new_columns()
-    {
-        // The overlay's checks read Invoice's attributes by their column keys, and number through its override entry: the designed
-        // table's checks read the columns the projection gave them, by their new ids (number's is the entry's id), and print by their names.
-        await using var r = EditorRepo.Create(packs: false);
-        ExpressionResolutionTests.OverlayChecks(r, ExpressionResolutionTests.DueAfterIssue, $$"""
-            { "id": "01K9EXR0000000000000000W51", "name": "ck_invoices_number",
-              "condition": { "op": "and", "args": [
-                { "op": "ge", "args": [{ "path": ["{{ExpressionResolutionTests.TotalAmount}}"] }, { "value": 0 }] },
-                { "op": "ge", "args": [{ "call": "length", "args": [{ "path": ["{{ExpressionResolutionTests.NumberEntryId}}"] }] }, { "value": 3 }] }] } }
-            """);
-
-        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
-
-        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
-        var file = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!;
-        string Id(string name) => file.Columns.Single(c => c.Name == name).Id;
-        Assert.Equal(ExpressionResolutionTests.NumberEntryId, Id("number"));
-        var due = file.Checks.Single(c => c.Name == "ck_invoices_due_after_issue").Condition!;
-        Assert.Equal([Id("issued_on"), Id("due_on")], due.Args!.Select(a => a.Path![0]));
-        var number = file.Checks.Single(c => c.Name == "ck_invoices_number").Condition!;
-        Assert.Equal([Id("total_amount"), Id("number")], number.Args!.Select(a => a.Args![0].Path?[0] ?? a.Args[0].Args![0].Path![0]));
-        Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
-
-        var resolved = await new ModelResolver(r.Repo.Options).ResolveAsync(r.Store.Current!, null, Ct);
-        var invoices = resolved.Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).Tables.Single(t => t.Name == "invoices");
-        Assert.Equal(
-            [("ck_invoices_due_after_issue", "issued_on <= due_on", "issued_on <= due_on"),
-             ("ck_invoices_number", "total_amount >= 0 AND char_length(number) >= 3", "total_amount >= 0 and length(number) >= 3")],
-            invoices.Checks.Where(c => c.Condition is not null).Select(c => (c.Name, c.Expression, c.Condition!.Text)));
-    }
-
-    [Fact]
-    public async Task Materialize_tables_turns_an_overlay_check_held_as_text_into_a_tree_on_the_new_columns()
-    {
-        // A hand-edited overlay holds its checks as text (MQ3108), one whole and one inside a tree: the text names Invoice's
-        // attributes, which the designed table no longer has as members, so materialize parses it in the overlay's scope first and the
-        // designed table's checks hold trees that read the new column ids. The model validates clean and the DDL does not change.
-        await using var r = EditorRepo.Create();
-        ExpressionResolutionTests.OverlayChecks(r, """
-            { "id": "01K9EXR0000000000000000W81", "name": "ck_invoices_due_after_issue", "condition": { "text": "issuedOn <= dueOn" } }
-            """, $$"""
-            { "id": "01K9EXR0000000000000000W82", "name": "ck_invoices_number",
-              "condition": { "op": "and", "args": [
-                { "text": "length(number) >= 3" }, { "op": "ge", "args": [{ "path": ["{{ExpressionResolutionTests.TotalAmount}}"] }, { "value": 0 }] }] } }
-            """);
-        Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
-        const string Script = "db/main/billing/tables/invoices.sql";
-        var ddl = r.Repo.ReadFile(Script);
-        Assert.Contains("CHECK (issued_on <= due_on)", ddl, StringComparison.Ordinal);
-        Assert.Contains("CHECK (char_length(number) >= 3 AND total_amount >= 0)", ddl, StringComparison.Ordinal);
-
-        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
-
-        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
-        var file = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!;
-        string Id(string name) => file.Columns.Single(c => c.Name == name).Id;
-        var due = file.Checks.Single(c => c.Name == "ck_invoices_due_after_issue").Condition!;
-        Assert.Equal("le", due.Op);
-        Assert.Equal([Id("issued_on"), Id("due_on")], due.Args!.Select(a => a.Path![0]));
-        var number = file.Checks.Single(c => c.Name == "ck_invoices_number").Condition!;
-        Assert.Equal([Id("number"), Id("total_amount")], number.Args!.Select(a => a.Args![0].Path?[0] ?? a.Args[0].Args![0].Path![0]));
-        Assert.False(ExprSites.HasText(due) || ExprSites.HasText(number));
-        Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
-        Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
-        Assert.Equal(ddl, r.Repo.ReadFile(Script));
-    }
-
-    [Fact]
-    public async Task Materialize_tables_keeps_the_custom_properties_of_an_overlay_check()
-    {
-        await using var r = EditorRepo.Create(packs: false);
-        ExpressionResolutionTests.OverlayChecks(r, """
-            { "id": "01K9EXR0000000000000000W84", "name": "ck_invoices_due_after_issue", "condition": { "text": "issuedOn <= dueOn" }, "properties": { "owner": "finance" } }
-            """);
-
-        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
-
-        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
-        var check = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!.Checks.Single(c => c.Name == "ck_invoices_due_after_issue");
-        Assert.Equal("finance", check.Properties["owner"].GetString());
-    }
-
-    [Fact]
-    public async Task Materialize_tables_refuses_an_overlay_check_held_as_text_that_does_not_parse()
-    {
-        // The text cannot become a tree in the overlay's scope, so the check could not move into the designed table: materialize names
-        // the check and the parser's finding under its rule, in the preview and the batch alike, and writes nothing.
-        await using var r = EditorRepo.Create(packs: false);
-        ExpressionResolutionTests.OverlayChecks(r, """
-            { "id": "01K9EXR0000000000000000W83", "name": "ck_invoices_due_after_issue", "condition": { "text": "issuedOn <= " } }
-            """);
-        var files = r.Files();
-        const string Message = "Check 'ck_invoices_due_after_issue' of the overlay of entity 'Invoice' holds its condition as text, which does not parse "
-            + "in the overlay's scope (MQ3101 at /checks/1/condition of the overlay): The text ends too soon (at position 13 of the text). The text has to "
-            + "become a tree before the check moves into the designed table, where it would no longer read the entity's attributes by name. Fix the "
-            + "text, or change or remove the check, then materialize again.";
-
-        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [EditorRepo.InvoiceId]), Ct);
-        var refused = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
-
-        Assert.False(plan.Valid);
-        Assert.Equal([("MQ3101", Message)], plan.Diagnostics.Select(d => (d.Rule, d.Message)));
-        Assert.NotEqual(SaveOutcome.Saved, refused.Outcome);
-        var diagnostic = Assert.Single(refused.Items.SelectMany(i => i.Diagnostics));
-        Assert.Equal(("MQ3101", Message), (diagnostic.Rule, diagnostic.Message));
-        Assert.Equal(files, r.Files());
-    }
-
-    [Fact]
-    public async Task Materialize_tables_refuses_while_an_overlay_check_reads_an_attribute_its_table_does_not_store()
-    {
-        // The mapping ignores notes, which an overlay check reads (MQ4008 there): the designed table would have no column for it, so
-        // materialize names the attribute and the finding, and changes nothing, rather than drop the check or write one that cannot type.
-        await using var r = EditorRepo.Create(packs: false);
-        EditOnDisk(r, ".maquettiste/model/mappings/invoice-in-main.json", m => m["attributes"]!.AsArray().Add(JsonNode.Parse("""
-            { "attribute": "01J92P0V0WKRGKH7YBKA2V30NC", "ignore": true }
-            """)));
-        ExpressionResolutionTests.OverlayChecks(r, ExpressionResolutionTests.DueAfterIssue, """
-            { "id": "01K9EXR0000000000000000W14", "name": "ck_invoices_notes",
-              "condition": { "op": "isNotNull", "args": [{ "path": ["01J92P0V0WKRGKH7YBKA2V30NC"] }] } }
-            """);
-        var before = File.ReadAllText(r.Repo.PathOf(ExpressionResolutionTests.OverlayPath));
-
-        var refused = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
-
-        Assert.NotEqual(SaveOutcome.Saved, refused.Outcome);
-        var diagnostic = Assert.Single(refused.Items.SelectMany(i => i.Diagnostics));
-        Assert.Equal(("MQ4055", "Check 'ck_invoices_notes' of the overlay of entity 'Invoice' reads 'notes', which table 'invoices' stores in no column "
-            + "of its own (MQ4008 at /checks/2/condition of the overlay), so the designed table would have no column for it. Store 'notes' in the table, or "
-            + "change or remove the check, then materialize again."), (diagnostic.Rule, diagnostic.Message));
-        Assert.Equal(before, File.ReadAllText(r.Repo.PathOf(ExpressionResolutionTests.OverlayPath)));
-    }
-
-    [Fact]
     public async Task Materialize_columns_maps_an_attribute_to_an_inherited_column_of_its_name()
     {
-        // vendors carries audited and inherits created_at and updated_at; Vendor carries audited too, so its projection has those columns.
+        // vendors carries audited and inherits created_at and updated_at; Vendor carries audited too, so it has those attributes.
         // materialize-columns adds a column for status only and maps createdAt and updatedAt to the inherited columns' keyed ids.
         await using var r = EditorRepo.Create(packs: false);
         AuditedMembers(r, schemaDefault: false);
@@ -1101,9 +582,9 @@ public sealed class MaterializeTests
     [Fact]
     public async Task Materialize_tables_writes_no_type_and_the_binding_keeps_the_columns_types()
     {
-        // 0.28.0: a stored table names no type of the model. A column that stores one attribute typed by an enum, a reference type or a
+        // 0.28.0: a designed table names no type of the model. A column that stores one attribute typed by an enum, a reference type or a
         // scalar type gets its physical shape, the scalar type's native type written out; the entity's binding maps the column to that
-        // attribute, so the column's bound type keeps the type, and the stored table keeps its storage objects.
+        // attribute, so the column's bound type keeps the type.
         await using var r = EditorRepo.Create(packs: false);
         TypedBilling(r);
         // "Create tables…" never guesses how a pack stores a reference type: the project says it (here a CHECK, which the table states).
@@ -1112,63 +593,54 @@ public sealed class MaterializeTests
             s["conventions"] = new JsonObject { ["referenceStorage"] = new JsonObject { ["strategy"] = "check" } };
             s["referenceData"] = new JsonObject { ["strategies"] = new JsonObject { ["check"] = new JsonObject() } };
         });
-        var before = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
+        await CreateShipmentAsync(r, $$"""
+            ,{"id":"01K6MSH0000000000000000021","name":"status","type":{"ref":"{{InvoiceStatusId}}"} },
+             {"id":"01K6MSH0000000000000000022","name":"email","type":{"ref":"{{EmailAddressId}}"} },
+             {"id":"01K6MSH0000000000000000023","name":"state","type":{"ref":"{{InvoiceStateId}}"} }
+            """);
 
-        var result = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));
+        var result = await ApplyAsync(r, Tables(ShipmentId));
 
-        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
         var snapshot = r.Store.Current!;
-        var invoices = snapshot.Get<Table>(EditorRepo.OverlayTableId)!;
-        var status = invoices.Columns.Single(c => c.Name == "status");
-        Assert.Equal(("string", 1, "\"D\""), (status.Type, status.Length, status.Default?.GetRawText()));
-        var state = invoices.Columns.Single(c => c.Name == "state");
-        Assert.Equal(("string", 1), (state.Type, state.Length));
-        var email = snapshot.All<Table>().Single(t => t.Name == "customers").Columns.Single(c => c.Name == "email");
-        Assert.Equal(("string", 254, "citext"), (email.Type, email.Length, email.NativeType));
+        var shipments = snapshot.All<Table>().Single(t => t.Name == "shipments");
+        Column Named(string name) => shipments.Columns.Single(c => c.Name == name);
+        Assert.Equal("int32", Named("status").Type);
+        Assert.Equal(("string", 1), (Named("state").Type, Named("state").Length));
+        Assert.Equal(("string", 254, "citext"), (Named("email").Type, Named("email").Length, Named("email").NativeType));
         Assert.Equal(0, (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
 
-        // The resolved columns are what they were, and the bindings give them their types back.
-        var after = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
-        foreach (var (table, column) in new[] { ("customers", "email"), ("invoices", "status"), ("invoices", "state") })
-        {
-            var old = before.Tables.Single(t => t.Name == table).Columns.Single(c => c.Name == column);
-            var now = after.Tables.Single(t => t.Name == table).Columns.Single(c => c.Name == column);
-            Assert.Equal((old.NativeType, old.Length, old.Nullable), (now.NativeType, now.Length, now.Nullable));
-        }
-
-        Assert.Equal("citext", after.Tables.Single(t => t.Name == "customers").Columns.Single(c => c.Name == "email").NativeType);
-        var invoiceColumns = after.Tables.Single(t => t.Name == "invoices").Columns;
-        Assert.Equal(InvoiceStateId, invoiceColumns.Single(c => c.Name == "state").BoundType?.ReferenceType);
-        Assert.Equal(InvoiceStatusId, invoiceColumns.Single(c => c.Name == "status").BoundType?.Enum);
-        Assert.All(invoiceColumns.Where(c => c.Name.StartsWith("total_", StringComparison.Ordinal) || c.Name == "number"), c => Assert.Null(c.BoundType));
-        Assert.Equal(EmailAddressId, after.Tables.Single(t => t.Name == "customers").Columns.Single(c => c.Name == "email").BoundType?.Scalar);
+        // The bindings give the columns their types back.
+        var columns = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!.Tables.Single(t => t.Name == "shipments").Columns;
+        Assert.Equal(InvoiceStateId, columns.Single(c => c.Name == "state").BoundType?.ReferenceType);
+        Assert.Equal(InvoiceStatusId, columns.Single(c => c.Name == "status").BoundType?.Enum);
+        Assert.Equal(EmailAddressId, columns.Single(c => c.Name == "email").BoundType?.Scalar);
+        Assert.Equal("citext", columns.Single(c => c.Name == "email").NativeType);
+        Assert.Null(columns.Single(c => c.Name == "reference").BoundType);
     }
 
     [Fact]
-    public async Task Materialize_tables_keeps_an_overlay_entry_sensitivity_and_writes_no_attribute_one()
+    public async Task Materialize_tables_writes_no_attribute_sensitivity_on_the_column()
     {
-        // Decision 12: the overlay entry's own sensitive is the column's own statement and moves to the stored column; Customer's email
-        // says pii on the attribute, which keeps saying it, and the bound column shows it without stating it.
+        // Decision 12: an attribute's sensitive stays on the attribute; the designed column does not state it, and the bound column shows it.
         await using var r = EditorRepo.Create(packs: false);
-        EditOnDisk(r, ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json", t => t["columns"]![0]!["sensitive"] = "secret");
+        await CreateShipmentAsync(r, """,{"id":"01K6MSH0000000000000000031","name":"contact","type":"string","length":80,"sensitive":"pii"}""");
 
-        var result = await ApplyAsync(r, Tables(EditorRepo.InvoiceId, EditorRepo.CustomerId));
+        var result = await ApplyAsync(r, Tables(ShipmentId));
 
         Assert.Equal(SaveOutcome.Saved, result.Outcome);
         var snapshot = r.Store.Current!;
-        Assert.Equal(Sensitivity.Secret, snapshot.Get<Table>(EditorRepo.OverlayTableId)!.Columns.Single(c => c.Name == "number").Sensitive);
-        Assert.Null(snapshot.All<Table>().Single(t => t.Name == "customers").Columns.Single(c => c.Name == "email").Sensitive);
-        Assert.Equal(Sensitivity.Pii, snapshot.Get<Entity>(EditorRepo.CustomerId)!.Attributes.Single(a => a.Name == "email").Sensitive);
+        Assert.Null(snapshot.All<Table>().Single(t => t.Name == "shipments").Columns.Single(c => c.Name == "contact").Sensitive);
+        Assert.Equal(Sensitivity.Pii, snapshot.Get<Entity>(ShipmentId)!.Attributes.Single(a => a.Name == "contact").Sensitive);
         Assert.Equal(0, (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Errors);
         var view = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!;
-        Assert.Equal("secret", view.Tables.Single(t => t.Name == "invoices").Columns.Single(c => c.Name == "number").Sensitive);
-        Assert.Equal("pii", view.Tables.Single(t => t.Name == "customers").Columns.Single(c => c.Name == "email").Sensitive);
+        Assert.Equal("pii", view.Tables.Single(t => t.Name == "shipments").Columns.Single(c => c.Name == "contact").Sensitive);
     }
 
     [Fact]
-    public async Task Materialize_columns_shapes_a_column_as_the_projection_does()
+    public async Task Materialize_columns_shapes_a_column_by_its_attributes_type()
     {
-        // Decision 12: materialize-columns shapes a new column as the projection does: the enum (its member values, int32), the scalar
+        // Decision 12: materialize-columns shapes a new column by its attribute's type: the enum (its member values, int32), the scalar
         // type (its base, length and native type) and the reference type (its code's type and length). It writes no type of the model
         // (0.28.0); the binding it adds a field to gives the column its bound type.
         await using var r = EditorRepo.Create(packs: false);
@@ -1262,42 +734,26 @@ public sealed class MaterializeTests
     }
 
     [Fact]
-    public async Task Materialize_attributes_types_a_projected_reference_column_by_its_type()
+    public async Task Materialize_attributes_types_an_attribute_by_its_columns_physical_type()
     {
         // Decision 11, for materialize-attributes: a column of a table file gives an attribute of its keyword and facets (it names no type
-        // of the model, 0.28.0), and a projected reference column (a source no table file holds: another entity's projected table) one
-        // typed by the column's reference type.
+        // of the model, 0.28.0).
         await using var r = EditorRepo.Create(packs: false);
         await TypedEventsAsync(r);
         const string Event = "01K9X3G0000000000000000001", EventKey = "01K9X3G0000000000000000002";
-        const string Digest = "01K9X3G0000000000000000011", DigestKey = "01K9X3G0000000000000000012";
         await CreateAsync(r, $$"""
             {"kind":"entity","id":"{{Event}}","name":"Event","package":"{{EditorRepo.BillingPackageId}}","key":{"attributes":["{{EventKey}}"]},
              "attributes":[{"id":"{{EventKey}}","name":"id","type":"uuid","required":true}],
              "bindings":[{"id":"01K9X3G0000000000000000003","database":"{{EditorRepo.MainDatabaseId}}","source":"{{EventsTable}}",
                "fields":[{"attribute":"{{EventKey}}","column":"{{EventsId}}"}]}]}
             """);
-        await CreateAsync(r, $$"""
-            {"kind":"entity","id":"{{Digest}}","name":"InvoiceDigest","package":"{{EditorRepo.BillingPackageId}}","key":{"attributes":["{{DigestKey}}"]},
-             "attributes":[{"id":"{{DigestKey}}","name":"id","type":"uuid","required":true}],
-             "bindings":[{"id":"01K9X3G0000000000000000013","database":"{{EditorRepo.MainDatabaseId}}","source":"{{EditorRepo.InvoiceId}}@{{EditorRepo.MainDatabaseId}}",
-               "write":"none","fields":[{"attribute":"{{DigestKey}}","column":"id"}]}]}
-            """);
 
         var typed = await ApplyAsync(r, $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Event}}"]}""");
-        var projected = await ApplyAsync(r, $$"""{"op":"materialize-attributes","database":"{{EditorRepo.MainDatabaseId}}","entities":["{{Digest}}"],"columns":["state","number"]}""");
 
         Assert.Equal(SaveOutcome.Saved, typed.Outcome);
-        Assert.Equal(SaveOutcome.Saved, projected.Outcome);
-        var snapshot = r.Store.Current!;
         Assert.Equal(
             [("id", "uuid", null, true), ("state", "string", 1, true), ("status", "string", 1, false), ("email", "string", 254, false), ("note", "string", 400, false)],
-            snapshot.Get<Entity>(Event)!.Attributes.Select(a => (a.Name, TypeOf(a), a.Length, a.Required)));
-        var digest = snapshot.Get<Entity>(Digest)!;
-        Assert.Equal([("id", "uuid"), ("state", InvoiceStateId), ("number", "string")], digest.Attributes.Select(a => (a.Name, TypeOf(a))));
-        Assert.Null(digest.Attributes[1].Length);
-        // A projected column's key is the attribute it stores: Invoice's state and number.
-        Assert.Equal(["id", InvoiceStateAttribute, "01J92P0V0R3VSP7D5238DTNZX1"], digest.Bindings.Single().Fields.Select(f => f.Column));
+            r.Store.Current!.Get<Entity>(Event)!.Attributes.Select(a => (a.Name, TypeOf(a), a.Length, a.Required)));
     }
 
     [Fact]
@@ -1317,8 +773,9 @@ public sealed class MaterializeTests
             Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
 
         // materialize-tables: every column of the table it writes, hashed from the entries it writes.
-        Saved(await ApplyAsync(r, Tables(EditorRepo.InvoiceId)));
-        Assert.Equal(Shapes(EditorRepo.OverlayTableId), BindingOf(EditorRepo.InvoiceId).Provenance!.Columns);
+        await CreateShipmentAsync(r);
+        Saved(await ApplyAsync(r, Tables(ShipmentId)));
+        Assert.Equal(Shapes(r.Store.Current!.All<Table>().Single(t => t.Name == "shipments").Id), BindingOf(ShipmentId).Provenance!.Columns);
 
         // materialize-entities: a table file's binding records every column; a view's records none.
         const string Vendors = "01K6MAP0000000000000000001", VendorId = "01K6MAP0000000000000000002", View = "01J92P0V1YZ4YP352KD1A50FXS";
@@ -1369,30 +826,5 @@ public sealed class MaterializeTests
     {
         var result = await r.Store.CreateAsync(Encoding.UTF8.GetBytes(JsonNode.Parse(json)!.ToJsonString()), ChangeSource.Editor, Ct);
         Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
-    }
-
-    /// <summary>Whether a repo path is a generated migration script (the model's migration facts live under <c>.maquettiste/</c>).</summary>
-    private static bool IsMigrationScript(string path) =>
-        path.Contains("/migrations/", StringComparison.Ordinal) && !path.StartsWith(".maquettiste/", StringComparison.Ordinal);
-
-    /// <summary>The run wrote one migration (for its rekey facts) and it names no table of the billing schema.</summary>
-    private static void AssertNoTableChange(EditorRepo r, GenerationResult run) =>
-        AssertNoTableChange([.. run.Changes.Where(c => c.Kind == FileChangeKind.Added && IsMigrationScript(c.Path)).Select(c => r.Repo.ReadFile(c.Path))]);
-
-    /// <summary>One migration, which names no table of the billing schema: a rekey fact writes no DDL.</summary>
-    private static void AssertNoTableChange(IReadOnlyList<string> migrations)
-    {
-        var migration = Assert.Single(migrations);
-        Assert.False(migration.Contains("billing.", StringComparison.Ordinal), migration);
-    }
-
-    /// <summary>Completes a pending drop fact with its acknowledgement.</summary>
-    private static async Task AcknowledgeAsync(EditorRepo r, RecordedFact fact)
-    {
-        var document = (await r.Store.GetElementAsync(fact.Id, Ct))!;
-        var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
-        node["acknowledge"] = "Scratch data only.";
-        var saved = await r.Store.SaveAsync(fact.Id, Encoding.UTF8.GetBytes(node.ToJsonString()), document.Hash, ChangeSource.Editor, Ct);
-        Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
     }
 }

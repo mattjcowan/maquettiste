@@ -159,8 +159,7 @@ category declared by a domain would fall out of scope in
 the new place. **Apply stereotype…**, **Tag…** and **Set category…** mark a row, or every selected row at once, in one
 change. **Promote to entity** on a value object or a custom type makes it an entity (an id key plus the value object's
 attributes, or one `value` attribute of the custom type's base) and turns each entity attribute typed as it into a
-relationship to the new entity. What pointed at a removed attribute follows: the owner's mapping drops its row for it
-(the relationship's foreign key maps by convention) and the owner's seed drops its column; a diagram that showed the
+relationship to the new entity. What pointed at a removed attribute follows: the owner's seed drops its column; a diagram that showed the
 promoted element shows the new entity. A use inside a value object, a relationship or a key, a seed left with no column,
 or any other element that refers to it blocks the promotion, and the dialog names each one and lists every rewrite.
 One undo reverses the whole promotion. F12 on a reference goes to its definition and Shift+F12 lists where the element is used (the **Used** menu item, shown on the bottom panel's References tab).
@@ -178,11 +177,8 @@ entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category
   the attribute grid, **Inherited** lists the base entities' fields and **Virtual** the fields the entity's stereotypes
   add, both read-only. Relationships has **New relationship…**, which starts the New relationship dialog from this
   entity. **Inheritance** (available once the entity has a base entity or another entity derives from it) edits the hierarchy:
-  the **Base entity** picker (it refuses a base that would close a loop and says why), the derived entities, and under
-  **Mapping strategy**, per database, the strategy (**One table for the hierarchy (tph)**, **One table per entity,
-  joined (tpt)**, **One table per concrete entity (tpc)**, or **By convention**, which names the strategy the
-  conventions give) and the **Discriminator value**. The strategy is written on the root entity's mapping in that
-  database (disabled, with a tooltip, while the root has none); the discriminator value on this entity's mapping.
+  the **Base entity** picker (it refuses a base that would close a loop and says why) and the derived entities. How a
+  hierarchy is stored is set on each entity's binding, on the Storage tab.
   **Storage** binds the entity to databases (see [Storage: binding an entity](#storage-binding-an-entity)).
 - **Relationship**: its ends at the top (each end's **Type** is One entity, Several types or Any entity; see [Relationships with several types at an end](#relationships-with-several-types-at-an-end)), then Attributes, Storage, Code generation, References. **Storage** says, per
   database, how the relationship is stored (see [Relationship storage](#relationship-storage)); every edit there is one
@@ -192,7 +188,7 @@ entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category
   the project's databases use, and **Add a dialect** for another. A value such as `pg_lsn` or `binary({length})`
   replaces the base type's type map entry for every column that stores the type in a database of that dialect: entity
   and child tables, junction tables and the foreign keys that copy a key of the type. `{length}`, `{precision}` and
-  `{scale}` take the type's facets; an empty row keeps the type map, and an overlay column's own native type still wins.
+  `{scale}` take the type's facets; an empty row keeps the type map, and a column's own native type still wins.
   Each value is one undo step. The inspector shows the same fields. Generated code keeps the base type (a `binary`
   custom type is still a byte array in C#).
 - **Domain**: General, Tags and Categories. The display name, plural name and description are edited in the editor's
@@ -448,9 +444,9 @@ database shows on the Database screen at once. The explorers remember which rows
   changed in between, such as a column you added and then undid. And the store checks that nothing it changes was saved by someone else meanwhile (it is
   refused then, and nothing is written), so its undo never puts back an older version. The table's JSON tab shows the whole file from then on. A table editor or inspector showing a
   table that is not a file yet also has **Store as a table file** for that one table. A few tables cannot be stored yet
-  (a table linking two others for a many-to-many relationship, a table holding a list of values, and the tables laid out
-  for an abstract entity or for the entities of an inheritance hierarchy); **Store as table files** leaves them out of its
-  count (its tooltip says so), their columns still edit, but their keys and constraints are set by the model and say so.
+  (a table linking two others for a many-to-many relationship, and a table holding a list of values); **Store as table
+  files** leaves them out of its count (its tooltip says so), their columns still edit, but their keys and constraints are
+  set by the model and say so.
 
   **The database diagram.** Each table is a card: its schema-qualified name, its column count, and one row per column
   with its markers (a key for the primary key, a link for a foreign key, a fingerprint for a column that is unique on its
@@ -722,7 +718,7 @@ database shows on the Database screen at once. The explorers remember which rows
     own; only a value you set on it, or on the referenced column, can make them differ. It is found while the tables are
     resolved, and every validation reports it, not only generation: the Problems panel (with its pointer; the row goes
     to the table), `maquettiste validate` in text, JSON and SARIF, and the agent server's `validate`. The same holds for
-    the other findings of resolution (an over-long conventional name, MQ4001; a constraint or overlay that resolution
+    the other findings of resolution (an over-long conventional name, MQ4001; a constraint that resolution
     leaves out, MQ4008 and MQ4009; MQ4011), which validation reports once the model has no other error.
 
   **What a table can say.** Besides its columns' types, nullability, defaults, identity or sequence, computed expression,
@@ -774,9 +770,8 @@ database shows on the Database screen at once. The explorers remember which rows
     Remove the key, and bind the column to an attribute typed by the enum, reference type or scalar type instead.
   - **Sensitive columns.** A column's `sensitive` (`pii` or `secret`) says it holds personal data or a secret, as an
     attribute's does. Say it once, on either side, and the other side shows it: a column without its own value shows the
-    strongest one (`secret` over `pii`) of the attributes bindings map to it, or a projected column its attribute's; an
-    attribute without its own shows the strongest of the columns its entity's bindings map it to. An overlay entry
-    states it for its projected column. A column's own `secret` makes a literal default that looks like a credential
+    strongest one (`secret` over `pii`) of the attributes bindings map to it; an
+    attribute without its own shows the strongest of the columns its entity's bindings map it to. A column's own `secret` makes a literal default that looks like a credential
     MQ3017, as on an attribute.
   - **Named defaults.** `defaultName` names a column's default constraint where the dialect names defaults (SQL Server);
     without it the DDL names it `df_<table>_<column>`. Migrations rename it with the column, the table or the name, and drop
@@ -916,14 +911,10 @@ database shows on the Database screen at once. The explorers remember which rows
     database inspector's **Schemas** section lists them with the **Default schema** marked, and renames, removes or
     makes one the default. A rename changes nothing else: tables, views, sequences and mappings point at the schema,
     not at its name. Each of these (a new schema, a rename, a removal with what moves, a new default) is one undo step.
-  - **Where a table goes.** A table file says its own schema. A table not stored as a file yet goes to the schema its
-    mapping element names (`schema`), else to the schema picked for its domain (or the nearest parent domain) in the
-    database's convention list (an older project's; see "Tables laid out by convention" under Storage), else to the default
-    schema. When a database has more than one schema, New table and **Create tables…** offer the schema, and the
+  - **Where a table goes.** A table file says its own schema, else it goes to the default schema. When a database has more than one schema, New table and **Create tables…** offer the schema, and the
     Databases explorer groups the tables under one row per schema.
   - **Removing a schema** shows what still lives in it and asks for the schema to move it to; the default schema can
-    be removed only by making another one the default at the same time. A schema named by a convention entry or a
-    mapping but not declared in the database is MQ4014; a refused schema change is MQ4015.
+    be removed only by making another one the default at the same time. A refused schema change is MQ4015.
   - Moving a table to another schema keeps its rows: sql-ddl's migration moves it (`ALTER TABLE ... SET SCHEMA` on
     PostgreSQL, `ALTER SCHEMA ... TRANSFER` on SQL Server, `RENAME TABLE` on MySQL). Renaming a schema renames it on
     PostgreSQL; on SQL Server and MySQL the migration creates the new schema, moves what is in it and drops the old one
@@ -1068,8 +1059,7 @@ database shows on the Database screen at once. The explorers remember which rows
     `nullable` when the expression does not say them, and a pack turns the fields into a record. A query names no
     entity. An entity that should read the rows binds to the query (see "A read-only entity over a query").
   - **Sources.** `from` and each of `joins` name a `source` and an `alias`. The source is a table or view of the
-    query's database: a table or view file's id (a designed table, or a synthesized table's override), a table key as
-    the database view lists it (`<entity id>@<database id>`), or an entity id for that entity's table there. The alias
+    query's database: a table or view file's id, or an entity id for that entity's table there. The alias
     defaults to the table's or view's name. A join has a `kind`: `inner` (the default), `left`, `right`, `full` or
     `cross`, and an `on` condition unless it is a cross join (a join without one, or a cross join with one, is MQ4035);
     the outer side of an outer join reads as nullable. MySQL has no full join (MQ4036), and SQLite runs right and full
@@ -1544,9 +1534,8 @@ database shows on the Database screen at once. The explorers remember which rows
   - **General**: the project's name and branding (below).
   - **Tags**, **Categories**, **Stereotypes**: the global vocabularies (a domain's own are on its editor's tabs).
   - **Conventions**: the naming conventions, for the project (every database) or for one database picked at the top;
-    they name what **Create a table for this entity…** and **Create tables…** write, the name the foreign key dialog
-    proposes, and the tables an older project lays out by convention; they never decide which entities
-    a database stores.
+    they name what **Create a table for this entity…** and **Create tables…** write and the name the foreign key dialog
+    proposes; they never decide which entities a database stores.
     **comments** says where the database comments of tables and columns come from when none is written: with
     **descriptions** (the default) a column takes its own description, else its attribute's, and a table its own
     description, else its entity's (a junction table its relationship's); with **none** only explicit comments are
@@ -1597,9 +1586,8 @@ database shows on the Database screen at once. The explorers remember which rows
 A database knows nothing about entities: it holds tables, views, routines, types and queries, each with its own columns. An
 entity says how it reads from and writes to a database in its own file, with a **binding** per database (`bindings` in the
 entity's JSON). A binding is written down whole: where the entity reads, the columns that carry a fixed value, which column each
-field reads, what happens to the columns no field maps, where it writes back and how it deletes. An entity with a binding to a
-database is never projected into it: no table follows the entity there, whatever the database's convention or a mapping
-element says (such a mapping element is reported as MQ4054 and ignored). Models without bindings keep working as before.
+field reads, what happens to the columns no field maps, where it writes back and how it deletes. No table follows an entity: a database holds
+only the tables written for it.
 
 In the editor, all of this is done from the entity side (below, [Storage: binding an entity](#storage-binding-an-entity)); the
 database side shows tables, views and queries and never the entities stored in them. The file shape, the rules and the command
@@ -1638,8 +1626,7 @@ line follow.
 ```
 
 - `database`: the database. One binding per database (two are MQ4050).
-- `source`: what the entity reads, the id of a table, a view or a query of that database (a table a projection still
-  synthesizes may be named by its key, `<entity id>@<database id>`).
+- `source`: what the entity reads, the id of a table, a view or a query of that database.
 - `constants`: columns with a fixed value, as many as you need (an entity type, a tenant): every read filters on them and
   every insert sets them. A value is a string, a number or true/false; leaving it out means NULL.
 - `fields`: each field names an attribute of the entity (inherited and stereotype attributes included), a member of a value
@@ -2027,8 +2014,7 @@ that lists nothing adds no check.
 **A table for each entity** (`materialize-tables`; in the editor, **Create a table for this entity…** and **Create
 tables…**). `materialize-tables` writes designed tables shaped by the naming and type conventions (columns, keys, uniques,
 indexes, foreign keys, comments, key sequences) and binds each entity to them, every column mapped. It proposes the tables
-itself, only when you ask; it never makes the model follow storage. For an entity the database still projects (the older
-format), the tables have exactly the projection's shape, so the next generation writes the same DDL:
+itself, only when you ask; it never makes the model follow storage. The tables follow these shapes:
 
 - **A hierarchy** is named whole: a base with every entity derived from it. Part of a hierarchy is refused, and so is a
   hierarchy with an entity already bound to the database. The
@@ -2036,12 +2022,11 @@ format), the tables have exactly the projection's shape, so the next generation 
   `discriminatorColumn`), `per-concrete` (a table per concrete entity holding every attribute, inherited ones too; an
   abstract base gets no table) or `per-type` (a table per entity; each derived table's key is also its foreign key to the
   base's table, and the derived binding names it in `baseForeignKey`). Give one shape for every hierarchy, or one per
-  hierarchy by its base entity's id. Without one, a hierarchy takes the shape an older entity mapping's `inheritance` gives,
-  else the conventions' (one table by default). A mapping's `discriminatorValue` moves into the binding, so type codes stay.
+  hierarchy by its base entity's id. Without one, a hierarchy takes the conventions' shape (one table by default). The binding holds each entity's type code.
 - **A list attribute** goes to a table of its own, one row per item, with the owner's key and a `position` column (the
   `childTable` and `orderColumn` conventions name them), and the binding gets a `childTables` entry. With `listStorage`
   `json` it goes to a JSON column instead. Give one storage for every list, or one per attribute id. Without one, a list
-  takes what an older mapping or the conventions say, else a table. A single value object stored as a table gets a child
+  takes the conventions' storage, else a table. A single value object stored as a table gets a child
   table too, and a list of a reference type gets the table the sql-ddl pack used to make for it (one code column).
 - **Relationships.** A many-to-many relationship between entities in the request (or one in the request and one already
   bound) gets a designed junction table, and its relation mapping names it, each end's foreign key and the columns of its
@@ -2050,9 +2035,7 @@ format), the tables have exactly the projection's shape, so the next generation 
 - **Defaults.** An attribute's default expression (`now`, `today`, `new-uuid`) becomes the column's SQL default for the
   database's dialect, so the table states it.
 
-The table's overlay, when there was one, becomes the designed table and keeps its id, so queries and keys naming it keep
-working; the entity's mapping element for the database is deleted; and the committed schema snapshot follows, so the schema
-does not change. The next run writes one migration that holds only the write's `rekey` fact: its ledger rows, wrapped in a
+The committed schema snapshot follows, so the schema does not change. The next run writes one migration that holds only the write's `rekey` fact: its ledger rows, wrapped in a
 transaction, and no other schema change. That fact also adopts what the sql-ddl pack had created outside the snapshot (a lookup
 table, a list's table, a reference column's constraint, a default expression) so the run reads it as already there; an undo
 before that run gives it back to the pack. Since seed.sql no longer creates those tables and constraints, the migration creates
@@ -2107,8 +2090,7 @@ maquettiste model materialize attributes --database main --column note Supplier 
 maquettiste model materialize columns --database main Supplier                    # a column per unmapped attribute
 ```
 
-Over the API: `GET /api/model/databases/{id}/materialize` lists the entities with no binding to the database (and whether
-each is projected there) and the tables and views with the entities bound to each; `POST /api/model/databases/{id}/materialize/preview`
+Over the API: `GET /api/model/databases/{id}/materialize` lists the entities with no binding to the database and the tables and views with the entities bound to each; `POST /api/model/databases/{id}/materialize/preview`
 with `{ "op": "materialize-tables", "entities": [...] }` or `{ "op": "materialize-entities", "tables": [...], "package": "..." }`
 shows the plan (creates, updates, deletes, notes, diagnostics) without writing; `POST /api/model/batch` applies it with
 `{ "op": "materialize-tables", "database": "...", "entities": [...] }`. The agent tools are `get_materialize_status`,
@@ -2162,7 +2144,7 @@ validation and stop generation, while a save that renames a column is never refu
 6. the provenance is recorded again (only the named columns' entries with `columns`).
 
 A renamed or retyped attribute keeps its id, so every link holds; renaming it changes generated names, and when the
-entity is also projected into another database the dry run lists the migration facts that change would record.
+entity is also bound in another database the dry run lists the migration facts that change would record.
 Attributes from a base entity or a stereotype are never renamed or retyped; a note names them. A binding already in step
 is skipped with a note, and a re-sync of bindings that are all in step is refused (MQ4089). Re-sync never deletes
 attributes and never adds or changes columns: the entity follows the table, never the reverse.
@@ -2236,9 +2218,10 @@ writes no description, so the text stays in one place.
 | MQ4051 | warning | a constant (or soft-delete value) does not fit its column |
 | MQ4052 | error | a write table other than the source has no column for a key field |
 | MQ4053 | error | a key delete from a table without a primary key, or a delete with no table to write |
-| MQ4054 | info | a mapping element maps an entity the database binds: the binding wins |
 | MQ4055 | error | a materialize operation is refused (something already bound, part of a hierarchy without the rest of it, an unknown hierarchy shape or list storage, a name taken) |
 | MQ4087 | warning | a column a binding maps was renamed or retyped since its provenance was recorded |
+| MQ4145 | error | a model file still has a key of the older projection format (`byConvention` set to `all` or `packages`, `packages`, an entity mapping's `entity`, `table`, `schema`, `ignore`, `inheritance` or `discriminatorValue`, an attribute's `storage`, `prefix` or `ignore`, a table's `origin`, `entity`, `attribute` or `relation`, a column's `attribute`, `shape: promoted`); one error per file, naming the key and what replaces it; no setting turns it off |
+| MQ4146 | warning | a database file has no `byConvention` while some entity is not bound to the database (a new entity, say); the quick fix writes `"byConvention": "none"`; it never blocks a save and no setting turns it off |
 | MQ4088 | warning | a binding's provenance does not describe its source: the source is not a table file, or none of the recorded columns belongs to it |
 | MQ4089 | error | a `map-by-name` or `resync-binding` operation is refused: an entity with no binding to the database, a source it cannot read, `columns` for more than one entity or naming a column the source lacks, or nothing to map or re-sync |
 
@@ -2249,7 +2232,7 @@ writes no description, so the text stays in one place.
 | MQ4082 | error | a column of a table or stereotype file has `typeRef`, removed in 0.28.0; the file does not load. Remove it, and bind the column to an attribute of the type |
 | MQ4083 | error | a column a binding maps to an attribute of an enum, a reference type or a scalar type has a type or a facet that cannot hold that type's values: the codes, an enum's stored values, or a scalar type's base and facets |
 | MQ4084 | error | a declared foreign key from a column a binding maps to an attribute of a reference type does not point at the code column of the type's bound table, or the type has no binding in that database |
-| MQ4085 | warning | a column and an attribute it stores, or that a binding maps to it, state different sensitivities (reported on the binding field or the overlay entry) |
+| MQ4085 | warning | a column and an attribute it stores, or that a binding maps to it, state different sensitivities (reported on the binding field) |
 | MQ7014 | error | a table seed cell, a column's literal default or a binding constant written into a column a binding maps to an attribute of an enum or a reference type is not a code or stored value of that type |
 | MQ7019 | error | a table seed cell or a column's literal default names a former code of the column's reference type (as an attribute's default, `allowedValues` entry or seed cell does); write the code of the row that replaced it |
 
@@ -2308,15 +2291,11 @@ Each binding is a card, one per database:
 step. The trash button removes a binding (the table, view or query stays). Every gesture on the tab is one save of the entity
 and one undo step.
 
-When the entity also has an older mapping element for a database, the tab notes it ("This entity also has an older mapping
-element for main; its binding wins", or that it places the entity there by convention) with **Open** and **Delete**. Mapping
-elements stay readable in their JSON and in the Domain explorer's References.
-
 ### Create a table for this entity
 
 **Create a table for this entity…** on the Storage tab, or **Create tables…** on one or several selected entities or on a
 domain (its entities and its sub-domains') in the Domain model explorer, asks for the database (and the schema, when the
-database has several), shows the plan (the tables it writes, the bindings, the older mapping elements it replaces, the
+database has several), shows the plan (the tables it writes, the bindings, the relation mappings, the
 relationships whose foreign key or junction table it names) and applies it as one batch and one undo step. Each entity gets a
 table of its own with the shape its conventions give it, every column mapped; from then on the table is yours. Entities
 already bound to that database are left as they are.
@@ -2354,8 +2333,7 @@ table. A key held the other way is not offered, and when it is the only one, the
 key you pick is written to the relationship's mapping in that database; the pickers wait until the relationship's mappings
 are read, so a pick never makes a second mapping. A many-to-many names its **Junction table** and, for each end, the junction
 table's foreign key for it. Two bound ends with nothing named is MQ4011, shown in the section. While the ends are not both
-bound, the section says "Bind both ends to a table to name the foreign key"; a shape an older mapping names (Foreign key,
-Junction table, Promoted to an entity) shows there read only, and no mapping of that older format is made from here. For a
+bound, the section says "Bind both ends to a table to name the foreign key"; a shape the mapping names that the picker does not offer shows there read only. For a
 relationship with an end of several types, see [Storing a relationship with several types](#storing-a-relationship-with-several-types).
 
 **A relationship's own attributes on its foreign key.** A one-to-many relationship can carry attributes, stored as columns of
@@ -2558,25 +2536,17 @@ later release. So do a button that adds the check to your table for you, and que
 joins them, for now. Attribute values stored as rows, partitioned table sets and one table of documents for every entity are shapes
 a pack handles; Maquettiste doesn't describe them.
 
-### Tables laid out by convention (older projects)
+### A database holds only what is written for it
 
-Before bindings, a database stored entities by convention: it laid out a table for each entity of the domains it listed, and
-mapping elements adjusted or added single entities. Projects made that way keep working, and the database side shows those
-tables like any other (with **Store as table files** to turn them into table files; see the Databases part of [The explorers
-and screens](#the-explorers-and-screens)). New work binds each entity on its Storage tab instead.
-
-Entities are never turned into tables on their own: a database holds only what is made in it or bound to it, and **a new
-database starts empty** (New database asks only its name, schemas and dialect; the Databases explorer shows "Empty: New
-table…, New view… or New query… adds one here" under it). Settings › Conventions has, for older projects only, a read-only
-panel **Older projects: tables laid out by convention**: one card per database whose convention still lays out tables (the
-domains it lists, or every domain for a database made before 0.3.0, whose file says nothing), the entities an older mapping
-element places one by one, and **Stop laying out by convention** per domain. Stopping shows how many tables that convention
-lays out and offers **Store as table files, then stop** (each entity is then bound to its own table file, one undo step, then
-the convention drops the domain) or **Stop without storing**. Tables it cannot store yet go with the convention (an abstract
-entity's, an inheritance hierarchy's), except a junction table, which stays while both its ends are stored there. Nothing there adds a domain: new work binds entities on
-their Storage tab, alone or in bulk with **Create tables…** and **Auto-map to existing tables…**. An entity that lands in no
-database is reported in Problems as MQ4012 (info, only once the model has a database); a domain list that the convention
-does not use (All or None) is MQ4013 (warning).
+A database holds tables, views, routines, types and queries, each written for it. Entities are never turned into tables on
+their own, and **a new database starts empty** (New database asks only its name, schemas and dialect; the Databases explorer
+shows "Empty: New table…, New view… or New query… adds one here" under it). Bind each entity on its Storage tab, alone or in
+bulk with **Create tables…** and **Auto-map to existing tables…**. The editor writes `"byConvention": "none"` on a new
+database, and the file may keep it. A database file with no `byConvention` gets warning MQ4146 while some entity is not bound
+to it, because before 0.29.0 such a database laid out a table for every entity not bound to it. Its quick fix writes
+`"byConvention": "none"`. A file that still has an older key (`byConvention`
+set to `all` or `packages`, `packages`, an entity mapping's `table`, `inheritance` and the like, a table's `origin` or
+`entity`) does not load: MQ4145 names the key and what replaces it. See [the 0.29.0 release](releases.md) for the upgrade steps.
 
 ### Finding domain-only and bound entities
 
@@ -4610,7 +4580,7 @@ most 64 deep (MQ3113).
 
 | Site | Where in the file | What it reads | Mode | `now()` | What stays beside it |
 | --- | --- | --- | --- | --- | --- |
-| Table and column check | `checks[].condition` of a table file, an overlay or a stereotype | the table's columns: own, inherited and contributed (on an overlay of an entity's table, also the entity's attributes and value object members, by attribute name; on a stereotype, its own columns) | check | no | `expression`, SQL text per dialect |
+| Table and column check | `checks[].condition` of a table file or a stereotype | the table's columns: own, inherited and contributed (on a stereotype, its own columns) | check | no | `expression`, SQL text per dialect |
 | Entity check | the entity's `checks`: `name`, `attribute`, `condition`, `message` | the entity's attributes, inherited ones and value object members | check | no | `validation` facets and JavaScript rules |
 | Derived value | an attribute's `derived.value` | the entity's other attributes | value | no | `derived.expression`, text for templates |
 | Process guard | `guards[].condition` | context attributes; `event.amount` for a payload attribute (so a context attribute named `event` cannot be read, MQ3102) | guard | the simulation's clock | `expression`, JavaScript |
@@ -4629,19 +4599,8 @@ attribute's `required`, never the expression's concern.
 - **Table and column checks.** The engine writes a tree check into the DDL of the database that holds the table, so
   sql-ddl prints it with no template change; on a database that is not PostgreSQL, the DDL leaves it out (MQ4056). A
   column check must read its `column` (MQ3114). A check keeps its identity when a column it reads is renamed: the
-  migration renames the column and leaves the check alone. On an overlay of an entity's table, a check names the
-  entity's attributes as an entity check does (`issuedOn <= dueOn` on Invoice's overlay), and the DDL names the columns
-  the table gives them, so a change of naming convention never touches the check. A path through the overlay entry of an
-  attribute's column reads as the attribute, with the type the entry gives the column (an entry that stores `number` as
-  `int32` makes `length(number)` an error), and text may also write the entry's own name (`issue_date` for `issuedOn`),
-  which prints back as the attribute. A column of the overlay's own that has an attribute's name cannot be named in
-  text, which reads the attribute, so a check that reads either is MQ3102 until the column is renamed. An attribute the
-  table does not store, because the mapping ignores it or does not store it, or a value object member stored as JSON, is
-  MQ4008 at the check, and the DDL leaves the check out; `materialize-tables` refuses the entity until the check reads
-  stored members only. It turns a check held as text into a tree in the overlay's scope before moving it, since the
-  designed table no longer reads the attributes by name; text that does not parse or type there refuses it under the
-  rule the text breaks (such as MQ3101 or MQ3103), and nothing is written. The preview of an overlay's check reads
-  `--values` by the names its text prints, a value object's members nested.
+  migration renames the column and leaves the check alone.
+  A preview's `--values` name the columns the check reads.
 - **Entity checks.** `attribute` is the attribute a failure points at (`/issuedOn` in an API error) and must be one
   the condition reads (MQ3114), and `message` is the text a failure reports. A table enforces an entity check only
   through a binding that lists it ([Checks a binding enforces](#checks-a-binding-enforces)). A derived entity inherits
@@ -4845,7 +4804,7 @@ reports one MQ5003 or MQ5002 instead of a finding on every object. MQ3112 is not
 | Rule | Severity | What it reports |
 | --- | --- | --- |
 | MQ3101 | error | An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands. A save whose text does not parse is refused |
-| MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute that an event using the guard lacks, a context attribute named `event`, under which a guard's condition reads the payload, or an overlay's column named like an attribute of its entity, which text reads as the attribute |
+| MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute that an event using the guard lacks, a context attribute named `event`, under which a guard's condition reads the payload|
 | MQ3103 | error | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site's answer that is not a boolean, a derived value of another type than its attribute, a type the language does not have (`float` among them), an enum member or code against a value of no enum or reference type, a code the column it is compared with cannot store, or a set's value that does not fit its attribute |
 | MQ3104 | error | `now()`, `current_actor()` or `in_state` at a check, a value or a rule condition, directly or through a constraint; guards, sets and a right's condition read the clock, and guards, operation guards, sets and a right's condition read the other two |
 | MQ3105 | error | A regular expression outside the portable subset |
@@ -4873,8 +4832,7 @@ on the inspector's **JSON** tab.
 
 Membership groups elements: the explorers, `model stats --by package`, `model export --package`, `get_model_kinds`,
 `get_elements` and a pack unit's `packages` filter follow it, and a table in a domain sees that domain's tags. It never
-changes a database: `database.packages[].schema` still routes only the tables that entities lay out by convention, and
-moving a table to another package records no migration fact. Names stay unique as before.
+changes a database: moving a table to another package records no migration fact. Names stay unique as before.
 
 A package can declare layers with `dependsOn`, the packages its elements may reference:
 
@@ -5012,7 +4970,7 @@ and its status are in [The migration ledger](ledger.md).
 | Rule | Severity | What it reports |
 | --- | --- | --- |
 | MQ4101 | error | A fact lacks the intent its change needs, one finding per missing field: a `conversion` for a `change-type`, and a `dataCheck` too when it narrows; an `acknowledge` for a `drop`; a `value` (or a `dataCheck`) for a `backfill`; a `skipWhen` guard for a `raw` step. Complete it, or hold it |
-| MQ4102 | error | `validate --against`: a change since the baseline needs a migration fact and none the baseline lacks explains it (a rename or a moved key, a type change that is not a widening, a dropped table, column or sequence, a column made not null). Reported on the column entry of a table file or overlay, the attribute of a derived column, the table or its entity, or the database file for a dropped object |
+| MQ4102 | error | `validate --against`: a change since the baseline needs a migration fact and none the baseline lacks explains it (a rename or a moved key, a type change that is not a widening, a dropped table, column or sequence, a column made not null). Reported on the column entry of a table file, the attribute of a derived column, the table or its entity, or the database file for a dropped object |
 | MQ4103 | warning | A fact the baseline lacks is stale: the model no longer shows what it, alone or with the facts on the same object, changed (a rename made and undone, a type changed back or widened back, a dropped object that is back, a column nullable again), or a `value-map` whose codes its reference type did not hold in the baseline model and whose names did not change (a code born after the baseline, then renamed). A pending fact that is stale is MQ4103, never MQ4101. Plain `validate` judges complete facts only for a database that has a committed physical snapshot, and never a value map, since a physical snapshot holds no rows; `--against` judges them against its baseline |
 | MQ4104 | error | The `after` links of a database's facts form a cycle, so no order applies them; reported on each fact of the cycle |
 | MQ4105 | error | An `after` link names a fact of another database |
@@ -5043,12 +5001,11 @@ A table offers what its own file says about it, the way an entity does: `table.d
 status](#rationale-decision-and-status)), `table.tags`, `table.category` (with `name` and `path`), `table.stereotypes`
 (each with `key` and `name`), `table.properties` (a custom property reads as `{{ table.properties.tablespace }}`, with
 the stereotypes' default properties under the file's own values) and `table.generation`. The file is the designed or
-imported table, or the overlay you add to a synthesized table; a synthesized table without one has none of these, and
-its entity's are at `table.entity`. The rest of the database side works the same way, each from its own file or entry:
-`database` (and `table.database`) from the database file, which also gives `by_convention`, `packages`, `quoting` and
+imported table. The rest of the database side works the same way, each from its own file or entry:
+`database` (and `table.database`) from the database file, which also gives `quoting` and
 `max_identifier_length`; each of `database.schemas` from its entry in that file, with `is_default` (a schema the file
 does not declare has no annotations); each column of `table.columns` from its own entry in the table file, a designed
-or extra column or the overlay entry of a synthesized one, never from its attribute, which stays at `column.attribute`;
+or extra column, never from an attribute;
 and views and sequences (`database.views`, `database.sequences`) from their files, as are routines, database types and
 SQL objects (`database.routines`, `database.types`, `database.objects`, each also on its schema) and queries
 (`database.queries`, with their trees as plain objects: `query.from`, `query.select`, `query.where`;
@@ -5106,7 +5063,7 @@ and where the result goes (the output pattern). `sql-ddl` has twelve units: `tab
 | Scope | Runs | Result |
 | --- | --- | --- |
 | `each table`, `each entity`, `each enum`, … | once per element of that kind | one file per element: 40 tables give 40 scripts |
-| `each attribute` | once per attribute declared in a model file: an entity's own, a relation's, a value object's and a reference type's (never an inherited copy, a stereotype's added attribute or a promoted relation's copy) | one file each, the template variable being `attribute`; a filter reads the attribute's own tags, stereotypes and category and its owner's package, and `database` keeps the attributes of entities and relations mapped there (a value object's or reference type's only when a database of that name exists) |
+| `each attribute` | once per attribute declared in a model file: an entity's own, a relation's, a value object's and a reference type's (never an inherited copy, or a stereotype's added attribute) | one file each, the template variable being `attribute`; a filter reads the attribute's own tags, stereotypes and category and its owner's package, and `database` keeps the attributes of entities and relations mapped there (a value object's or reference type's only when a database of that name exists) |
 | `each database` | once per database | one file each, the template variable being `database`; a filter reads the database file's tags, stereotypes, category and package, and `database` matches its name |
 | `each view`, `each sequence` | once per view or sequence of every database (the key sequences the engine creates included) | one file each; a filter takes tags, stereotypes, categories and the database, read from the view's or sequence's own file |
 | `each routine`, `each database type`, `each sql object` | once per routine, database type or SQL object of every database | one file each, the template variable being `routine`, `database_type` or `sql_object`; a filter works as for views |
@@ -5917,7 +5874,7 @@ maquettiste model stats
 maquettiste model export --kind entity --fields name,attributes --format ndjson > entities.ndjson
 maquettiste model export --resolved --scope tables --database main --format ndjson > tables.ndjson
 # a first line with the contract version, then one line per table, each with the table's columns, keys, foreign keys and indexes:
-# {"contract":"0.28.0","schema":"resolved-model.json"}
+# {"contract":"0.29.0","schema":"resolved-model.json"}
 # {"id":"01J92P0V0ETQKXXP951CMMNHH3@01J92P0V1QRN2181XM2ZWE02W4","kind":"table","name":"customers","database":"01J92P0V1QRN2181XM2ZWE02W4","table":{...}}
 ```
 
@@ -6462,8 +6419,7 @@ explorer section per custom kind, a member list editor and a custom kind editor 
 Many tables repeat a few small structures: audit timestamps, a row version, an owner column with its foreign key. A
 stereotype that applies to tables can carry them as **members**: `columns`, `primaryKey`, `uniques`, `foreignKeys`,
 `checks` and `indexes`, written as a table file writes its own. Every table that carries the stereotype inherits its
-members, whether the table is designed, imported or synthesized (projected by the database from an entity or a
-relation), so the structure is written once and a change to it reaches every table. Until the stereotype form follows,
+members, whether the table is designed or imported, so the structure is written once and a change to it reaches every table. Until the stereotype form follows,
 edit these keys in the stereotype's JSON. In billing terms, `audited` keeps its attributes and gains two columns and an
 index:
 
@@ -6494,8 +6450,7 @@ Members differ from a table's own in a few ways, which MQ2024 to MQ2026 check on
   stereotype then names a table of its own database in its `properties`; one without the value is MQ2018 and gets no
   such key.
 
-**Keyed ids.** An inherited member's id in a table is `<tableKey>.<memberId>`: the table file's id for a designed or
-imported table, the synthesized key for a synthesized one (`<entityId>@<databaseId>`, `<relationId>@<databaseId>`).
+**Keyed ids.** An inherited member's id in a table is `<tableKey>.<memberId>`: the table file's id.
 The `notes` table inherits `updated_at` as `01K6BND0000000000000000001.01JC7AVD1TC0000000000000C2`. Seeds, keys,
 indexes, binding fields and queries name an inherited member by its keyed id, never by the member id alone (MQ4008 then
 gives the keyed form), and `get_references` on a member lists every table and file that names a copy of it. MCP
@@ -6504,14 +6459,8 @@ gives the keyed form), and `get_references` on a member lists every table and fi
 redefines; own members have none. Templates read the same as `member_origin`, and sql-ddl writes inherited members as
 it writes own ones.
 
-**Order.** A table lists its own members first (a synthesized table's attribute columns and an overlay's extra
-columns), then the inherited ones: stereotype by stereotype in the order of its effective set, each in the stereotype's
+**Order.** A table lists its own members first (its own columns), then the inherited ones: stereotype by stereotype in the order of its effective set, each in the stereotype's
 order. Inherited checks continue the numbering of the table's own checks.
-
-**Synthesized tables.** A synthesized table that already stores a stereotype's attributes as columns, because its entity
-carries the stereotype, skips that stereotype's members: the attributes realize it there. So one stereotype serves
-entities through its attributes and tables through its members. A synthesized table that inherits a NOT NULL column
-with no default is MQ4079 (a warning): rows written through its entity or relation have no value for it.
 
 **Defaults.** A database schema entry and a package can list `defaultStereotypes`, which apply a stereotype to every
 element they hold in one line. On the schema entry of database `main`:
@@ -6521,8 +6470,7 @@ element they hold in one line. On the schema entry of database `main`:
 ```
 
 Now every table of schema `billing` carries `audited`. A schema's defaults reach its tables, views, sequences, routines,
-database types and SQL objects; a package's reach every element of the package and its sub-packages (a table overlay
-takes its entity's or relation's package, a seed its target's, a scenario its process's). An element's stereotypes are
+database types and SQL objects; a package's reach every element of the package and its sub-packages (a seed takes its target's package, a scenario its process's). An element's stereotypes are
 built in layers: the schema's defaults, then the package defaults from the outermost package in, then its own
 `stereotypes`, each layer with the stereotypes it implies first; a key listed twice keeps its last place. A default
 skips an element whose kind it does not apply to, so the schema default above gives nothing to a view or a sequence,
@@ -6538,7 +6486,7 @@ project have none: list the schemas.
 - `excludes` drops inherited members by member id: `notes` keeps its own `created_at` with
   `"excludes": ["01JC7AVD1TC0000000000000C1", "01JC7AVD1TC0000000000000X1"]`. Excluding a column that a kept key,
   index or check uses is MQ2028: exclude that member too (here, the index).
-- `redefines` changes facets of one member and keeps its keyed id: an overlay of Product's table states
+- `redefines` changes facets of one member and keeps its keyed id: Product's table states
   `"redefines": [{ "member": "01JC7AVD1TC0000000000000C1", "nullable": true }]`, and its `created_at` follows
   `audited` for every other facet. MQ2027 refuses an entry that names a member the table does not inherit, names one
   twice, states no facet or states a facet its member does not take; MQ4078 (a warning) reports a facet equal to the
@@ -6559,12 +6507,6 @@ in SQL. A table that needs another type or name excludes the member and declares
 whole new list (own column ids and keyed ids), and an index's `storage` replaces the inherited map. Two primary keys are
 MQ4076: an inherited one beside the table's own or its entity's, or beside another stereotype's. A partitioned table
 adds its partition column with a `columns` redefinition of the inherited key.
-
-**Materialize.** `materialize-tables` writes the designed table with the shape of the synthesized one but leaves
-inherited members inherited: their keyed ids follow the new table id, and the overlay's `redefines`, `excludes` and
-`excludeStereotypes` move into the table. The table names the package whose defaults reached the synthesized table, so
-it keeps the same stereotypes. A stereotype the synthesized table skipped because it stored the attributes gets an
-`excludes` entry per member, since the designed table holds those columns as its own; fold them in later.
 
 **Migration facts.** Members are columns and keys of each table that carries them, so a change to a stereotype records
 facts table by table, as a change to an own column does: adding a member records nothing, removing one records a

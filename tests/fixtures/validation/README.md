@@ -16,7 +16,6 @@ One model repo per rule family. Each folder holds `.maquettiste/` (a `maquettist
 | `values` | MQ3012, MQ3013, MQ3017, MQ3019 (attribute defaults, and column defaults against the resolved length, a native type, json and range) |
 | `physical` | MQ2001, MQ4001 to MQ4003, MQ4005, MQ4006, MQ4008, MQ4010 (designed tables, views, sequences) |
 | `mappings` | MQ4004, MQ4009, MQ4011 (relation mappings between bound entities) |
-| `physical-projected`, `mappings-projected` | **Temporary, deleted by pull request 3 of retiring projection**: the two families as they were before 0.29.0, with the overlays (MQ4004, MQ4007) and entity mappings (MQ4004, MQ4009) that only projection reads |
 | `extensions` | MQ5001, MQ5004 |
 | `scripts` | MQ2007, MQ5002, MQ5003, `x/no-draft` (with the test's fake sandbox) |
 | `reference-data` | MQ2001 and MQ2002 (storage keys), MQ3019 (default codes), MQ7001, MQ7002, MQ7006 to MQ7008, MQ7010, MQ7011 (settings findings land on `maquettiste.json`) |
@@ -30,8 +29,8 @@ writes a 10,001-row seed. The domain-vocabulary rules MQ2008 (a tag or category 
 MQ3021 (a domain vocabulary repeats a key or name of the global or an enclosing vocabulary), and MQ1009 per scope, are tested with
 `ModelBuilder` in `DomainVocabularyTests`, including the scope a save validates. MQ7012 (the retired enum `lookup` storage) is a
 load-time rule: a file that sets it is not schema-valid and cannot be a fixture here, so it is tested in `SchemaValidationTests`.
-MQ4012 (an entity in no database, info) and MQ4013 (convention packages that `byConvention` does not use) are tested with
-`ModelBuilder` in `ExplicitMappingTests`, including the files a scoped validation revisits.
+MQ4145 (a file with a key removed in 0.29.0) and MQ4146 (a database file with no `byConvention` while an entity is not bound to
+it) are tested in `RetiredProjectionTests`. MQ4012 and MQ4013 went with projection in 0.29.0; their ids are not reused.
 
 `ValidationFixtureTests` compares each report with `expected.json`; run the tests with `MAQUETTISTE_UPDATE_GOLDEN=1` to rewrite
 them, then review the diff. The tests also pin the set of rule ids per family, so a rewrite cannot silently drop a rule.

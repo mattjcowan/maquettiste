@@ -139,7 +139,7 @@ export function setEndForeignKey(json: Json, end: string, key: string | null): v
 // offers two choices, Held in and Linked by, and this section is the table that maps them to entries and back, with the filters the
 // pickers use. Below, "A" is a one-type end and "B" an end with several types.
 
-export type HeldIn = "other-table" | "type-tables" | "link-table" | "table-per-type" | "none";
+export type HeldIn = "other-table" | "type-tables" | "link-table" | "table-per-type";
 export type LinkedBy = "key" | "column-per-type" | "type-and-id" | "id" | "shared-key";
 
 export const HELD_IN_LABELS: Record<HeldIn, string> = {
@@ -147,7 +147,6 @@ export const HELD_IN_LABELS: Record<HeldIn, string> = {
   "type-tables": "Each type's table",
   "link-table": "A link table",
   "table-per-type": "A table per type",
-  none: "Not in this database",
 };
 
 export const LINKED_BY_LABELS: Record<LinkedBy, string> = {
@@ -237,15 +236,13 @@ export interface MappingConstantDoc {
 }
 
 export interface StorageMapping {
-  ignore?: boolean | null | undefined;
   shape?: string | null | undefined;
   foreignKey?: string | undefined;
   foreignKeyEnd?: string | null | undefined;
-  promotedName?: string | null | undefined;
   junctionTable?: string | undefined;
   ends?: EndEntry[] | undefined;
   constants?: MappingConstantDoc[] | undefined;
-  attributes?: { attribute: string; column?: string | undefined; storage?: unknown; prefix?: unknown }[] | undefined;
+  attributes?: { attribute: string; column?: string | undefined }[] | undefined;
 }
 
 /** The ends of a two-ended relation as the choices read them, with the one-type end A and the end B when exactly one end has several types. */
@@ -258,18 +255,17 @@ export function pairOfEnds(ends: readonly StorageEnd[]): { a: StorageEnd | null;
   return { a: ends.find((e) => e !== b) ?? null, b, both: false, oneType: false };
 }
 
-/** What Held in offers (the table of 19.10). A many-to-many offers only A link table, A table per type and Not in this database. */
+/** What Held in offers (the table of 19.10). A many-to-many offers only A link table and A table per type. */
 export function offeredHeldIn(ends: readonly StorageEnd[]): HeldIn[] {
   const pair = pairOfEnds(ends);
   if (!pair || pair.oneType) return [];
-  if (pair.both) return ["link-table", "none"];
+  if (pair.both) return ["link-table"];
   const { a, b } = pair;
   const out: HeldIn[] = [];
   if (b?.toOne) out.push("other-table");
   if (a?.toOne && !b?.any) out.push("type-tables");
   out.push("link-table");
   if (!b?.any) out.push("table-per-type");
-  out.push("none");
   return out;
 }
 
@@ -308,7 +304,7 @@ export interface StorageChoice {
 }
 
 /** Keys of a mapping that the choices never write: their presence means the mapping is shown as written. */
-const FOREIGN_KEYS_OF_OTHER_SHAPES = ["foreignKey", "foreignKeyEnd", "promotedName"] as const;
+const FOREIGN_KEYS_OF_OTHER_SHAPES = ["foreignKey", "foreignKeyEnd"] as const;
 
 /** Whether a half-written entry fits a Linked by draft: every way it states belongs to that choice (nothing written fits any). */
 export function entryAgrees(kind: LinkedBy, entry: EndEntry | undefined): boolean {
@@ -335,9 +331,7 @@ export function entryAgrees(kind: LinkedBy, entry: EndEntry | undefined): boolea
 /** Whether the mapping, as far as it is written, fits a Held in draft: what is there belongs to that choice, so the draft is not a guess. */
 export function draftAgrees(draft: HeldIn, mapping: StorageMapping | null | undefined, ends: readonly StorageEnd[]): boolean {
   if (!mapping) return true;
-  if (draft === "none") return mapping.ignore === true;
-  if (mapping.ignore === true) return false;
-  if (FOREIGN_KEYS_OF_OTHER_SHAPES.some((k) => mapping[k]) || mapping.shape === "promoted") return false;
+  if (FOREIGN_KEYS_OF_OTHER_SHAPES.some((k) => mapping[k])) return false;
   const entries = mapping.ends ?? [];
   if (!entries.every((e) => ends.some((x) => x.id === e.end))) return false;
   if (draft === "link-table") return true;
@@ -360,7 +354,7 @@ export function draftAgrees(draft: HeldIn, mapping: StorageMapping | null | unde
  */
 export function readChoice(mapping: StorageMapping | null | undefined, ends: readonly StorageEnd[], draft?: HeldIn | null): StorageChoice {
   const offered = offeredHeldIn(ends);
-  if (draft && draft !== "none" && offered.includes(draft) && draftAgrees(draft, mapping, ends)) {
+  if (draft && offered.includes(draft) && draftAgrees(draft, mapping, ends)) {
     const out: Record<string, LinkedBy | ""> = {};
     const byEnd = new Map((mapping?.ends ?? []).map((e) => [e.end, e]));
     for (const end of linkedByEnds(draft, ends)) {
@@ -371,7 +365,7 @@ export function readChoice(mapping: StorageMapping | null | undefined, ends: rea
     return { heldIn: draft, linkedBy: out };
   }
   const read = readFileChoice(mapping, ends);
-  if (read.heldIn === null || read.heldIn === "as-written" || read.heldIn === "none" || offered.includes(read.heldIn)) return read;
+  if (read.heldIn === null || read.heldIn === "as-written" || offered.includes(read.heldIn)) return read;
   // A half-written table per type on a many-to-many reads as the one thing that fits; never a choice that isn't offered.
   if (offered.includes("table-per-type") && draftAgrees("table-per-type", mapping, ends)) return { heldIn: "table-per-type", linkedBy: {} };
   return { heldIn: "as-written", linkedBy: {} };
@@ -380,11 +374,10 @@ export function readChoice(mapping: StorageMapping | null | undefined, ends: rea
 function readFileChoice(mapping: StorageMapping | null | undefined, ends: readonly StorageEnd[]): StorageChoice {
   const none: StorageChoice = { heldIn: null, linkedBy: {} };
   if (!mapping) return none;
-  if (mapping.ignore === true) return { heldIn: "none", linkedBy: {} };
   const entries = mapping.ends ?? [];
   const junction = mapping.junctionTable;
   const asWritten: StorageChoice = { heldIn: "as-written", linkedBy: {} };
-  if (FOREIGN_KEYS_OF_OTHER_SHAPES.some((k) => mapping[k]) || mapping.shape === "promoted") return asWritten;
+  if (FOREIGN_KEYS_OF_OTHER_SHAPES.some((k) => mapping[k])) return asWritten;
   if (!junction && entries.length === 0) return none;
   const pair = pairOfEnds(ends);
   if (!pair || pair.oneType) return asWritten;
@@ -455,13 +448,11 @@ function clearAttributeColumns(json: StorageMapping): void {
 /**
  * Writes a Held in choice. The entries of 19.10's table are written as the pickers name keys and columns, never bare (an entry with no
  * way is MQ4009 and a save that introduces it is refused), so a choice that names nothing yet is the tab's own state until then. Leaving
- * A link table drops its table, its constants and its attribute columns. "Not in this database" sets `ignore`; every other choice
- * clears it, and the keys of the other shapes (a foreign key, `shape`, `foreignKeyEnd`, the entries) with it.
+ * A link table drops its table, its constants and its attribute columns. Every choice clears the keys of the other shapes (a foreign key, `shape`, `foreignKeyEnd`, the entries) with it.
  */
 export function setHeldIn(json: StorageMapping, heldIn: HeldIn, ends: readonly StorageEnd[]): void {
   void ends;
   const keepLink = heldIn === "link-table";
-  delete json.ignore;
   delete json.foreignKey;
   delete json.foreignKeyEnd;
   // Without a link table yet, the entries of the old choice would only read back as that choice.
@@ -474,7 +465,6 @@ export function setHeldIn(json: StorageMapping, heldIn: HeldIn, ends: readonly S
     delete json.constants;
     clearAttributeColumns(json);
   }
-  if (heldIn === "none") json.ignore = true;
   tidy(json);
 }
 
@@ -485,7 +475,6 @@ export function setLinkTable(json: StorageMapping, table: string | null): void {
     delete json.constants;
     clearAttributeColumns(json);
   }
-  delete json.ignore;
   if (table) {
     json.junctionTable = table;
     json.shape = "junction";
@@ -592,7 +581,7 @@ export function linkTableComplete(mapping: StorageMapping, ends: readonly Storag
 }
 
 /** The keys of a mapping the choices write; a held edit replaces exactly these. */
-const STORAGE_KEYS = ["ignore", "shape", "foreignKey", "foreignKeyEnd", "promotedName", "junctionTable", "ends", "constants", "attributes"] as const;
+const STORAGE_KEYS = ["shape", "foreignKey", "foreignKeyEnd", "junctionTable", "ends", "constants", "attributes"] as const;
 
 /** Copies what the choices write from one mapping to another (a key the source lacks is removed), so a held edit lands as one change. */
 export function copyStorageKeys(target: Record<string, unknown>, source: StorageMapping): void {

@@ -28,8 +28,6 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 /// routines, database types and SQL objects use.</param>
 /// <param name="Quoting"><c>always</c>, <c>reserved</c> or <c>never</c>.</param>
 /// <param name="MaxIdentifierLength">The effective identifier length limit, or <see langword="null"/> for none.</param>
-/// <param name="ByConvention">Which entities map here by convention: <c>all</c>, <c>packages</c> or <c>none</c> (the effective value).</param>
-/// <param name="Packages">The packages whose entities map here by convention, with the schema their tables go to.</param>
 /// <param name="DisplayName">The display name the database file sets, or <see langword="null"/> (no fallback).</param>
 /// <param name="PluralName">The plural name the database file sets, or <see langword="null"/>.</param>
 /// <param name="Description">As <see cref="TableView.Description"/>.</param>
@@ -43,7 +41,7 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
     IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types,
     IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<QueryView> Queries, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
-    string ByConvention, IReadOnlyList<ConventionPackageView> Packages, string? DisplayName, string? PluralName, string? Description,
+    string? DisplayName, string? PluralName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -100,37 +98,26 @@ public sealed record SchemaView(
     IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation);
 
-/// <summary>One package a database takes by convention.</summary>
-/// <param name="PackageId">The package id.</param>
-/// <param name="Schema">The schema name its conventional tables go to, or <see langword="null"/> for the default schema.</param>
-public sealed record ConventionPackageView(string PackageId, string? Schema);
-
 /// <summary>One resolved table, projected from the resolver's <see cref="RTable"/> (resolved objects reference each other, so they are
 /// flattened: other objects appear by key or id).</summary>
-/// <param name="Key">The table key: a table file's id, or a synthesized key such as <c>&lt;entityId&gt;@&lt;databaseId&gt;</c>.</param>
+/// <param name="Key">The table key: the table file's id.</param>
 /// <param name="Name">The physical name.</param>
 /// <param name="Schema">The schema name, or <see langword="null"/>.</param>
-/// <param name="Origin"><c>synthesized</c>, <c>designed</c> or <c>imported</c>.</param>
-/// <param name="EntityId">The mapped entity's id, for an entity table.</param>
-/// <param name="RelationId">The relation's id, for a junction table.</param>
-/// <param name="IsJunction">Whether the table is a relation's junction table.</param>
-/// <param name="IsLookup">Always <see langword="false"/>: the enum lookup-table option is retired (MQ7012); kept for the contract.</param>
+/// <param name="RelationId">The id of the relation whose relation mapping names the table as its junction table, or <see langword="null"/>.</param>
 /// <param name="Comment">The comment.</param>
 /// <param name="Columns">The columns, by position.</param>
 /// <param name="PrimaryKey">The primary key, or <see langword="null"/>.</param>
 /// <param name="Uniques">Unique constraints.</param>
 /// <param name="ForeignKeys">Foreign keys.</param>
 /// <param name="Indexes">Indexes.</param>
-/// <param name="DisplayName">The display name the table's file sets, or <see langword="null"/> (no fallback; a synthesized table
-/// without an overlay has no file).</param>
+/// <param name="DisplayName">The display name the table's file sets, or <see langword="null"/> (no fallback).</param>
 /// <param name="PluralName">The plural name the table's file sets, or <see langword="null"/>.</param>
 /// <param name="Description">The description text (a sidecar file loaded), or <see langword="null"/>.</param>
 /// <param name="Stereotypes">The stereotype keys, in application order: the effective set (next-phase-2-design.md section 3.1), with
-/// the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.</param>
+/// the stereotypes a schema or package default gives the table.</param>
 /// <param name="Tags">The tag keys.</param>
 /// <param name="Category">The category's id, or <see langword="null"/>.</param>
-/// <param name="Properties">The custom properties: stereotype defaults merged under the file's own (for a table without a file, the
-/// default properties of the stereotypes its schema and package defaults give it).</param>
+/// <param name="Properties">The custom properties: stereotype defaults merged under the file's own.</param>
 /// <param name="Generation">The generation hints, by pack name or <c>"*"</c>.</param>
 /// <param name="BoundBy">The entity bindings that read or write the table (erratum E43): the entities that materialize from it.</param>
 /// <param name="ReferenceBindings">The reference types whose rows the table holds (their bindings, 2026-10-11).</param>
@@ -138,11 +125,7 @@ public sealed record TableView(
     string Key,
     string Name,
     string? Schema,
-    string Origin,
-    string? EntityId,
     string? RelationId,
-    bool IsJunction,
-    bool IsLookup,
     string? Comment,
     IReadOnlyList<ColumnView> Columns,
     KeyView? PrimaryKey,
@@ -268,7 +251,7 @@ public sealed record SequenceView(
 /// <param name="HasBody">Whether the file has a body for the database's dialect (or for every dialect).</param>
 /// <param name="Deterministic">Whether the routine returns the same result for the same arguments.</param>
 /// <param name="Security"><c>invoker</c> or <c>definer</c>.</param>
-/// <param name="DependsOn">The ids (or keys, for a synthesized table) of the objects of the database it names in <c>dependsOn</c>.</param>
+/// <param name="DependsOn">The ids of the objects of the database it names in <c>dependsOn</c>.</param>
 /// <param name="Comment">The comment, or <see langword="null"/>.</param>
 /// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
 /// <param name="PluralName">As <see cref="TableView.PluralName"/>.</param>
@@ -407,7 +390,7 @@ public sealed record DatabaseTypeFieldView(string Name, string? Type, string? Db
 /// <param name="Schema">The schema name, or <see langword="null"/>.</param>
 /// <param name="ObjectKind">What the object is, as the file says (trigger, grant, extension...).</param>
 /// <param name="Phase"><c>before</c> or <c>after</c> the tables.</param>
-/// <param name="DependsOn">The ids (or keys, for a synthesized table) of the objects of the database it names in <c>dependsOn</c>.</param>
+/// <param name="DependsOn">The ids of the objects of the database it names in <c>dependsOn</c>.</param>
 /// <param name="Body">The statements for the database's dialect, or <see langword="null"/> when the file has none for it.</param>
 /// <param name="HasBody">Whether the file has statements for the database's dialect (or for every dialect).</param>
 /// <param name="DisplayName">As <see cref="TableView.DisplayName"/>.</param>
@@ -437,7 +420,7 @@ public sealed record SqlObjectView(
     IReadOnlyDictionary<string, GenerationHints> Generation);
 
 /// <summary>One resolved column, projected from <see cref="RColumn"/>.</summary>
-/// <param name="Key">The column key: an attribute path, <c>discriminator</c>, <c>position</c>, <c>id</c>, or a column id.</param>
+/// <param name="Key">The column key: a column id, or the keyed id of an inherited column.</param>
 /// <param name="Name">The physical name.</param>
 /// <param name="Type">The built-in type keyword.</param>
 /// <param name="NativeType">The dialect's type, such as <c>varchar(120)</c>.</param>
@@ -448,20 +431,16 @@ public sealed record SqlObjectView(
 /// <param name="DefaultSql">The default SQL expression for the dialect, or <see langword="null"/> when the column has no default.</param>
 /// <param name="Identity">Whether the column is an identity column.</param>
 /// <param name="Computed">The computed expression.</param>
-/// <param name="AttributeId">The id of the attribute the column stores, if any.</param>
-/// <param name="AttributePath">The attribute path the column stores, if any.</param>
 /// <param name="IsPrimaryKey">Whether the column is part of the primary key.</param>
 /// <param name="IsForeignKey">Whether the column is part of a foreign key.</param>
-/// <param name="IsDiscriminator">Whether the column is a TPH discriminator.</param>
 /// <param name="Position">The 0-based position in the table.</param>
 /// <param name="Default">The literal default, as a plain value, or <see langword="null"/>.</param>
 /// <param name="ComputedStored">Whether a computed value is stored.</param>
-/// <param name="SequenceId">The id (or synthesized key) of the sequence that supplies values, or <see langword="null"/>.</param>
+/// <param name="SequenceId">The id of the sequence that supplies values, or <see langword="null"/>.</param>
 /// <param name="DbTypeId">The id of the database type the column uses (its file's <c>nativeType</c> names it), or <see langword="null"/>.</param>
 /// <param name="Collation">The collation, or <see langword="null"/>.</param>
 /// <param name="Comment">The comment, or <see langword="null"/>.</param>
-/// <param name="DisplayName">The display name the column's own entry sets (a designed or extra column, or a synthesized column's overlay
-/// entry), or <see langword="null"/>; a synthesized column never takes its attribute's, which <paramref name="AttributeId"/> leads to.</param>
+/// <param name="DisplayName">The display name the column's own entry sets, or <see langword="null"/>.</param>
 /// <param name="PluralName">The plural name the column's own entry sets, or <see langword="null"/>.</param>
 /// <param name="Description">The description the column's own entry sets, or <see langword="null"/>.</param>
 /// <param name="Stereotypes">As <see cref="TableView.Stereotypes"/>, from the column's own entry.</param>
@@ -470,10 +449,9 @@ public sealed record SqlObjectView(
 /// <param name="Properties">As <see cref="TableView.Properties"/>, from the column's own entry.</param>
 /// <param name="Generation">As <see cref="TableView.Generation"/>, from the column's own entry.</param>
 /// <param name="BoundType">Derived from bindings, like a table's bound-by list: the enum, reference type or scalar type of the attribute
-/// the entities' bindings map to the column, when they all agree, or <see langword="null"/>; a projected column has none, its attribute
-/// (<paramref name="AttributeId"/>) types it.</param>
-/// <param name="Sensitive"><c>pii</c> or <c>secret</c>: the column's own; else a projected column's attribute's own; else the strongest own
-/// value of the attributes bindings map to it; <see langword="null"/> when none says (next-phase-2-design.md section 3.2).</param>
+/// the entities' bindings map to the column, when they all agree, or <see langword="null"/>.</param>
+/// <param name="Sensitive"><c>pii</c> or <c>secret</c>: the column's own; else the strongest own value of the attributes bindings map to it;
+/// <see langword="null"/> when none says (next-phase-2-design.md section 3.2).</param>
 public sealed record ColumnView(
     string Key,
     string Name,
@@ -486,11 +464,8 @@ public sealed record ColumnView(
     string? DefaultSql,
     bool Identity,
     string? Computed,
-    string? AttributeId,
-    string? AttributePath,
     bool IsPrimaryKey,
     bool IsForeignKey,
-    bool IsDiscriminator,
     int Position,
     object? Default,
     bool ComputedStored,
@@ -585,8 +560,7 @@ internal static class DatabaseViews
         return new DatabaseView(database.Id, database.Name, database.Dialect, database.Version, database.DefaultSchema,
             [.. database.Tables.Select(Table)], [.. database.Views.Select(View)], [.. database.Sequences.Select(Sequence)],
             [.. database.Routines.Select(ProjectRoutine)], [.. database.Types.Select(ProjectType)], [.. database.Objects.Select(ProjectObject)],
-            [.. database.Queries.Select(QueryViews.Project)], [.. database.Schemas.Select(Schema)], database.Quoting, database.MaxIdentifierLength, database.ByConvention,
-            [.. database.Packages.Select(p => new ConventionPackageView(p.PackageId, p.Schema))],
+            [.. database.Queries.Select(QueryViews.Project)], [.. database.Schemas.Select(Schema)], database.Quoting, database.MaxIdentifierLength,
             OrNull(database.DisplayName), OrNull(database.PluralName), database.Description, [.. database.Stereotypes.Select(s => s.Key)],
             database.Tags, database.Category?.Id, database.Properties, database.Generation, RelationStorage(database.RelationStorage));
     }
@@ -622,11 +596,7 @@ internal static class DatabaseViews
         table.Key,
         table.Name,
         table.Schema,
-        table.Origin,
-        table.Entity?.Id,
         table.Relation?.Id,
-        table.IsJunction,
-        false, // the enum lookup-table option is retired (MQ7012)
         table.Comment,
         [.. table.Columns.Select(Column)],
         table.PrimaryKey is { } key ? new KeyView(key.Name, [.. key.Columns.Select(c => c.Key)]) { MemberOrigin = Origin(key.MemberOrigin) } : null,
@@ -780,11 +750,8 @@ internal static class DatabaseViews
         column.DefaultSql,
         column.Identity,
         column.Computed,
-        column.Attribute?.Id,
-        column.AttributePath,
         column.IsPrimaryKey,
         column.IsForeignKey,
-        column.IsDiscriminator,
         column.Position,
         column.Default,
         column.ComputedStored,

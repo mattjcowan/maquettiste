@@ -10,11 +10,13 @@ namespace Maquettiste.Packs.Tests;
 /// A temporary repo holding the billing fixture model and the example packs from <c>packs/</c>, as <c>maquettiste init</c> would
 /// lay them out (<c>db</c> committed, <c>src/Generated</c> built). The <c>dialects</c> variant adds a SQL Server database
 /// (<c>reporting</c>) and a SQLite database (<c>local</c>) next to the PostgreSQL one, so every dialect branch of the packs runs,
-/// a <c>PaymentMethod</c> reference type used by <c>Payment.method</c> (a CHECK, and a lookup table in <c>local</c>), and a
-/// <c>CreditNote</c> entity derived from <c>Invoice</c> (table per hierarchy, so a
-/// discriminator column), and a custom type <c>Lsn</c> (binary, length 8) with its own native types, <c>pg_lsn</c> on PostgreSQL and
-/// <c>binary(8)</c> on SQL Server, used by <c>Payment.ledgerPosition</c>; and in each database a routine, a domain type that
-/// <c>customers.email</c> uses and a trigger (see <see cref="AddDatabaseObjects"/>).
+/// a <c>PaymentMethod</c> reference type used by <c>Payment.method</c> (a lookup table in <c>local</c>), a <c>CreditNote</c> entity
+/// derived from <c>Invoice</c>, and a custom type <c>Lsn</c> (binary, length 8) with its own native types, <c>pg_lsn</c> on
+/// PostgreSQL and <c>binary(8)</c> on SQL Server, used by <c>Payment.ledgerPosition</c>; and in each database a routine, a domain
+/// type that <c>customers.email</c> uses and a trigger (see <see cref="AddDatabaseObjects"/>). The two new databases get their
+/// designed tables, bindings and relation mappings from "Create tables…" (materialize-tables, one table for the Invoice hierarchy, so
+/// a type column), and <c>payments</c> in <c>main</c> gets columns for the two new attributes (materialize-columns); CreditNote stays
+/// unbound in <c>main</c>, where Invoice is bound alone.
 /// </summary>
 internal sealed class PackRepo : IDisposable
 {
@@ -146,12 +148,10 @@ internal sealed class PackRepo : IDisposable
 
         """;
 
-    private PackRepo(bool dialects)
+    private PackRepo(bool dialects, bool tables = true)
     {
         Repo = new TempRepo();
-        // The dialects variant lays its SQL Server and SQLite databases out by convention and names the projected tables' keys, so it
-        // starts from the projected copy of billing (temporary: pull request 3 of retiring projection rewrites it with designed tables).
-        CopyTree(Fixtures.Path("models", dialects ? "billing-projected" : "billing", ".maquettiste"), Repo.ModelRoot);
+        CopyTree(Fixtures.Path("models", "billing", ".maquettiste"), Repo.ModelRoot);
         foreach (var pack in Packs)
             CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", pack), Path.Combine(Repo.ModelRoot, "templates", pack));
         if (dialects)
@@ -179,33 +179,110 @@ internal sealed class PackRepo : IDisposable
                 ["type"] = new JsonObject { ["ref"] = "01J92P0V2G0000000000000001" },
             }));
             AddDatabaseObjects();
-            AddLocalQuery();
+            if (tables)
+            {
+                CreateTables();
+                AddLocalQuery();
+            }
         }
     }
 
     /// <summary>
-    /// A copy of the billing fixture's InvoicesByCustomer query on the SQLite database, which CompileTests runs: its sources are the
-    /// synthesized tables' keys there, its columns the same column keys, its statuses the stored member values. It also selects the
-    /// invoice's customer foreign key column and its Money total's member columns, and filters on a decimal parameter with a default
-    /// (cast, since SQLite binds a decimal as text) and a typed decimal literal.
+    /// The dialects variant's storage: "Create tables…" for every entity in <c>reporting</c> and <c>local</c> (designed tables, bindings
+    /// and relation mappings), columns for Payment's new attributes in <c>main</c>, and the email column of each customers table typed
+    /// by the database's domain type (by id on PostgreSQL, by name elsewhere).
+    /// </summary>
+    private void CreateTables()
+    {
+        const string payment = "01J92P0V0HEGSC6MW92CST5KA6";
+        Apply($$"""{"op":"materialize-columns","database":"{{MainId}}","entities":["{{payment}}"]}""");
+        var entities = string.Join(",", ModelSnapshotOf().All<Engine.Model.Entity>().Select(e => "\"" + e.Id + "\""));
+        foreach (var db in new[] { ReportingId, LocalId })
+            Apply($$"""{"op":"materialize-tables","database":"{{db}}","entities":[{{entities}}]}""");
+        const string customer = "01J92P0V0ETQKXXP951CMMNHH3", email = "01J92P0V0NRX99014KNVAZGPEW";
+        var snapshot = ModelSnapshotOf();
+        foreach (var (db, n) in new[] { (MainId, 1), (ReportingId, 2), (LocalId, 3) })
+        {
+            var binding = snapshot.Get<Engine.Model.Entity>(customer)!.Bindings.Single(b => b.Database == db);
+            var column = binding.Fields.Single(f => f.Attribute == email).Column;
+            var path = snapshot.GetDocument(binding.Source)!.Path;
+            EditJson(path, table =>
+            {
+                var entry = table["columns"]!.AsArray().Single(c => (string?)c!["id"] == column)!;
+                entry["nativeType"] = db == MainId ? $"01J92P0V2H000000000000000{n}" : "email_address";
+            });
+        }
+    }
+
+    /// <summary>Applies one batch operation through the model store; fails the setup when it is refused.</summary>
+    private void Apply(string operation)
+    {
+        var store = new ModelStore(Repo.Options);
+        try
+        {
+            var parsed = store.ParseBatch(System.Text.Encoding.UTF8.GetBytes("{\"operations\":[" + operation + "]}"));
+            Assert.Empty(parsed.Diagnostics);
+            var result = store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Editor, CancellationToken.None).GetAwaiter().GetResult();
+            Assert.True(result.Outcome == SaveOutcome.Saved,
+                "Refused: " + string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        }
+        finally
+        {
+            store.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    /// <summary>The model as it is on disk now.</summary>
+    private Engine.Model.ModelSnapshot ModelSnapshotOf()
+    {
+        var store = new ModelStore(Repo.Options);
+        try
+        {
+            return store.GetSnapshotAsync(CancellationToken.None).GetAwaiter().GetResult();
+        }
+        finally
+        {
+            store.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+    }
+
+    /// <summary>
+    /// A copy of the billing fixture's InvoicesByCustomer query on the SQLite database, which CompileTests runs: its source and columns
+    /// are the designed invoices table of <c>local</c> and its columns, found through Invoice's bindings (main's column ids become
+    /// local's by the attribute each binding maps to them). It also selects the invoice's customer foreign key column and its Money
+    /// total's member columns, and filters on a decimal parameter with a default (cast, since SQLite binds a decimal as text) and a
+    /// typed decimal literal; the statuses parameter takes the status column's stored type.
     /// </summary>
     private void AddLocalQuery()
     {
-        var query = JsonNode.Parse(File.ReadAllText(Path.Combine(Repo.ModelRoot, "model", "databases", "main", "queries", "invoices-by-customer.json")))!.AsObject();
+        const string invoice = "01J92P0V0FJ23CGSNKM7P1W5V7", customerEnd = "01J92P0V1EHF7PB28CZJG9C5SN";
+        const string Total = "01J92P0V0T6EA0XM025XQX8GBW", Amount = "01J92P0V08P9BVJAPQ793XYNTQ", Currency = "01J92P0V093A7BE6Q8AS477H7D";
+        const string Status = "01J92P0V0VB1Z49SWERMAGR4TV";
+        var snapshot = ModelSnapshotOf();
+        var bindings = snapshot.Get<Engine.Model.Entity>(invoice)!.Bindings;
+        var main = bindings.Single(b => b.Database == MainId);
+        var local = bindings.Single(b => b.Database == LocalId);
+        var attributeOf = main.Fields.ToDictionary(f => f.Column, f => f.Attribute, StringComparer.Ordinal);
+        var columnOf = local.Fields.ToDictionary(f => f.Attribute, f => f.Column, StringComparer.Ordinal);
+        string Local(string mainColumn) => columnOf[attributeOf[mainColumn]];
+        var text = File.ReadAllText(Path.Combine(Repo.ModelRoot, "model", "databases", "main", "queries", "invoices-by-customer.json"));
+        foreach (var column in attributeOf.Keys)
+            text = text.Replace("\"i." + column + "\"", "\"i." + Local(column) + "\"", StringComparison.Ordinal);
+        var query = JsonNode.Parse(text)!.AsObject();
         query["id"] = "01J92P0V2Q0000000000000001";
         query["name"] = "LocalInvoicesByCustomer";
         query["database"] = LocalId;
-        query["from"]!["source"] = "01J92P0V0FJ23CGSNKM7P1W5V7@" + LocalId;
-        // The SQLite database stores the status as the member value (no mapping there stores it as text).
-        query["parameters"]![1] = new JsonObject { ["name"] = "statuses", ["type"] = "int32", ["collection"] = true };
-        const string Total = "01J92P0V0T6EA0XM025XQX8GBW", Amount = "01J92P0V08P9BVJAPQ793XYNTQ", Currency = "01J92P0V093A7BE6Q8AS477H7D";
+        query["from"]!["source"] = local.Source;
+        var statusType = snapshot.Get<Engine.Model.Table>(local.Source)!.Columns.Single(c => c.Id == columnOf[Status]).Type;
+        if (statusType is "int16" or "int32" or "int64")
+            query["parameters"]![1] = new JsonObject { ["name"] = "statuses", ["type"] = statusType, ["collection"] = true };
         var select = query["select"]!.AsArray();
-        select.Add(JsonNode.Parse("""{ "name": "customerId", "expression": { "column": "i.01J92P0V1EHF7PB28CZJG9C5SN.01J92P0V0KGPC29TQQG8R57EBM" } }"""));
-        select.Add(JsonNode.Parse($$"""{ "name": "totalAmount", "expression": { "column": "i.{{Total}}.{{Amount}}" } }"""));
-        select.Add(JsonNode.Parse($$"""{ "name": "totalCurrency", "expression": { "column": "i.{{Total}}.{{Currency}}" } }"""));
+        select.Add(JsonNode.Parse($$"""{ "name": "customerId", "expression": { "column": "i.{{columnOf[customerEnd]}}" } }"""));
+        select.Add(JsonNode.Parse($$"""{ "name": "totalAmount", "expression": { "column": "i.{{columnOf[Total + "." + Amount]}}" } }"""));
+        select.Add(JsonNode.Parse($$"""{ "name": "totalCurrency", "expression": { "column": "i.{{columnOf[Total + "." + Currency]}}" } }"""));
         query["parameters"]!.AsArray().Add(JsonNode.Parse("""{ "name": "minimum", "type": "decimal", "default": 0.5 }"""));
         query["where"]!["and"]!.AsArray().Add(JsonNode.Parse($$"""
-            { "op": "ge", "left": { "op": "+", "args": [{ "column": "i.{{Total}}.{{Amount}}" }, { "value": "0.0", "type": "decimal" }] }, "right": { "cast": { "param": "minimum" }, "type": "double" } }
+            { "op": "ge", "left": { "op": "+", "args": [{ "column": "i.{{columnOf[Total + "." + Amount]}}" }, { "value": "0.0", "type": "decimal" }] }, "right": { "cast": { "param": "minimum" }, "type": "double" } }
             """));
         Repo.WriteFile(".maquettiste/model/databases/local/queries/local-invoices-by-customer.json", query.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }) + "\n");
     }
@@ -221,15 +298,13 @@ internal sealed class PackRepo : IDisposable
 
     /// <summary>
     /// One routine, one domain type used by a column and one trigger in each database of the dialects variant: on PostgreSQL the
-    /// domain <c>email_address</c> (named by id from the customers overlay), the trigger function <c>keep_invoice_number</c> and the
+    /// domain <c>email_address</c> (named by id from the customers table's email column, see <see cref="CreateTables"/>), the trigger function <c>keep_invoice_number</c> and the
     /// trigger <c>invoices_keep_number</c> that depends on it; on SQL Server the alias type <c>email_address</c> (named by name), the
     /// scalar function <c>invoice_total</c> and an <c>AFTER UPDATE</c> trigger; on SQLite the same type stored as its base, a function
     /// SQLite cannot create, and a <c>BEFORE UPDATE</c> trigger. The triggers refuse a change of an invoice's number, which no test makes.
     /// </summary>
     private void AddDatabaseObjects()
     {
-        const string customer = "01J92P0V0ETQKXXP951CMMNHH3";
-        const string email = "01J92P0V0NRX99014KNVAZGPEW";
         foreach (var (db, folder, n) in new[] { (MainId, "main", 1), (ReportingId, "reporting", 2), (LocalId, "local", 3) })
         {
             var type = $"01J92P0V2H000000000000000{n}";
@@ -245,25 +320,6 @@ internal sealed class PackRepo : IDisposable
                   "base": "string",
                   "length": 254,
                   "check": "VALUE LIKE '%_@_%'"
-                }
-
-                """);
-            var overlay = $"01J92P0V2J000000000000000{n}";
-            Repo.WriteFile($".maquettiste/model/databases/{folder}/tables/{overlay.ToLowerInvariant()}.json", $$"""
-                {
-                  "$schema": "../../../../.schema/v1/table.json",
-                  "kind": "table",
-                  "id": "{{overlay}}",
-                  "database": "{{db}}",
-                  "origin": "synthesized",
-                  "entity": "{{customer}}",
-                  "columns": [
-                    {
-                      "id": "01J92P0V2K000000000000000{{n}}",
-                      "attribute": "{{email}}",
-                      "nativeType": "{{(folder == "main" ? type : "email_address")}}"
-                    }
-                  ]
                 }
 
                 """);
@@ -985,6 +1041,13 @@ internal sealed class PackRepo : IDisposable
     /// <returns>The repo.</returns>
     public static PackRepo BillingDialects() => new(dialects: true);
 
+    /// <summary>
+    /// The dialects variant before "Create tables…": <c>reporting</c> and <c>local</c> hold no table, so every entity can still get its
+    /// tables there (MaterializeShapeChoiceTests), and <c>payments</c> in <c>main</c> has no column for the two new attributes.
+    /// </summary>
+    /// <returns>The repo.</returns>
+    public static PackRepo BillingDialectsWithoutTables() => new(dialects: true, tables: false);
+
     /// <summary>Runs generation in process.</summary>
     /// <param name="mode">Apply, dry run or check.</param>
     /// <param name="packs">The packs to run; null for all.</param>
@@ -1075,7 +1138,8 @@ internal sealed class PackRepo : IDisposable
           "kind": "database",
           "id": "{{id}}",
           "name": "{{name}}",
-          "dialect": "{{dialect}}"
+          "dialect": "{{dialect}}",
+          "byConvention": "none"
         }
 
         """;

@@ -155,7 +155,7 @@ internal sealed partial class ResolveRun
         var tablesByKey = new Dictionary<string, RTable>(StringComparer.Ordinal);
         foreach (var database in databases)
         {
-            foreach (var table in database.Tables.Where(t => t.Origin != "synthesized"))
+            foreach (var table in database.Tables)
                 tablesByKey.TryAdd(table.Key, table);
         }
 
@@ -327,9 +327,9 @@ internal sealed partial class ResolveRun
                 row.SetRefs(r => SeedRowRefs(r.Seed.Columns, r.Values, seedRowsById));
         }
 
-        foreach (var entity in _entities.Values.Concat(_promoted.Values).Where(e => e.Id.Length > 0))
+        foreach (var entity in _entities.Values.Where(e => e.Id.Length > 0))
             entity.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(entity.Id) ?? [], [Keys.Referrers(entity.Id), "k:seed", .. OrderKeys(entity.Id)]);
-        foreach (var relation in _relations.Values.Concat(_promotedRelations))
+        foreach (var relation in _relations.Values)
             relation.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(relation.Id) ?? [], [Keys.Referrers(relation.Id), "k:seed", .. OrderKeys(relation.Id)]);
         foreach (var table in tablesByKey.Values)
             table.Seeds = new RList<RSeed>(seedsByTarget.GetValueOrDefault(table.Key) ?? [], [Keys.Referrers(table.Key), "k:seed", .. OrderKeys(table.Key)]);
@@ -1091,11 +1091,11 @@ internal sealed partial class ResolveRun
     private void ResolveUsages()
     {
         var owners = new List<IEnumerable<RAttribute>>();
-        foreach (var entity in _entities.Values.Concat(_promoted.Values).Where(e => e.Id.Length > 0))
+        foreach (var entity in _entities.Values.Where(e => e.Id.Length > 0))
             owners.Add(entity.Attributes);
         foreach (var valueObject in _valueObjects.Values.Where(v => v.Id.Length > 0))
             owners.Add(valueObject.Attributes);
-        foreach (var relation in _relations.Values.Concat(_promotedRelations))
+        foreach (var relation in _relations.Values)
             owners.Add(relation.Attributes);
         foreach (var type in _referenceTypeOrder)
             owners.Add(type.Attributes);
@@ -1109,7 +1109,7 @@ internal sealed partial class ResolveRun
                 if (attribute.Type.ReferenceType is not { } type || !seen.Add(attribute))
                     continue;
                 attribute.Reference = Usage(attribute, type);
-                if (!attribute.IsInherited && !(attribute.Owner is REntity { IsPromoted: true }))
+                if (!attribute.IsInherited)
                     ListOf(usedBy, type.Id).Add(attribute);
             }
         }
@@ -1157,33 +1157,6 @@ internal sealed partial class ResolveRun
         usage.Allowed = new RList<RRow>(allowed is null ? type.Rows : type.Rows.Where(r => allowed.Contains(r.CodeKey)), deps.ToList());
         usage.DefaultRow = type.RowOf(defaultCode);
         return usage;
-    }
-
-    /// <summary>
-    /// The collection attributes typed by a reference type that a mapping leaves to the templates (an ignored attribute excluded).
-    /// </summary>
-    private IReadOnlyList<RAttribute> TemplateDefinedOf(IEnumerable<RAttribute> attributes, string databaseName, string elementId)
-    {
-        List<RAttribute>? result = null;
-        Mapping? mapping = null;
-        var looked = false;
-        foreach (var attribute in attributes)
-        {
-            if (attribute.Type.ReferenceType is null || !attribute.Collection)
-                continue;
-            if (!looked)
-            {
-                looked = true;
-                var database = Model.All<Database>().FirstOrDefault(d => string.Equals(d.Name, databaseName, StringComparison.Ordinal));
-                mapping = database is null ? null : MappingOf(database.Id, elementId);
-            }
-
-            if (mapping?.Attributes.Any(m => string.Equals(m.Attribute, attribute.Id, StringComparison.Ordinal) && m.Ignore) == true)
-                continue;
-            (result ??= []).Add(attribute);
-        }
-
-        return result is null ? [] : result;
     }
 
     /// <summary>Invariant text of a code, for messages.</summary>

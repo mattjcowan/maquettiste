@@ -11,8 +11,7 @@ public sealed record Database : Element, IPackaged
     [JsonIgnore]
     public override ElementKind Kind => ElementKind.Database;
 
-    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it routes no table
-    /// (<see cref="Packages"/> does that).</summary>
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Membership only: it routes no table.</summary>
     [ElementRef(ElementKind.Package)]
     public string? Package { get; init; }
 
@@ -35,109 +34,19 @@ public sealed record Database : Element, IPackaged
     public int? MaxIdentifierLength { get; init; }
 
     /// <summary>
-    /// Which entities map here by convention (D6, D46): <see cref="ConventionMapping.All"/> every entity,
-    /// <see cref="ConventionMapping.Packages"/> the entities of <see cref="Packages"/> (none when it is empty),
-    /// <see cref="ConventionMapping.None"/> none. <see langword="null"/> (a file written before the member existed) keeps the
-    /// original rule: every entity when <see cref="Packages"/> is empty, else its packages'. A mapping element places a single
-    /// entity whatever this says, and <c>ignore</c> removes one.
+    /// <see cref="ConventionMapping.None"/> when the file says <c>"byConvention": "none"</c>, which every database means since 0.29.0:
+    /// a database holds only the tables written for it. The other values and <c>packages</c> were removed with projection (MQ4145), and a
+    /// file with no <c>byConvention</c> gets a warning while an entity is not bound to the database (MQ4146), since before 0.29.0 it laid
+    /// out a table for every entity not bound to it.
     /// </summary>
     public ConventionMapping? ByConvention { get; init; }
-
-    /// <summary>
-    /// The packages whose entities (and sub-packages') map here by convention, each with the schema its conventional tables go to;
-    /// see <see cref="ByConvention"/>. In JSON an entry without a schema is the package id.
-    /// </summary>
-    [JsonConverter(typeof(ConventionPackageListConverter))]
-    public IReadOnlyList<ConventionPackage> Packages { get; init; } = [];
 }
 
-/// <summary>One package a database takes by convention (D6, D46; erratum E26).</summary>
-public sealed record ConventionPackage
-{
-    /// <summary>The package id.</summary>
-    [ElementRef(ElementKind.Package)]
-    public required string Package { get; init; }
-
-    /// <summary>The id of the database schema the package's conventional tables go to; <see langword="null"/> uses the default.</summary>
-    [ElementRef(IndexKinds = ["schema"])]
-    public string? Schema { get; init; }
-
-    /// <summary>An entry without a schema.</summary>
-    /// <param name="package">The package id.</param>
-    public static implicit operator ConventionPackage(string package) => new() { Package = package };
-}
-
-/// <summary>Reads a convention package list whose entries are a package id or <c>{ "package", "schema" }</c>; writes the id when there is no schema.</summary>
-internal sealed class ConventionPackageListConverter : JsonConverter<IReadOnlyList<ConventionPackage>>
-{
-    /// <inheritdoc/>
-    public override IReadOnlyList<ConventionPackage> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        if (reader.TokenType != JsonTokenType.StartArray)
-            throw new JsonException("Expected an array of convention packages.");
-        var list = new List<ConventionPackage>();
-        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
-        {
-            if (reader.TokenType == JsonTokenType.String)
-            {
-                list.Add(new ConventionPackage { Package = reader.GetString()! });
-                continue;
-            }
-
-            if (reader.TokenType != JsonTokenType.StartObject)
-                throw new JsonException("A convention package is an id or an object.");
-            string? package = null, schema = null;
-            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
-            {
-                var name = reader.GetString();
-                reader.Read();
-                if (name == "package")
-                    package = reader.GetString();
-                else if (name == "schema")
-                    schema = reader.TokenType == JsonTokenType.Null ? null : reader.GetString();
-                else
-                    reader.Skip();
-            }
-
-            list.Add(new ConventionPackage { Package = package ?? throw new JsonException("A convention package names its package."), Schema = schema });
-        }
-
-        return list;
-    }
-
-    /// <inheritdoc/>
-    public override void Write(Utf8JsonWriter writer, IReadOnlyList<ConventionPackage> value, JsonSerializerOptions options)
-    {
-        writer.WriteStartArray();
-        foreach (var entry in value)
-        {
-            if (entry.Schema is null)
-            {
-                writer.WriteStringValue(entry.Package);
-                continue;
-            }
-
-            writer.WriteStartObject();
-            writer.WriteString("package", entry.Package);
-            writer.WriteString("schema", entry.Schema);
-            writer.WriteEndObject();
-        }
-
-        writer.WriteEndArray();
-    }
-}
-
-/// <summary>Which entities a database takes by convention (D46).</summary>
+/// <summary>The one value <c>byConvention</c> still takes.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<ConventionMapping>))]
 public enum ConventionMapping
 {
-    /// <summary>Every entity: <c>all</c>.</summary>
-    [JsonStringEnumMemberName("all")] All,
-
-    /// <summary>The entities of the database's <c>packages</c> and their sub-packages: <c>packages</c>.</summary>
-    [JsonStringEnumMemberName("packages")] Packages,
-
-    /// <summary>None; only mapping elements place entities here: <c>none</c>.</summary>
+    /// <summary>No entity is laid out as a table: <c>none</c>.</summary>
     [JsonStringEnumMemberName("none")] None,
 }
 
@@ -188,8 +97,8 @@ public enum Quoting
 }
 
 /// <summary>
-/// A physical table (<c>model/databases/&lt;db&gt;/tables/</c>). A synthesized table's file holds only overrides (D9);
-/// designed and imported tables hold their full definition.
+/// A physical table (<c>model/databases/&lt;db&gt;/tables/</c>), designed or imported, with its full definition. Overlays (a file with
+/// <c>origin</c>, <c>entity</c>, <c>attribute</c> or <c>relation</c>, or a column with <c>attribute</c>) were removed in 0.29.0 (MQ4145).
 /// </summary>
 public sealed record Table : Element, IPackaged
 {
@@ -210,29 +119,7 @@ public sealed record Table : Element, IPackaged
     [ElementRef(IndexKinds = ["schema"])]
     public string? Schema { get; init; }
 
-    /// <summary>How the table came to exist.</summary>
-    public TableOrigin Origin { get; init; } = TableOrigin.Designed;
-
-    /// <summary>
-    /// For a synthesized table's overlay: the id of the entity whose table it overrides, or, with <see cref="Attribute"/>, the
-    /// entity whose child table it overrides. Exactly one of <see cref="Entity"/>, <see cref="Relation"/> and <see cref="Enum"/> is
-    /// set on a synthesized table and none on a designed or imported one (D9; the schema enforces it).
-    /// </summary>
-    [ElementRef(ElementKind.Entity)]
-    public string? Entity { get; init; }
-
-    /// <summary>
-    /// For a synthesized child table's overlay (a value-object collection or <c>table</c> storage): the id of the attribute, on
-    /// <see cref="Entity"/> (own, inherited or virtual), whose child table it overrides; key <c>&lt;entityId&gt;.&lt;attributeId&gt;@&lt;databaseId&gt;</c>.
-    /// </summary>
-    [ElementRef(IndexKinds = ["attribute"])]
-    public string? Attribute { get; init; }
-
-    /// <summary>For a synthesized junction table's overlay: the id of the relation.</summary>
-    [ElementRef(ElementKind.Relation)]
-    public string? Relation { get; init; }
-
-    /// <summary>Columns: the full list for designed and imported tables; overlays and extra columns for synthesized ones.</summary>
+    /// <summary>The columns.</summary>
     public IReadOnlyList<Column> Columns { get; init; } = [];
 
     /// <summary>The primary key.</summary>
@@ -417,27 +304,9 @@ public sealed record TablePartition
     public bool Default { get; init; }
 }
 
-/// <summary>How a table came to exist.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<TableOrigin>))]
-public enum TableOrigin
-{
-    /// <summary>Computed from an entity or relation mapping; the file holds overrides only: <c>synthesized</c>.</summary>
-    [JsonStringEnumMemberName("synthesized")] Synthesized,
-
-    /// <summary>Designed by hand, with no entity: <c>designed</c>.</summary>
-    [JsonStringEnumMemberName("designed")] Designed,
-
-    /// <summary>Reverse engineered, with <c>source</c> provenance: <c>imported</c>.</summary>
-    [JsonStringEnumMemberName("imported")] Imported,
-}
-
-/// <summary>A table column, or an overlay on a synthesized column.</summary>
+/// <summary>A table column.</summary>
 public sealed record Column : ElementBase
 {
-    /// <summary>For an overlay: the synthesized column key it overrides (engine-design.md section 7.3); <see langword="null"/> for a designed or extra column.</summary>
-    [ElementRef(Keyed = true)]
-    public string? Attribute { get; init; }
-
     /// <summary>
     /// The column type keyword: a built-in keyword, or <c>range</c> or <c>multirange</c> (<see cref="BuiltinTypes.ColumnOnly"/>);
     /// required on designed and extra columns.

@@ -430,9 +430,9 @@ internal static class ExprResolution
         return form == ExprStoredForm.Integer && long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var number) ? number : text;
     }
 
-    /// <summary>How a column stores an enum member or a code: by its physical type (a reference column's code type).</summary>
+    /// <summary>How a column stores an enum member or a code: by its physical type.</summary>
     public static ExprStoredForm FormOf(RColumn column) =>
-        (column.Type == "reference" && column.CodeType is { } code ? code : column.Type) switch
+        column.Type switch
         {
             "int16" or "int32" or "int64" => ExprStoredForm.Integer,
             "uuid" or "ulid" => ExprStoredForm.Uuid,

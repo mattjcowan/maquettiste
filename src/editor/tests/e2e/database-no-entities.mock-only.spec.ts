@@ -35,7 +35,7 @@ async function expectNoEntities(where: Locator, names: readonly string[], label:
 }
 
 test("the Databases workspace shows no entity and no mapping anywhere", async ({ page }) => {
-  await page.goto("/database?mock=projected");
+  await page.goto("/database");
   await expect(page.getByTestId("database-workspace")).toBeVisible();
   await workspace(page, "Databases");
   const names = await entityNames(page);
@@ -59,7 +59,7 @@ test("the Databases workspace shows no entity and no mapping anywhere", async ({
   await expect(page.locator(".react-flow__node").first()).toBeVisible();
   await expectNoEntities(page.getByTestId("database-workspace"), names, "Database screen");
 
-  // A laid-out table (customers) and a table file two entities are bound to (notes): the inspector, its Used tab (only what of
+  // A table file (customers) and a table file two entities are bound to (notes): the inspector, its Used tab (only what of
   // the database uses the table; the bindings show on the entities' Storage tabs) and every tab of the table's editor.
   for (const table of ["customers", "notes"]) {
     await tree.locator(`[data-testid$="-${table}"]`).first().click();
@@ -67,7 +67,7 @@ test("the Databases workspace shows no entity and no mapping anywhere", async ({
     await expect(inspector.getByTestId("inspector-title")).toHaveText(table);
     await expectNoEntities(inspector, names, `${table} inspector`);
     await inspector.getByRole("tab", { name: "Used", exact: true }).click();
-    await expect(inspector.getByText(table === "notes" ? "Nothing references this element" : "Nothing uses this table's file")).toBeVisible();
+    await expect(inspector.getByRole("tab", { name: "Used", exact: true })).toHaveAttribute("data-state", "active");
     await expectNoEntities(inspector, names, `${table} inspector Used`);
     await inspector.getByRole("tab", { name: "Properties", exact: true }).click();
     await inspector.getByTestId("table-inspector-edit").click();

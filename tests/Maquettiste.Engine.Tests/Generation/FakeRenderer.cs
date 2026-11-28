@@ -156,11 +156,11 @@ internal sealed class FakeRenderer : IRenderer
                 reads.Read(element);
                 if (element is not REntity mapped)
                     return "-";
-                var mapping = mapped.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => m.Value).FirstOrDefault();
-                if (mapping is null)
+                var binding = mapped.Bindings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => m.Value).FirstOrDefault();
+                if ((binding?.WriteTable ?? binding?.SourceTable) is not { } table)
                     return "-";
-                reads.Read(mapping.Table);
-                return mapping.Table.Name;
+                reads.Read(table);
+                return table.Name;
             case "entity-count":
                 // The list's size only: its membership keys, no entity's own.
                 reads.Members(context.Model.Entities);

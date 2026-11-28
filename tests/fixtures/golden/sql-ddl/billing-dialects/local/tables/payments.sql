@@ -10,5 +10,6 @@ CREATE TABLE payments (
     method text NULL,
     ledger_position blob NULL,
     created_at text NOT NULL,
-    updated_at text NULL
+    updated_at text NULL,
+    CONSTRAINT fk_payments_method_ref FOREIGN KEY (method) REFERENCES payment_methods (code)
 );

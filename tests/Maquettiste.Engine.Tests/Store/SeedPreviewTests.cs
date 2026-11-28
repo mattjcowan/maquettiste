@@ -11,7 +11,6 @@ namespace Maquettiste.Engine.Tests.Store;
 /// its script returns them, with ids and keys in seed terms, or in a database's terms with stable ids, the values foreign-key entries
 /// fill and their refs, running only the scripts of the seed and of the seeds its entries name.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class SeedPreviewTests
 {
     internal const string P = "01K9SPV00000000000000000";
@@ -28,7 +27,8 @@ public sealed class SeedPreviewTests
 
     /// <summary>
     /// A billing copy whose main database gains schema sales with customers (a stable id, keyed by email) and invoices (a stable id, keyed
-    /// by number, naming its customer by email through fk_invoices_customer), each with a seed; written before the store loads.
+    /// by number, naming its customer by email through fk_invoices_customer), each with a seed; written before the store loads, beside
+    /// billing's own customers and invoices (their file names take the id suffix of a name that collides).
     /// </summary>
     internal static EditorRepo NaturalKeyRepo()
     {
@@ -37,14 +37,14 @@ public sealed class SeedPreviewTests
         var node = JsonNode.Parse(r.Repo.ReadFile(database))!.AsObject();
         node["schemas"]!.AsArray().Add(new JsonObject { ["id"] = Sales, ["name"] = "sales" });
         r.Repo.WriteFile(database, node.ToJsonString());
-        r.Repo.WriteFile(".maquettiste/model/databases/main/tables/customers.json", $$"""
+        r.Repo.WriteFile(".maquettiste/model/databases/main/tables/customers-000001.json", $$"""
             {"kind":"table","id":"{{Customers}}","name":"customers","database":"{{EditorRepo.MainDatabaseId}}","schema":"{{Sales}}","columns":[
               {"id":"{{CustomerId}}","name":"id","type":"uuid","nullable":false,"stableId":true},
               {"id":"{{CustomerName}}","name":"name","type":"string","nullable":false},
               {"id":"{{CustomerEmail}}","name":"email","type":"string","length":254,"nullable":false}],
              "primaryKey":{"columns":["{{CustomerId}}"]},"uniques":[{"id":"{{ByEmail}}","name":"uq_customers_email","columns":["{{CustomerEmail}}"]}]}
             """);
-        r.Repo.WriteFile(".maquettiste/model/databases/main/tables/invoices.json", $$"""
+        r.Repo.WriteFile(".maquettiste/model/databases/main/tables/invoices-000010.json", $$"""
             {"kind":"table","id":"{{Invoices}}","name":"invoices","database":"{{EditorRepo.MainDatabaseId}}","schema":"{{Sales}}","columns":[
               {"id":"{{InvoiceId}}","name":"id","type":"uuid","nullable":false,"stableId":true},
               {"id":"{{InvoiceNumber}}","name":"number","type":"string","length":32,"nullable":false},

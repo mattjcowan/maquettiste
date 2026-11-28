@@ -47,22 +47,19 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
-    /// After a saved materialize-tables, records in each database's committed snapshot the keys of the tables (and key sequences) it
-    /// stored as files: the projected key, the file's id and each column's key before and after (<see cref="Generation.SnapshotAliases"/>).
-    /// Nothing is rekeyed: the schema diff reads the snapshot through the aliases, so the next migration sees each projected table and
-    /// its stored successor as one table, and so does the one after an undo puts the projection back, or a redo stores it again. A
-    /// database without a snapshot gets an alias-only one, which the diff reads as none.
+    /// After a saved write whose operations moved table keys (a fold into a stereotype), records in each database's committed snapshot
+    /// the keys before and after (<see cref="Generation.SnapshotAliases"/>). Nothing is rekeyed: the schema diff reads the snapshot through
+    /// the aliases. A database without a snapshot gets an alias-only one, which the diff reads as none.
     /// </summary>
     private async Task RecordAliasesAsync(IReadOnlyList<MaterializeResult> results, CancellationToken ct)
     {
-        foreach (var group in results.Where(r => r.Database is not null && (r.Rekeys?.Count > 0 || r.Sequences?.Count > 0)).GroupBy(r => r.Database!, StringComparer.Ordinal))
+        foreach (var group in results.Where(r => r.Database is not null && r.Rekeys?.Count > 0).GroupBy(r => r.Database!, StringComparer.Ordinal))
         {
             if (_current?.All<Database>().FirstOrDefault(d => d.Name == group.Key) is not { } database)
                 continue;
             var before = await _services.Snapshots.LoadAsync(group.Key, ct).ConfigureAwait(false);
             var tables = group.SelectMany(r => r.Rekeys ?? []).ToList();
-            var sequences = group.SelectMany(r => r.Sequences ?? new Dictionary<string, string>()).ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
-            if (Generation.SnapshotAliases.Record(before, database, tables, sequences) is { } after)
+            if (Generation.SnapshotAliases.Record(before, database, tables, new Dictionary<string, string>(StringComparer.Ordinal)) is { } after)
                 await _services.Snapshots.SaveAsync(after, ct).ConfigureAwait(false);
         }
     }
@@ -81,8 +78,8 @@ public sealed partial class ModelStore
     };
 
     /// <summary>
-    /// Runs the materializer. Storing tables reads the database's committed snapshot first: its aliases give back the ids a table, its
-    /// columns and its key sequences had when they were stored before (and undone), so storing again changes neither ids nor aliases.
+    /// Runs the materializer. Storing tables reads the database's committed snapshot first: an alias recorded before 0.29.0 gives back the
+    /// ids a table, its columns and its key sequence had when they were stored before (and undone).
     /// </summary>
     private async Task<MaterializeResult> RunMaterializerAsync(ModelSnapshot snapshot, MaterializeRequest request, CancellationToken ct)
     {
@@ -115,8 +112,7 @@ public sealed partial class ModelStore
     /// <summary>
     /// What a materialize or binding operation would do, planned and validated like the batch operation without writing anything: the
     /// elements it creates, updates and deletes (with the documents it would write), what it leaves as it is, and the diagnostics the
-    /// change would have. A materialize refusal is MQ4055 (an overlay check held as text that does not parse or type is refused under the
-    /// expression rule it breaks), and the binding rules MQ4044 to MQ4054 come from resolving the model after the change. A binding
+    /// change would have. A materialize refusal is MQ4055, and the binding rules MQ4044 to MQ4054 come from resolving the model after the change. A binding
     /// operation's refusal is MQ4089, and its binding rules (MQ4044 to MQ4054, MQ4087 and MQ4088) come from resolving
     /// the conceptual layer and the named database only, never the whole model (next-phase-2-design.md section 3.3, decision 10).
     /// </summary>
@@ -191,8 +187,8 @@ public sealed partial class ModelStore
     }
 
     /// <summary>
-    /// What a database's materialize screens list: the entities with no binding to it (and whether each is projected there today), and
-    /// its designed and imported tables and views with the entities bound to each (none for an unbound one).
+    /// What a database's materialize screens list: the entities with no binding to it, and its tables and views with the entities bound
+    /// to each (none for an unbound one).
     /// </summary>
     /// <param name="databaseId">The database id.</param>
     /// <param name="ct">Cancellation.</param>
@@ -208,17 +204,15 @@ public sealed partial class ModelStore
         var entities = new List<MaterializeEntityStatus>();
         foreach (var entity in snapshot.All<Entity>().OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Id, StringComparer.Ordinal))
         {
-            if (entity.Bindings.Any(b => b.Database == db.Id))
-                continue;
-            var table = rdb?.Tables.FirstOrDefault(t => t.Origin == "synthesized" && t.Entity?.Id == entity.Id && t.Attribute is null && !t.IsJunction);
-            entities.Add(new MaterializeEntityStatus(entity.Id, entity.Name, entity.Package, table is not null, table?.Name));
+            if (!entity.Bindings.Any(b => b.Database == db.Id))
+                entities.Add(new MaterializeEntityStatus(entity.Id, entity.Name, entity.Package));
         }
 
         var sources = new List<MaterializeSourceStatus>();
-        foreach (var table in rdb?.Tables.Where(t => t.Origin != "synthesized") ?? [])
-            sources.Add(new MaterializeSourceStatus(table.Key, "table", table.Name, table.Schema, table.Origin, [.. table.BoundBy.Select(Binder)]));
+        foreach (var table in rdb?.Tables ?? Resolution.RList<Resolution.RTable>.Empty)
+            sources.Add(new MaterializeSourceStatus(table.Key, "table", table.Name, table.Schema, [.. table.BoundBy.Select(Binder)]));
         foreach (var view in rdb?.Views ?? Resolution.RList<Resolution.RView>.Empty)
-            sources.Add(new MaterializeSourceStatus(view.Id, "view", view.Name, view.Schema, "designed", [.. view.BoundBy.Select(Binder)]));
+            sources.Add(new MaterializeSourceStatus(view.Id, "view", view.Name, view.Schema, [.. view.BoundBy.Select(Binder)]));
         return new MaterializeStatus(db.Id, db.Name, entities, sources);
 
         static MaterializeBinder Binder(Resolution.REntityBinding b) => new(b.Entity.Id, b.Entity.Name, b.Id,
@@ -231,7 +225,7 @@ public sealed partial class ModelStore
 /// <c>map-by-name</c> or <c>resync-binding</c>.</param>
 /// <param name="Database">The database id.</param>
 /// <param name="Ids">The entities (tables, attributes, columns, map by name, re-sync) or the tables and views (entities).</param>
-/// <param name="Schema">For tables: the schema id of the database the tables go to; absent keeps the projected tables' schema.</param>
+/// <param name="Schema">For tables: the schema id of the database the tables go to; absent puts them in the database's default schema.</param>
 /// <param name="Package">For entities: the package id the entities go to.</param>
 /// <param name="Columns">For attributes: the source columns (one entity), or <see langword="null"/> for every column nothing in the binding
 /// names; for re-sync: the columns to bring into step (one entity), or <see langword="null"/> for every column of the source.</param>
@@ -242,15 +236,15 @@ public sealed record MaterializeRequest(string Operation, string Database, IRead
 {
     /// <summary>
     /// For tables: the shape of each hierarchy in the request (<c>one-table</c>, <c>per-concrete</c> or <c>per-type</c>), by its root entity's
-    /// id, or under <c>*</c> for every hierarchy; <see langword="null"/>, or a hierarchy it does not name, takes the default (the shape an
-    /// older entity mapping's <c>inheritance</c> gives, else the conventions', one table by default).
+    /// id, or under <c>*</c> for every hierarchy; <see langword="null"/>, or a hierarchy it does not name, takes the default (the
+    /// conventions' <c>inheritance</c>, one table by default).
     /// </summary>
     public IReadOnlyDictionary<string, string>? Hierarchy { get; init; }
 
     /// <summary>
     /// For tables: where each list attribute goes (<c>table</c> for a table of its own, <c>json</c> for a JSON column), by attribute id, or
-    /// under <c>*</c> for every list; <see langword="null"/>, or a list it does not name, takes the default (what an older mapping or the
-    /// conventions say, else a table).
+    /// under <c>*</c> for every list; <see langword="null"/>, or a list it does not name, takes the default (what the conventions say, else
+    /// a table).
     /// </summary>
     public IReadOnlyDictionary<string, string>? ListStorage { get; init; }
 }
@@ -263,7 +257,7 @@ public sealed record MaterializeRequest(string Operation, string Database, IRead
 /// <param name="Updates">The elements it changes.</param>
 /// <param name="Deletes">The elements it deletes.</param>
 /// <param name="Notes">What it leaves as it is, in words.</param>
-/// <param name="Diagnostics">The refusal (MQ4055, or the expression rule an overlay check held as text breaks), the errors that would refuse the change, and the binding findings after it.</param>
+/// <param name="Diagnostics">The refusal (MQ4055), the errors that would refuse the change, and the binding findings after it.</param>
 public sealed record MaterializePlan(string Operation, string Database, bool Valid, IReadOnlyList<MaterializeChange> Creates,
     IReadOnlyList<MaterializeChange> Updates, IReadOnlyList<MaterializeChange> Deletes, IReadOnlyList<string> Notes, IReadOnlyList<Diagnostic> Diagnostics)
 {
@@ -309,25 +303,22 @@ public sealed record MaterializeChange(string Id, string Kind, string Name,
 /// <param name="Database">The database id.</param>
 /// <param name="DatabaseName">The database name.</param>
 /// <param name="Entities">The entities with no binding to the database, by name.</param>
-/// <param name="Sources">The database's designed and imported tables and its views, with the entities bound to each.</param>
+/// <param name="Sources">The database's tables and views, with the entities bound to each.</param>
 public sealed record MaterializeStatus(string Database, string DatabaseName, IReadOnlyList<MaterializeEntityStatus> Entities, IReadOnlyList<MaterializeSourceStatus> Sources);
 
 /// <summary>An entity with no binding to the database.</summary>
 /// <param name="Id">The entity id.</param>
 /// <param name="Name">The entity name.</param>
 /// <param name="Package">The package id.</param>
-/// <param name="Projected">Whether the database projects the entity into a table today (by convention or a mapping element).</param>
-/// <param name="Table">The projected table's name, when it is projected.</param>
-public sealed record MaterializeEntityStatus(string Id, string Name, string? Package, bool Projected, string? Table);
+public sealed record MaterializeEntityStatus(string Id, string Name, string? Package);
 
 /// <summary>A table or view of the database and the entities bound to it.</summary>
 /// <param name="Id">The table or view id.</param>
 /// <param name="Kind"><c>table</c> or <c>view</c>.</param>
 /// <param name="Name">The name.</param>
 /// <param name="Schema">The schema name.</param>
-/// <param name="Origin"><c>designed</c> or <c>imported</c> (a view: <c>designed</c>).</param>
 /// <param name="BoundBy">The bindings that read or write it; empty when no entity is bound to it.</param>
-public sealed record MaterializeSourceStatus(string Id, string Kind, string Name, string? Schema, string Origin, IReadOnlyList<MaterializeBinder> BoundBy);
+public sealed record MaterializeSourceStatus(string Id, string Kind, string Name, string? Schema, IReadOnlyList<MaterializeBinder> BoundBy);
 
 /// <summary>An entity bound to a table or view.</summary>
 /// <param name="Entity">The entity id.</param>

@@ -143,15 +143,20 @@ internal sealed class GenerationFixture : IAsyncDisposable
 /// <summary>Model shapes shared by the tests.</summary>
 internal static class Models
 {
-    /// <summary>Two unrelated entities, <c>Customer</c> and <c>Product</c>, and a PostgreSQL database <c>main</c>.</summary>
+    /// <summary>
+    /// Two unrelated entities, <c>Customer</c> and <c>Product</c>, and a PostgreSQL database <c>main</c> whose designed tables
+    /// <c>customers</c> and <c>products</c> they are bound to.
+    /// </summary>
     /// <param name="b">The builder.</param>
     /// <param name="customerName">The type of Customer's <c>name</c> attribute can change through this.</param>
     /// <param name="extra">More elements, added after these.</param>
     public static void Shop(ModelBuilder b, string customerName = "string", Action<ModelBuilder, EntityBuilder, DatabaseBuilder>? extra = null)
     {
         var customer = b.Entity("Customer").Key("id", "uuid").Attr("name", customerName);
-        b.Entity("Product").Key("id", "uuid").Attr("title", "string");
+        var product = b.Entity("Product").Key("id", "uuid").Attr("title", "string");
         var main = b.Database("main", Dialect.PostgreSql);
+        b.Table("customers", main).Column("id", "uuid", nullable: false).Column("name", "string").PrimaryKey("id").Binds(customer);
+        b.Table("products", main).Column("id", "uuid", nullable: false).Column("title", "string").PrimaryKey("id").Binds(product);
         extra?.Invoke(b, customer, main);
     }
 }

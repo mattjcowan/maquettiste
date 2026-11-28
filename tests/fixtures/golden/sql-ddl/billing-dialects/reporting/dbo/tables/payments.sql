@@ -11,5 +11,6 @@ CREATE TABLE dbo.payments (
     ledger_position binary(8) NULL,
     created_at datetimeoffset(6) NOT NULL,
     updated_at datetimeoffset(6) NULL,
-    CONSTRAINT pk_payments PRIMARY KEY (id)
+    CONSTRAINT pk_payments PRIMARY KEY (id),
+    CONSTRAINT ck_payments_method_ref CHECK (method IN (N'card', N'transfer', N'cash'))
 );

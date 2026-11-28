@@ -1,16 +1,13 @@
 // The database diagram's foreign key edits (the owner: "seriously, how do I create a relationship/foreign key?"): a drag from a
 // column (or a table's header) of table A onto a column (or the header) of table B becomes a draft the ForeignKeyDialog shows;
 // Create or Save writes the key into table A (`foreignKeys` in schemas/v1/table.json) through the one way a table is written
-// (`updateTable`, storeTables.ts): a table file is one save; a table not stored as a file yet (a legacy projected table) is stored
-// as one first with the engine's materialize-tables, its real ids read from the batch's result, and the key written into the new
-// file, both in one undo step. Delete removes a key the same way. The database side names no entities.
+// (`updateTable`, tableQueue.ts): one save of the table file. Delete removes a key the same way. The database side names no
+// entities.
 //
-// Column keys: the draft names columns by the resolved view's keys; the edit runs on a document whose columns carry those keys
-// (`replayOnFile`), so the same draft writes a stored table and a table stored on this very edit. A foreign key in the resolved
+// Column keys: the draft names columns by the resolved view's keys, which are the file's column ids. A foreign key in the resolved
 // view has no id: its file entry is found by name, else by its columns and referenced table.
 import type { ColumnView, ForeignKeyView, TableView } from "@/api/types";
 import { keyHolding, keysOfView, referencedKeyProblem } from "@/model/foreignKeyTarget";
-import { tableFileTarget } from "./columnEdits";
 import { keepOnDeleteColumns, setsColumns } from "./tableParts";
 
 type Json = Record<string, unknown>;
@@ -353,58 +350,4 @@ export function uniqueColumns(table: TableView): Set<string> {
   for (const u of table.uniques) if (u.columns.length === 1) out.add(u.columns[0]);
   for (const i of table.indexes) if (i.unique && i.columns.length === 1) out.add(i.columns[0].column);
   return out;
-}
-
-/** The entity a legacy projected table converts with (its own table, not a child or junction table), or null. */
-export function legacyEntityOf(table: Pick<TableView, "key" | "entityId" | "relationId" | "origin">, databaseId: string): string | null {
-  if (table.origin !== "synthesized") return null;
-  const target = tableFileTarget(table, databaseId);
-  return target.kind === "overlay" && "entity" in target && !target.attribute ? target.entity : null;
-}
-
-/** Whether a table is not stored as a table file yet (a legacy projected table). */
-export const isLegacy = (table: Pick<TableView, "origin">) => table.origin === "synthesized";
-
-/**
- * A draft whose tables were stored as table files while the dialog was open (another edit stored them): the draft follows them
- * to their files, its columns matched by name (a stored table keeps its columns' names). `fileOf` names a stored table's file
- * and `before` the table as it was resolved then. Returns the followed draft, or null when nothing moved.
- */
-export function followStoredDraft(
-  draft: FkDraft,
-  tables: readonly TableView[],
-  fileOf: (key: string) => string | undefined,
-  before: (key: string) => TableView | undefined,
-): FkDraft | null {
-  const present = (key: string) => tables.some((t) => t.key === key);
-  const move = (key: string) => {
-    if (!key || present(key)) return null;
-    const file = fileOf(key);
-    const now = file ? tables.find((t) => t.key === file) : undefined;
-    if (!file || !now) return null;
-    const old = before(key);
-    const columns = new Map<string, string>();
-    for (const c of old?.columns ?? []) {
-      const same = now.columns.find((x) => x.name === c.name);
-      if (same) columns.set(c.key, same.key);
-    }
-    return { file, column: (k: string | null) => (k ? (columns.get(k) ?? k) : k) };
-  };
-  const a = move(draft.table);
-  const b = move(draft.referencedTable);
-  const editingB = draft.editing ? move(draft.editing.referencedTable) : null;
-  if (!a && !b && !editingB) return null;
-  return {
-    ...draft,
-    table: a?.file ?? draft.table,
-    referencedTable: b?.file ?? draft.referencedTable,
-    pairs: draft.pairs.map((p) => ({ ...p, column: a ? a.column(p.column) : p.column, referenced: b ? (b.column(p.referenced) ?? "") : p.referenced })),
-    editing: draft.editing
-      ? {
-          ...draft.editing,
-          columns: a ? draft.editing.columns.map((c) => a.column(c) ?? c) : draft.editing.columns,
-          referencedTable: editingB?.file ?? draft.editing.referencedTable,
-        }
-      : null,
-  };
 }

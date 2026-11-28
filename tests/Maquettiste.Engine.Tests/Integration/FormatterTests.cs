@@ -10,7 +10,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// formatter runner (integration task 12; engine-design.md section 13): over the files of rendered units only, and in memory in check mode.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class FormatterTests
 {
     private const string Script = """
@@ -64,7 +63,7 @@ public sealed class FormatterTests
             Assert.Empty(Calls(log));
 
             // One entity changed: only the files of the re-rendered units are formatted.
-            await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+            await repo.WidenCustomerNameAsync();
             var result = await repo.ApplyAsync();
             var calls = Calls(log);
             Assert.Contains("db/e2e/tables/customers.sql", calls);

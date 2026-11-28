@@ -78,12 +78,11 @@ public sealed class ExplorerEndpointTests
         Recorder.Json("elements-read.json", response);
     }
 
-    [UsesProjectedFixtures]
     [Fact]
     public async Task An_expression_preview_answers_in_contract_shape()
     {
-        // next-phase-3-design.md section 3.1: text at Invoice's check site, typed, printed, lowered and judged; Invoice has no binding,
-        // so the SQL is null with the reason. An unknown element is 404, text without a site 400.
+        // next-phase-3-design.md section 3.1: text at Invoice's check site, typed, printed, lowered and judged; Invoice is bound to the
+        // invoices table, so the SQL names its column. An unknown element is 404, text without a site 400.
         await using var host = EditorHost.Create();
 
         var response = await host.SendJsonAsync("POST", "/api/model/expressions/preview", new JsonObject
@@ -98,8 +97,8 @@ public sealed class ExplorerEndpointTests
         Contract.AssertResponse(response, "/api/model/expressions/preview");
         var preview = response.Json["preview"]!;
         Assert.Equal(("issuedOn <= date '2026-12-31'", "bool", true), ((string)preview["text"]!, (string)preview["type"]!, (bool)preview["answer"]!));
-        Assert.Null(preview["sql"]);
-        Assert.Equal("Entity 'Invoice' has no binding, so no table holds its values.", (string)preview["sqlNote"]!);
+        Assert.Equal("issued_on <= DATE '2026-12-31'", (string)preview["sql"]!);
+        Assert.Null(preview["sqlNote"]);
         var missing = await host.SendJsonAsync("POST", "/api/model/expressions/preview", new JsonObject { ["element"] = Unknown, ["at"] = "/checks/0" });
         Assert.Equal(404, missing.Status);
         var bad = await host.SendJsonAsync("POST", "/api/model/expressions/preview", new JsonObject { ["element"] = EditorHost.InvoiceId, ["text"] = "true" });
@@ -179,7 +178,6 @@ public sealed class ExplorerEndpointTests
         Recorder.Json("database-table-customers.json", table);
     }
 
-    [UsesProjectedFixtures]
     [Fact]
     public async Task Table_summaries_on_a_model_with_errors_are_partial()
     {
@@ -196,9 +194,10 @@ public sealed class ExplorerEndpointTests
         Contract.AssertResponse(tables, "/api/databases/{id}/tables");
         Assert.True(tables.Json["partial"]!.GetValue<bool>());
         Assert.NotEmpty(tables.Json["diagnostics"]!.AsArray());
-        var entities = tables.Json["tables"]!.AsArray().Select(t => t!["entityId"]?.GetValue<string>()).ToList();
-        Assert.DoesNotContain(EditorHost.PaymentId, entities);
-        Assert.Contains(EditorHost.CustomerId, entities);
+        // The tables do not depend on the entity: payments is listed as it is.
+        var names = tables.Json["tables"]!.AsArray().Select(t => t!["name"]!.GetValue<string>()).ToList();
+        Assert.Contains("payments", names);
+        Assert.Contains("customers", names);
     }
 
     [Fact]

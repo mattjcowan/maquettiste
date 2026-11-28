@@ -19,14 +19,14 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// renderer per dialect, the resolver's rules MQ4021 to MQ4043 with their pointers, the <c>each query</c> scope
 /// and the <c>query_sql</c> helper, the database view and resolved records, and what the schema diff makes of them (nothing).
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class QueryTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>
-    /// A PostgreSQL database <c>main</c> over Customer (id, required name, email) and Invoice (id, required number, total), a customer
-    /// placing invoices (the navigation <c>invoices</c> on Customer), a view of the invoices and a function <c>tax_of</c>.
+    /// A PostgreSQL database <c>main</c> with tables <c>customers</c> and <c>invoices</c>, which Customer (id, required name, email) and
+    /// Invoice (id, required number, total) are bound to, a customer placing invoices (the navigation <c>invoices</c> on Customer, stored
+    /// by the foreign key <c>invoices.customer_id</c>), a view of the invoices and a function <c>tax_of</c>.
     /// </summary>
     private sealed class Shop
     {
@@ -37,7 +37,14 @@ public sealed class QueryTests
             Invoice = Builder.Entity("Invoice").Key("id", "uuid").Attr("number", "string", a => a.Length(20).Required()).Attr("total", "decimal", a => a.Precision(12).Scale(2));
             Places = Builder.Relation("places", Customer, Invoice, fromMax: MaxCardinality.One, fromMin: 1, fromRole: "customer", toRole: "invoices",
                 fromNavigation: "customer", toNavigation: "invoices");
-            Main = Builder.Database("main", dialect).Id;
+            var main = Builder.Database("main", dialect);
+            Main = main.Id;
+            Customers = Builder.Table("customers", main).Column("id", "uuid", nullable: false).Column("name", "string", nullable: false, length: 100)
+                .Column("email", "string", length: 200).PrimaryKey("id").Binds(Customer);
+            Invoices = Builder.Table("invoices", main).Column("id", "uuid", nullable: false).Column("number", "string", nullable: false, length: 20)
+                .Column("total", "decimal").Column("customer_id", "uuid", nullable: false).PrimaryKey("id").ForeignKey(Customers, "customer_id")
+                .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "total" ? c with { Precision = 12, Scale = 2 } : c)] }).Binds(Invoice);
+            Builder.Mapping(main, Places).ForeignKey(((Table)Builder.BuildElements().First(e => e.Id == Invoices.Id)).ForeignKeys[0].Id);
             View = Builder.NewId();
             Builder.Add(new View
             {
@@ -66,7 +73,11 @@ public sealed class QueryTests
 
         public string Routine { get; }
 
-        public string InvoiceTable => Invoice.Id + "@" + Main;
+        public TableBuilder Customers { get; }
+
+        public TableBuilder Invoices { get; }
+
+        public string InvoiceTable => Invoices.Id;
 
         /// <summary>Adds a query from its JSON (without kind, id and database, which are filled in) and returns its id.</summary>
         public string Query(string json)
@@ -91,12 +102,12 @@ public sealed class QueryTests
             { "name": "ids", "type": "uuid", "collection": true },
             { "name": "take", "type": "int32", "default": 20 }
           ],
-          "from": { "source": "{{s.Customer.Id}}", "alias": "c" },
+          "from": { "source": "{{s.Customers.Id}}", "alias": "c" },
           "joins": [
             { "source": "{{s.InvoiceTable}}", "alias": "order", "kind": "left", "on": { "op": "eq", "left": { "column": "order.customer_id" }, "right": { "column": "c.id" } } }
           ],
           "select": [
-            { "name": "id", "expression": { "column": "c.{{s.Customer.AttrId("id")}}" } },
+            { "name": "id", "expression": { "column": "c.{{s.Customers.ColumnId("id")}}" } },
             { "name": "name", "expression": { "call": "upper", "args": [{ "column": "c.name" }] } },
             { "name": "lastNumber", "expression": { "call": "max", "args": [{ "column": "order.number" }] } },
             { "name": "label", "expression": { "op": "concat", "args": [{ "column": "c.name" }, { "value": " <" }, { "column": "c.email" }, { "value": ">" }] } },
@@ -141,7 +152,7 @@ public sealed class QueryTests
         Assert.Same(query.Parameters[2], query.Paging!.LimitParameter);
         Assert.Equal(10L, query.Paging.Offset);
 
-        // The column part may be the column key (the attribute id here) or the physical name.
+        // The column part may be the column key (the column id here) or the physical name.
         var fields = query.Select;
         Assert.Equal(["id", "name", "lastNumber", "label", "nameLength"], fields.Select(f => f.Name));
         Assert.Same(db.Table("customers").Column("id"), fields[0].Expression!.TableColumn);
@@ -157,7 +168,7 @@ public sealed class QueryTests
         // Dependencies: the query's file, the tables it reads and what they come from; the database's list counts queries.
         Assert.Equal([db.Table("customers"), db.Table("invoices")], query.Uses);
         Assert.Contains("e:" + id, query.Dependencies);
-        Assert.Contains("e:" + s.Invoice.Id, query.Dependencies);
+        Assert.Contains("e:" + s.Invoices.Id, query.Dependencies);
         Assert.Contains("k:query", db.Queries.MembershipKeys);
         Assert.NotEmpty(query.Sql!);
     }
@@ -233,7 +244,7 @@ public sealed class QueryTests
                 { "name": "word", "type": "int32" },
                 { "name": "odd", "type": "not_a_type" }
               ],
-              "from": { "source": "{{s.Customer.Id}}", "alias": "c" },
+              "from": { "source": "{{s.Customers.Id}}", "alias": "c" },
               "joins": [
                 { "source": "{{s.Invoice.Id}}@{{other}}", "alias": "x" },
                 { "source": "{{s.View}}", "alias": "c" }
@@ -340,10 +351,10 @@ public sealed class QueryTests
         var query = view.Queries.Single(q => q.Name == "InvoicesByCustomer");
         Assert.Equal(["customerId", "statuses", "offset", "limit"], query.SqlParameters);
         Assert.StartsWith("SELECT i.id AS id, i.number AS number", query.Sql, StringComparison.Ordinal);
-        Assert.Equal(("01J92P0V1T0J6RH4MY9H81NYB4", "01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4", "from"), (query.From!.Source, query.From.TableKey, query.From.Kind));
+        Assert.Equal(("01J92P0V1T0J6RH4MY9H81NYB4", "01J92P0V1T0J6RH4MY9H81NYB4", "from"), (query.From!.Source, query.From.TableKey, query.From.Kind));
         Assert.Equal("and", query.Where!.Value.EnumerateObject().Single().Name);
         Assert.Equal("desc", query.OrderBy[0].GetProperty("direction").GetString());
-        Assert.Contains("01J92P0V0FJ23CGSNKM7P1W5V7@01J92P0V1QRN2181XM2ZWE02W4", query.Uses);
+        Assert.Contains("01J92P0V1T0J6RH4MY9H81NYB4", query.Uses);
         Assert.Equal(JsonValueKind.Object, query.Select[0].Expression!.Value.ValueKind);
 
         var records = ResolvedRecords.Entries(model, "queries", null).Select(e => (QueryRecord)e.Project()).OrderBy(r => r.Name, StringComparer.Ordinal).ToList();

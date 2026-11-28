@@ -5,24 +5,22 @@ using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.Text;
 
 namespace Maquettiste.Bench.Synthetic;
 
 /// <summary>
-/// The model's storage as designed tables (retire-projection-design.md section 8): the entities each database takes (every entity in
-/// <c>main</c>, the packages of <c>reporting</c> and <c>edge</c>) are stored with "Create tables…", the engine's materialize-tables, run in
+/// The model's storage as designed tables (retire-projection-design.md section 8): the entities each database stores (every entity in
+/// <c>main</c>, some packages' in <c>reporting</c> and <c>edge</c>) are stored with "Create tables…", the engine's materialize-tables, run in
 /// memory on the model built so far: a designed table per entity (a table per type in each hierarchy, the conventions' shape), a
-/// junction table per many-to-many relation, a binding per entity and a relation mapping per relation. The entity mappings built
-/// before it (an enum stored by its code, a value object stored as JSON) are the shapes the designed columns take; the operation
-/// deletes them. The databases then take nothing by convention. The ids come from the model's own id stream, so the result is as
-/// deterministic as the rest.
+/// junction table per many-to-many relation, a binding per entity and a relation mapping per relation. Then some designed columns are
+/// shaped as a team would design them (<see cref="ShapeColumns"/>): an enum stored by its code, a value object stored as JSON. The ids come
+/// from the model's own id stream, so the result is as deterministic as the rest.
 /// </summary>
 internal sealed partial class SyntheticModel
 {
     private void StoreTables()
     {
-        if (_options.Projected)
-            return;
         var ids = new StreamIds(_ids);
         var options = new EngineOptions { RepoRoot = Path.GetTempPath(), CacheDirectory = Path.Combine(Path.GetTempPath(), "maquettiste-bench-tables"), IdGenerator = ids, MaxDegreeOfParallelism = Environment.ProcessorCount };
         var resolver = new ModelResolver(options);
@@ -34,21 +32,15 @@ internal sealed partial class SyntheticModel
         foreach (var database in _elements.OfType<Database>().ToList())
         {
             var snapshot = Snapshot(json, settingsHash, known);
-            var resolved = resolver.ResolveAsync(snapshot, null, CancellationToken.None).GetAwaiter().GetResult();
-            var rdb = resolved.Databases.First(d => d.Id == database.Id);
-            var designed = rdb.Tables.Where(t => t.Origin != "synthesized").Select(t => t.Key).ToHashSet(StringComparer.Ordinal);
-            var entities = resolved.Entities
-                .Where(e => !e.IsPromoted && e.Mappings.TryGetValue(rdb.Name, out var m) && !designed.Contains(m.Table.Key))
-                .Select(e => e.Id)
-                .ToList();
+            var entities = EntitiesOf(database.Id);
             var listed = entities.ToHashSet(StringComparer.Ordinal); // the list keeps the order, the set answers membership
             // A hierarchy is stored whole.
-            foreach (var e in resolved.Entities.Where(e => listed.Contains(e.Id)).ToList())
+            foreach (var id in entities.ToList())
             {
-                for (var b = e.Base; b is not null; b = b.Base)
+                for (var b = snapshot.Get<Entity>(id)?.Base; b is not null && snapshot.Get<Entity>(b) is { } baseEntity; b = baseEntity.Base)
                 {
-                    if (listed.Add(b.Id))
-                        entities.Add(b.Id);
+                    if (listed.Add(b))
+                        entities.Add(b);
                 }
             }
 
@@ -61,13 +53,85 @@ internal sealed partial class SyntheticModel
             if (result.Refusal is { } refusal)
                 throw new InvalidOperationException($"Create tables refused the synthetic model's database '{database.Name}': {refusal}");
             Apply(result.Ops);
+            ShapeColumns(database);
         }
+    }
 
-        // Every entity is bound: the databases take nothing by convention.
+    /// <summary>
+    /// Designs some of a database's columns by hand, as the model measured before 0.29.0 stored them through entity mappings: in <c>main</c>,
+    /// for one entity in ten, its first enum attribute as a string column of the enum's codes; in <c>reporting</c>, for one entity in five
+    /// whose package is one the database stores directly, its first value object attribute as one JSON column in place of a column per
+    /// member. The binding's fields and provenance follow, so the binding reads as freshly synced.
+    /// </summary>
+    private void ShapeColumns(Database database)
+    {
+        var main = database.Name == "main";
+        if (!main && database.Name != "reporting")
+            return;
+        var enums = _enums.ToDictionary(e => e.Id, StringComparer.Ordinal);
+        var valueObjects = _valueObjects.Select(v => v.Id).ToHashSet(StringComparer.Ordinal);
+        var direct = _databasePackages.GetValueOrDefault(database.Id) ?? [];
+        var tableAt = new Dictionary<string, int>(StringComparer.Ordinal);
+        var entityAt = new Dictionary<Element, int>(ReferenceEqualityComparer.Instance);
         for (var i = 0; i < _elements.Count; i++)
         {
-            if (_elements[i] is Database db)
-                _elements[i] = db with { ByConvention = ConventionMapping.None, Packages = [] };
+            if (_elements[i] is Table t)
+                tableAt[t.Id] = i;
+            else if (_elements[i] is Entity e)
+                entityAt[e] = i;
+        }
+
+        for (var i = 0; i < _entities.Count; i++)
+        {
+            var entity = _entities[i];
+            if (main ? i % 10 != 3 : i % 5 != 1 || entity.Package is null || !direct.Contains(entity.Package))
+                continue;
+            var attribute = entity.Attributes.FirstOrDefault(a => a.Type.Ref is { } r && (main ? enums.ContainsKey(r) : valueObjects.Contains(r)));
+            var at = entity.Bindings.ToList().FindIndex(b => b.Database == database.Id);
+            if (attribute is null || at < 0 || !tableAt.TryGetValue(entity.Bindings[at].Source, out var tableIndex))
+                continue;
+            var binding = entity.Bindings[at];
+            var table = (Table)_elements[tableIndex];
+            var columns = table.Columns.ToList();
+            var fields = binding.Fields.ToList();
+            var recorded = new Dictionary<string, string>(binding.Provenance?.Columns ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+            if (main)
+            {
+                var field = fields.Find(f => f.Attribute == attribute.Id);
+                var c = field is null ? -1 : columns.FindIndex(x => x.Id == field.Column);
+                if (c < 0)
+                    continue;
+                var codes = enums[attribute.Type.Ref!].Members.Select(m => (m.Code ?? m.Name).Length).DefaultIfEmpty(1).Max();
+                columns[c] = columns[c] with { Type = "string", Length = codes };
+                if (recorded.ContainsKey(columns[c].Id))
+                    recorded[columns[c].Id] = ColumnShapeHash.Of(columns[c]);
+            }
+            else
+            {
+                var prefix = attribute.Id + ".";
+                var members = fields.Where(f => f.Attribute.StartsWith(prefix, StringComparison.Ordinal)).Select(f => f.Column).ToHashSet(StringComparer.Ordinal);
+                var first = columns.FindIndex(x => members.Contains(x.Id));
+                if (first < 0)
+                    continue;
+                var json = new Column { Id = _ids.Next(), Name = Casing.Snake(attribute.Name), Type = "json" };
+                columns.RemoveAll(x => members.Contains(x.Id));
+                columns.Insert(first, json);
+                var f = fields.FindIndex(x => members.Contains(x.Column));
+                fields.RemoveAll(x => members.Contains(x.Column));
+                fields.Insert(f, new BindingField { Attribute = attribute.Id, Column = json.Id });
+                foreach (var id in members)
+                    recorded.Remove(id);
+                if (binding.Provenance is not null)
+                    recorded[json.Id] = ColumnShapeHash.Of(json);
+            }
+
+            _elements[tableIndex] = table with { Columns = columns };
+            var bindings = entity.Bindings.ToList();
+            bindings[at] = binding with { Fields = fields, Provenance = binding.Provenance is null ? null : binding.Provenance with { Columns = recorded } };
+            var shaped = entity with { Bindings = bindings };
+            _entities[i] = shaped;
+            if (entityAt.TryGetValue(entity, out var element))
+                _elements[element] = shaped;
         }
     }
 

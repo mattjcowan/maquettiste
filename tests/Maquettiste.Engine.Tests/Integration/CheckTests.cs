@@ -9,7 +9,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// drift, with the precedence of engine-design.md section 16 (busy and internal 4, invalid 1, conflicts 3, drift 2). Check writes nothing.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class CheckTests
 {
     [Fact]
@@ -34,7 +33,7 @@ public sealed class CheckTests
     public async Task A_stale_file_is_drift()
     {
         await using var repo = await AppliedAsync();
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var times = repo.WriteTimes();
 
         var check = await repo.RunAsync(GenerationMode.Check);
@@ -111,7 +110,7 @@ public sealed class CheckTests
         await using var repo = await AppliedAsync();
 
         // Conflicts (3) wins over drift (2): a hand edit plus a stale file.
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         repo.Repo.WriteFile("db/e2e/entities/product.txt", "edited by hand\n");
         var both = await repo.RunAsync(GenerationMode.Check);
         E2ERepo.AssertOutcome(RunOutcome.Conflicts, both);

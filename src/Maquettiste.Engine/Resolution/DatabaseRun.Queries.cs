@@ -39,10 +39,7 @@ internal sealed partial class DatabaseRun
         foreach (var t in _tableOrder)
         {
             sources.TryAdd(t.Table.Key, (t, null));
-            if (t.Overlay is { } overlay)
-                sources.TryAdd(overlay.Id, (t, null));
-            if (t.Source is { } designed)
-                sources.TryAdd(designed.Id, (t, null));
+            sources.TryAdd(t.Source.Id, (t, null));
         }
 
         foreach (var view in views)
@@ -380,7 +377,7 @@ internal sealed partial class DatabaseRun
             if (other is not null && other != run._db.Id)
                 return $"is {element!.KindName} '{element.Name}' of database '{run._run.Model.Get<Database>(other)?.Name ?? other}', not of '{run._db.Name}'";
             if (element is Entity entity)
-                return $"is entity '{entity.Name}', which has no table in database '{run._db.Name}'";
+                return $"is entity '{entity.Name}', not a table: name the table it is bound to";
             if (element is not null)
                 return $"is {element.KindName} '{element.Name}', not a table or view";
             return file.With.Count > 0
@@ -728,7 +725,7 @@ internal sealed partial class DatabaseRun
             };
             if (tableColumn is not null)
             {
-                result.Type = tableColumn.Type == "reference" && tableColumn.CodeType is { } code ? code : tableColumn.Type;
+                result.Type = tableColumn.Type;
                 result.NativeType = tableColumn.NativeType;
                 result.CodeType = tableColumn.DbType is { TypeKind: "domain", Base: { } baseType } ? baseType
                     : tableColumn.DbType is { TypeKind: "enum" } ? "string" : result.Type;
@@ -773,7 +770,6 @@ internal sealed partial class DatabaseRun
             {
                 var column = table.Columns.FirstOrDefault(c => c.Name == name)
                     ?? table.Columns.FirstOrDefault(c => c.Key == name)
-                    ?? table.Columns.FirstOrDefault(c => c.Attribute?.Id == name)
                     ?? Loose(table.Columns, c => c.Name, name);
                 return (column, null, null);
             }

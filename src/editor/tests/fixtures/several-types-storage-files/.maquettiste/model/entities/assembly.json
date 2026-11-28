@@ -15,5 +15,18 @@
       "name": "id",
       "type": "uuid"
     }
+  ],
+  "bindings": [
+    {
+      "id": "01KSTBND000000000000000001",
+      "database": "01KST3DBS00000000000000001",
+      "source": "01KST3TAB00000000000000002",
+      "fields": [
+        {
+          "attribute": "01KST3ATT00000000000000002",
+          "column": "01KST3CMN00000000000000002"
+        }
+      ]
+    }
   ]
 }

@@ -51,7 +51,7 @@ public sealed class LastRunTests
         await AssertReplayedAsync(repo);
 
         // An element saved by an editor: the one-shot run renders its units, records, and the run after it is answered.
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var edited = await AssertFullAsync(repo);
         Assert.True(edited.UnitsRendered > 0);
         await AssertReplayedAsync(repo);

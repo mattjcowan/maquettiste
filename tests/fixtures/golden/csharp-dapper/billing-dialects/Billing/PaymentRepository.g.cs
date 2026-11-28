@@ -12,14 +12,14 @@ using Dapper;
 
 namespace App.Model.Billing;
 
-/// <summary>Reads and writes <see cref="Payment"/> rows in payments (database local, sqlite).</summary>
+/// <summary>Reads and writes <see cref="Payment"/> rows through its binding to table payments (database local, sqlite).</summary>
 public partial interface IPaymentRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<Payment?> GetAsync(long id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<Payment>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Payment>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity and sets its database-generated key.</summary>
     Task InsertAsync(Payment entity, CancellationToken cancellationToken = default);
@@ -34,46 +34,45 @@ public partial interface IPaymentRepository
 /// <summary>The Dapper implementation of <see cref="IPaymentRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class PaymentRepository(IDbConnection connection, IDbTransaction? transaction = null) : IPaymentRepository
 {
-    private const string Columns = """
-        id AS Id,
-        amount_amount AS AmountAmount,
-        amount_currency AS AmountCurrency,
-        received_at AS ReceivedAt,
-        reference AS Reference,
-        method AS Method,
-        ledger_position AS LedgerPosition,
-        created_at AS CreatedAt,
-        updated_at AS UpdatedAt
+    private const string SelectSql = """
+        SELECT t.id AS id, t.amount_amount AS amountAmount, t.amount_currency AS amountCurrency, t.received_at AS receivedAt, t.reference AS reference, t.method AS method, t.ledger_position AS ledgerPosition, t.created_at AS createdAt, t.updated_at AS updatedAt
+        FROM payments t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM payments WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM payments ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.amount_amount AS amountAmount, t.amount_currency AS amountCurrency, t.received_at AS receivedAt, t.reference AS reference, t.method AS method, t.ledger_position AS ledgerPosition, t.created_at AS createdAt, t.updated_at AS updatedAt
+        FROM payments t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO payments (amount_amount, amount_currency, received_at, reference, method, ledger_position, created_at, updated_at)
-        VALUES (@AmountAmount, @AmountCurrency, @ReceivedAt, @Reference, @Method, @LedgerPosition, @CreatedAt, @UpdatedAt)
-        RETURNING id
+        VALUES (@amountAmount, @amountCurrency, @receivedAt, @reference, @method, @ledgerPosition, @createdAt, @updatedAt)
+        RETURNING id AS id
         """;
 
     private const string UpdateSql = """
-        UPDATE payments SET amount_amount = @AmountAmount, amount_currency = @AmountCurrency, received_at = @ReceivedAt, reference = @Reference, method = @Method, ledger_position = @LedgerPosition, created_at = @CreatedAt, updated_at = @UpdatedAt
-        WHERE id = @Id
+        UPDATE payments SET amount_amount = @amountAmount, amount_currency = @amountCurrency, received_at = @receivedAt, reference = @reference, method = @method, ledger_position = @ledgerPosition
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM payments WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM payments
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<Payment?> GetAsync(long id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<Payment>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Payment>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -94,45 +93,45 @@ public partial class PaymentRepository(IDbConnection connection, IDbTransaction?
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(long id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of payments, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table payments as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public long Id { get; set; }
-        public decimal AmountAmount { get; set; }
-        public string AmountCurrency { get; set; } = default!;
-        public DateTimeOffset ReceivedAt { get; set; }
-        public string? Reference { get; set; }
-        public string? Method { get; set; }
-        public byte[]? LedgerPosition { get; set; }
-        public DateTimeOffset CreatedAt { get; set; }
-        public DateTimeOffset? UpdatedAt { get; set; }
+        public long id { get; set; }
+        public decimal amountAmount { get; set; }
+        public string amountCurrency { get; set; } = default!;
+        public DateTimeOffset receivedAt { get; set; }
+        public string? reference { get; set; }
+        public string? method { get; set; }
+        public byte[]? ledgerPosition { get; set; }
+        public DateTimeOffset createdAt { get; set; }
+        public DateTimeOffset? updatedAt { get; set; }
 
         public static Payment ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Amount = new Money { Amount = row.AmountAmount, Currency = row.AmountCurrency },
-            ReceivedAt = row.ReceivedAt,
-            Reference = row.Reference,
-            Method = row.Method,
-            LedgerPosition = row.LedgerPosition,
-            CreatedAt = row.CreatedAt,
-            UpdatedAt = row.UpdatedAt,
+            Id = row.id,
+            ReceivedAt = row.receivedAt,
+            Reference = row.reference,
+            Method = row.method,
+            LedgerPosition = row.ledgerPosition,
+            CreatedAt = row.createdAt,
+            UpdatedAt = row.updatedAt,
+            Amount = new Money { Amount = row.amountAmount, Currency = row.amountCurrency },
         };
 
         public static Row From(Payment entity) => new()
         {
-            Id = entity.Id,
-            AmountAmount = entity.Amount.Amount,
-            AmountCurrency = entity.Amount.Currency,
-            ReceivedAt = entity.ReceivedAt,
-            Reference = entity.Reference,
-            Method = entity.Method,
-            LedgerPosition = entity.LedgerPosition,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt,
+            id = entity.Id,
+            amountAmount = entity.Amount.Amount,
+            amountCurrency = entity.Amount.Currency,
+            receivedAt = entity.ReceivedAt,
+            reference = entity.Reference,
+            method = entity.Method,
+            ledgerPosition = entity.LedgerPosition,
+            createdAt = entity.CreatedAt,
+            updatedAt = entity.UpdatedAt,
         };
     }
 }

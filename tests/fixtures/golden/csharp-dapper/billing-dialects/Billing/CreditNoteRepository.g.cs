@@ -12,14 +12,14 @@ using Dapper;
 
 namespace App.Model.Billing;
 
-/// <summary>Reads and writes <see cref="CreditNote"/> rows in invoices (database local, sqlite).</summary>
+/// <summary>Reads and writes <see cref="CreditNote"/> rows through its binding to table invoices (database local, sqlite).</summary>
 public partial interface ICreditNoteRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<CreditNote?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<CreditNote>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CreditNote>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(CreditNote entity, CancellationToken cancellationToken = default);
@@ -34,49 +34,45 @@ public partial interface ICreditNoteRepository
 /// <summary>The Dapper implementation of <see cref="ICreditNoteRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class CreditNoteRepository(IDbConnection connection, IDbTransaction? transaction = null) : ICreditNoteRepository
 {
-    private const string Columns = """
-        id AS Id,
-        number AS Number,
-        issued_on AS IssuedOn,
-        total_amount AS TotalAmount,
-        total_currency AS TotalCurrency,
-        status AS Status,
-        notes AS Notes,
-        created_at AS CreatedAt,
-        updated_at AS UpdatedAt,
-        deleted_at AS DeletedAt,
-        reason AS Reason,
-        discriminator AS Discriminator,
-        customer_id AS CustomerId
+    private const string SelectSql = """
+        SELECT t.id AS id, t.number AS number, t.issued_on AS issuedOn, t.total_amount AS totalAmount, t.total_currency AS totalCurrency, t.status AS status, t.notes AS notes, t.created_at AS createdAt, t.updated_at AS updatedAt, t.deleted_at AS deletedAt, t.reason AS reason, t.customer_id AS customerId
+        FROM invoices t
+        WHERE t.discriminator = 'CreditNote' AND t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM invoices WHERE id = @Id AND discriminator = 'CreditNote'";
-
-    private const string ListSql = "SELECT " + Columns + " FROM invoices WHERE discriminator = 'CreditNote' ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.number AS number, t.issued_on AS issuedOn, t.total_amount AS totalAmount, t.total_currency AS totalCurrency, t.status AS status, t.notes AS notes, t.created_at AS createdAt, t.updated_at AS updatedAt, t.deleted_at AS deletedAt, t.reason AS reason, t.customer_id AS customerId
+        FROM invoices t
+        WHERE t.discriminator = 'CreditNote'
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
-        INSERT INTO invoices (id, number, issued_on, total_amount, total_currency, status, notes, created_at, updated_at, deleted_at, reason, discriminator, customer_id)
-        VALUES (@Id, @Number, @IssuedOn, @TotalAmount, @TotalCurrency, @Status, @Notes, @CreatedAt, @UpdatedAt, @DeletedAt, @Reason, @Discriminator, @CustomerId)
+        INSERT INTO invoices (id, number, issued_on, total_amount, total_currency, status, notes, created_at, updated_at, deleted_at, reason, customer_id, discriminator)
+        VALUES (@id, @number, @issuedOn, @totalAmount, @totalCurrency, @status, @notes, @createdAt, @updatedAt, @deletedAt, @reason, @customerId, 'CreditNote')
         """;
 
     private const string UpdateSql = """
-        UPDATE invoices SET number = @Number, issued_on = @IssuedOn, total_amount = @TotalAmount, total_currency = @TotalCurrency, status = @Status, notes = @Notes, created_at = @CreatedAt, updated_at = @UpdatedAt, deleted_at = @DeletedAt, reason = @Reason, customer_id = @CustomerId
-        WHERE id = @Id AND discriminator = 'CreditNote'
+        UPDATE invoices SET number = @number, issued_on = @issuedOn, total_amount = @totalAmount, total_currency = @totalCurrency, status = @status, notes = @notes, deleted_at = @deletedAt, reason = @reason, customer_id = @customerId
+        WHERE id = @id AND discriminator = 'CreditNote'
         """;
 
-    private const string DeleteSql = "DELETE FROM invoices WHERE id = @Id AND discriminator = 'CreditNote'";
+    private const string DeleteSql = """
+        DELETE FROM invoices
+        WHERE id = @id AND discriminator = 'CreditNote'
+        """;
 
     /// <inheritdoc/>
     public async Task<CreditNote?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<CreditNote>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CreditNote>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -99,56 +95,54 @@ public partial class CreditNoteRepository(IDbConnection connection, IDbTransacti
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of invoices, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table invoices as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public string Number { get; set; } = default!;
-        public DateOnly IssuedOn { get; set; }
-        public decimal? TotalAmount { get; set; }
-        public string? TotalCurrency { get; set; }
-        public int Status { get; set; }
-        public string? Notes { get; set; }
-        public DateTimeOffset CreatedAt { get; set; }
-        public DateTimeOffset? UpdatedAt { get; set; }
-        public DateTimeOffset? DeletedAt { get; set; }
-        public string? Reason { get; set; }
-        public string Discriminator { get; set; } = default!;
-        public Guid CustomerId { get; set; }
+        public Guid id { get; set; }
+        public string number { get; set; } = default!;
+        public DateOnly issuedOn { get; set; }
+        public decimal? totalAmount { get; set; }
+        public string? totalCurrency { get; set; }
+        public int status { get; set; }
+        public string? notes { get; set; }
+        public DateTimeOffset createdAt { get; set; }
+        public DateTimeOffset? updatedAt { get; set; }
+        public DateTimeOffset? deletedAt { get; set; }
+        public string? reason { get; set; }
+        public Guid customerId { get; set; }
 
         public static CreditNote ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Number = row.Number,
-            IssuedOn = row.IssuedOn,
-            Total = (row.TotalAmount is null && row.TotalCurrency is null ? null : new Money { Amount = (decimal)row.TotalAmount!, Currency = (string)row.TotalCurrency! }),
-            Status = (InvoiceStatus)row.Status,
-            Notes = row.Notes,
-            CreatedAt = row.CreatedAt,
-            UpdatedAt = row.UpdatedAt,
-            DeletedAt = row.DeletedAt,
-            Reason = (string)row.Reason!,
-            CustomerId = row.CustomerId,
+            Id = row.id,
+            Number = row.number,
+            IssuedOn = row.issuedOn,
+            Status = (InvoiceStatus)row.status,
+            Notes = row.notes,
+            CreatedAt = row.createdAt,
+            UpdatedAt = row.updatedAt,
+            DeletedAt = row.deletedAt,
+            Reason = (string)row.reason!,
+            CustomerId = row.customerId,
+            Total = (row.totalAmount is null && row.totalCurrency is null ? null : new Money { Amount = (decimal)row.totalAmount!, Currency = (string)row.totalCurrency! }),
         };
 
         public static Row From(CreditNote entity) => new()
         {
-            Id = entity.Id,
-            Number = entity.Number,
-            IssuedOn = entity.IssuedOn,
-            TotalAmount = entity.Total?.Amount,
-            TotalCurrency = entity.Total?.Currency,
-            Status = (int)entity.Status,
-            Notes = entity.Notes,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt,
-            DeletedAt = entity.DeletedAt,
-            Reason = entity.Reason,
-            Discriminator = "CreditNote",
-            CustomerId = entity.CustomerId,
+            id = entity.Id,
+            number = entity.Number,
+            issuedOn = entity.IssuedOn,
+            totalAmount = entity.Total?.Amount,
+            totalCurrency = entity.Total?.Currency,
+            status = (int)entity.Status,
+            notes = entity.Notes,
+            createdAt = entity.CreatedAt,
+            updatedAt = entity.UpdatedAt,
+            deletedAt = entity.DeletedAt,
+            reason = entity.Reason,
+            customerId = entity.CustomerId,
         };
     }
 }

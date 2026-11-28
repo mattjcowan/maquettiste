@@ -214,8 +214,6 @@ describe("editor tab state", () => {
       ),
     ).toBe(true);
     expect(hasEditor("diagram")).toBe(false);
-    // A table file that overlays an entity's projected table is edited in the Database screen, not an editor.
-    expect(hasEditor("table", { entity: "E1" })).toBe(false);
     expect(hasEditor("table", {})).toBe(true);
     expect(hasEditor(undefined)).toBe(false);
   });
@@ -246,7 +244,7 @@ describe("editor tab state", () => {
 describe("editor related rows", () => {
   const row = (over: Partial<ElementSummary> & Record<string, unknown>) =>
     ({ id: "X", kind: "entity", name: "X", package: null, tags: [], category: null, stereotypes: [], path: "", hash: "", ...over }) as ElementSummary;
-  it("lists relations, mappings, tables, seeds and derived entities of an entity from the index", () => {
+  it("lists relations, seeds and derived entities of an entity from the index", () => {
     const rows = [
       row({ id: "A", name: "Invoice" }),
       row({ id: "B", name: "Special", base: "A" }),
@@ -259,24 +257,22 @@ describe("editor related rows", () => {
           { entity: "C", role: "c" },
         ],
       }),
-      row({ id: "M", kind: "mapping", name: "m", entity: "A" }),
-      row({ id: "T", kind: "table", name: "invoice", entity: "A" }),
       row({ id: "S", kind: "seed" as never, name: "seed", target: "A" }),
     ];
     const r = relatedOf(rows, "A");
-    expect([r.relations, r.mappings, r.tables, r.seeds, r.derived].map((l) => l.map((x) => x.id))).toEqual([["R"], ["M"], ["T"], ["S"], ["B"]]);
+    expect([r.relations, r.seeds, r.derived].map((l) => l.map((x) => x.id))).toEqual([["R"], ["S"], ["B"]]);
     expect(relatedOf(rows, "A")).toBe(r);
     // A patched index carries the reverse index over: untouched answers are kept, touched ones recomputed.
     const c = relatedOf(rows, "C");
-    const patched = applyIndexPatch(rows, [row({ id: "T2", kind: "table", name: "archive", entity: "A" })], ["M"]);
+    const patched = applyIndexPatch(rows, [row({ id: "S2", kind: "seed" as never, name: "seed2", target: "A" })], []);
     expect(relatedOf(patched, "C")).toBe(c);
     const p = relatedOf(patched, "A");
-    expect([p.mappings, p.tables].map((l) => l.map((x) => x.id))).toEqual([[], ["T2", "T"]]);
+    expect(p.seeds.map((x) => x.id)).toEqual(["S", "S2"]);
     const moved = applyIndexPatch(patched, [row({ id: "R", kind: "relation", name: "has", ends: [{ entity: "C", role: "c" }] })], []);
     expect(relatedOf(moved, "A").relations).toEqual([]);
     expect(relatedOf(moved, "C").relations.map((x) => x.id)).toEqual(["R"]);
     // The first array, asked again after its state moved on, rebuilds its own answer.
-    expect(relatedOf(rows, "A").mappings.map((x) => x.id)).toEqual(["M"]);
+    expect(relatedOf(rows, "A").seeds.map((x) => x.id)).toEqual(["S"]);
     const byId = new Map(rows.map((x) => [x.id, x]));
     expect(baseChain(byId, "B")).toEqual(["B", "A"]);
     byId.set("A", row({ id: "A", base: "B" }));

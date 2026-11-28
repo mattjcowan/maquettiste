@@ -26,10 +26,12 @@ public sealed class LinkTableSeedTests
     {
         h.Write("model/databases/links/database.json", $$"""{"kind":"database","id":"{{Db}}","name":"links","dialect":"postgresql","byConvention":"none"}""");
         h.Write("model/entities/lt-part.json", $$"""
-            {"kind":"entity","id":"{{SPart}}","name":"LtPart","package":"{{Sales}}","key":{"attributes":["{{PartId}}"]},"attributes":[{"id":"{{PartId}}","name":"id","type":"uuid"}]}
+            {"kind":"entity","id":"{{SPart}}","name":"LtPart","package":"{{Sales}}","key":{"attributes":["{{PartId}}"]},"attributes":[{"id":"{{PartId}}","name":"id","type":"uuid"}],
+             "bindings":[{"id":"01JQTS00000000000000000060","database":"{{Db}}","source":"{{Parts}}","fields":[{"attribute":"{{PartId}}","column":"id"}]}]}
             """);
         h.Write("model/entities/lt-tool.json", $$"""
-            {"kind":"entity","id":"{{STool}}","name":"LtTool","package":"{{Sales}}","key":{"attributes":["{{ToolId}}"]},"attributes":[{"id":"{{ToolId}}","name":"id","type":"uuid"}]}
+            {"kind":"entity","id":"{{STool}}","name":"LtTool","package":"{{Sales}}","key":{"attributes":["{{ToolId}}"]},"attributes":[{"id":"{{ToolId}}","name":"id","type":"uuid"}],
+             "bindings":[{"id":"01JQTS00000000000000000061","database":"{{Db}}","source":"{{Tools}}","fields":[{"attribute":"{{ToolId}}","column":"id"}]}]}
             """);
         h.Write("model/databases/links/tables/parts.json", $$"""
             {"kind":"table","id":"{{Parts}}","name":"parts","database":"{{Db}}","columns":[{"id":"{{PartsId}}","name":"id","type":"uuid","nullable":false}],"primaryKey":{"columns":["{{PartsId}}"]} }
@@ -45,8 +47,6 @@ public sealed class LinkTableSeedTests
              "foreignKeys":[{"id":"{{FkPart}}","name":"fk_part_links_part","columns":["{{LinkPart}}"],"referencesTable":"{{Parts}}"},
                {"id":"{{FkTool}}","name":"fk_part_links_tool","columns":["{{LinkTool}}"],"referencesTable":"{{Tools}}"}]}
             """);
-        h.Write("model/mappings/lt-part-in-links.json", $$"""{"kind":"mapping","id":"01JQTS00000000000000000060","name":"part","database":"{{Db}}","entity":"{{SPart}}","table":"{{Parts}}"}""");
-        h.Write("model/mappings/lt-tool-in-links.json", $$"""{"kind":"mapping","id":"01JQTS00000000000000000061","name":"tool","database":"{{Db}}","entity":"{{STool}}","table":"{{Tools}}"}""");
         foreach (var (relation, name, part, tool, code, n) in Relations(shared))
         {
             h.Write($"model/relations/{name.ToLowerInvariant()}.json", $$"""

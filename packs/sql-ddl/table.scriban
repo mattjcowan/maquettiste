@@ -1,7 +1,7 @@
 {{- include "_sql.scriban" -}}
 {{ banner "--" }}
 -- Table {{ table.schema ? table.schema + "." : "" }}{{ table.name }} of database {{ table.database.name }} ({{ dialect_title(table.database) }}).
-{{- if table.is_junction }}
+{{- if table.relation }}
 -- Junction table.
 {{- end }}
 {{- if pack.params.comments && table.comment && table.database.dialect == "sqlite" }}

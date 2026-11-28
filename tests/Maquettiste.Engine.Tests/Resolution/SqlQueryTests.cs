@@ -12,7 +12,10 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// </summary>
 public sealed class SqlQueryTests
 {
-    /// <summary>Customer and Invoice (the relation <c>places</c> gives invoices a customer_id column), an abstract Party, in <c>main</c>.</summary>
+    /// <summary>
+    /// Customer and Invoice bound to the tables <c>customers</c> and <c>invoices</c> (the relation <c>places</c> stored by the foreign key
+    /// <c>invoices.customer_id</c>), an abstract Party, in <c>main</c>.
+    /// </summary>
     private sealed class Store
     {
         public Store(Dialect dialect = Dialect.PostgreSql)
@@ -23,7 +26,15 @@ public sealed class SqlQueryTests
             Party = Builder.Entity("Party").Abstract().Key("id", "uuid");
             Places = Builder.Relation("places", Customer, Invoice, fromMax: MaxCardinality.One, fromMin: 1, fromRole: "customer", toRole: "invoices",
                 fromNavigation: "customer", toNavigation: "invoices");
-            Main = Builder.Database("main", dialect).Id;
+            var main = Builder.Database("main", dialect);
+            Main = main.Id;
+            var customers = Builder.Table("customers", main).Column("id", "uuid", nullable: false).Column("name", "string", nullable: false, length: 100)
+                .PrimaryKey("id").Binds(Customer);
+            var invoices = Builder.Table("invoices", main).Column("id", "uuid", nullable: false).Column("total", "decimal").Column("customer_id", "uuid", nullable: false)
+                .PrimaryKey("id").ForeignKey(customers, "customer_id")
+                .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "total" ? c with { Precision = 12, Scale = 2 } : c)] }).Binds(Invoice);
+            Builder.Mapping(main, Places).ForeignKey(((Table)Builder.BuildElements().First(e => e.Id == invoices.Id)).ForeignKeys[0].Id);
+            (Customers, Invoices) = (customers.Id, invoices.Id);
         }
 
         public ModelBuilder Builder { get; }
@@ -38,9 +49,9 @@ public sealed class SqlQueryTests
 
         public string Main { get; }
 
-        public string Invoices => Invoice.Id + "@" + Main;
+        public string Invoices { get; }
 
-        public string Customers => Customer.Id + "@" + Main;
+        public string Customers { get; }
 
         public string Query(string json)
         {
@@ -199,7 +210,7 @@ public sealed class SqlQueryTests
         var s = new Store();
         var reads = s.Query($$"""
             { "name": "BadReads", "sql": { "*": "SELECT 1 AS n FROM invoices, customers" }, "columns": [ { "name": "n", "type": "int32" } ],
-              "reads": [ "{{s.Builder.NewId()}}" ], "writes": [ "{{s.Customer.Id}}", "{{s.Invoice.Id}}" ] }
+              "reads": [ "{{s.Builder.NewId()}}" ], "writes": [ "{{s.Customers}}", "{{s.Invoices}}" ] }
             """);
         var other = s.Query($$"""{ "name": "Other", "sql": { "*": "SELECT 1 AS n" }, "columns": [ { "name": "n", "type": "int32" } ], "writes": [ "{{reads}}" ] }""");
         var columns = s.Query("""
@@ -214,7 +225,7 @@ public sealed class SqlQueryTests
         Assert.Equal([("MQ4021", "/writes/0")], Findings(model, other));
         Assert.Contains("is query 'BadReads', not a table", Assert.Single(model.Diagnostics, d => d.ElementId == other).Message, StringComparison.Ordinal);
         Assert.Null(QueryOf(model, reads).Sql);
-        Assert.Equal(2, QueryOf(model, reads).Writes.Count); // an entity id names its table, as from.source does
+        Assert.Equal(2, QueryOf(model, reads).Writes.Count);
         Assert.Equal(
             [("MQ3001", "/columns/1/name"), ("MQ4018", "/columns/0/type"), ("MQ4040", "/columns/2/name"), ("MQ4040", "/columns/4/name")],
             Findings(model, columns).Order());
@@ -236,11 +247,11 @@ public sealed class SqlQueryTests
         Assert.Contains("e:" + text, keys);
         Assert.Contains("r:" + text, keys);
         Assert.Contains("e:" + s.Main, keys);
-        Assert.Contains("e:" + s.Invoice.Id, keys);
-        // The relation that gives invoices its customer_id column is a dependency of the table, so of a built query over it; a
-        // change to it renders no unit of the SQL text again.
-        Assert.Contains("e:" + s.Places.Id, QueryOf(model, built).Dependencies);
-        Assert.DoesNotContain("e:" + s.Places.Id, keys);
+        Assert.Contains("e:" + s.Invoices, keys);
+        // The entity bound to invoices is a dependency of the table, so of a built query over it; a change to it renders no unit of the
+        // SQL text again.
+        Assert.Contains("e:" + s.Invoice.Id, QueryOf(model, built).Dependencies);
+        Assert.DoesNotContain("e:" + s.Invoice.Id, keys);
         Assert.DoesNotContain("e:" + s.Customer.Id, keys);
     }
 

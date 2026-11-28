@@ -27,6 +27,14 @@ internal sealed class E2ERepo : IAsyncDisposable
     public const string InvoiceId = "01J92P0V0FJ23CGSNKM7P1W5V7";
     public const string MainDatabaseId = "01J92P0V1QRN2181XM2ZWE02W4";
 
+    // The designed tables Customer and Invoice are bound to, and some of their columns.
+    public const string CustomersTableId = "01M8EJPZN867GR1CJR5ZERBJ0V";
+    public const string CustomerNameColumnId = "01M8EJPZN85K0E011MBM10HXAG";
+    public const string CustomerSinceColumnId = "01M8EJPZN8BGJ7KV30184YH61V";
+    public const string InvoicesTableId = "01J92P0V1T0J6RH4MY9H81NYB4";
+    public const string InvoiceNumberColumnId = "01J92P0V1VQAA9FW71PKYWWHKN";
+    public const string InvoiceCustomerIdColumnId = "01M8EJPZN80NTY1M4QZCPKETNX";
+
     private E2ERepo(TempRepo repo, int parallelism)
     {
         Repo = repo;
@@ -169,6 +177,19 @@ internal sealed class E2ERepo : IAsyncDisposable
         Assert.True(result.Outcome == SaveOutcome.Saved, result.Outcome + ": " + string.Join("; ", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
         return result;
     }
+
+    /// <summary>
+    /// Widens Customer's name from 120 to <paramref name="length"/>, and the column of the customers table it is bound to with it (two saves).
+    /// </summary>
+    public async Task WidenCustomerNameAsync(int length = 150)
+    {
+        await EditAsync(CustomerId, n => n["attributes"]![1]!["length"] = length);
+        await EditColumnAsync(CustomersTableId, CustomerNameColumnId, c => c["length"] = length);
+    }
+
+    /// <summary>Edits one column of a table through <see cref="EditAsync"/>.</summary>
+    public Task<SaveResult> EditColumnAsync(string tableId, string columnId, Action<JsonObject> edit) =>
+        EditAsync(tableId, t => edit(t["columns"]!.AsArray().Single(c => (string?)c!["id"] == columnId)!.AsObject()));
 
     /// <summary>Creates an element through <see cref="ModelStore.CreateAsync"/>.</summary>
     public async Task<SaveResult> CreateElementAsync(string json)

@@ -12,7 +12,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// baseline's type held none of its codes and its names did not change (MQ4103), which <c>migration fold</c> removes. Each test copies
 /// billing with the shared setup (<see cref="PaymentTerms"/>) into a temporary folder.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class BaselineValueMapTests
 {
     private const string Net90 = "01KAPT00000000000000000014";

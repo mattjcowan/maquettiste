@@ -122,8 +122,8 @@ export function SeveralTypesCard(props: SeveralCardProps) {
     setHeldDraft(next);
     setLinkedDraft({});
     setStaged(null);
-    // A choice that names nothing yet writes nothing, except Not in this database and a change on a mapping that exists.
-    if (next && (next === "none" || mapping)) change((j) => setHeldIn(j, next, models));
+    // A choice that names nothing yet writes nothing, except a change on a mapping that exists.
+    if (next && mapping) change((j) => setHeldIn(j, next, models));
   };
   const pickLinked = (end: StorageEnd, value: string) => {
     const next = value as LinkedBy;

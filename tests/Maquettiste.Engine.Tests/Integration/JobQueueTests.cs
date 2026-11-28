@@ -16,7 +16,7 @@ public sealed class JobQueueTests
     public async Task A_plan_job_and_an_apply_job_run_with_progress_and_persist()
     {
         await using var repo = await CheckTests.AppliedAsync();
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var progress = new ConcurrentQueue<(string Job, ProgressUpdate Update)>();
         var completed = new ConcurrentDictionary<string, TaskCompletionSource<JobInfo>>(StringComparer.Ordinal);
         TaskCompletionSource<JobInfo> Completion(string id) => completed.GetOrAdd(id, _ => new(TaskCreationOptions.RunContinuationsAsynchronously));

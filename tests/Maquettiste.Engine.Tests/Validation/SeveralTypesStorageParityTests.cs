@@ -69,12 +69,11 @@ public sealed class SeveralTypesStorageParityTests
     {
         var rows = await FindingsAsync("several-types-storage-files", FileRules, noErrors: false);
         void Hit(string rule, string text) => Assert.True(rows.Exists(r => r.Rule == rule && r.Message.Contains(text, StringComparison.Ordinal)), rule + ": " + text);
-        Hit("MQ4009", "doesn't take 'shape'");
-        Hit("MQ4009", "doesn't take 'foreignKeyEnd'");
-        Hit("MQ4009", "doesn't take 'foreignKey'");
-        Hit("MQ4009", "doesn't take 'promotedName'");
-        Hit("MQ4009", "so 'storage' of attribute 0 can't shape engine-made columns");
-        Hit("MQ4009", "so 'prefix' of attribute 0 can't shape engine-made columns");
+        // A mapping of a relation with an end of several types that states no storage takes none of the one-type keys.
+        Hit("MQ4009", "so a mapping of it doesn't take 'shape'");
+        Hit("MQ4009", "so a mapping of it doesn't take 'foreignKeyEnd'");
+        Hit("MQ4009", "so a mapping of it doesn't take 'foreignKey'");
+        Hit("MQ4009", "so a mapping of it doesn't take 'attributes'");
         Hit("MQ4009", "keeps its links in the tables of its ends, so shape 'junction' disagrees");
         Hit("MQ4009", "names more than one way to point at end 'target' (foreignKey, idColumn)");
         Hit("MQ4009", "names no way to point at end 'comment'");
@@ -93,8 +92,8 @@ public sealed class SeveralTypesStorageParityTests
         Hit("MQ4009", "End entry 1 names no 'foreignKey'; junction table 'links' is designed");
         Hit("MQ4011", "Link table 'links' holds relation 'NoEntry', so end 'comment' needs an 'ends' entry");
         Hit("MQ4115", "Relation 'Unmapped' has an end with several types, so database 'main' stores nothing for it.");
-        // MQ4115's skips: a mapping that sets ignore, or that stores the relation (decision 49); discriminatorValue on Comment is allowed.
-        Assert.DoesNotContain(rows, r => r.Rule == "MQ4115" && (r.Message.Contains("'Ignored'", StringComparison.Ordinal) || r.Message.Contains("'Stored'", StringComparison.Ordinal)));
+        // MQ4115's skip: a mapping that stores the relation (decision 49); discriminatorValue on Comment is allowed.
+        Assert.DoesNotContain(rows, r => r.Rule == "MQ4115" && r.Message.Contains("'Stored'", StringComparison.Ordinal));
         Assert.DoesNotContain(rows, r => r.Rule == "MQ4009" && r.Message.Contains("discriminator", StringComparison.Ordinal));
         Record("several-types-storage-files", FileRules, rows);
     }

@@ -340,7 +340,8 @@ public sealed partial class AgentToolsTests
     public async Task Get_binding_drift_lists_and_pages()
     {
         // next-phase-2-design.md section 3.3 (D35): both notes entities record provenance through one re-sync; renaming the notes
-        // table's body column is drift for both. Pages follow entity name, then database; all also lists RevenueMonth, in step.
+        // table's body column is drift for both. Pages follow entity name, then database; all also lists every other bound entity, such as
+        // RevenueMonth, in step.
         const string notes = "01K6BND0000000000000000001", invoiceNote = "01K6BND0000000000000000010", customerNote = "01K6BND0000000000000000020";
         await using var r = EditorRepo.Create(packs: false);
         var batch = r.Store.ParseBatch(Encoding.UTF8.GetBytes($$"""
@@ -369,8 +370,10 @@ public sealed partial class AgentToolsTests
         Assert.Null(second["next"]);
 
         var all = await CallAsync(new { all = true, database = EditorRepo.MainDatabaseId });
-        Assert.Equal(["CustomerNote", "InvoiceNote", "RevenueMonth"], all["bindings"]!.AsArray().Select(b => (string?)b!["entityName"]));
-        Assert.Equal((false, false), ((bool)all["bindings"]![2]!["hasProvenance"]!, (bool)all["bindings"]![2]!["stale"]!));
+        Assert.Equal(["Customer", "CustomerNote", "Invoice", "InvoiceLine", "InvoiceNote", "Payment", "Product", "RevenueMonth"],
+            all["bindings"]!.AsArray().Select(b => (string?)b!["entityName"]));
+        var revenue = all["bindings"]!.AsArray().Single(b => (string?)b!["entityName"] == "RevenueMonth")!;
+        Assert.Equal((false, false), ((bool)revenue["hasProvenance"]!, (bool)revenue["stale"]!));
         var one = await CallAsync(new { entities = new[] { invoiceNote } });
         Assert.Equal(invoiceNote, (string?)Assert.Single(one["bindings"]!.AsArray())!["entity"]);
 

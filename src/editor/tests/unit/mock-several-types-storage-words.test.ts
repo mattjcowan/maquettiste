@@ -151,14 +151,7 @@ describe("the storage run's words on cases the fixtures lack", () => {
           package: ID("PKG00000000000000001"),
           key: { attributes: [ID("ATT00000000000000091")] },
           attributes: [{ id: ID("ATT00000000000000091"), name: "id", type: "uuid" }],
-        },
-        {
-          kind: "mapping",
-          id: ID("MAP00000000000000091"),
-          name: "Multi in main",
-          database: DB,
-          entity: ID("ENT00000000000000091"),
-          table,
+          bindings: [{ id: ID("BND00000000000000091"), database: DB, source: table }],
         },
         {
           kind: "table",

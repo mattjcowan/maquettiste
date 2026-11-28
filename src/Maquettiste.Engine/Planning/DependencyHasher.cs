@@ -238,8 +238,6 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "fn" => string.Equals(key, FreezingNaming.Key, StringComparison.Ordinal) ? FreezingNaming.Hash(model) : Absent,
             // Which processes use an approval, inline or through a gate policy (signoff-design.md section 7).
             "ap" => string.Equals(key, ApprovalNaming.Key, StringComparison.Ordinal) ? ApprovalNaming.Hash(model) : Absent,
-            // What of the relation mappings can promote a relation: what the entity and relation lists hold.
-            "pm" => string.Equals(key, PromotionNaming.Key, StringComparison.Ordinal) ? PromotionNaming.Hash(model) : Absent,
             _ => Absent,
         };
     }

@@ -126,7 +126,6 @@ internal sealed class ImpactKeys
                 && !string.Equals(ApprovalNaming.Hash(_before), ApprovalNaming.Hash(_candidate), StringComparison.Ordinal),
             "fn" => Changes(e => e is Process or Right)
                 && !string.Equals(FreezingNaming.Hash(_before), FreezingNaming.Hash(_candidate), StringComparison.Ordinal),
-            "pm" => Changes(e => e is Mapping) && PromotionNaming.Differs(_before, _candidate),
             _ => true,
         };
     }

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Resolved model",
-  "description": "One page of the resolved model, the model as code generation sees it, as `GET /api/model/resolved` and the MCP tool `get_resolved_model` answer it. Records are flat: other objects appear by id. Contract 0.28.0: until version 1 the contract is the Maquettiste release and may change in any release. The reference is resolved-model.md, next to this file.",
-  "x-contract": "0.28.0",
+  "description": "One page of the resolved model, the model as code generation sees it, as `GET /api/model/resolved` and the MCP tool `get_resolved_model` answer it. Records are flat: other objects appear by id. Contract 0.29.0: until version 1 the contract is the Maquettiste release and may change in any release. The reference is resolved-model.md, next to this file.",
+  "x-contract": "0.29.0",
   "x-scopes": {
     "packages": "packageRecord",
     "entities": "entityRecord",
@@ -65,7 +65,7 @@
     "contract": {
       "description": "The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release.",
       "type": "string",
-      "const": "0.28.0"
+      "const": "0.29.0"
     },
     "schema": {
       "description": "The file name of the JSON Schema that describes the page: `resolved-model.json`. A project holds it in `.maquettiste/.schema/v1/`; `GET /api/model/resolved/schema` and the MCP tool `get_schema` (`resolved-model`) return it.",
@@ -1364,29 +1364,6 @@
       ],
       "additionalProperties": false
     },
-    "columnMappingRecord": {
-      "description": "The column that stores an attribute path.",
-      "type": "object",
-      "x-order": [
-        "attributePath",
-        "column"
-      ],
-      "properties": {
-        "attributePath": {
-          "description": "The attribute path (a value object's members are dotted).",
-          "type": "string"
-        },
-        "column": {
-          "description": "The column's key, as `columnView.key`.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "attributePath",
-        "column"
-      ],
-      "additionalProperties": false
-    },
     "columnView": {
       "description": "One resolved column.",
       "type": "object",
@@ -1402,11 +1379,8 @@
         "defaultSql",
         "identity",
         "computed",
-        "attributeId",
-        "attributePath",
         "isPrimaryKey",
         "isForeignKey",
-        "isDiscriminator",
         "position",
         "default",
         "computedStored",
@@ -1428,7 +1402,7 @@
       ],
       "properties": {
         "key": {
-          "description": "The column key: an attribute path, `discriminator`, `position`, `id`, or a column id.",
+          "description": "The column key: a column id, or the keyed id of an inherited column.",
           "type": "string"
         },
         "name": {
@@ -1486,30 +1460,12 @@
             "null"
           ]
         },
-        "attributeId": {
-          "description": "The id of the attribute the column stores, if any. Null otherwise.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "attributePath": {
-          "description": "The attribute path the column stores, if any. Null otherwise.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "isPrimaryKey": {
           "description": "Whether the column is part of the primary key.",
           "type": "boolean"
         },
         "isForeignKey": {
           "description": "Whether the column is part of a foreign key.",
-          "type": "boolean"
-        },
-        "isDiscriminator": {
-          "description": "Whether the column is a TPH discriminator.",
           "type": "boolean"
         },
         "position": {
@@ -1524,7 +1480,7 @@
           "type": "boolean"
         },
         "sequenceId": {
-          "description": "The id (or synthesized key) of the sequence that supplies values, or null.",
+          "description": "The id of the sequence that supplies values, or null.",
           "type": [
             "string",
             "null"
@@ -1552,7 +1508,7 @@
           ]
         },
         "displayName": {
-          "description": "The display name the column's own entry sets (a designed or extra column, or a synthesized column's overlay entry), or null; a synthesized column never takes its attribute's, which `attributeId` leads to.",
+          "description": "The display name the column's own entry sets, or null.",
           "type": [
             "string",
             "null"
@@ -1606,7 +1562,7 @@
           }
         },
         "boundType": {
-          "description": "Derived from bindings, like a table's bound-by list: the enum, reference type or scalar type of the attribute the entities' bindings map to the column, when they all agree, or null; a projected column has none, its attribute (`attributeId`) types it.",
+          "description": "Derived from bindings, like a table's bound-by list: the enum, reference type or scalar type of the attribute the entities' bindings map to the column, when they all agree, or null.",
           "anyOf": [
             {
               "$ref": "#/$defs/typeRecord"
@@ -1617,7 +1573,7 @@
           ]
         },
         "sensitive": {
-          "description": "`pii` or `secret`: the column's own; else a projected column's attribute's own; else the strongest own value of the attributes bindings map to it; null when none says.",
+          "description": "`pii` or `secret`: the column's own; else the strongest own value of the attributes bindings map to it; null when none says.",
           "type": [
             "string",
             "null"
@@ -1647,11 +1603,8 @@
         "defaultSql",
         "identity",
         "computed",
-        "attributeId",
-        "attributePath",
         "isPrimaryKey",
         "isForeignKey",
-        "isDiscriminator",
         "position",
         "default",
         "computedStored",
@@ -1848,32 +1801,6 @@
         "stereotypes",
         "properties",
         "generation"
-      ],
-      "additionalProperties": false
-    },
-    "conventionPackageView": {
-      "description": "One package a database takes by convention.",
-      "type": "object",
-      "x-order": [
-        "packageId",
-        "schema"
-      ],
-      "properties": {
-        "packageId": {
-          "description": "The package id.",
-          "type": "string"
-        },
-        "schema": {
-          "description": "The schema name its conventional tables go to, or null for the default schema.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "packageId",
-        "schema"
       ],
       "additionalProperties": false
     },
@@ -2218,8 +2145,6 @@
         "schemas",
         "quoting",
         "maxIdentifierLength",
-        "byConvention",
-        "packages",
         "displayName",
         "pluralName",
         "description",
@@ -2328,17 +2253,6 @@
             "null"
           ]
         },
-        "byConvention": {
-          "description": "Which entities map here by convention: `all`, `packages` or `none` (the effective value).",
-          "type": "string"
-        },
-        "packages": {
-          "description": "The packages whose entities map here by convention, with the schema their tables go to.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/conventionPackageView"
-          }
-        },
         "displayName": {
           "description": "The display name the database file sets, or null (no fallback).",
           "type": [
@@ -2361,7 +2275,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -2382,7 +2296,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },
@@ -2411,8 +2325,6 @@
         "schemas",
         "quoting",
         "maxIdentifierLength",
-        "byConvention",
-        "packages",
         "displayName",
         "pluralName",
         "description",
@@ -2689,7 +2601,7 @@
           ]
         },
         "displayName": {
-          "description": "The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file).",
+          "description": "The display name the table's file sets, or null (no fallback).",
           "type": [
             "string",
             "null"
@@ -2710,7 +2622,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -2731,7 +2643,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },
@@ -3272,61 +3184,6 @@
       ],
       "additionalProperties": false
     },
-    "entityMappingRecord": {
-      "description": "An entity's mapping to one database.",
-      "type": "object",
-      "x-order": [
-        "database",
-        "table",
-        "inheritance",
-        "discriminatorColumn",
-        "discriminatorValue",
-        "columns"
-      ],
-      "properties": {
-        "database": {
-          "description": "The database's id.",
-          "type": "string"
-        },
-        "table": {
-          "description": "The table's key, as `tableView.key`.",
-          "type": "string"
-        },
-        "inheritance": {
-          "description": "The inheritance strategy, or null.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "discriminatorColumn": {
-          "description": "The discriminator column's key. Null when not set.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "discriminatorValue": {
-          "description": "The discriminator value. Null when not set."
-        },
-        "columns": {
-          "description": "Which column stores each attribute path.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/columnMappingRecord"
-          }
-        }
-      },
-      "required": [
-        "database",
-        "table",
-        "inheritance",
-        "discriminatorColumn",
-        "discriminatorValue",
-        "columns"
-      ],
-      "additionalProperties": false
-    },
     "entityRecord": {
       "description": "A resolved entity: its attributes resolved (inherited ones included and marked), keys, inheritance, relations and mappings.",
       "type": "object",
@@ -3343,9 +3200,6 @@
         "alternateKeys",
         "navigations",
         "relations",
-        "mappings",
-        "isPromoted",
-        "promotedFrom",
         "seeds",
         "lifecycle",
         "displayName",
@@ -3440,24 +3294,6 @@
           "items": {
             "type": "string"
           }
-        },
-        "mappings": {
-          "description": "One mapping per database the entity is mapped to (not ignored in), by database name.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/entityMappingRecord"
-          }
-        },
-        "isPromoted": {
-          "description": "Whether the entity is a promoted relation.",
-          "type": "boolean"
-        },
-        "promotedFrom": {
-          "description": "The promoted relation's id. Null when not set.",
-          "type": [
-            "string",
-            "null"
-          ]
         },
         "seeds": {
           "description": "The ids of the seeds that hold its rows.",
@@ -3571,9 +3407,6 @@
         "alternateKeys",
         "navigations",
         "relations",
-        "mappings",
-        "isPromoted",
-        "promotedFrom",
         "seeds",
         "lifecycle",
         "displayName",
@@ -3988,7 +3821,7 @@
         "contract": {
           "description": "The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release.",
           "type": "string",
-          "const": "0.28.0"
+          "const": "0.29.0"
         },
         "schema": {
           "description": "The file name of the JSON Schema that describes the page: `resolved-model.json`. A project holds it in `.maquettiste/.schema/v1/`; `GET /api/model/resolved/schema` and the MCP tool `get_schema` (`resolved-model`) return it.",
@@ -4021,7 +3854,7 @@
         "contract": {
           "description": "The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release.",
           "type": "string",
-          "const": "0.28.0"
+          "const": "0.29.0"
         },
         "schema": {
           "description": "The file name of the JSON Schema that describes the page: `resolved-model.json`. A project holds it in `.maquettiste/.schema/v1/`; `GET /api/model/resolved/schema` and the MCP tool `get_schema` (`resolved-model`) return it.",
@@ -4693,8 +4526,7 @@
       "type": "object",
       "x-order": [
         "attributes",
-        "strategy",
-        "sequences"
+        "strategy"
       ],
       "properties": {
         "attributes": {
@@ -4707,42 +4539,11 @@
         "strategy": {
           "description": "`application`, `identity`, `sequence`,...",
           "type": "string"
-        },
-        "sequences": {
-          "description": "For the `sequence` strategy, the key sequence per database.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/keySequenceRecord"
-          }
         }
       },
       "required": [
         "attributes",
-        "strategy",
-        "sequences"
-      ],
-      "additionalProperties": false
-    },
-    "keySequenceRecord": {
-      "description": "The key sequence of an entity in one database.",
-      "type": "object",
-      "x-order": [
-        "database",
-        "sequence"
-      ],
-      "properties": {
-        "database": {
-          "description": "The database's id.",
-          "type": "string"
-        },
-        "sequence": {
-          "description": "The sequence's id or synthesized key, as `sequenceView.id`.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "database",
-        "sequence"
+        "strategy"
       ],
       "additionalProperties": false
     },
@@ -7424,14 +7225,14 @@
           }
         },
         "uses": {
-          "description": "The ids (keys, for a synthesized table) of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order.",
+          "description": "The ids of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order.",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "displayName": {
-          "description": "The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file).",
+          "description": "The display name the table's file sets, or null (no fallback).",
           "type": [
             "string",
             "null"
@@ -7452,7 +7253,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -7473,7 +7274,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },
@@ -7503,7 +7304,7 @@
           }
         },
         "writes": {
-          "description": "The ids (keys, for a synthesized table) of the tables a query written as SQL text writes, in file order; null (left out) when none.",
+          "description": "The ids of the tables a query written as SQL text writes, in file order; null (left out) when none.",
           "type": "array",
           "items": {
             "type": "string"
@@ -8173,7 +7974,6 @@
         "shape",
         "foreignKey",
         "junctionTable",
-        "promotedEntity",
         "links",
         "constants",
         "attributes",
@@ -8187,7 +7987,7 @@
           "type": "string"
         },
         "shape": {
-          "description": "`foreign-key`, `junction` or `promoted`.",
+          "description": "`foreign-key` or `junction`.",
           "type": "string"
         },
         "foreignKey": {
@@ -8199,13 +7999,6 @@
         },
         "junctionTable": {
           "description": "The junction table's key, for the `junction` shape. Null otherwise.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "promotedEntity": {
-          "description": "The promoted entity's id, for the `promoted` shape. Null otherwise.",
           "type": [
             "string",
             "null"
@@ -8258,8 +8051,7 @@
         "database",
         "shape",
         "foreignKey",
-        "junctionTable",
-        "promotedEntity"
+        "junctionTable"
       ],
       "additionalProperties": false
     },
@@ -9247,7 +9039,7 @@
           "type": "string"
         },
         "dependsOn": {
-          "description": "The ids (or keys, for a synthesized table) of the objects of the database it names in `dependsOn`.",
+          "description": "The ids of the objects of the database it names in `dependsOn`.",
           "type": "array",
           "items": {
             "type": "string"
@@ -9261,7 +9053,7 @@
           ]
         },
         "displayName": {
-          "description": "The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file).",
+          "description": "The display name the table's file sets, or null (no fallback).",
           "type": [
             "string",
             "null"
@@ -9282,7 +9074,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -9303,7 +9095,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },
@@ -9879,7 +9671,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -9900,7 +9692,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },
@@ -10211,7 +10003,7 @@
           ]
         },
         "displayName": {
-          "description": "The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file).",
+          "description": "The display name the table's file sets, or null (no fallback).",
           "type": [
             "string",
             "null"
@@ -10232,7 +10024,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -10253,7 +10045,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },
@@ -10405,7 +10197,7 @@
           "type": "string"
         },
         "dependsOn": {
-          "description": "The ids (or keys, for a synthesized table) of the objects of the database it names in `dependsOn`.",
+          "description": "The ids of the objects of the database it names in `dependsOn`.",
           "type": "array",
           "items": {
             "type": "string"
@@ -10423,7 +10215,7 @@
           "type": "boolean"
         },
         "displayName": {
-          "description": "The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file).",
+          "description": "The display name the table's file sets, or null (no fallback).",
           "type": [
             "string",
             "null"
@@ -10444,7 +10236,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -10465,7 +10257,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },
@@ -11097,11 +10889,7 @@
         "key",
         "name",
         "schema",
-        "origin",
-        "entityId",
         "relationId",
-        "isJunction",
-        "isLookup",
         "comment",
         "columns",
         "primaryKey",
@@ -11121,7 +10909,7 @@
       ],
       "properties": {
         "key": {
-          "description": "The table key: a table file's id, or a synthesized key such as `<entityId>@<databaseId>`.",
+          "description": "The table key: the table file's id.",
           "type": "string"
         },
         "name": {
@@ -11135,31 +10923,12 @@
             "null"
           ]
         },
-        "origin": {
-          "description": "`synthesized`, `designed` or `imported`.",
-          "type": "string"
-        },
-        "entityId": {
-          "description": "The mapped entity's id, for an entity table. Null otherwise.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "relationId": {
-          "description": "The relation's id, for a junction table. Null otherwise.",
+          "description": "The id of the relation whose relation mapping names the table as its junction table, or null.",
           "type": [
             "string",
             "null"
           ]
-        },
-        "isJunction": {
-          "description": "Whether the table is a relation's junction table.",
-          "type": "boolean"
-        },
-        "isLookup": {
-          "description": "Always false: the enum lookup-table option is retired (MQ7012); kept for the contract.",
-          "type": "boolean"
         },
         "comment": {
           "description": "The comment. Null when not set.",
@@ -11208,7 +10977,7 @@
           }
         },
         "displayName": {
-          "description": "The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file).",
+          "description": "The display name the table's file sets, or null (no fallback).",
           "type": [
             "string",
             "null"
@@ -11229,7 +10998,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -11250,7 +11019,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },
@@ -11280,11 +11049,7 @@
         "key",
         "name",
         "schema",
-        "origin",
-        "entityId",
         "relationId",
-        "isJunction",
-        "isLookup",
         "comment",
         "columns",
         "primaryKey",
@@ -12105,7 +11870,7 @@
           ]
         },
         "displayName": {
-          "description": "The display name the table's file sets, or null (no fallback; a synthesized table without an overlay has no file).",
+          "description": "The display name the table's file sets, or null (no fallback).",
           "type": [
             "string",
             "null"
@@ -12126,7 +11891,7 @@
           ]
         },
         "stereotypes": {
-          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table, which a synthesized table without an overlay carries too.",
+          "description": "The stereotype keys, in application order: the effective set, with the stereotypes a schema or package default gives the table.",
           "type": "array",
           "items": {
             "type": "string"
@@ -12147,7 +11912,7 @@
           ]
         },
         "properties": {
-          "description": "The custom properties: stereotype defaults merged under the file's own (for a table without a file, the default properties of the stereotypes its schema and package defaults give it).",
+          "description": "The custom properties: stereotype defaults merged under the file's own.",
           "type": "object",
           "additionalProperties": {}
         },

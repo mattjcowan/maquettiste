@@ -8,7 +8,7 @@ of your own.
 | Pack | Default root | Generates |
 | --- | --- | --- |
 | [`sql-ddl`](sql-ddl/README.md) | `db` | Table DDL for PostgreSQL, SQL Server and SQLite, one schema script per database, `once` migrations from the schema diff, a `regions` seed script, and (with `processTables`) instance, history and audit tables per process |
-| [`csharp-dapper`](csharp-dapper/README.md) | `src/Generated` | Entity `pair` files, enums, value objects, a Dapper repository per mapped entity, one registration file per package, `types/csharp.json`; per process the states, definition and contracts, handler, service, machine and store pairs, `regions` endpoints, a typed dispatcher with pipeline behaviours, a generated statechart interpreter, one xunit test per scenario and, with `gitignorePath`, a managed block in an ignore file |
+| [`csharp-dapper`](csharp-dapper/README.md) | `src/Generated` | Entity `pair` files, enums, value objects, a Dapper repository per bound entity, one registration file per package, `types/csharp.json`; per process the states, definition and contracts, handler, service, machine and store pairs, `regions` endpoints, a typed dispatcher with pipeline behaviours, a generated statechart interpreter, one xunit test per scenario and, with `gitignorePath`, a managed block in an ignore file |
 | [`process-docs`](process-docs/README.md) | `docs` | Markdown pages: one per process (a state diagram in diagram text, states, transitions, gates and their audit record, events, actors), one per actor, a walk-through per scenario, and an index |
 | [`seed-data`](seed-data/README.md) | `data` | Per database, the rows every seed gives it in database terms and foreign key order, for a loader: a manifest and one CSV per table, or one JSON file |
 
@@ -59,13 +59,13 @@ A pack is a folder `.maquettiste/templates/<name>/` whose `pack.json` has the sa
   with a JavaScript selector. `each database` runs once per database (element `database`), as the database units of
   `sql-ddl` and `seed-data` do; a selector that returns `model.databases` does the same. `each attribute` runs once
   per attribute declared in a model file, at its entity, relation, value object or reference type (element
-  `attribute`): never an inherited copy, a stereotype's added attribute or a promoted relation's copy.
-- **`where`** filters by tags, stereotypes, categories, packages, `database` (tables in it, entities and relations
+  `attribute`): never an inherited copy or a stereotype's added attribute.
+- **`where`** filters by tags, stereotypes, categories, packages, `database` (tables in it, entities bound there, relations
   mapped there; it also picks `mapping`), `abstract` and a JavaScript filter. On `each process`, `each actor` and `each
   scenario` it takes tags, stereotypes, categories and packages only (a scenario's package is its process's; an actor
   has none): `database` and `abstract` are refused when the pack loads (MQ6001). On `each database` it reads the
   database file and `database` matches the name; on `each attribute` it reads the attribute's own tags, stereotypes and
-  category, its owner's package, and `database` keeps the attributes of entities and relations mapped there (a value
+  category, its owner's package, and `database` keeps the attributes of entities bound there and relations mapped there (a value
   object's or reference type's only when a database of that name exists). Both refuse `abstract`.
 - **`output`** is a Scriban expression rendered with the unit's context, relative to `packs.<name>.output`. Never repeat that
   prefix: `init` sets it (`db` for sql-ddl, `src/Generated` for csharp-dapper), and a project may move it.
@@ -95,19 +95,17 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
 (`table.primary_key.columns`, `column.native_type`). Useful parts of the resolved model:
 
 - `entity.attributes` (flattened: base attributes, own attributes, stereotype attributes, sorted by `order`), `entity.key`,
-  `entity.mappings[<database>]` with `table`, `columns` (attribute path to column) and `discriminator_column`.
+  `entity.bindings[<database>]` with the table it reads and writes, its fields (attribute path to column), constants, type column
+  and child tables; `relation.mappings[<database>]` with the foreign key or junction table that stores the relation.
 - `database.tables` (by schema and name), each with `columns` (by position), `primary_key`, `uniques`, `foreign_keys`
   (`referenced_table`, `on_delete`), `checks`, `indexes`, and per column `native_type`, `nullable`, `identity`, `default`,
-  `default_sql`, `attribute_path`. A table also carries the annotations of its own file (a designed or imported table, or a
-  synthesized table's overlay) as an entity does: `display_name`, `plural_name`, `description`, `tags`, `category` (`id`, `name`,
+  `default_sql`, `bound_type`. A table also carries the annotations of its file as an entity does: `display_name`, `plural_name`, `description`, `tags`, `category` (`id`, `name`,
   `path`), `stereotypes` (`key`, `name`, `icon`, `color`), `properties` (a map: the stereotypes' default properties merged under
-  the file's own) and `generation`, plus `comment`. These are empty for a synthesized table without an overlay: the entity's own
-  are on `table.entity`. A column carries the same annotations from its own entry in the table file (a designed or extra column,
-  or a synthesized column's overlay entry; never its attribute's, which is `column.attribute`), with `comment`, `collation` and
-  `sequence`. A child table names its attribute (`table.attribute`), the primary key has `clustered`, and uniques, foreign keys,
-  checks and indexes keep their file `id` (null when synthesized).
-- `database` itself carries the annotations of the database file, with `by_convention`, `packages` (`package`, `package_id`,
-  `schema`), `quoting` and `max_identifier_length`; `database.schemas` (`name`, `is_default`, `is_declared`, `tables`, `views`,
+  the file's own) and `generation`, plus `comment`. A junction table names the relation whose mapping stores its links
+  (`table.relation`). A column carries the same annotations from its own entry in the table file, with `comment`, `collation` and
+  `sequence`. The primary key has `clustered`, and uniques, foreign keys, checks and indexes keep their file `id` (an inherited
+  member's keyed id).
+- `database` itself carries the annotations of the database file, with `quoting` and `max_identifier_length`; `database.schemas` (`name`, `is_default`, `is_declared`, `tables`, `views`,
   `sequences`) carry those of their entries in that file. `database.views` (`body`, `columns`, `comment`) and
   `database.sequences` (with `database`) carry the same annotations from their files; `each view` and `each sequence` run a unit
   once per view or sequence of every database (alias `view` or `sequence`), filtered by tags, stereotypes, categories and the

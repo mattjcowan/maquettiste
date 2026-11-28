@@ -1,19 +1,16 @@
-// The table editor, for every table: a table file by its id, and a table the model lays out by convention by its key (shown
-// from its resolved document until its first edit stores it as a table file, after which the tab shows the file). Tabs: General
+// The table editor, for every table: a table file by its id. Tabs: General
 // (name, schema, comment, marks and properties), Columns (the column grid, with Add column and Delete column), Primary key,
 // Unique constraints, Indexes, Foreign keys, Checks (TablePartsTabs.tsx), DDL (the table's create script from the DDL preview),
 // References (the foreign keys pointing at the table, and the elements using its file) and JSON. Every gesture is one save of
 // the table, so one undo step. The database side shows tables only.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Database, Plus, Trash2 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, type ReactNode } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { usePacks, usePreview, useProject } from "@/api/queries";
-import type { ModelJson, StereotypeDoc } from "@/api/types";
+import type { StereotypeDoc } from "@/api/types";
 import { useServices } from "@/app/context";
 import { Button } from "@/components/ui/button";
 import { EmptyState, SectionTitle, Spinner } from "@/components/ui/misc";
 import { CodeView } from "@/code";
-import { clone } from "@/lib/json";
 import { CommonFields, useVocabularies } from "@/inspector/fields";
 import { JsonTab, References } from "@/inspector/Inspector";
 import { applicableExtensions, SchemaForm } from "@/inspector/SchemaForm";
@@ -22,8 +19,7 @@ import { declaredKeys } from "@/inspector/propertyBag";
 import { ColumnGrid } from "@/workspaces/database/ColumnGrid";
 import { ddlPreviewTarget } from "@/workspaces/database/ddlPreview";
 import { openTableEditor } from "@/workspaces/database/openTableEditor";
-import { storeTables } from "@/workspaces/database/storeTables";
-import { incomingForeignKeys, isLaidOutKey, qualifiedTable, TABLE_TABS, type TableTab } from "@/workspaces/database/tableParts";
+import { incomingForeignKeys, qualifiedTable, TABLE_TABS, type TableTab } from "@/workspaces/database/tableParts";
 import { useTableDoc, type TableDoc } from "@/workspaces/database/useTableDoc";
 import { domIdOf, EditorLayout, useEditorContext, type EditorContext } from "../EditorFrame";
 import { CommentField, DatabaseLine, SchemaField } from "./fields";
@@ -33,97 +29,11 @@ import { SeedDataTab } from "@/editors/SeedDataTab";
 
 type Rec = Record<string, unknown>;
 
-/** The database a laid-out table's key names (`<owner>@<database>`). */
-const databaseOfKey = (key: string) => key.slice(key.lastIndexOf("@") + 1);
-
 export function TableEditor({ id }: { id: string }) {
-  if (isLaidOutKey(id)) return <LaidOutTableEditor tableKey={id} />;
-  return <FileTableEditor id={id} />;
-}
-
-function FileTableEditor({ id }: { id: string }) {
   const { ctx, fallback, draft } = useEditorContext(id, "table");
   if (!ctx) return <>{fallback}</>;
   const doc = ctx.json as unknown as Rec;
-  if (doc.origin === "synthesized") return <AdjustmentsNote doc={doc} />;
   return <TableBody ctx={ctx} draft={draft} database={String(doc.database ?? "")} tableKey={id} />;
-}
-
-/** A file that adjusts a table the model lays out: the table itself is what is edited. */
-function AdjustmentsNote({ doc }: { doc: Rec }) {
-  const { store } = useServices();
-  const database = String(doc.database ?? "");
-  const owner = typeof doc.relation === "string" ? doc.relation : `${String(doc.entity ?? "")}${typeof doc.attribute === "string" ? `.${doc.attribute}` : ""}`;
-  return (
-    <EmptyState title="This file adjusts a table">
-      <span className="flex flex-col items-center gap-2">
-        The table it adjusts is edited in its own editor.
-        <Button size="sm" onClick={() => openTableEditor(store, database, `${owner}@${database}`)} data-testid="table-editor-open-table">
-          Open the table
-        </Button>
-      </span>
-    </EmptyState>
-  );
-}
-
-function LaidOutTableEditor({ tableKey }: { tableKey: string }) {
-  const database = databaseOfKey(tableKey);
-  const td = useTableDoc(database, tableKey);
-  const ctx = useLaidOutContext(td);
-  if (td.pending) return <Spinner label="Resolving the table" />;
-  if (!ctx) return <EmptyState title="This table is not in the database">It was removed, stored as a table file, or its database changed.</EmptyState>;
-  return <TableBody ctx={ctx} draft={undefined} database={database} tableKey={tableKey} />;
-}
-
-/**
- * The editor context of a table the model lays out: its resolved document, edited locally while typed; a commit (blur, Enter,
- * a pick, or 600 ms after the last keystroke) stores the table as a file and makes the edits on it, one undo step.
- */
-function useLaidOutContext(td: TableDoc): EditorContext | null {
-  const [local, setLocal] = useState<ModelJson | null>(null);
-  const queued = useRef<((json: ModelJson) => ModelJson | void)[]>([]);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const update = useRef(td.update);
-  update.current = td.update;
-  const name = td.table?.name ?? "";
-  const flush = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    const updates = queued.current.splice(0);
-    if (!updates.length) return;
-    void update.current(`Edit table ${name}`, (doc) => {
-      for (const u of updates) {
-        const next = u(doc as unknown as ModelJson) as unknown as Rec | undefined;
-        if (next && next !== doc) {
-          for (const k of Object.keys(doc)) delete doc[k];
-          Object.assign(doc, next);
-        }
-      }
-    });
-  }, [name]);
-  useEffect(() => () => flush(), [flush]);
-  const base = td.doc as unknown as ModelJson | undefined;
-  const edit = useCallback(
-    (fn: (json: ModelJson) => ModelJson | void) => {
-      if (!base) return;
-      setLocal((current) => {
-        const working = clone(current ?? base);
-        return (fn(working) ?? working) as ModelJson;
-      });
-      queued.current.push(fn);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(flush, 600);
-    },
-    [base, flush],
-  );
-  const json = local ?? base;
-  return useMemo(
-    () =>
-      json && td.table
-        ? { id: td.key, kind: "table" as const, json, doc: undefined, edit, flush, diagnostics: [], summary: undefined, name: td.table.name }
-        : null,
-    [json, td.table, td.key, edit, flush],
-  );
 }
 
 function TableBody({
@@ -139,8 +49,6 @@ function TableBody({
 }) {
   const td = useTableDoc(database, tableKey);
   const form = { ...ctx, id: domIdOf(ctx.id) };
-  const origin = String((ctx.json as unknown as Rec).origin ?? "designed");
-  const laidOut = isLaidOutKey(tableKey);
   const tabs: { value: TableTab; content: ReactNode; fill?: boolean }[] = [
     { value: "general", content: <GeneralTab form={form} /> },
     { value: "columns", content: <ColumnsTab td={td} />, fill: true },
@@ -151,54 +59,24 @@ function TableBody({
     { value: "checks", content: <PartTab td={td} kind="check" /> },
     { value: "exclusions", content: <ExclusionsTab td={td} /> },
     { value: "storage", content: <StorageTab td={td} /> },
-    // A table file's own rows (table seeds, 2026-10-07); a table not stored as a file yet has none.
-    ...(laidOut ? [] : [{ value: "data" as const, content: <SeedDataTab id={ctx.id} />, fill: true }]),
+    // A table file's own rows (table seeds, 2026-10-07).
+    { value: "data" as const, content: <SeedDataTab id={ctx.id} />, fill: true },
     { value: "ddl", content: <DdlTab database={database} tableKey={tableKey} />, fill: true },
     { value: "references", content: <ReferencesTab td={td} /> },
-    { value: "json", content: <TableJsonTab td={td} ctx={ctx} />, fill: true },
+    { value: "json", content: <TableJsonTab ctx={ctx} />, fill: true },
   ];
   return (
     <EditorLayout
       ctx={ctx}
       draft={draft}
-      translations={!laidOut}
+      translations
       controls={
         <div className="flex items-center gap-2">
           <DatabaseLine json={{ database }} />
-          <span className="text-12 text-secondary">
-            · {laidOut ? "Not stored as a table file yet: the first edit stores it." : origin === "imported" ? "Imported table" : "Designed table"}
-          </span>
-          {laidOut ? <StoreButton td={td} /> : null}
         </div>
       }
       tabs={tabs.map((t) => ({ value: t.value, label: TABLE_TABS[t.value], content: t.content, fill: t.fill }))}
     />
-  );
-}
-
-/** Stores this one laid-out table as a table file (the database screen stores them all at once). */
-function StoreButton({ td }: { td: TableDoc }) {
-  const services = useServices();
-  const qc = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  if (td.mode !== "storable" || !td.owner || !td.table) return null;
-  const name = td.table.name;
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      disabled={busy}
-      onClick={() => {
-        setBusy(true);
-        void storeTables(services, qc, td.database, new Map([[td.key, td.owner!]]), `Store ${name} as a table file`).then((r) => {
-          setBusy(false);
-          if (r.ok) services.store.getState().notify(`${name} is now stored as a table file.`);
-        });
-      }}
-      data-testid="table-store-file"
-    >
-      <Database /> Store as a table file
-    </Button>
   );
 }
 
@@ -255,13 +133,13 @@ function ColumnsTab({ td }: { td: TableDoc }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="table-editor-columns">
       <div className="flex h-7 shrink-0 items-center gap-2 border-b border-default px-2">
-        <Button size="sm" variant="ghost" disabled={td.mode === "fixed"} onClick={() => void edits.add("column")} data-testid="table-add-column">
+        <Button size="sm" variant="ghost" onClick={() => void edits.add("column")} data-testid="table-add-column">
           <Plus /> Add column
         </Button>
         <Button
           size="sm"
           variant="ghost"
-          disabled={!picked || td.mode === "fixed"}
+          disabled={!picked}
           title={picked ? undefined : "Pick a column in the grid first."}
           onClick={() => picked && edits.remove({ kind: "column", id: picked })}
           data-testid="table-delete-column"
@@ -360,19 +238,7 @@ function ReferencesTab({ td }: { td: TableDoc }) {
   );
 }
 
-/** The table file's JSON (all of it); a laid-out table's resolved document, read-only, until it is stored. */
-function TableJsonTab({ td, ctx }: { td: TableDoc; ctx: EditorContext }) {
-  const text = useMemo(() => JSON.stringify(td.doc ?? {}, null, 2), [td.doc]);
-  if (td.fileId) return <JsonTab json={ctx.json} onChange={(next) => ctx.edit(() => next)} />;
-  return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="table-json-resolved">
-      <div className="flex items-center gap-2 border-b border-default px-2 py-1">
-        <p className="min-w-0 flex-1 text-12 text-secondary">The table as resolved, read-only: it is not stored as a table file yet.</p>
-        <StoreButton td={td} />
-      </div>
-      <div className="min-h-0 flex-1">
-        <CodeView language="json" label="Table JSON" value={text} readOnly />
-      </div>
-    </div>
-  );
+/** The table file's JSON (all of it). */
+function TableJsonTab({ ctx }: { ctx: EditorContext }) {
+  return <JsonTab json={ctx.json} onChange={(next) => ctx.edit(() => next)} />;
 }

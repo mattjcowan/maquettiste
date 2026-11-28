@@ -293,7 +293,7 @@ public sealed class ResolvedModel
     /// <summary>Packages, by qualified name.</summary>
     public RList<RPackage> Packages { get; internal init; } = RList<RPackage>.Empty;
 
-    /// <summary>Entities (promoted ones included), by (package qualified name, name, id).</summary>
+    /// <summary>Entities, by (package qualified name, name, id).</summary>
     public RList<REntity> Entities { get; internal init; } = RList<REntity>.Empty;
 
     /// <summary>Value objects, by (package qualified name, name, id).</summary>

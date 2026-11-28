@@ -16,7 +16,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// type, the binding maps to the <c>status</c> column, and the query <c>events-by-status</c>. The shared fixture does not change.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class ColumnTypeTests
 {
     private const string Main = E2ERepo.MainDatabaseId;
@@ -167,7 +166,6 @@ public sealed class ColumnTypeTests
         await ValidateCleanAsync(repo);
         var status = Column(await ResolveAsync(repo), "invoice_events", "status");
         Assert.Equal(("string", "reference", InvoiceState), (status.Type, status.BoundType?.Kind, status.BoundType?.ReferenceType?.Id));
-        Assert.Null(status.ReferenceType); // binding never changes storage: the column holds no codes for the packs
 
         // The usage lists the attribute and the one column it is bound to, required, stored as the templates decide, in no bound table.
         var usage = (await repo.Store.GetReferenceTypeUsageAsync(InvoiceState, Ct))!;
@@ -316,15 +314,9 @@ public sealed class ColumnTypeTests
     }
 
     [Fact]
-    public async Task Materializing_invoice_keeps_status_typed_by_its_enum_through_the_binding()
+    public async Task Invoice_status_is_typed_by_its_enum_through_the_binding()
     {
         await using var repo = Copy();
-        var parsed = repo.Store.ParseBatch(Encoding.UTF8.GetBytes($$"""
-            {"operations":[ { "op": "materialize-tables", "database": "{{Main}}", "entities": ["{{E2ERepo.InvoiceId}}"] } ]}
-            """));
-        Assert.Empty(parsed.Diagnostics);
-        var result = await repo.Store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Editor, Ct);
-        Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
 
         var snapshot = await repo.Store.GetSnapshotAsync(Ct);
         var invoices = snapshot.All<Table>().Single(t => t.Name == "invoices" && t.Database == Main);

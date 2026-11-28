@@ -81,7 +81,7 @@ function findings(relation: string, mapping: Json): { pointer: string | null; me
   const doc = { kind: "mapping", id, name: "m", database: ctx.database, relation, ...mapping };
   // Created plain, then edited into the form under test, as an outside edit would.
   if (!ctx.backend.model.index().some((r) => r.id === id))
-    expect(ctx.backend.model.create({ kind: "mapping", id, name: "m", database: ctx.database, relation, ignore: true }).outcome).toBe("saved");
+    expect(ctx.backend.model.create({ kind: "mapping", id, name: "m", database: ctx.database, relation }).outcome).toBe("saved");
   ctx.backend.model.externalEdit(id, (json) => {
     for (const k of Object.keys(json)) delete json[k];
     Object.assign(json, doc);
@@ -185,10 +185,10 @@ describe("MQ4009 on a one-type mapping, as the engine reads it now", () => {
     expect(findings(ID.one, { junctionTable: ID.table, ends: [{ end: ID.o1, foreignKey: ID.fk1, foreignKeys: [] }] })).toEqual([]);
   });
 
-  it("checks the entries of an ignored mapping, naming the missing key only when its junction is designed", () => {
-    expect(findings(ID.one, { ignore: true, junctionTable: ID.table, ends: [{ end: ID.o1 }] }).map((f) => f.pointer)).toEqual(["/ends/0"]);
-    expect(findings(ID.one, { ignore: true, ends: [{ end: ID.o1 }] })).toEqual([]);
-    expect(findings(ID.one, { ignore: true, ends: [{ end: ID.o1, idColumn: ID.cId }] }).map((f) => f.pointer)).toEqual(["/ends/0/idColumn"]);
+  it("checks the entries of a one-type mapping, naming the missing key only when its junction is designed", () => {
+    expect(findings(ID.one, { junctionTable: ID.table, ends: [{ end: ID.o1 }] }).map((f) => f.pointer)).toEqual(["/ends/0"]);
+    expect(findings(ID.one, { ends: [{ end: ID.o1 }] })).toEqual([]);
+    expect(findings(ID.one, { ends: [{ end: ID.o1, idColumn: ID.cId }] }).map((f) => f.pointer)).toEqual(["/ends/0/idColumn"]);
   });
 
   it("gives one finding for constants with no storage on a relation with several types", () => {

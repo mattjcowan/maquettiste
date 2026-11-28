@@ -318,13 +318,26 @@
         "required": ["fact"]
       },
       "then": {
-        "required": ["keys"],
-        "x-order": ["keys"],
-        "properties": {
-          "keys": {
-            "minItems": 1
+        "anyOf": [
+          {
+            "required": ["keys"],
+            "x-order": ["keys"],
+            "properties": {
+              "keys": {
+                "minItems": 1
+              }
+            }
+          },
+          {
+            "required": ["adopted"],
+            "x-order": ["adopted"],
+            "properties": {
+              "adopted": {
+                "minItems": 1
+              }
+            }
           }
-        }
+        ]
       }
     },
     {

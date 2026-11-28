@@ -52,15 +52,6 @@ public sealed class RDatabase : RAnnotated
     internal IReadOnlyList<RDataRow> DataRowsOf(RSeed seed) => DataRowsFactory?.Invoke(seed) ?? [];
 
     /// <summary>
-    /// The template-defined collections of this database's mappings, each with its owner table: the <see cref="REntityMapping.TemplateDefined"/>
-    /// attributes of every entity mapping (its table) and the <see cref="RRelationMapping.TemplateDefined"/> attributes of every
-    /// junction-mapped relation (its junction table), in the order the mappings were recorded. A partial run (one database resolved to
-    /// record migration facts) publishes no entity's or relation's mappings, so the value-map holders (<c>Migrations/CodeHolders.cs</c>,
-    /// next-phase-2-design.md section 3.5) read them here.
-    /// </summary>
-    internal List<(RTable Owner, RAttribute Attribute)> TemplateCollections { get; } = [];
-
-    /// <summary>
     /// How this database stores each relation with an end of several types placed in it, and what it can't enforce (several-types-design.md
     /// section 19.8 and decision 47), in relation order; the database view's <c>relationStorage</c> reads it. The run fills it after
     /// <c>FinishTables</c> (step 2), also in a partial run, which publishes no relation's mappings. Empty in a model with no such relation.
@@ -126,14 +117,6 @@ public sealed class RDatabase : RAnnotated
     /// <summary>The effective identifier length limit, or <see langword="null"/> for none.</summary>
     public int? MaxIdentifierLength { get; internal set; }
 
-    /// <summary>
-    /// Which entities map here by convention: <c>all</c>, <c>packages</c> (the entities of <see cref="Packages"/>) or <c>none</c>. A file
-    /// that leaves it out reads as <c>all</c> without packages and <c>packages</c> with them, as the resolver places tables.
-    /// </summary>
-    public string ByConvention { get; internal set; } = "all";
-
-    /// <summary>The packages whose entities map here by convention, each with the schema its conventional tables go to, in file order.</summary>
-    public IReadOnlyList<RConventionPackage> Packages { get; internal set; } = [];
 }
 
 /// <summary>
@@ -204,19 +187,6 @@ internal static class StorageGapKinds
     public const string RowsNotToldApart = "rows-not-told-apart";
 }
 
-/// <summary>One package a database takes by convention.</summary>
-public sealed class RConventionPackage
-{
-    /// <summary>The package, or <see langword="null"/> when the id names no package.</summary>
-    public RPackage? Package { get; internal set; }
-
-    /// <summary>The package id as the database file writes it.</summary>
-    public string PackageId { get; internal set; } = "";
-
-    /// <summary>The name of the schema the package's conventional tables go to, or <see langword="null"/> for the default schema.</summary>
-    public string? Schema { get; internal set; }
-}
-
 /// <summary>A resolved schema. A schema the database file declares carries its annotations (<see cref="RAnnotated"/>); a schema known only
 /// because a table, view or sequence uses it (the dialect's default schema, say) has none.</summary>
 public sealed class RSchema : RAnnotated
@@ -252,14 +222,13 @@ public sealed class RSchema : RAnnotated
     public RList<RSqlObject> Objects { get; internal set; } = RList<RSqlObject>.Empty;
 }
 
-/// <summary>A resolved table. Its annotations (<see cref="RAnnotated"/>) come from its own file: the designed or imported table, or a
-/// synthesized table's overlay; a synthesized table without an overlay has none.</summary>
+/// <summary>A resolved table, designed or imported. Its annotations (<see cref="RAnnotated"/>) come from its file.</summary>
 public sealed class RTable : RAnnotated
 {
     /// <inheritdoc/>
     public override string Kind => "table";
 
-    /// <summary>The table key: the file's ULID, or a synthesized key such as <c>&lt;entityId&gt;@&lt;databaseId&gt;</c> (engine-design.md section 7.3).</summary>
+    /// <summary>The table key: the file's id.</summary>
     public string Key { get; internal set; } = "";
 
     /// <summary>The physical name.</summary>
@@ -271,21 +240,17 @@ public sealed class RTable : RAnnotated
     /// <summary>The database.</summary>
     public RDatabase Database { get; internal set; } = null!;
 
-    /// <summary><c>synthesized</c>, <c>designed</c> or <c>imported</c>.</summary>
-    public string Origin { get; internal set; } = "synthesized";
-
-    /// <summary>The mapped entity, for an entity table.</summary>
-    public REntity? Entity { get; internal set; }
-
-    /// <summary>The relation, for a junction table.</summary>
+    /// <summary>The relation whose relation mapping names the table as its junction table, for a junction table.</summary>
     public RRelation? Relation { get; internal set; }
 
-    /// <summary>The attribute a child table stores (a value object stored as a table, or a collection), or <see langword="null"/>.</summary>
-    public RAttribute? Attribute { get; internal set; }
+    /// <summary>
+    /// Whether a relation mapping names the table as its junction table (<see cref="Relation"/> is set). Kept for templates written before
+    /// 0.29.0, which read <c>table.is_junction</c>; <c>table.relation</c> says which relation.
+    /// </summary>
+    public bool IsJunction => Relation is not null;
 
     /// <summary>
-    /// The id of the element whose file holds the table: the designed or imported table, or the overlay of a synthesized one; null for a
-    /// synthesized table without an overlay. Where the checks after resolution put a finding (next-phase-2-design.md section 5.5).
+    /// The id of the table file. Where the checks after resolution put a finding (next-phase-2-design.md section 5.5).
     /// </summary>
     internal string? FileId { get; set; }
 
@@ -333,9 +298,6 @@ public sealed class RTable : RAnnotated
     /// project attributes: such an attribute depends on the table's whole <see cref="RObject.Dependencies"/>.
     /// </summary>
     internal IReadOnlyList<string>? EntryKeys { get; set; }
-
-    /// <summary>Whether the table is a relation's junction table.</summary>
-    public bool IsJunction { get; internal set; }
 
     /// <summary>The seeds whose target is this table (a table file's), in merge order (package qualified name with none first, name, id).</summary>
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
@@ -696,18 +658,17 @@ public sealed class RColumn : RAnnotated
     public RTable Table { get; internal set; } = null!;
 
     /// <summary>
-    /// The column type keyword: a built-in keyword, <c>range</c> or <c>multirange</c> (a designed or extra column only), or
-    /// <c>reference</c> (a projected column of an attribute typed by a reference type only). A designed column keeps its physical
-    /// keyword, whatever its <see cref="BoundType"/>; templates test <see cref="ReferenceType"/> for "holds codes".
+    /// The column type keyword: a built-in keyword, or <c>range</c> or <c>multirange</c>. A column keeps its physical keyword, whatever its
+    /// <see cref="BoundType"/>.
     /// </summary>
     public string Type { get; internal set; } = "";
 
     /// <summary>
     /// Derived from bindings, like a table's bound-by list (0.28.0): the enum, reference type or scalar type of the attribute the entities'
     /// bindings map to this column of a designed or imported table (own or inherited), set only when every binding field that maps the
-    /// column maps an attribute of that one type. <see langword="null"/> for a column no binding maps, for one whose bindings disagree,
-    /// and for a projected column (its attribute types it). It is information only: binding an entity never changes storage, so the
-    /// column's physical type, facets and <see cref="ReferenceType"/> are its table's own, and packs render nothing from it.
+    /// column maps an attribute of that one type. <see langword="null"/> for a column no binding maps, and for one whose bindings disagree.
+    /// It is information only: binding an entity never changes storage, so the column's physical type and facets are its table's own, and
+    /// packs render nothing from it.
     /// </summary>
     public RType? BoundType { get; internal set; }
 
@@ -800,43 +761,14 @@ public sealed class RColumn : RAnnotated
     /// </summary>
     internal string? OwnSensitive { get; set; }
 
-    /// <summary>The attribute the column stores, if any.</summary>
-    public RAttribute? Attribute { get; internal set; }
-
-    /// <summary>The attribute path the column stores, if any.</summary>
-    public string? AttributePath { get; internal set; }
-
     /// <summary>Whether the column is part of the primary key.</summary>
     public bool IsPrimaryKey { get; internal set; }
 
     /// <summary>Whether the column is part of a foreign key.</summary>
     public bool IsForeignKey { get; internal set; }
 
-    /// <summary>Whether the column is a TPH discriminator.</summary>
-    public bool IsDiscriminator { get; internal set; }
-
     /// <summary>The 0-based position in the table.</summary>
     public int Position { get; internal set; }
-
-    /// <summary>
-    /// For a projected reference column (<see cref="Type"/> <c>reference</c>): the reference type, with <see cref="CodeType"/>,
-    /// <see cref="Strategy"/> and <see cref="ReferenceBinding"/>, from which packs render its key or CHECK. Its code length rides along in
-    /// <see cref="Length"/> when its entry states none. A column of a table file has none, even when its <see cref="BoundType"/> is a
-    /// reference type: binding an entity never changes storage.
-    /// </summary>
-    public RReferenceType? ReferenceType { get; internal set; }
-
-    /// <summary>
-    /// For a reference column: the binding of its reference type in the column's database (2026-10-11), when the type's rows live in
-    /// a table file there; the binding wins over <see cref="Strategy"/>, so a pack points the column at that table.
-    /// </summary>
-    public RReferenceTypeBinding? ReferenceBinding => ReferenceType?.Bindings.GetValueOrDefault(Table.Database.Name);
-
-    /// <summary>For a reference column: the code's logical type (<c>string</c>, <c>int16</c>, <c>int32</c> or <c>int64</c>).</summary>
-    public string? CodeType { get; internal set; }
-
-    /// <summary>For a reference column: the effective storage strategy in the column's database, or <see langword="null"/> for template-defined.</summary>
-    public string? Strategy { get; internal set; }
 
     /// <summary>
     /// The names the column had before, from its open <c>rename</c> facts (their <c>from</c> and <c>via</c> names), oldest first,

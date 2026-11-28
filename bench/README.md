@@ -122,9 +122,10 @@ harness then skips the gate and says why).
 the rest); 20,000 relations (70% one to many, one in five of those a composition; 15% many to many; 10% many to many with
 attributes; 5% one to one; 60% inside one package); 500 enums; 250 value objects; 50 scalar types; three databases
 (PostgreSQL `main` with every package, SQL Server `reporting` with the first fifth of the packages, SQLite `edge` with the first
-twenty-fifth); mappings storing an enum as its code in `main` for one entity in ten and a value object as JSON in `reporting`
-for some entities. Names come from fixed word lists, ids from a seeded SplitMix64 generator (valid ULIDs), so the same seed
-gives byte-identical files on any machine. No processes (phase 3).
+twenty-fifth), each with designed tables, a binding per entity and a relation mapping per relation, made with "Create
+tables…"; then, as a team would design them, the column of an enum stored as its code in `main` for one entity in ten and one JSON
+column for a value object in `reporting` for some entities. Names come from fixed word lists, ids from a seeded SplitMix64
+generator (valid ULIDs), so the same seed gives byte-identical files on any machine. No processes (phase 3).
 
 ## The fanout pack
 

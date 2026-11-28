@@ -10,7 +10,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Functions.Tests;
 
 /// <summary>Model snapshots over the API (docs/engineering/snapshots.md): every response checked against the contract.</summary>
-[UsesProjectedFixtures]
 public sealed class SnapshotEndpointTests
 {
     [Fact]
@@ -121,16 +120,16 @@ public sealed class SnapshotEndpointTests
         Contract.AssertResponse(clean, "/api/validate");
         Assert.DoesNotContain(clean.Json["diagnostics"]!.AsArray(), d => d!["rule"]!.GetValue<string>().StartsWith("MQ41", StringComparison.Ordinal));
 
-        // With recording off, renaming Customer writes no fact: the comparison finds its table renamed and nothing to explain it.
+        // With recording off, renaming the customers table writes no fact: the comparison finds it renamed and nothing to explain it.
         var settings = await host.Store.GetSettingsAsync(EditorHost.Ct);
         var node = JsonNode.Parse(settings.Json.GetRawText())!.AsObject();
         node["migrations"] = new JsonObject { ["record"] = "off" };
         Assert.Equal(SaveOutcome.Saved, (await host.Store.SaveSettingsAsync(System.Text.Encoding.UTF8.GetBytes(node.ToJsonString()), settings.Hash,
             ChangeSource.Editor, EditorHost.Ct)).Outcome);
-        var customer = await host.GetAsync("/api/model/elements/" + EditorHost.CustomerId);
-        var json = customer.Json["json"]!.AsObject();
-        json["name"] = "Client";
-        Assert.Equal(200, (await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.CustomerId, json, r => r.IfMatch(customer.Json["hash"]!.GetValue<string>()))).Status);
+        var customers = await host.GetAsync("/api/model/elements/" + EditorHost.CustomersTableId);
+        var json = customers.Json["json"]!.AsObject();
+        json["name"] = "clients";
+        Assert.Equal(200, (await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.CustomersTableId, json, r => r.IfMatch(customers.Json["hash"]!.GetValue<string>()))).Status);
 
         var report = await host.SendJsonAsync("POST", "/api/validate?against=" + id, new { });
         Assert.Equal(200, report.Status);
@@ -159,10 +158,10 @@ public sealed class SnapshotEndpointTests
     {
         await using var host = EditorHost.Create();
         var id = (await host.SendJsonAsync("POST", "/api/snapshots", new { name = "Before" })).Json["id"]!.GetValue<string>();
-        var customer = await host.GetAsync("/api/model/elements/" + EditorHost.CustomerId);
-        var json = customer.Json["json"]!.AsObject();
-        json["name"] = "Client";
-        Assert.Equal(200, (await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.CustomerId, json, r => r.IfMatch(customer.Json["hash"]!.GetValue<string>()))).Status);
+        var customers = await host.GetAsync("/api/model/elements/" + EditorHost.CustomersTableId);
+        var json = customers.Json["json"]!.AsObject();
+        json["name"] = "clients";
+        Assert.Equal(200, (await host.SendJsonAsync("PUT", "/api/model/elements/" + EditorHost.CustomersTableId, json, r => r.IfMatch(customers.Json["hash"]!.GetValue<string>()))).Status);
 
         var compare = await host.GetAsync("/api/snapshots/compare?from=" + id);
         Assert.Equal(200, compare.Status);
@@ -171,13 +170,13 @@ public sealed class SnapshotEndpointTests
         // The rename of the customers table is recorded as a migration fact, which the comparison lists as added.
         var rows = compare.Json["elements"]!.AsArray();
         var row = Assert.Single(rows, r => r!["kind"]!.GetValue<string>() != "migration");
-        Assert.Equal(("changed", "Client", "Customer"), (row!["change"]!.GetValue<string>(), row["name"]!.GetValue<string>(), row["previousName"]!.GetValue<string>()));
+        Assert.Equal(("changed", "clients", "customers"), (row!["change"]!.GetValue<string>(), row["name"]!.GetValue<string>(), row["previousName"]!.GetValue<string>()));
         Assert.Equal("added", Assert.Single(rows, r => r!["kind"]!.GetValue<string>() == "migration")!["change"]!.GetValue<string>());
 
-        var detail = await host.GetAsync($"/api/snapshots/compare/element?from={id}&to=working&id={EditorHost.CustomerId}");
+        var detail = await host.GetAsync($"/api/snapshots/compare/element?from={id}&to=working&id={EditorHost.CustomersTableId}");
         Assert.Equal(200, detail.Status);
         Contract.AssertResponse(detail, "/api/snapshots/compare/element");
-        Assert.Equal("Customer", detail.Json["before"]!["name"]!.GetValue<string>());
+        Assert.Equal("customers", detail.Json["before"]!["name"]!.GetValue<string>());
         Assert.Contains(detail.Json["fields"]!.AsArray(), f => f!["pointer"]!.GetValue<string>() == "/name");
 
         Contract.AssertResponse(await host.GetAsync("/api/snapshots/compare?from=" + id + "&limit=0"), "/api/snapshots/compare");

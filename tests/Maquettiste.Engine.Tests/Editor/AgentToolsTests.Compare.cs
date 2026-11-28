@@ -24,12 +24,12 @@ public sealed partial class AgentToolsTests
             return JsonNode.Parse(answer.Text)!;
         }
 
-        // Always by package; the facts of main in their own group, labelled; no field changes unless asked.
+        // Always by package (the invoices table states none); the facts of main in their own group, labelled; no field changes unless asked.
         var plain = await OkAsync(new { from = snapshot.Id });
-        Assert.Equal(["Billing", "migrations of main"], plain["packages"]!.AsArray().Select(p => (string)p!["name"]!));
-        Assert.Equal(["entity", "table", "migration"], plain["elements"]!.AsArray().Select(e => (string)e!["kind"]!));
+        Assert.Equal(["Billing", "(no package)", "migrations of main"], plain["packages"]!.AsArray().Select(p => (string)p!["name"]!));
+        Assert.Equal(["entity", "table", "table", "migration"], plain["elements"]!.AsArray().Select(e => (string)e!["kind"]!));
         Assert.Equal(ModelDiffTests.Billing, (string?)plain["elements"]![0]!["package"]);
-        Assert.Equal("rename column billing.invoices.number", (string?)plain["elements"]![2]!["label"]);
+        Assert.Equal("rename column billing.invoices.number", (string?)plain["elements"]![3]!["label"]);
         Assert.Null(plain["elements"]![0]!["fields"]);
 
         var fields = await OkAsync(new { from = snapshot.Id, fieldChanges = true });

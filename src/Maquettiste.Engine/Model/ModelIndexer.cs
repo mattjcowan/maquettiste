@@ -892,9 +892,8 @@ internal static class ModelIndexer
         {
             if (!after.TryGetValue(id, out var now) || old.Kind != now.Kind || !string.Equals(PackageOf(old), PackageOf(now), StringComparison.Ordinal))
                 return true;
-            if (old is Table t && now is Table u && (t.Origin != u.Origin || !string.Equals(t.Schema, u.Schema, StringComparison.Ordinal)
-                || !string.Equals(t.Entity, u.Entity, StringComparison.Ordinal) || !string.Equals(t.Relation, u.Relation, StringComparison.Ordinal)
-                || !string.Equals(t.Attribute, u.Attribute, StringComparison.Ordinal) || !string.Equals(t.Database, u.Database, StringComparison.Ordinal)))
+            if (old is Table t && now is Table u && (!string.Equals(t.Schema, u.Schema, StringComparison.Ordinal)
+                || !string.Equals(t.Database, u.Database, StringComparison.Ordinal)))
             {
                 return true;
             }
@@ -919,12 +918,6 @@ internal static class ModelIndexer
                 Query q => q.Database,
                 Mapping m => m.Database,
                 Migration f => f.Database,
-                _ => null,
-            },
-            Entity: element switch
-            {
-                Mapping m => m.Entity,
-                Table t => t.Entity,
                 _ => null,
             },
             MemberCount: element switch
@@ -997,7 +990,22 @@ internal static class ModelIndexer
             Approvals: element is Process approvalProcess && ApprovalGates(approvalProcess).Count() is > 0 and var approvals ? approvals : null,
             Signatures: element is Process signatureProcess && ApprovalGates(signatureProcess).Sum(static g => g.AllSignatures.Count()) is > 0 and var signatures
                 ? signatures
-                : null), element), element), element);
+                : null,
+            BoundTo: element is Entity { Bindings.Count: > 0 } bound ? BoundTo(bound) : null), element), element), element);
+
+    /// <summary>Per binding of an entity, in file order, the table its writes go to, else its source, distinct.</summary>
+    private static IReadOnlyList<string> BoundTo(Entity entity)
+    {
+        var ids = new List<string>(entity.Bindings.Count);
+        foreach (var binding in entity.Bindings)
+        {
+            var id = binding.Write is { None: true } ? binding.Source : binding.Write?.Table ?? binding.Source;
+            if (!ids.Contains(id, StringComparer.Ordinal))
+                ids.Add(id);
+        }
+
+        return ids;
+    }
 
     /// <summary>
     /// A process's gates that have stages (signoff-design.md section 9): each transition's inline gate in transition order, then a library's gate

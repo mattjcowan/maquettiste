@@ -11,7 +11,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// element, pack filters and roots, preview, and cancelling a running pack script.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class ModelChangeTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -31,28 +30,6 @@ public sealed class ModelChangeTests
         Assert.Contains(result.Changes, c => c.Path == "src/Generated/demo/src/Billing/Invoice.g.cs" && c.Kind == FileChangeKind.Modified);
         Assert.DoesNotContain(result.Changes, c => c.Path.Contains("Customer", StringComparison.Ordinal) && c.Kind != FileChangeKind.Kept);
         await IncrementalTests.AssertIncrementalEqualsForcedAsync(repo);
-    }
-
-    [Fact]
-    public async Task Changing_conventions_in_maquettiste_json_renames_tables_and_deletes_the_old_files()
-    {
-        await using var repo = E2ERepo.Create();
-        await repo.ApplyAsync();
-        Assert.True(repo.Repo.Exists("db/e2e/tables/customers.sql"));
-
-        var settingsPath = repo.Repo.PathOf(".maquettiste/maquettiste.json");
-        var settings = JsonNode.Parse(File.ReadAllText(settingsPath))!.AsObject();
-        settings["conventions"] = new JsonObject { ["pluralTables"] = false };
-        File.WriteAllBytes(settingsPath, TestServices.Json.Write(settings, "maquettiste.json", "maquettiste.json"));
-        var result = await repo.ApplyAsync();
-
-        Assert.False(repo.Repo.Exists("db/e2e/tables/customers.sql"));
-        Assert.True(repo.Repo.Exists("db/e2e/tables/customer.sql"));
-        Assert.Contains(result.Changes, c => c.Path == "db/e2e/tables/customers.sql" && c.Kind == FileChangeKind.Deleted);
-        Assert.Contains(result.Changes, c => c.Path == "db/e2e/tables/customer.sql" && c.Kind == FileChangeKind.Added);
-        Assert.Contains("stored in customer\n", repo.Repo.ReadFile("db/e2e/entities/customer.txt"), StringComparison.Ordinal);
-        await IncrementalTests.AssertIncrementalEqualsForcedAsync(repo);
-        E2ERepo.AssertOutcome(RunOutcome.Succeeded, await repo.RunAsync(GenerationMode.Check));
     }
 
     [Fact]
@@ -78,7 +55,6 @@ public sealed class ModelChangeTests
     [Fact]
     public async Task Deleting_an_element_deletes_its_outputs_and_keeps_its_owned_files()
     {
-        // Without migration facts: the delete drops a table, whose pending fact would stop generation.
         await using var repo = E2ERepo.Create(demo: false, settings: E2ERepo.RecordOff);
         var created = await repo.CreateElementAsync("""
             {"kind": "entity", "name": "Refund", "package": "01J92P0V01KDRN8GX5PGYCNKSX",
@@ -93,7 +69,7 @@ public sealed class ModelChangeTests
         Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
         var result = await repo.ApplyAsync();
 
-        foreach (var path in new[] { "db/e2e/entities/refund.txt", "db/e2e/tables/refunds.sql", "db/e2e/types/Refund.cs", "db/e2e/pair/Refund.g.cs", "db/e2e/regions/refund.txt" })
+        foreach (var path in new[] { "db/e2e/entities/refund.txt", "db/e2e/types/Refund.cs", "db/e2e/pair/Refund.g.cs", "db/e2e/regions/refund.txt" })
         {
             Assert.False(repo.Repo.Exists(path), path);
             Assert.Contains(result.Changes, c => c.Path == path && c.Kind == FileChangeKind.Deleted);
@@ -126,7 +102,7 @@ public sealed class ModelChangeTests
         Assert.All(all.Changes.Where(c => c.Kind != FileChangeKind.Kept), c => Assert.StartsWith("src/Generated/demo/", c.Path, StringComparison.Ordinal));
 
         // A filtered run does not orphan the other pack's files.
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
         var filtered = await repo.RunAsync(packs: ["e2e"]);
         E2ERepo.AssertOutcome(RunOutcome.Succeeded, filtered);
         Assert.All(filtered.Changes, c => Assert.Equal("e2e", c.Pack));
@@ -200,9 +176,8 @@ public sealed class ModelChangeTests
 
         Assert.Contains(result.Changes, c => c.Path == "db/e2e/entities/product.txt" && c.Kind == FileChangeKind.Deleted);
         Assert.Contains(result.Changes, c => c.Path == "db/e2e/entities/article.txt" && c.Kind == FileChangeKind.Added);
-        Assert.Contains(result.Changes, c => c.Path == "db/e2e/tables/articles.sql" && c.Kind == FileChangeKind.Added);
         Assert.Contains(result.Changes, c => c.Path == "db/e2e/scaffold/product.txt" && c.Kind == FileChangeKind.Kept); // still the team's
-        Assert.False(repo.Repo.Exists("db/e2e/tables/products.sql"));
+        Assert.True(repo.Repo.Exists("db/e2e/tables/products.sql")); // the table Article is bound to keeps its own name
         Assert.Contains("- Article", repo.Repo.ReadFile("db/e2e/index.txt"), StringComparison.Ordinal);
         await IncrementalTests.AssertIncrementalEqualsForcedAsync(repo);
         E2ERepo.AssertOutcome(RunOutcome.Succeeded, await repo.RunAsync(GenerationMode.Check));
@@ -213,7 +188,7 @@ public sealed class ModelChangeTests
     {
         await using var repo = await CheckTests.AppliedAsync();
         repo.Repo.WriteFile("db/e2e/entities/customer.txt", "edited by hand\n");
-        await repo.EditAsync(E2ERepo.CustomerId, n => n["attributes"]![1]!["length"] = 150);
+        await repo.WidenCustomerNameAsync();
 
         var skipped = await repo.RunAsync(handEdits: HandEditPolicy.Skip);
 

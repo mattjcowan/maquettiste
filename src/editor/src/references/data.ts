@@ -14,7 +14,6 @@ export function indexReferences(target: string, rows: readonly ElementSummary[])
     if (row.id === target) continue;
     if (row.package === target) add(row, row.kind === "package" ? "/parent" : "/package", row.kind === "package" ? "parent" : "package");
     if (row.base === target) add(row, "/base", "base");
-    if (row.entity === target) add(row, "/entity", "entity");
     if (row.database === target) add(row, "/database", "database");
     row.ends?.forEach((end, i) => {
       // An entry of an end's `types`: the row gives the entity entries in order but not stereotype entries between them, so the index is the entity entry's.

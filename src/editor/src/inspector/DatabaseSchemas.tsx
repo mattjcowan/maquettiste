@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
-import { applyBatchResult, elementQuery, indexQuery, invalidateResolved, keys, useDatabaseTables, useIndex } from "@/api/queries";
+import { applyBatchResult, elementQuery, indexQuery, invalidateResolved, keys, useDatabaseTables } from "@/api/queries";
 import type { BatchRequest, ModelJson } from "@/api/types";
 import { clone } from "@/lib/json";
 import { batchUndoEntry } from "@/workspaces/database/tableParts";
@@ -14,7 +14,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
-import { conventionSchemas, defaultSchemaName, schemasOf, type SchemaOp } from "@/model/databaseSchemas";
+import { defaultSchemaName, schemasOf, type SchemaOp } from "@/model/databaseSchemas";
 
 /** The undo label of a schema operation. */
 function schemaLabel(op: SchemaOp, schemas: readonly { id: string; name: string }[]): string {
@@ -147,18 +147,11 @@ type Rec = Record<string, unknown>;
 function RemoveSchemaDialog({ database, json, schema, onClose }: { database: string; json: Rec; schema: string; onClose: () => void }) {
   const run = useSchemaOperation();
   const tables = useDatabaseTables(database);
-  const index = useIndex();
   const schemas = schemasOf(json);
   const current = schemas.find((s) => s.id === schema);
   const others = schemas.filter((s) => s.id !== schema);
   const isDefault = !!current && current.name === defaultSchemaName(json);
-  const nameOf = (id: string) => index.data?.find((r) => r.id === id)?.name ?? id;
-  const living = [
-    ...(tables.data?.tables ?? []).filter((t) => t.schema === current?.name).map((t) => t.name),
-    ...Object.entries(conventionSchemas(json))
-      .filter(([, s]) => s === schema)
-      .map(([p]) => `${nameOf(p)} (domain)`),
-  ];
+  const living = (tables.data?.tables ?? []).filter((t) => t.schema === current?.name).map((t) => t.name);
   const [target, setTarget] = useState(others[0]?.id ?? "");
   const [fallback, setFallback] = useState(others[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);

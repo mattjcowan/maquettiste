@@ -1,6 +1,6 @@
 // The table editor's part tabs: Primary key, Unique constraints, Indexes, Foreign keys and Checks, each a dense grid of its
 // parts with Add and a Delete per row, editing the table document (schemas/v1/table.json) through `useTableDoc`: every change is
-// one save of the table, so one undo step (a table the model lays out is stored as a table file first, in the same step). A row
+// one save of the table, so one undo step. A row
 // picked here is the inspector's subject; the problems of a row show under it. A key keeps one column (the schema's minimum),
 // so the last column of a key cannot be unticked.
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -220,7 +220,7 @@ export function PartTab({ td, kind }: { td: TableDoc; kind: Exclude<TablePartKin
   const fkPattern = useForeignKeyPattern(td.database || null);
   if (!td.doc || !td.table) return <p className="text-12 text-secondary">Resolving the table…</p>;
   const doc = td.doc;
-  const fixed = td.mode === "fixed";
+  const fixed = false;
   const columns = tableColumns(doc);
   const label = { "primary-key": "Add primary key", unique: "Add unique constraint", index: "Add index", "foreign-key": "Add foreign key", check: "Add check" }[
     kind
@@ -243,11 +243,7 @@ export function PartTab({ td, kind }: { td: TableDoc; kind: Exclude<TablePartKin
   return (
     <div className="flex flex-col gap-2" data-testid={`table-tab-${kind}`}>
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-12 text-secondary">
-          {fixed
-            ? "This table's keys and constraints are set by the model; they cannot be edited here yet."
-            : `${qualifiedTable(td.table)}: pick a row to see it alone in the inspector.`}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-12 text-secondary">{`${qualifiedTable(td.table)}: pick a row to see it alone in the inspector.`}</span>
         {add}
       </div>
       {kind === "primary-key" ? (
@@ -1033,8 +1029,7 @@ export function ReferencedColumns({
 
 function ChecksGrid({ td, doc, edits, selected, select, problems, fixed, dialect }: GridProps & { dialect: string }) {
   const entries = partEntries(doc, "check");
-  if (!entries.length)
-    return <Empty text={td.mode === "file" ? "No check." : "No check yet: a check is added once the table is stored as a table file (Add check stores it)."} />;
+  if (!entries.length) return <Empty text="No check." />;
   return (
     <Grid headers={["Name", "Column", `Expression (${dialect})`, "Expression (any dialect)", ""]} testid="keys-checks">
       {entries.map((ck, i) => {

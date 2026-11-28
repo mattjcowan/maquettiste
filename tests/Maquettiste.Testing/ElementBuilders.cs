@@ -270,6 +270,10 @@ public sealed class EntityBuilder : ElementBuilder<EntityBuilder>
     /// <returns>The id.</returns>
     public string AttrId(string name) => _attributes.IdOf(name);
 
+    /// <summary>Returns the names of the entity's own attributes, in order.</summary>
+    /// <returns>The names.</returns>
+    public IReadOnlyList<string> AttributeNames() => [.. _attributes.Build().Select(a => a.Name)];
+
     /// <summary>Sets the entity's copy block (parts-and-copy-design.md).</summary>
     /// <param name="copy">The block.</param>
     /// <returns>This builder.</returns>
@@ -565,8 +569,7 @@ public sealed class DatabaseBuilder : ElementBuilder<DatabaseBuilder>
 {
     private readonly Dialect _dialect;
     private readonly List<DbSchema> _schemas = [];
-    private readonly List<ConventionPackage> _packages = [];
-    private ConventionMapping? _byConvention;
+    private ConventionMapping? _byConvention = ConventionMapping.None;
     private string? _defaultSchema;
     private Maquettiste.Engine.Model.Quoting _quoting = Maquettiste.Engine.Model.Quoting.Reserved;
 
@@ -601,29 +604,11 @@ public sealed class DatabaseBuilder : ElementBuilder<DatabaseBuilder>
         return this;
     }
 
-    /// <summary>Limits the database to entities in packages (and their sub-packages).</summary>
-    /// <param name="packages">The packages.</param>
-    /// <returns>This builder.</returns>
-    public DatabaseBuilder Packages(params PackageBuilder[] packages)
-    {
-        _packages.AddRange(packages.Select(p => new ConventionPackage { Package = p.Id }));
-        return this;
-    }
-
-    /// <summary>Takes a package's entities by convention into a schema.</summary>
-    /// <param name="package">The package.</param>
-    /// <param name="schemaId">The schema id (from <see cref="Schema"/>).</param>
-    /// <returns>This builder.</returns>
-    public DatabaseBuilder Package(PackageBuilder package, string schemaId)
-    {
-        _packages.Add(new ConventionPackage { Package = package.Id, Schema = schemaId });
-        return this;
-    }
-
-    /// <summary>Sets which entities the database takes by convention (<c>byConvention</c>).</summary>
+    /// <summary>Sets <c>byConvention</c>: <c>none</c> (the default, as the editor writes it), or <see langword="null"/> for a file without the key
+    /// (MQ4146 while an entity is not bound to the database).</summary>
     /// <param name="value">The setting.</param>
     /// <returns>This builder.</returns>
-    public DatabaseBuilder ByConvention(ConventionMapping value)
+    public DatabaseBuilder ByConvention(ConventionMapping? value)
     {
         _byConvention = value;
         return this;
@@ -639,11 +624,10 @@ public sealed class DatabaseBuilder : ElementBuilder<DatabaseBuilder>
         Schemas = [.. _schemas],
         Quoting = _quoting,
         ByConvention = _byConvention,
-        Packages = [.. _packages],
     };
 }
 
-/// <summary>Builds a designed table, or a synthesized table's overlay.</summary>
+/// <summary>Builds a designed table.</summary>
 public sealed class TableBuilder : ElementBuilder<TableBuilder>
 {
     private readonly DatabaseBuilder _database;
@@ -651,21 +635,9 @@ public sealed class TableBuilder : ElementBuilder<TableBuilder>
     private readonly List<ForeignKey> _foreignKeys = [];
     private readonly List<TableIndex> _indexes = [];
     private PrimaryKey? _primaryKey;
-    private TableOrigin _origin = TableOrigin.Designed;
-    private string? _entity;
 
     internal TableBuilder(ModelBuilder model, string name, DatabaseBuilder database)
         : base(model, name) => _database = database;
-
-    /// <summary>Makes the table the overlay of an entity's synthesized table.</summary>
-    /// <param name="entity">The entity.</param>
-    /// <returns>This builder.</returns>
-    public TableBuilder OverlayFor(EntityBuilder entity)
-    {
-        _origin = TableOrigin.Synthesized;
-        _entity = entity.Id;
-        return this;
-    }
 
     /// <summary>Adds a column.</summary>
     /// <param name="name">The name.</param>
@@ -677,17 +649,6 @@ public sealed class TableBuilder : ElementBuilder<TableBuilder>
     public TableBuilder Column(string name, string type, bool? nullable = null, int? length = null, string? nativeType = null)
     {
         _columns.Add(new Column { Id = Model.NewId(), Name = name, Type = type, Nullable = nullable, Length = length, NativeType = nativeType });
-        return this;
-    }
-
-    /// <summary>Adds an overlay column that overrides a synthesized column.</summary>
-    /// <param name="columnKey">The synthesized column key.</param>
-    /// <param name="name">The new name.</param>
-    /// <param name="nativeType">A native type.</param>
-    /// <returns>This builder.</returns>
-    public TableBuilder Overlay(string columnKey, string? name = null, string? nativeType = null)
-    {
-        _columns.Add(new Column { Id = Model.NewId(), Attribute = columnKey, Name = name ?? "", NativeType = nativeType });
         return this;
     }
 
@@ -747,6 +708,20 @@ public sealed class TableBuilder : ElementBuilder<TableBuilder>
 
     private sealed record TypeId(string Id) : ITypeSource;
 
+    /// <summary>
+    /// Binds an entity to the table: each attribute of the entity maps the column of the same name (attributes without one are left
+    /// unmapped). Since 0.29.0 an entity has rows in a database only through its binding.
+    /// </summary>
+    /// <param name="entity">The entity.</param>
+    /// <returns>This builder.</returns>
+    public TableBuilder Binds(EntityBuilder entity)
+    {
+        var fields = entity.AttributeNames().Where(n => _columns.Any(c => c.Name == n))
+            .Select(n => new BindingField { Attribute = entity.AttrId(n), Column = n }).ToList();
+        entity.Bind(new EntityBinding { Id = "", Database = _database.Id, Source = Id, Fields = fields });
+        return this;
+    }
+
     /// <summary>Changes the table the builder creates (columns, constraints, any property), after everything else.</summary>
     /// <param name="edit">The change.</param>
     /// <returns>This builder.</returns>
@@ -766,8 +741,6 @@ public sealed class TableBuilder : ElementBuilder<TableBuilder>
             Id = Id,
             Name = Name,
             Database = _database.Id,
-            Origin = _origin,
-            Entity = _entity,
             Columns = [.. _columns],
             PrimaryKey = _primaryKey,
             ForeignKeys = [.. _foreignKeys],
@@ -779,29 +752,19 @@ public sealed class TableBuilder : ElementBuilder<TableBuilder>
     }
 }
 
-/// <summary>Builds a mapping.</summary>
+/// <summary>Builds a relation mapping.</summary>
 public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
 {
     private readonly string _database;
-    private readonly string? _entity;
-    private readonly string? _relation;
-    private readonly EntityBuilder? _entityBuilder;
-    private readonly List<AttributeMapping> _attributes = [];
-    private string? _table;
-    private string? _schema;
-    private bool _ignore;
-    private InheritanceStrategy? _inheritance;
+    private readonly string _relation;
     private RelationShape? _shape;
-    private JsonElement? _discriminator;
     private string? _foreignKey;
 
-    internal MappingBuilder(ModelBuilder model, string name, string database, string? entity, string? relation, EntityBuilder? entityBuilder)
+    internal MappingBuilder(ModelBuilder model, string name, string database, string relation)
         : base(model, name)
     {
         _database = database;
-        _entity = entity;
         _relation = relation;
-        _entityBuilder = entityBuilder;
     }
 
     /// <summary>Names the existing foreign key that realizes a relation between bound tables.</summary>
@@ -810,50 +773,6 @@ public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
     public MappingBuilder ForeignKey(string foreignKeyId)
     {
         _foreignKey = foreignKeyId;
-        return this;
-    }
-
-    /// <summary>Binds the entity to a designed table.</summary>
-    /// <param name="table">The table.</param>
-    /// <returns>This builder.</returns>
-    public MappingBuilder Table(TableBuilder table)
-    {
-        _table = table.Id;
-        return this;
-    }
-
-    /// <summary>Places the entity's conventional table in a schema.</summary>
-    /// <param name="schemaId">The schema id.</param>
-    /// <returns>This builder.</returns>
-    public MappingBuilder Schema(string schemaId)
-    {
-        _schema = schemaId;
-        return this;
-    }
-
-    /// <summary>Excludes the element from the database.</summary>
-    /// <returns>This builder.</returns>
-    public MappingBuilder Ignore()
-    {
-        _ignore = true;
-        return this;
-    }
-
-    /// <summary>Sets the inheritance strategy (on a hierarchy root).</summary>
-    /// <param name="strategy">The strategy.</param>
-    /// <returns>This builder.</returns>
-    public MappingBuilder Inheritance(InheritanceStrategy strategy)
-    {
-        _inheritance = strategy;
-        return this;
-    }
-
-    /// <summary>Sets the discriminator value.</summary>
-    /// <param name="value">A string or integer.</param>
-    /// <returns>This builder.</returns>
-    public MappingBuilder Discriminator(object value)
-    {
-        _discriminator = ModelBuilder.ToJson(value);
         return this;
     }
 
@@ -866,33 +785,15 @@ public sealed class MappingBuilder : ElementBuilder<MappingBuilder>
         return this;
     }
 
-    /// <summary>Sets an entity attribute's storage.</summary>
-    /// <param name="attributeName">The attribute name.</param>
-    /// <param name="storage">The storage.</param>
-    /// <returns>This builder.</returns>
-    public MappingBuilder Storage(string attributeName, StorageKind storage)
-    {
-        var id = _entityBuilder?.AttrId(attributeName) ?? throw new InvalidOperationException("Storage applies to entity mappings.");
-        _attributes.Add(new AttributeMapping { Attribute = id, Storage = storage });
-        return this;
-    }
-
     /// <inheritdoc/>
     protected override Element CreateElement() => new Mapping
     {
         Id = Id,
         Name = Name,
         Database = _database,
-        Entity = _entity,
         Relation = _relation,
-        Table = _table,
-        Schema = _schema,
-        Ignore = _ignore,
-        Inheritance = _inheritance,
-        DiscriminatorValue = _discriminator,
         Shape = _shape,
         ForeignKey = _foreignKey,
-        Attributes = [.. _attributes],
     };
 }
 

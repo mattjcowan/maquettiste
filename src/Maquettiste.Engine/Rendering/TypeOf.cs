@@ -74,9 +74,7 @@ internal static class TypeOf
             case RColumn column:
                 {
                     context.Recorder.RecordObject(column);
-                    var type = column.Type == "reference" && column.ReferenceType is { } reference
-                        ? Reference(map, target, reference, column.Strategy, true)
-                        : Keyword(column.Type, target, map);
+                    var type = Keyword(column.Type, target, map);
                     return column.Nullable ? Wrap(map, "nullable", type) : type;
                 }
 
@@ -165,7 +163,7 @@ internal static class TypeOf
                 context.Recorder.RecordObject(column);
                 if (column.Table?.Database is { } db && SqlDialects.TryParse(db.Dialect, out var own) && own == dialect && column.NativeType.Length > 0)
                     return column.NativeType;
-                keyword = column.Type == "reference" && column.CodeType is { } codeType ? codeType : column.Type;
+                keyword = column.Type;
                 (length, precision, scale) = (column.Length, column.Precision, column.Scale);
                 databaseName = column.Table?.Database?.Name;
                 break;

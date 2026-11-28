@@ -137,12 +137,14 @@ internal sealed record EngineServices
     /// </summary>
     /// <param name="options">The engine options of the live model (the same model root, so paths read the same).</param>
     /// <param name="documents">The snapshot's documents.</param>
+    /// <param name="tolerant">Whether to drop the keys 0.29.0 removed with projection as documents are read (<see cref="TolerantDocumentStore"/>),
+    /// so a baseline or snapshot taken before that release still loads; an import's check reads the documents as they are.</param>
     /// <returns>The services.</returns>
-    internal static EngineServices CreateReadOnly(EngineOptions options, IModelDocumentStore documents)
+    internal static EngineServices CreateReadOnly(EngineOptions options, IModelDocumentStore documents, bool tolerant = true)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(documents);
-        return Build(options, Maquettiste.Engine.Snapshots.ReadOnlyPathPolicy.Instance, documents);
+        return Build(options, Maquettiste.Engine.Snapshots.ReadOnlyPathPolicy.Instance, tolerant ? new TolerantDocumentStore(documents) : documents);
     }
 
     private static EngineServices Build(EngineOptions options, IOutputPathPolicy enginePaths, IModelDocumentStore? documents)

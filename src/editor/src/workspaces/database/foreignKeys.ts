@@ -1,7 +1,6 @@
 // Opening the foreign key dialog and writing what it saves, the same way from the diagram (a drag, a double click on an edge),
 // the explorer (New foreign key on a table or its Foreign keys folder), the table editor's Foreign keys tab (Add foreign key,
-// Edit…) and the inspector (Edit…): every write goes through `updateTable`, so a table not stored as a file yet is stored first
-// and the key written into the new file in the same undo step, its ids read from the store's result.
+// Edit…) and the inspector (Edit…): every write goes through `updateTable`, one save and one undo step.
 import type { QueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
 import { databaseViewQuery, elementQuery, keys, useDatabaseView, useSettings } from "@/api/queries";
@@ -9,8 +8,7 @@ import type { ForeignKeyView, TableView } from "@/api/types";
 import type { AppServices as Services } from "@/app/context";
 import { newId } from "@/lib/ids";
 import { applyDraft, draftForTable, draftFromForeignKey, fkEntryOf, fkNamePattern, type FkDraft } from "./fkEdits";
-import { liveStoredFile, storedFileOf, updateTable } from "./storeTables";
-import { isLaidOutKey } from "./tableParts";
+import { updateTable } from "./tableQueue";
 
 type Json = Record<string, unknown>;
 
@@ -45,14 +43,13 @@ export async function openEditForeignKey(
   table: TableView,
   fk: ForeignKeyView,
 ): Promise<void> {
-  const file = isLaidOutKey(table.key) ? await liveStoredFile(qc, table.key) : table.key;
-  const doc = file ? await qc.fetchQuery({ ...elementQuery(file), staleTime: 0 }).catch(() => null) : null;
+  const doc = await qc.fetchQuery({ ...elementQuery(table.key), staleTime: 0 }).catch(() => null);
   const entry = doc ? fkEntryOf(doc.json as unknown as Json, fk) : undefined;
   services.store.getState().requestForeignKeyDialog({ database, draft: draftFromForeignKey(table, fk, tables, entry) });
 }
 
 /**
- * Writes a draft into its table: one undo step (with the store of a table not stored as a file yet). A draft the table has no
+ * Writes a draft into its table: one undo step. A draft the table has no
  * place for is said and nothing is written. Resolves to whether it was saved; the key is then the inspector's subject.
  */
 export async function saveForeignKey(
@@ -77,6 +74,6 @@ export async function saveForeignKey(
   if (!ok) return false;
   const name = d.name.trim() || d.editing?.name;
   s.notify(d.editing ? `Foreign key ${name ?? ""} saved.` : name ? `Foreign key ${name} created.` : "Foreign key created.");
-  if (name) s.inspectTable({ database, key: storedFileOf(d.table) ?? d.table, column: null, part: { kind: "foreign-key", id: name } });
+  if (name) s.inspectTable({ database, key: d.table, column: null, part: { kind: "foreign-key", id: name } });
   return true;
 }

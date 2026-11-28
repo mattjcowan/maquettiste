@@ -49,10 +49,6 @@ public sealed class ValidationFixtureTests
     [InlineData("values", new[] { "MQ3012", "MQ3013", "MQ3017", "MQ3019" })]
     [InlineData("physical", new[] { "MQ2001", "MQ4001", "MQ4002", "MQ4003", "MQ4005", "MQ4006", "MQ4008", "MQ4010" })]
     [InlineData("mappings", new[] { "MQ4004", "MQ4009", "MQ4011" })]
-    // The two families as they were before their overlays and entity mappings went (temporary: pull request 3 of retiring projection
-    // deletes them with the rules that judge projection).
-    [InlineData("physical-projected", new[] { "MQ2001", "MQ4001", "MQ4002", "MQ4003", "MQ4004", "MQ4005", "MQ4006", "MQ4007", "MQ4008", "MQ4010" })]
-    [InlineData("mappings-projected", new[] { "MQ4004", "MQ4009", "MQ4011" })]
     [InlineData("extensions", new[] { "MQ5001", "MQ5004" })]
     [InlineData("scripts", new[] { "MQ2007", "MQ5002", "MQ5003", "x/no-draft" })]
     [InlineData("reference-data", new[] { "MQ2001", "MQ2002", "MQ3019", "MQ7001", "MQ7002", "MQ7006", "MQ7007", "MQ7008", "MQ7010", "MQ7011" })]

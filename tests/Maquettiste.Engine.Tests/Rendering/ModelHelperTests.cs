@@ -233,7 +233,13 @@ public sealed class ModelHelperTests
               {"id": "names", "template": "names.scriban", "for": "model", "output": "names.txt"}]}
             """);
         WriteTemplate(repo, template);
-        await repo.EditAsync(MainDatabaseId, n => n["schemas"] = new JsonArray(new JsonObject { ["id"] = OpsSchema, ["name"] = "ops" }));
+        // The fixture's entities are not bound to these databases: they hold only the tables below.
+        await repo.EditAsync(MainDatabaseId, n =>
+        {
+            n["schemas"] = new JsonArray(new JsonObject { ["id"] = OpsSchema, ["name"] = "ops" });
+            n["byConvention"] = "none";
+        });
+        await repo.EditAsync(ReportingDatabaseId, n => n["byConvention"] = "none");
         await repo.CreateAsync($$"""
             {"kind":"table","id":"{{MainSettings}}","name":"settings","database":"{{MainDatabaseId}}","columns":[
               {"id":"01K7MHT0000000000000000011","name":"id","type":"int32","nullable":false}]}

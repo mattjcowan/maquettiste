@@ -8,6 +8,8 @@
       {
         "id": "01J92P0V1GMF7GJPA7981CH7YG",
         "entity": "01J92P0V0FJ23CGSNKM7P1W5V7",
+        "types": null,
+        "anyEntity": null,
         "role": "invoice",
         "navigation": "invoice",
         "displayName": null,
@@ -21,6 +23,8 @@
       {
         "id": "01J92P0V1H4D2M1HCK82ASJEWT",
         "entity": "01J92P0V0GWFR78HZH0P8Z3GY7",
+        "types": null,
+        "anyEntity": null,
         "role": "lines",
         "navigation": "lines",
         "displayName": null,
@@ -35,6 +39,7 @@
     "attributes": [],
     "allowDuplicates": false,
     "$schema": "../../.schema/v1/relation.json",
+    "excludeStereotypes": null,
     "suppressions": [],
     "id": "01J92P0V1BWHG0REWKSTR292RS",
     "name": "contains",
@@ -54,6 +59,7 @@
   "path": ".maquettiste/model/relations/contains.json",
   "hash": "f9fdc699d65150052e25ef459180736b24a44f97c69cbefd09c9d12897fd36e9",
   "dependencyHash": "a3cf0c1c7d14087687e129baf0bc2f4393b876aee3fec3dbee26a8c5a194d802",
+  "sidecarText": null,
   "json": {
     "$schema": "../../.schema/v1/relation.json",
     "kind": "relation",
@@ -79,6 +85,5 @@
         "ordered": true
       }
     ]
-  },
-  "sidecarText": null
+  }
 }

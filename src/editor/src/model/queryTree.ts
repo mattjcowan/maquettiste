@@ -574,33 +574,15 @@ export function sourceOptions(view: DatabaseView | null | undefined): SourceOpti
   return [...tables, ...views].sort((a, b) => a.name.localeCompare(b.name) || a.value.localeCompare(b.value));
 }
 
-/** The table files of a database the resolver reads a source id through: a synthesized table's overlay names its entity. */
-export interface TableFileRow {
-  id: string;
-  entity?: string | null;
-  relation?: string | null;
-}
-
 /**
- * The table or view a `source` names, as the resolver finds it: a table key, a table file's id (a designed table's id is its key,
- * an overlay's is its entity's or relation's table), a view id, or an entity id (its table in this database).
+ * The table or view a `source` names, as the resolver finds it: a table file's id (a table's id is its key) or a view id.
  */
-export function findSource(
-  view: DatabaseView | null | undefined,
-  source: string,
-  files: readonly TableFileRow[] = [],
-  named: readonly SourceOption[] = [],
-): SourceOption | null {
+export function findSource(view: DatabaseView | null | undefined, source: string, named: readonly SourceOption[] = []): SourceOption | null {
   if (!view) return named.find((o) => o.value === source) ?? null;
   const options = sourceOptions(view);
   const direct = options.find((o) => o.value === source);
   if (direct) return direct;
-  const own = named.find((o) => o.value === source);
-  if (own) return own;
-  const file = files.find((f) => f.id === source);
-  const owner = file?.entity ?? file?.relation;
-  if (owner) return options.find((o) => o.value === `${owner}@${view.id}`) ?? null;
-  return options.find((o) => o.kind === "table" && o.value === `${source}@${view.id}`) ?? null;
+  return named.find((o) => o.value === source) ?? null;
 }
 
 /** A column of a source as the editor offers it: the canonical text after the alias and the physical name. */
@@ -622,11 +604,11 @@ export function columnOptions(source: SourceOption | null): ColumnOption[] {
 const fold = (s: string) => s.replace(/_/g, "").toUpperCase();
 
 /**
- * The column a reference's part after the alias names, as the resolver matches it: the physical name, the key, the attribute id,
+ * The column a reference's part after the alias names, as the resolver matches it: the physical name, the key,
  * then ignoring case, then ignoring case and underscores, when only one column matches.
  */
 export function matchColumn(columns: readonly ColumnOption[], name: string): ColumnOption | null {
-  const exact = columns.find((c) => c.name === name) ?? columns.find((c) => c.ref === name) ?? columns.find((c) => c.column?.attributeId === name);
+  const exact = columns.find((c) => c.name === name) ?? columns.find((c) => c.ref === name);
   if (exact) return exact;
   const ignoringCase = columns.filter((c) => c.name.toLowerCase() === name.toLowerCase());
   if (ignoringCase.length) return ignoringCase.length === 1 ? ignoringCase[0] : null;
@@ -646,13 +628,12 @@ export interface ScopeAlias {
 export function scopeOf(
   body: Pick<Subquery, "from" | "joins">,
   view: DatabaseView | null | undefined,
-  files: readonly TableFileRow[] = [],
   outer: readonly ScopeAlias[] = [],
   named: readonly SourceOption[] = [],
 ): ScopeAlias[] {
   // A query written as SQL text has no `from`: it has no sources to scope.
   const own = [body.from, ...(body.joins ?? [])].filter(Boolean).map((s) => {
-    const source = findSource(view, s.source, files, named);
+    const source = findSource(view, s.source, named);
     return { alias: s.alias ?? source?.name ?? s.source, source, columns: columnOptions(source), outer: false };
   });
   return [...own, ...outer.filter((o) => !own.some((x) => x.alias === o.alias)).map((o) => ({ ...o, outer: true }))];

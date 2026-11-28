@@ -6,8 +6,7 @@ namespace Maquettiste.Engine.Validation;
 /// <summary>
 /// The members a table file inherits from its stereotypes, as validation sees them (next-phase-2-design.md section 3.1, D8): MQ2027,
 /// MQ2028 and MQ4078 on the <c>redefines</c> and <c>excludes</c> of designed and imported table files through
-/// <see cref="TableMembers.CheckLinks"/> (an overlay's links are judged by the resolver, which knows the stereotypes its table skips),
-/// and the helpers the physical, seed and binding rules use to look a table's columns and keys up beside its inherited ones.
+/// <see cref="TableMembers.CheckLinks"/>, and the helpers the physical, seed and binding rules use to look a table's columns and keys up beside its inherited ones.
 /// </summary>
 internal static class MemberRules
 {
@@ -16,7 +15,7 @@ internal static class MemberRules
     /// <param name="report">The report of the document to validate.</param>
     public static void Validate(ValidationContext context, Report report)
     {
-        if (report.Document.Element is not Table { Origin: not TableOrigin.Synthesized } table || (table.Redefines.Count == 0 && table.Excludes.Count == 0))
+        if (report.Document.Element is not Table table || (table.Redefines.Count == 0 && table.Excludes.Count == 0))
             return;
         foreach (var d in TableMembers.CheckLinks(TableMembers.Of(context.Model, table), table))
             report.Add(d.Rule, d.Message, d.JsonPointer ?? "", d.ElementId);
@@ -25,7 +24,7 @@ internal static class MemberRules
     /// <summary>
     /// A designed or imported table file as the lookups of validation read it: its own columns, primary key, uniques and indexes, then
     /// the inherited ones, each with its keyed id and its column lists keyed (the table's own primary key wins; a second one is the
-    /// resolver's MQ4076). An overlay, a table without members, and an instance that is not the snapshot's own (a copy this method
+    /// resolver's MQ4076). A table without members, and an instance that is not the snapshot's own (a copy this method
     /// returned, so it never adds the members twice) come back unchanged.
     /// </summary>
     /// <param name="model">The snapshot.</param>
@@ -33,7 +32,7 @@ internal static class MemberRules
     /// <returns>The table with its inherited members, or <paramref name="file"/>.</returns>
     public static Table WithMembers(ModelSnapshot model, Table file)
     {
-        if (file.Origin == TableOrigin.Synthesized || !ReferenceEquals(model.Get<Table>(file.Id), file))
+        if (!ReferenceEquals(model.Get<Table>(file.Id), file))
             return file;
         var set = TableMembers.Of(model, file);
         if (set.IsEmpty)

@@ -16,12 +16,11 @@ namespace Maquettiste.Engine.Tests.Editor;
 /// kept until the model, the settings or the pack change; and a template that reads no seed and no schema diff converts no seed row and
 /// diffs no database.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class PreviewBoundsTests
 {
     private static CancellationToken Ct => EditorRepo.Ct;
 
-    private static string TableKey => EditorRepo.CustomerId + "@" + EditorRepo.MainDatabaseId;
+    private const string TableKey = "01M8EJPZN867GR1CJR5ZERBJ0V"; // the customers table
 
     [Fact]
     public async Task A_preview_plans_no_unit_and_renders_one_unit_for_one_element()
@@ -37,6 +36,22 @@ public sealed class PreviewBoundsTests
         Assert.NotEmpty(entity.Files);
         Assert.Equal(0, planner.Calls);
         Assert.Equal(["sql-ddl/table:" + TableKey, "csharp-dapper/entity:" + EditorRepo.CustomerId], renderer.Keys);
+    }
+
+    [Fact]
+    public async Task A_template_written_before_0_29_0_that_reads_is_junction_still_writes_the_junction_line()
+    {
+        // The 0.28.0 sql-ddl table.scriban marked a junction table with table.is_junction; it now follows the relation mapping that names the
+        // table as its junction table.
+        await using var repo = EditorRepo.Create();
+        const string Older = "{{ if table.is_junction }}-- Junction table.{{ else }}-- Plain table.{{ end }}";
+        var options = new PreviewOptions { Overlay = new Dictionary<string, string> { ["table.scriban"] = Older } };
+
+        var junction = await repo.Service.PreviewAsync("sql-ddl", "table", "01M8EJPZN9Y3HNXTC7V3Q7CP50", options, Ct); // payment_invoice
+        var plain = await repo.Service.PreviewAsync("sql-ddl", "table", TableKey, options, Ct);
+
+        Assert.Equal("-- Junction table.", Assert.Single(junction.Files).Text.Trim());
+        Assert.Equal("-- Plain table.", Assert.Single(plain.Files).Text.Trim());
     }
 
     [Fact]

@@ -7,8 +7,8 @@ namespace Maquettiste.Packs.Tests;
 /// <summary>
 /// The several-types storage model (several-types-design.md section 19.4): one database of designed tables that store every usual way a
 /// relation with an end of several types is held, with the checks and uniques MQ4118 suggests written into the tables by the team, and a
-/// relation mapping per way. Entities Item (key <c>id</c>), Part and Assembly (TPT under Item), Folder, Note and Comment, each bound to its
-/// table. Ways: 1 a key on each type's table (FolderItems), 2 a column per type (PerType), 3 a type and an id (TypeAndId), 4 an id unique
+/// relation mapping per way. Entities Item (key <c>id</c>), Part and Assembly (a table per type under Item, baseForeignKey), Folder, Note and Comment, each
+/// bound to its table. Ways: 1 a key on each type's table (FolderItems), 2 a column per type (PerType), 3 a type and an id (TypeAndId), 4 an id unique
 /// across types (UniqueId), 5 a key to the shared base table (BaseKey), 6 a link table with an attribute column (LinkTable), 7 a table per type
 /// (PerTypeTables), 8 one link table for several relations with constants (Shared), 9 both ends a type and an id (BothEnds), 10 both ends ids
 /// unique across types (BothIds). Step 2 adds a type's column (comments.tool_id for a new type Tool in way 2) and drops another's
@@ -79,21 +79,22 @@ internal static class TypeStorageModel
         foreach (var (id, name, @base, table) in entities)
         {
             var entity = new JsonObject { ["$schema"] = "../../.schema/v1/entity.json", ["kind"] = "entity", ["id"] = Id(id), ["name"] = name, ["package"] = Id(Package) };
+            // A root binds its key to its table's id column; Part and Assembly join items through their table's key (table per type).
+            var binding = new JsonObject { ["id"] = Id(1900 + id), ["database"] = Id(Db), ["source"] = Id(table) };
             if (@base is { } b)
+            {
                 entity["base"] = Id(b);
+                binding["baseForeignKey"] = Id(table + 50);
+            }
             else
             {
                 entity["key"] = new JsonObject { ["attributes"] = new JsonArray(Id(900 + id)) };
                 entity["attributes"] = new JsonArray(new JsonObject { ["id"] = Id(900 + id), ["name"] = "id", ["type"] = "uuid" });
+                binding["fields"] = new JsonArray(new JsonObject { ["attribute"] = Id(900 + id), ["column"] = Id(table + 1) });
             }
 
+            entity["bindings"] = new JsonArray(binding);
             yield return ("entities/" + name.ToLowerInvariant(), entity);
-            var mapping = Element("mapping", 1900 + id, name + " in db1", "../../");
-            mapping["entity"] = Id(id);
-            mapping["table"] = Id(table);
-            if (id == Item)
-                mapping["inheritance"] = "tpt";
-            yield return ($"mappings/{name.ToLowerInvariant()}-in-db1", mapping);
         }
 
         foreach (var table in Tables(all, step))
@@ -129,7 +130,6 @@ internal static class TypeStorageModel
     private static JsonObject Table(int t, string name, JsonArray columns, params int[] primaryKey)
     {
         var table = Element("table", t, name);
-        table["origin"] = "designed";
         table["columns"] = columns;
         table["primaryKey"] = new JsonObject { ["name"] = "pk_" + name, ["columns"] = new JsonArray([.. primaryKey.Select(c => (JsonNode)Id(c))]) };
         return table;

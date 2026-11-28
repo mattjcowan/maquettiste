@@ -1,9 +1,0 @@
-{
-  "$schema": "../../../.schema/v1/database.json",
-  "kind": "database",
-  "id": "01JQDBS0000000000000000001",
-  "name": "main",
-  "dialect": "postgresql",
-  "version": "16",
-  "byConvention": "none"
-}

@@ -27,64 +27,21 @@ public sealed class IncrementalTests
     }
 
     [Fact]
-    public async Task Creating_a_mapping_re_renders_the_entity_that_it_maps()
-    {
-        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
-        await f.RunAsync();
-        Assert.Contains("table: customers", f.Outputs()["out/entities/Customer.txt"], StringComparison.Ordinal);
-
-        // The mapping file is new: no e: key of the last render names it; the entity's r: key sees it.
-        await f.WriteModelAsync(b => Models.Shop(b, extra: (m, customer, main) => m.Mapping(main, customer).Ignore()));
-        f.Renderer = new FakeRenderer();
-        var result = await f.RunAsync();
-
-        Assert.Equal(RunOutcome.Succeeded, result.Outcome);
-        Assert.Contains(f.Renderer.Rendered, k => k.StartsWith("basic/entity:", StringComparison.Ordinal) && Customer(f, k));
-        Assert.Contains("table: -", f.Outputs()["out/entities/Customer.txt"], StringComparison.Ordinal);
-        await AssertForcedRunChangesNothing(f);
-    }
-
-    [Fact]
-    public async Task Creating_a_mapping_that_changes_nothing_still_re_renders_and_writes_nothing()
-    {
-        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
-        await f.RunAsync();
-        await f.WriteModelAsync(b => Models.Shop(b, extra: (m, customer, main) => m.Mapping(main, customer)));
-        f.Renderer = new FakeRenderer();
-        var result = await f.RunAsync();
-
-        Assert.Equal(RunOutcome.Succeeded, result.Outcome);
-        Assert.Contains(f.Renderer.Rendered, k => k.StartsWith("basic/entity:", StringComparison.Ordinal) && Customer(f, k));
-        Assert.Equal(0, result.FilesWritten);
-        await AssertForcedRunChangesNothing(f);
-    }
-
-    [Fact]
-    public async Task Creating_a_table_overlay_re_renders_the_entity()
-    {
-        await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
-        await f.RunAsync();
-        await f.WriteModelAsync(b => Models.Shop(b, extra: (m, customer, main) => m.Table("clients", main).OverlayFor(customer)));
-        f.Renderer = new FakeRenderer();
-        var result = await f.RunAsync();
-
-        Assert.Equal(RunOutcome.Succeeded, result.Outcome);
-        Assert.Contains(f.Renderer.Rendered, k => k.StartsWith("basic/entity:", StringComparison.Ordinal) && Customer(f, k));
-        Assert.Contains("table: clients", f.Outputs()["out/entities/Customer.txt"], StringComparison.Ordinal);
-        await AssertForcedRunChangesNothing(f);
-    }
-
-    [Fact]
     public async Task Creating_a_relation_re_renders_both_ends()
     {
         await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
         await f.RunAsync();
         await f.WriteModelAsync(b =>
         {
+            // The shop model in the same order (the same ids), with a foreign key from products to customers that stores the relation.
             var customer = b.Entity("Customer").Key("id", "uuid").Attr("name", "string");
             var product = b.Entity("Product").Key("id", "uuid").Attr("title", "string");
-            b.Database("main", Dialect.PostgreSql);
-            b.Relation("favours", customer, product, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many, fromRole: "fan", toNavigation: "favourites");
+            var main = b.Database("main", Dialect.PostgreSql);
+            var customers = b.Table("customers", main).Column("id", "uuid", nullable: false).Column("name", "string").PrimaryKey("id").Binds(customer);
+            var products = b.Table("products", main).Column("id", "uuid", nullable: false).Column("title", "string").PrimaryKey("id").Binds(product)
+                .Column("fan_id", "uuid").ForeignKey(customers, "fan_id");
+            var favours = b.Relation("favours", customer, product, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many, fromRole: "fan", toNavigation: "favourites");
+            b.Mapping(main, favours).ForeignKey(((Table)b.BuildElements().First(e => e.Id == products.Id)).ForeignKeys[0].Id);
         });
         f.Renderer = new FakeRenderer();
         var result = await f.RunAsync();
@@ -156,12 +113,8 @@ public sealed class IncrementalTests
     {
         await using var f = await GenerationFixture.CreateAsync(b => Models.Shop(b), "basic");
         await f.RunAsync();
-        await f.WriteModelAsync(b =>
-        {
-            b.Entity("Customer").Key("id", "uuid").Attr("name", "string");
-            b.Database("main", Dialect.PostgreSql);
-        });
         File.Delete(Path.Combine(f.Repo.ModelRoot, "model", "entities", "product.json"));
+        File.Delete(Path.Combine(f.Repo.ModelRoot, "model", "databases", "main", "tables", "products.json"));
         f.Renderer = new FakeRenderer();
         var result = await f.RunAsync();
 
@@ -236,40 +189,6 @@ public sealed class IncrementalTests
     {
         var id = key[(key.IndexOf(':', StringComparison.Ordinal) + 1)..];
         return f.Store.Current?.Get<Entity>(id)?.Name == "Customer";
-    }
-
-    /// <summary>A forced run over the incremental result renders everything and finds nothing to write: incremental equals forced.</summary>
-    [Fact]
-    public async Task An_entity_mapping_that_becomes_a_promoted_relation_mapping_re_renders_the_entity_list()
-    {
-        // A model with no relation mapping: the mapping file's own key is on no list, and its kind set does not move when it turns into a
-        // relation mapping under the same id. The entity list records pm:relation-mappings in every model, so the promoted entity appears.
-        const string mappingId = "01K9PR00000000000000000001";
-        void Model(ModelBuilder b, bool promoted)
-        {
-            var customer = b.Entity("Customer").Key("id", "uuid").Attr("name", "string");
-            var product = b.Entity("Product").Key("id", "uuid").Attr("title", "string");
-            var main = b.Database("main", Dialect.PostgreSql);
-            var favours = b.Relation("favours", customer, product);
-            b.Add(promoted
-                ? new Mapping { Id = mappingId, Name = "shop mapping", Database = main.Id, Relation = favours.Id, Shape = RelationShape.Promoted }
-                : new Mapping { Id = mappingId, Name = "shop mapping", Database = main.Id, Entity = customer.Id });
-        }
-
-        await using var f = await GenerationFixture.CreateAsync(b => Model(b, promoted: false), "basic");
-        // The index reads the entity list's size only, so only the list's membership keys can make it render again.
-        f.WritePackFile("basic", "index.tpl", "{{entity-count}}\n");
-        await f.RunAsync();
-        Assert.Equal("2", f.Outputs()["out/index.txt"].TrimEnd());
-
-        await f.WriteModelAsync(b => Model(b, promoted: true));
-        f.Renderer = new FakeRenderer();
-        var result = await f.RunAsync();
-
-        Assert.True(result.Outcome == RunOutcome.Succeeded, string.Join("\n", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
-        Assert.Contains("basic/index", f.Renderer.Rendered);
-        Assert.Equal("3", f.Outputs()["out/index.txt"].TrimEnd()); // the promoted entity joins the list
-        await AssertForcedRunChangesNothing(f);
     }
 
     private static async Task AssertForcedRunChangesNothing(GenerationFixture f)

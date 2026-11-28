@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
@@ -23,46 +22,30 @@ internal sealed partial class Materializer
     };
 
     /// <summary>
-    /// The designed table a proposed table becomes: its own members with the proposal's shape, the overlay's annotations, and the members
-    /// its stereotypes contribute left inherited (next-phase-2-design.md section 3.1, decision 15). The table file holds no inherited
-    /// column, key, index or check; the overlay's <c>redefines</c>, <c>excludes</c> and <c>excludeStereotypes</c> move in with it, and a
-    /// stereotype the projection realized through attributes, which now reaches a designed table that holds those columns as its own,
-    /// gets an <c>excludes</c> entry for each of its members.
+    /// The designed table a proposed table becomes: its own members with the proposal's shape, and the members its stereotypes contribute
+    /// left inherited (next-phase-2-design.md section 3.1, decision 15). The table file holds no inherited column, key, index or check; a
+    /// stereotype whose attributes the table holds as columns of its own gets an <c>excludes</c> entry for each of its members.
     /// </summary>
     private JsonObject TableNode(Database db, string? schemaId, DesignedTable t, Dictionary<DesignedTable, string> tableIds,
-        Dictionary<DesignedTable, Dictionary<string, string>> columnIds, Dictionary<string, string> remap, Dictionary<DesignedForeignKey, string> fkIds,
+        Dictionary<DesignedTable, Dictionary<string, string>> columnIds, Dictionary<DesignedForeignKey, string> fkIds,
         EffectiveConventions conventions, IReadOnlyDictionary<string, string> typeMap, Dictionary<DesignedCheck, string> checkIds)
     {
         var tableId = tableIds[t];
         var columns = columnIds[t];
-        var overlay = t.Overlay;
         var node = new JsonObject { ["kind"] = "table", ["id"] = tableId, ["name"] = t.Name, ["database"] = db.Id };
-        var schema = (t.Kind == DesignedTableKind.Lookup ? null : schemaId) ?? t.SchemaId ?? db.Schemas.FirstOrDefault(s => s.Name == DefaultSchemaName(db))?.Id;
+        var schema = SchemaOf(db, schemaId, t);
         if (schema is not null)
             node["schema"] = schema;
-        // The designed table keeps the package whose defaults reach the projected table: the overlay's own, else its entity's (or
-        // relation's) when that package's chain gives tables a default, since a designed table no longer falls back to it.
-        var package = overlay?.Package ?? (t.PackageId is { } owning
-            && snapshot.EffectiveStereotypes(new StereotypeHolder(ElementKind.Table, [], [], owning, null)).Count > 0 ? owning : null);
+        var package = PackageOf(t);
         if (package is not null)
             node["package"] = package;
-        var raw = overlay is null ? null : Raw(overlay.Id);
-        if (overlay is not null)
-            CopyAnnotations(raw, node);
         if (t.Comment is { Length: > 0 } comment)
             node["comment"] = comment;
-        CarryMemberLinks(db, t, overlay, raw, schema, package, remap, node);
+        ExcludeRealizedStereotypes(db, t, schema, package, node);
 
         var columnArray = new JsonArray();
         foreach (var column in t.Columns)
-        {
-            var entry = column.Entry;
-            var c = ColumnNode(db, schema, column, columns[column.Key], entry, conventions, typeMap);
-            if (entry is not null && raw?["columns"] is JsonArray rawColumns
-                && rawColumns.OfType<JsonObject>().FirstOrDefault(x => x["id"]?.GetValue<string>() == entry.Id) is { } rawEntry)
-                CopyAnnotations(rawEntry, c);
-            columnArray.Add(c);
-        }
+            columnArray.Add(ColumnNode(db, schema, column, columns[column.Key], conventions, typeMap));
 
         node["columns"] = columnArray;
         string Col(DesignedColumn column) => columns[column.Key];
@@ -121,12 +104,10 @@ internal sealed partial class Materializer
             if (fk.Deferrable != "not-deferrable")
                 fkNode["deferrable"] = fk.Deferrable;
             foreignKeys.Add(fkNode);
-            if (target.ExistingProjected)
-                _notes.Add($"Foreign key '{fk.Name}' of table '{t.Name}' references table '{target.ExistingName}', which entity '{target.ExistingEntityName}' still projects: it names that table by its key until the entity is materialized too.");
         }
 
         node["foreignKeys"] = foreignKeys;
-        var checks = OverlayChecks(db, t, overlay, columns, remap);
+        var checks = new JsonArray();
         foreach (var check in t.Checks)
         {
             var checkId = ids.NewId();
@@ -168,90 +149,35 @@ internal sealed partial class Materializer
         return node;
     }
 
-    /// <summary>
-    /// An overlay's checks as the designed table holds them, each one whether the DDL holds it or not (a tree check on a dialect other
-    /// than PostgreSQL, a SQL text check without a text for the dialect), so the model loses none; a check in the expression language
-    /// keeps its tree with each path's column key turned into the designed table's column id. A check the dialect keeps is named as the
-    /// projection named it (its own name, else the <c>checkName</c> pattern with its ordinal among the kept checks).
-    /// </summary>
-    private JsonArray OverlayChecks(Database db, DesignedTable t, Table? overlay, Dictionary<string, string> columns, Dictionary<string, string> remap)
-    {
-        var checks = new JsonArray();
-        if (overlay is null)
-            return checks;
-        var original = snapshot.Get<Table>(overlay.Id) ?? overlay;
-        var dialect = DialectTypeMaps.Name(db.Dialect);
-        var conventions = EffectiveConventions.For(snapshot.Settings, db.Name);
-        string Remap(string key) => remap.GetValueOrDefault(key, key);
-        var ordinal = 0;
-        for (var i = 0; i < overlay.Checks.Count; i++)
-        {
-            var file = overlay.Checks[i];
-            var source = i < original.Checks.Count ? original.Checks[i] : file;
-            bool kept;
-            if (source.Expression.Count == 0 && source.Condition is not null)
-                kept = db.Dialect == Dialect.PostgreSql && ExprResolution.Type(snapshot, original, source.Id) is not null;
-            else
-                kept = source.Expression.TryGetValue(dialect, out _) || source.Expression.TryGetValue("*", out _);
-            string? name = file.Name;
-            if (kept)
-            {
-                ordinal++;
-                name ??= NamePattern.Render(conventions.CheckName, new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["table"] = t.Name, ["name"] = ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                }, conventions.ColumnCase);
-            }
-
-            var checkNode = new JsonObject { ["id"] = file.Id };
-            if (name is not null)
-                checkNode["name"] = name;
-            if (file.Condition is { } condition && file.Expression.Count == 0)
-                checkNode["condition"] = RemapPaths(JsonSerializer.SerializeToNode(condition, EngineJson.Options)!, Remap);
-            else
-                checkNode["expression"] = JsonSerializer.SerializeToNode(file.Expression);
-            if (file.Column is { } fileColumn)
-                checkNode["column"] = kept && t.Resolve(fileColumn) is { } resolved ? columns[resolved.Key] : Remap(fileColumn);
-            if (file.Properties.Count > 0)
-                checkNode["properties"] = JsonSerializer.SerializeToNode(file.Properties, EngineJson.Options);
-            checks.Add(checkNode);
-        }
-
-        return checks;
-    }
+    /// <summary>The schema a proposed table goes to: the request's (a lookup table keeps its own), else the table's, else the database's default.</summary>
+    private static string? SchemaOf(Database db, string? schemaId, DesignedTable t) =>
+        (t.Kind == DesignedTableKind.Lookup ? null : schemaId) ?? t.SchemaId ?? db.Schemas.FirstOrDefault(s => s.Name == DefaultSchemaName(db))?.Id;
 
     /// <summary>
-    /// The holder the projection gave a table without a file of its own: an overlay's, else its entity's package and routed schema (a
-    /// child table its owner's, a junction its relation's package and the default schema's entry).
+    /// The package a proposed table's file names: its entity's (or relation's) when that package's chain gives tables a default stereotype,
+    /// so the designed table takes the defaults; else none.
     /// </summary>
-    private StereotypeHolder ProjectedHolder(Database db, DesignedTable t)
-    {
-        if (t.Overlay is { } overlay)
-            return snapshot.HolderOf(snapshot.Get<Table>(overlay.Id) ?? overlay);
-        if (t.Kind == DesignedTableKind.Child && t.Owner is { } owner)
-            return ProjectedHolder(db, owner);
-        var defaults = snapshot.StereotypeDefaults;
-        if (t.Relation is { } relation)
-            return new StereotypeHolder(ElementKind.Table, [], [], snapshot.Get<Relation>(relation.Id)?.Package, defaults.SchemaOf(db.Id, null));
-        var entityId = t.Entity?.Id;
-        return new StereotypeHolder(ElementKind.Table, [], [], entityId is null ? null : snapshot.Get<Entity>(entityId)?.Package,
-            entityId is null ? defaults.SchemaOf(db.Id, null) : defaults.SchemaOf(db.Id, null, entityId));
-    }
+    private string? PackageOf(DesignedTable t) =>
+        t.PackageId is { } owning && snapshot.EffectiveStereotypes(new StereotypeHolder(ElementKind.Table, [], [], owning, null)).Count > 0 ? owning : null;
+
+    /// <summary>The holder a proposed table's file will have: its package and schema.</summary>
+    private StereotypeHolder HolderOf(Database db, string? schemaId, DesignedTable t) =>
+        new(ElementKind.Table, [], [], PackageOf(t), snapshot.StereotypeDefaults.SchemaOf(db.Id, SchemaOf(db, schemaId, t)));
 
     /// <summary>
-    /// The keys of the columns the projected table inherited from its stereotypes, before and after: each keyed id moves with the table's
-    /// key (next-phase-2-design.md section 3.1, decision 15), and the snapshot's alias records the move so the next migration sees none.
+    /// The columns a proposed table inherits from its stereotypes: each member's key under the proposal's key and under the table's id
+    /// (next-phase-2-design.md section 3.1, decision 15), with the member.
     /// </summary>
-    private IEnumerable<(string From, string To, Column Member)> InheritedColumns(Database db, DesignedTable t, string tableId)
+    private IEnumerable<(string From, string To, Column Member)> InheritedColumns(Database db, string? schemaId, DesignedTable t, string tableId)
     {
-        foreach (var member in MembersOf(db, t)?.Columns ?? [])
+        foreach (var member in MembersOf(db, schemaId, t)?.Columns ?? [])
             yield return (member.Key, ContributedMembers.KeyOf(tableId, member.MemberId), member.Member);
     }
 
-    /// <summary>The members the projected table inherited from its stereotypes, or <see langword="null"/> when none reaches it.</summary>
-    private TableMemberSet? MembersOf(Database db, DesignedTable t)
+    /// <summary>The members a proposed table inherits from its stereotypes, or <see langword="null"/> when none reaches it.</summary>
+    private TableMemberSet? MembersOf(Database db, string? schemaId, DesignedTable t)
     {
-        var effective = snapshot.EffectiveStereotypes(ProjectedHolder(db, t));
+        var effective = snapshot.EffectiveStereotypes(HolderOf(db, schemaId, t));
         if (effective.Count == 0)
             return null;
         var skip = new HashSet<string>(StringComparer.Ordinal);
@@ -261,17 +187,16 @@ internal sealed partial class Materializer
                 skip.Add(from.Key);
         }
 
-        return TableMembers.Of(snapshot, t.Key, effective, t.Overlay?.Redefines ?? [], t.Overlay?.Excludes ?? [], skip);
+        return TableMembers.Of(snapshot, t.Key, effective, [], [], skip);
     }
 
     /// <summary>
     /// Leaves out an index an indexed attribute gives the table when an index the table inherits from a stereotype covers the same
-    /// columns, as the projection did (an inherited index counts as a declared one): the designed table would otherwise hold two
-    /// indexes of one name.
+    /// columns (an inherited index counts as a declared one): the designed table would otherwise hold two indexes of one name.
     /// </summary>
-    private void DropIndexesInheritedOnes(Database db, DesignedTable t)
+    private void DropIndexesInheritedOnes(Database db, string? schemaId, DesignedTable t)
     {
-        if (MembersOf(db, t) is not { Indexes.Count: > 0 } set)
+        if (MembersOf(db, schemaId, t) is not { Indexes.Count: > 0 } set)
             return;
         string? NameOf(string key) => t.Resolve(key)?.Name ?? set.Columns.FirstOrDefault(c => c.Key == key)?.Member.Name;
         var inherited = set.Indexes
@@ -284,16 +209,11 @@ internal sealed partial class Materializer
     }
 
     /// <summary>
-    /// Moves the overlay's member links into the designed table (<c>excludeStereotypes</c>, <c>redefines</c> with their column lists
-    /// following the column ids, <c>excludes</c>), and excludes every member of a stereotype the projection skipped because it stores the
-    /// stereotype's attributes as columns (decision 1) when that stereotype reaches the designed table.
+    /// Excludes every member of a stereotype the table realizes through attributes it stores as columns of its own (decision 1), when that
+    /// stereotype reaches the designed table.
     /// </summary>
-    private void CarryMemberLinks(Database db, DesignedTable t, Table? overlay, JsonObject? raw, string? schema, string? package,
-        Dictionary<string, string> columns, JsonObject node)
+    private void ExcludeRealizedStereotypes(Database db, DesignedTable t, string? schema, string? package, JsonObject node)
     {
-        if (raw?["excludeStereotypes"] is JsonArray excludeStereotypes)
-            node["excludeStereotypes"] = excludeStereotypes.DeepClone();
-
         var skipped = new HashSet<string>(StringComparer.Ordinal);
         foreach (var column in t.Columns)
         {
@@ -301,49 +221,16 @@ internal sealed partial class Materializer
                 skipped.Add(from.Key);
         }
 
-        var excludes = new SortedSet<string>(overlay?.Excludes ?? [], StringComparer.Ordinal);
-        var excluded = new HashSet<string>(StringComparer.Ordinal);
-        if (skipped.Count > 0)
+        if (skipped.Count == 0)
+            return;
+        var excludes = new SortedSet<string>(StringComparer.Ordinal);
+        var holder = new StereotypeHolder(ElementKind.Table, [], [], package, snapshot.StereotypeDefaults.SchemaOf(db.Id, schema));
+        foreach (var applied in snapshot.EffectiveStereotypes(holder))
         {
-            var holder = new StereotypeHolder(ElementKind.Table, overlay?.Stereotypes ?? [], overlay?.ExcludeStereotypes ?? [], package,
-                snapshot.StereotypeDefaults.SchemaOf(db.Id, schema));
-            foreach (var applied in snapshot.EffectiveStereotypes(holder))
-            {
-                if (!skipped.Contains(applied.Stereotype.Key))
-                    continue;
-                foreach (var id in MemberIds(applied.Stereotype))
-                {
-                    excludes.Add(id);
-                    excluded.Add(id);
-                }
-            }
-        }
-
-        if (raw?["redefines"] is JsonArray redefines)
-        {
-            var kept = new JsonArray();
-            foreach (var entry in redefines.OfType<JsonObject>())
-            {
-                // A redefinition of a member the designed table now excludes would be MQ2028; it goes with the member.
-                if (entry["member"]?.GetValue<string>() is { } member && excluded.Contains(member))
-                    continue;
-                var copy = (JsonObject)entry.DeepClone();
-                foreach (var list in new[] { "columns", "onDeleteColumns" })
-                {
-                    if (copy[list] is not JsonArray keys)
-                        continue;
-                    for (var i = 0; i < keys.Count; i++)
-                    {
-                        if (keys[i]?.GetValue<string>() is { } key && columns.TryGetValue(key, out var id))
-                            keys[i] = id;
-                    }
-                }
-
-                kept.Add(copy);
-            }
-
-            if (kept.Count > 0)
-                node["redefines"] = kept;
+            if (!skipped.Contains(applied.Stereotype.Key))
+                continue;
+            foreach (var id in MemberIds(applied.Stereotype))
+                excludes.Add(id);
         }
 
         if (excludes.Count > 0)
@@ -354,10 +241,9 @@ internal sealed partial class Materializer
     /// A designed table's column with the shape the proposal gives it: its type and facets, the native type when it is not the one the
     /// dialect map renders (a scalar type's, or the referenced column's for a foreign key column), nullability, defaults (an attribute's
     /// default expression among them, as SQL for the dialect), identity or a key sequence (written as a sequence file), computed,
-    /// collation, comment and the overlay entry's own sensitivity; an overlay entry's native type and SQL defaults win. The attribute's
-    /// sensitivity is not written: the attribute keeps saying it, and the bound column shows it.
+    /// collation and comment. The attribute's sensitivity is not written: the attribute keeps saying it, and the bound column shows it.
     /// </summary>
-    private JsonObject ColumnNode(Database db, string? schema, DesignedColumn column, string columnId, Column? entry, EffectiveConventions conventions,
+    private JsonObject ColumnNode(Database db, string? schema, DesignedColumn column, string columnId, EffectiveConventions conventions,
         IReadOnlyDictionary<string, string> typeMap)
     {
         var dialect = DialectTypeMaps.Name(db.Dialect);
@@ -376,17 +262,13 @@ internal sealed partial class Materializer
             c["unicode"] = unicode;
         if (column.FixedLength)
             c["fixedLength"] = true;
-        if (entry?.NativeType is { } native)
-            c["nativeType"] = native;
-        else if (column.NativeType is { } computedNative && !string.Equals(computedNative, rendered, StringComparison.Ordinal))
+        if (column.NativeType is { } computedNative && !string.Equals(computedNative, rendered, StringComparison.Ordinal))
             c["nativeType"] = computedNative;
         if (!column.Nullable)
             c["nullable"] = false;
         if (column.Default is { } value)
             c["default"] = JsonSerializer.SerializeToNode(value);
-        if (entry is { DefaultSql.Count: > 0 })
-            c["defaultSql"] = JsonSerializer.SerializeToNode(entry.DefaultSql);
-        else if (column.DefaultSql is { } sql)
+        if (column.DefaultSql is { } sql)
             c["defaultSql"] = new JsonObject { [dialect] = sql };
         if (column.DefaultName is { } defaultName)
             c["defaultName"] = defaultName;
@@ -408,7 +290,7 @@ internal sealed partial class Materializer
         else if (column.Sequence is { } sequence)
         {
             c["generated"] = "sequence";
-            c["sequence"] = sequence.ExistingId is { } existing && snapshot.Get<Sequence>(existing) is not null ? existing : CreateSequence(db, sequence, schema);
+            c["sequence"] = CreateSequence(db, sequence, schema);
         }
 
         if (column.Computed is { } computed)
@@ -424,8 +306,6 @@ internal sealed partial class Materializer
             c["collation"] = collation;
         if (column.Comment is { Length: > 0 } columnComment)
             c["comment"] = columnComment;
-        if (entry?.Sensitive is { } sensitive)
-            c["sensitive"] = JsonSerializer.SerializeToNode(sensitive);
         return c;
     }
 
@@ -436,7 +316,6 @@ internal sealed partial class Materializer
             return made;
         var id = Reused(sequence.Key, "sequence") ?? ids.NewId();
         _createdSequences[sequence.Key] = id;
-        _sequenceKeys[sequence.Key] = id;
         var node = new JsonObject { ["kind"] = "sequence", ["id"] = id, ["name"] = sequence.Name, ["database"] = db.Id, ["type"] = sequence.Type };
         if (schema is not null)
             node["schema"] = schema;
@@ -446,13 +325,12 @@ internal sealed partial class Materializer
 
     /// <summary>
     /// The binding of a materialized entity: every column of its table accounted for, write and delete by default. One table for a
-    /// hierarchy: the root's binding names the type column, each binding its type code when an older mapping gave one; the columns of the
-    /// other entities in the table are listed as ignored. A table per type: the derived binding names its base foreign key and maps only
+    /// hierarchy: the root's binding names the type column; the columns of the other entities in the table are listed as ignored. A table per type: the derived binding names its base foreign key and maps only
     /// the entity's own attributes. Each attribute stored in a table of its own gets a <c>childTables</c> entry.
     /// </summary>
     private JsonObject BindingFor(Database db, DesignedEntity e, DesignedTable table, Dictionary<DesignedTable, string> tableIds,
         Dictionary<DesignedTable, Dictionary<string, string>> columnIds, Dictionary<DesignedForeignKey, string> fkIds, ResolvedModel resolved,
-        DesignEntityHints? hints, List<(string From, string To, Column Member)> inherited)
+        List<(string From, string To, Column Member)> inherited)
     {
         var columns = columnIds[table];
         var fields = new JsonArray();
@@ -478,7 +356,7 @@ internal sealed partial class Materializer
                 _notes.Add($"Column '{column.Name}' of table '{table.Name}' maps to no attribute of entity '{rentity.Name}' a binding can hold: it is listed as ignored.");
         }
 
-        // A column the table inherits from a stereotype fills itself or is listed, as the projection's inherited columns were.
+        // A column the table inherits from a stereotype fills itself or is listed as ignored.
         var dialect = DialectTypeMaps.Name(db.Dialect);
         foreach (var (_, to, member) in inherited)
         {
@@ -492,8 +370,6 @@ internal sealed partial class Materializer
         var binding = new JsonObject { ["id"] = ids.NewId(), ["database"] = db.Id, ["source"] = tableIds[table] };
         if (shared && ReferenceEquals(e.Root, e) && e.Discriminator is { } discriminator)
             binding["discriminatorColumn"] = columns[discriminator.Key];
-        if (hints?.DiscriminatorValue is { } code)
-            binding["discriminatorValue"] = JsonSerializer.SerializeToNode(code);
         if (e.Shape == DesignHierarchy.PerType && e.BaseForeignKey is { } foreignKey && fkIds.TryGetValue(foreignKey, out var fkId))
             binding["baseForeignKey"] = fkId;
         binding["fields"] = fields;
@@ -761,103 +637,4 @@ internal sealed partial class Materializer
         return node;
     }
 
-    /// <summary>
-    /// Why an overlay's check in the expression language cannot move into the designed table: a path reads an attribute of the entity,
-    /// or a value object member, that the proposed table stores in no column, so the designed table would have no column for it.
-    /// <see langword="null"/> when every such path reads a column. The check is never dropped: materialize refuses until it reads stored
-    /// members only.
-    /// </summary>
-    private string? UnstoredRead(Entity entity, DesignedTable table, Table overlay, Dictionary<string, string> columns)
-    {
-        HashSet<string>? attributes = null;
-        foreach (var check in overlay.Checks)
-        {
-            if (check.Condition is not { } condition || check.Expression.Count > 0)
-                continue;
-            foreach (var id in ExprSites.PathIds(condition))
-            {
-                var key = overlay.Columns.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.Ordinal))?.Attribute ?? id;
-                attributes ??= ExprSites.AttributesOf(snapshot, entity).Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
-                if (columns.ContainsKey(key) || !attributes.Contains(key.Split('.')[0]))
-                    continue;
-                var site = ExprSites.Of(snapshot, overlay).First(s => string.Equals(s.SubId, check.Id, StringComparison.Ordinal));
-                var member = ExprText.Print(new Expr { Path = [id] }, ExprSites.Scope(snapshot, overlay, snapshot.GetDocument(overlay.Id), site, text: false));
-                return $"Check '{check.Name ?? check.Id}' of the overlay of entity '{entity.Name}' reads '{member}', which table '{table.Name}' stores in no column "
-                    + $"of its own (MQ4008 at {site.Pointer} of the overlay), so the designed table would have no column for it. Store '{member}' in the table, or "
-                    + "change or remove the check, then materialize again.";
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Points what named the projected tables by their keys at the designed tables: the sources and column references of the
-    /// database's queries, the foreign keys of other tables, and other entities' bindings. A table that keeps its overlay's id keeps
-    /// every reference by that id.
-    /// </summary>
-    private void RewriteReferences(Database db, RDatabase rdb, Dictionary<string, (string Id, Dictionary<string, string> Columns)> byKey,
-        Dictionary<string, (string Id, Dictionary<string, string> Columns)> byOverlay)
-    {
-        foreach (var query in rdb.Queries)
-        {
-            var replace = QueryColumnRewrite.Replacements(query, t => byKey.TryGetValue(t.Key, out var hit) ? hit.Id : null,
-                (t, column) => byKey.TryGetValue(t.Key, out var hit) && hit.Columns.TryGetValue(column.Key, out var newId) ? newId : null);
-            if (replace.Count > 0 && Raw(query.Id) is { } raw && QueryColumnRewrite.Apply(raw, replace))
-                PutRewrite(query.Id, raw, $"query {query.Name} reads the designed table by its id");
-        }
-
-        foreach (var table in snapshot.All<Table>().Where(t => t.Database == db.Id && !byOverlay.ContainsKey(t.Id)))
-        {
-            if (Raw(table.Id) is not { } raw || raw["foreignKeys"] is not JsonArray fks)
-                continue;
-            var changed = false;
-            foreach (var fk in fks.OfType<JsonObject>())
-            {
-                if (fk["referencesTable"]?.GetValue<string>() is not { } referenced || !byKey.TryGetValue(referenced, out var hit) && !byOverlay.TryGetValue(referenced, out hit))
-                    continue;
-                if (referenced != hit.Id)
-                {
-                    fk["referencesTable"] = hit.Id;
-                    changed = true;
-                }
-
-                if (fk["referencesColumns"] is JsonArray columns)
-                {
-                    for (var i = 0; i < columns.Count; i++)
-                    {
-                        if (columns[i]?.GetValue<string>() is { } key && hit.Columns.TryGetValue(key, out var newId) && key != newId)
-                        {
-                            columns[i] = newId;
-                            changed = true;
-                        }
-                    }
-                }
-            }
-
-            if (changed)
-                PutRewrite(table.Id, raw, $"table {ChangePlanner.ReadableName(snapshot, table)} references the designed table by its id");
-        }
-
-        foreach (var entity in snapshot.All<Entity>())
-        {
-            if (entity.Bindings.Count == 0)
-                continue;
-            var raw = _work.TryGetValue(entity.Id, out var working) ? working.Node : Raw(entity.Id);
-            if (raw?["bindings"] is not JsonArray bindings)
-                continue;
-            var changed = false;
-            foreach (var binding in bindings.OfType<JsonObject>())
-            {
-                var key = binding["source"]?.GetValue<string>();
-                if (key is null || !byKey.TryGetValue(key, out var hit))
-                    continue;
-                var map = new Dictionary<string, string>(hit.Columns, StringComparer.Ordinal) { [key] = hit.Id };
-                changed |= QueryColumnRewrite.ReplaceStrings(binding, map, ["source", "table", "column"]);
-            }
-
-            if (changed && !_work.ContainsKey(entity.Id))
-                PutRewrite(entity.Id, raw, $"entity {entity.Name} binds to the designed table by its id");
-        }
-    }
 }

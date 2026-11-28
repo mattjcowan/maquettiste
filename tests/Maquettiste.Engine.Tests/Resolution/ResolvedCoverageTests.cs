@@ -216,6 +216,8 @@ public sealed class ResolvedCoverageTests
         [("process right", "whileFrozen")] = "on use.right (the inline right target)",
         [("inline right", "right")] = "a use's named right: RRightUse.Right (the process right target)",
         [("inline right", "states")] = "where the right holds: RRightUse.States (the process right target)",
+        // A database's byConvention takes only "none" since 0.29.0, which every database then means: nothing to resolve.
+        [("database", "byConvention")] = "only none since 0.29.0, which every database means",
         // How a repeating part's rows are added is the named query's: RNamedQuery.Union (sql-queries-design.md section 10).
         [("repeating part", "union")] = "on the named query: RNamedQuery.Union",
     });
@@ -249,8 +251,6 @@ public sealed class ResolvedCoverageTests
         [("transition", "gatePolicy")] = "Gate",
         // A subject's owner field is an attribute or a to-one end (actors-design.md section 6): OwnerAttribute or OwnerEnd.
         [("subject", "owner")] = "OwnerAttribute",
-        // The overlay entry's synthesized column key is the column's key.
-        [("column", "attribute")] = "Key",
         // A query written as SQL text (sql-queries-design.md section 10): its declared columns are its select, its reads its uses.
         [("query", "columns")] = "Select",
         [("query", "reads")] = "Uses",
@@ -304,9 +304,8 @@ public sealed class ResolvedCoverageTests
     ];
 
     /// <summary>
-    /// Kinds with no resolved object at all (found 2026-10-01, a later round): every property of their files is pending. A mapping
-    /// resolves into <c>entity.mappings</c> and <c>relation.mappings</c> (<see cref="REntityMapping"/>, <see cref="RRelationMapping"/>)
-    /// rather than an object of its own, so its annotations and its own fields are not reachable; a diagram is not resolved. The tag
+    /// Kinds with no resolved object at all (found 2026-10-01, a later round): every property of their files is pending. A relation
+    /// mapping resolves into <c>relation.mappings</c> (<see cref="RRelationMapping"/>) rather than an object of its own, so its annotations and its own fields are not reachable; a diagram is not resolved. The tag
     /// vocabularies and category trees resolve into <c>model.tag_vocabularies</c> and <c>model.category_trees</c>
     /// (next-phase-1-design.md section 5.5). The verb vocabulary resolves into <c>model.verbs</c> (verbs-design.md section 6): each own verb an
     /// <see cref="RVerb"/>, and its hidden built-in verbs left out unless named, so the file itself is no object.

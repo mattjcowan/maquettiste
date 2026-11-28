@@ -16,22 +16,4 @@ describe("dropTableDuplicates", () => {
   it("keeps the index row when the database side does not list the table", () => {
     expect(dropTableDuplicates([hit("T1", "table")], byId).map((h) => h.id)).toEqual(["T1"]);
   });
-  it("drops the index row of a table for a relation or an attribute overlay by its resolved key", () => {
-    const rows = new Map([
-      ["R1", { id: "R1", kind: "table", name: "", database: "D1", entity: "E1" } as unknown as ElementSummary],
-      ["A1", { id: "A1", kind: "table", name: "", database: "D1", entity: "E1" } as unknown as ElementSummary],
-    ]);
-    const keyOfFile = (row: ElementSummary) => (row.id === "R1" ? "REL1@D1" : "E1.attr@D1");
-    const out = dropTableDuplicates(
-      [hit("R1", "table"), hit("A1", "table"), hit("D1/t:REL1@D1", "table", "D1"), hit("D1/t:E1.attr@D1", "table", "D1")],
-      rows,
-      keyOfFile,
-    );
-    expect(out.map((h) => h.id)).toEqual(["D1/t:REL1@D1", "D1/t:E1.attr@D1"]);
-  });
-  it("keeps an attribute overlay's file when only the entity's own table is listed", () => {
-    const rows = new Map([["A1", { id: "A1", kind: "table", name: "", database: "D1", entity: "E1" } as unknown as ElementSummary]]);
-    const out = dropTableDuplicates([hit("A1", "table"), hit("D1/t:E1@D1", "table", "D1")], rows, () => "E1.attr@D1");
-    expect(out.map((h) => h.id)).toEqual(["A1", "D1/t:E1@D1"]);
-  });
 });

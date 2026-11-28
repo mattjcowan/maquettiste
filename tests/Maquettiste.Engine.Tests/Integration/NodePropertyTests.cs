@@ -13,7 +13,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// check and the fixture's table check, with an extension that types them and links them to an invented kind <c>policy</c>.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class NodePropertyTests
 {
     private const string Policy = "01JRNP00000000000000000001";
@@ -39,7 +38,7 @@ public sealed class NodePropertyTests
     private const string InvoiceNumber = "01J92P0V0R3VSP7D5238DTNZX1";
     private const string ProcessPath = ".maquettiste/model/processes/approval.json";
     private const string InvoicePath = ".maquettiste/model/entities/invoice.json";
-    private const string TablePath = ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json";
+    private const string TablePath = ".maquettiste/model/databases/main/tables/invoices.json";
 
     private const string TypedProperties = $$"""{ "owner": "finance", "meets": "{{Policy}}" }""";
 

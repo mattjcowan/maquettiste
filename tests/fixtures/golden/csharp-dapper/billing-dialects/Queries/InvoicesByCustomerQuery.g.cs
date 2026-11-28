@@ -19,7 +19,7 @@ public partial interface IInvoicesByCustomerQuery
 }
 
 /// <summary>One row of query InvoicesByCustomer.</summary>
-public sealed partial record InvoicesByCustomerRow(Guid Id, string Number, DateOnly IssuedOn, string Status, string? Notes, DateTimeOffset CreatedAt);
+public sealed partial record InvoicesByCustomerRow(Guid Id, string Number, DateOnly IssuedOn, global::App.Model.Billing.InvoiceStatus Status, string? Notes, DateTimeOffset CreatedAt);
 
 /// <summary>The Dapper implementation of <see cref="IInvoicesByCustomerQuery"/> (database main, postgresql).</summary>
 /// <remarks>
@@ -52,6 +52,6 @@ public partial class InvoicesByCustomerQuery(IDbConnection mq_connection, IDbTra
         public string? notes { get; set; }
         public DateTimeOffset createdAt { get; set; }
 
-        public InvoicesByCustomerRow ToItem() => new(id, number, issuedOn, status, notes, createdAt);
+        public InvoicesByCustomerRow ToItem() => new(id, number, issuedOn, global::App.Model.Billing.InvoiceStatusCodes.Parse(status), notes, createdAt);
     }
 }

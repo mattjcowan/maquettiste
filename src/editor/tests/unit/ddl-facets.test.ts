@@ -18,32 +18,31 @@ const ID = "01K6BND0000000000000000002";
 const MAIN = "01J92P0V1QRN2181XM2ZWE02W4";
 
 const col = (key: string, type: string, name = "c") => ({ key, name, type }) as ColumnView;
-const newId = () => "N1";
 
 describe("a column's DDL facets", () => {
   it("sets unicode three ways, fixedLength as a flag and defaultName as text; a type without the facet drops it", () => {
     const doc: Json = { kind: "table", columns: [{ id: "c1", name: "code", type: "string", length: 3 }] };
     const c = col("c1", "string", "code");
     const entry = () => (doc.columns as Json[])[0];
-    expect(setColumnField(doc, c, "unicode", "false", newId)).toBe(true);
+    expect(setColumnField(doc, c, "unicode", "false")).toBe(true);
     expect(entry().unicode).toBe(false);
     expect(unicodeChoice(entry())).toBe("false");
-    setColumnField(doc, c, "unicode", "", newId);
+    setColumnField(doc, c, "unicode", "");
     expect("unicode" in entry()).toBe(false);
     expect(unicodeChoice(entry())).toBe("");
-    setColumnField(doc, c, "unicode", "true", newId);
-    setColumnField(doc, c, "fixedLength", true, newId);
-    setColumnField(doc, c, "defaultName", "  df_code ", newId);
+    setColumnField(doc, c, "unicode", "true");
+    setColumnField(doc, c, "fixedLength", true);
+    setColumnField(doc, c, "defaultName", "  df_code ");
     expect(entry()).toMatchObject({ unicode: true, fixedLength: true, defaultName: "df_code" });
-    setColumnField(doc, c, "fixedLength", false, newId);
-    setColumnField(doc, c, "defaultName", "", newId);
+    setColumnField(doc, c, "fixedLength", false);
+    setColumnField(doc, c, "defaultName", "");
     expect("fixedLength" in entry() || "defaultName" in entry()).toBe(false);
     // To binary: unicode goes (MQ4057 otherwise), a fixed length stays; to int32 both go.
-    setColumnField(doc, c, "fixedLength", true, newId);
-    setColumnField(doc, c, "type", "binary", newId);
+    setColumnField(doc, c, "fixedLength", true);
+    setColumnField(doc, c, "type", "binary");
     expect(entry()).toMatchObject({ type: "binary", fixedLength: true });
     expect("unicode" in entry()).toBe(false);
-    setColumnField(doc, col("c1", "binary", "code"), "type", "int32", newId);
+    setColumnField(doc, col("c1", "binary", "code"), "type", "int32");
     expect("fixedLength" in entry()).toBe(false);
   });
 

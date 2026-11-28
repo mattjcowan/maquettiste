@@ -18,7 +18,6 @@ namespace Maquettiste.Engine.Tests.Generation;
 /// changed element enters once a where filter or a skip hint lets it in.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class OutputImpactTests
 {
     private const string CustomerId = EditorRepo.CustomerId;
@@ -98,19 +97,30 @@ public sealed class OutputImpactTests
     {
         await using var repo = EditorRepo.Create();
         repo.EditSettingsOnDisk(E2ERepo.RecordOff);
-        var applied = await repo.Store.ApplyBatchAsync(repo.Store.ParseBatch(Encoding.UTF8.GetBytes(
-            """{ "operations": [ """ + Create("Refund") + " ] }")).Batch!, ChangeSource.Cli, Ct);
-        Assert.Equal(SaveOutcome.Saved, applied.Outcome);
-        var refund = applied.Ids.Minted.Single(m => m.Pointer.Length == 0).Id;
+        // Entity Refund and table refunds, which it is bound to.
+        var applied = await repo.Store.ApplyBatchAsync(repo.Store.ParseBatch(Encoding.UTF8.GetBytes("""
+            { "operations": [
+              { "op": "create", "as": "$refunds", "element": { "kind": "table", "name": "refunds", "database": "@database:main", "schema": "@schema:billing",
+                "columns": [ { "as": "$refundsId", "name": "id", "type": "uuid", "nullable": false } ], "primaryKey": { "columns": [ "$refundsId" ] } } },
+              { "op": "create", "element": { "kind": "entity", "name": "Refund", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "key": { "attributes": [ "$RefundId" ] },
+                "attributes": [ { "as": "$RefundId", "name": "id", "type": "uuid", "required": true } ],
+                "bindings": [ { "database": "@database:main", "source": "$refunds", "fields": [ { "attribute": "$RefundId", "column": "$refundsId" } ] } ] } } ] }
+            """)).Batch!, ChangeSource.Cli, Ct);
+        Assert.True(applied.Outcome == SaveOutcome.Saved, string.Join("; ", applied.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var refunds = applied.Ids.Minted.Single(m => m.Operation == 0 && m.Pointer.Length == 0).Id;
+        var refund = applied.Ids.Minted.Single(m => m.Operation == 1 && m.Pointer.Length == 0).Id;
         await GenerateAsync(repo);
-        var document = (await repo.Store.GetElementAsync(refund, Ct))!;
+        var entityDocument = (await repo.Store.GetElementAsync(refund, Ct))!;
+        var tableDocument = (await repo.Store.GetElementAsync(refunds, Ct))!;
 
-        var preview = await DryRunAsync(repo, $$"""{ "op": "delete", "id": "{{refund}}", "expectedHash": "{{document.Hash}}" }""");
+        var preview = await DryRunAsync(repo,
+            $$"""{ "op": "delete", "id": "{{refund}}", "expectedHash": "{{entityDocument.Hash}}" }""",
+            $$"""{ "op": "delete", "id": "{{refunds}}", "expectedHash": "{{tableDocument.Hash}}" }""");
 
         var entity = Pack(preview, "csharp-dapper").Units.Single(u => u.Key == "csharp-dapper/entity:" + refund);
         Assert.Equal("deleted", entity.Change);
         Assert.NotEmpty(entity.Outputs);
-        var table = Pack(preview, "sql-ddl").Units.Single(u => u.Key == "sql-ddl/table:" + refund + "@" + EditorRepo.MainDatabaseId);
+        var table = Pack(preview, "sql-ddl").Units.Single(u => u.Key == "sql-ddl/table:" + refunds);
         Assert.Equal("deleted", table.Change);
     }
 

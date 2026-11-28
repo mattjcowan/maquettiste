@@ -168,7 +168,7 @@ export interface paths {
          *     the command palette and every canvas start from this list.
          *
          *     E5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it
-         *     changes exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e14`.
+         *     changes exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e15`.
          *
          *     `?locale=<tag>` (a declared locale; the default locale is the same as none) fills `displayName` from that locale's fallback
          *     chain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per
@@ -391,8 +391,8 @@ export interface paths {
          *     references; a required one makes the delete `invalid`, and the first diagnostic is the readable MQ2001 naming the referrer.
          *     `delete-dependents` also resolves required references in the same change: the referrer loses the smallest part that is
          *     valid without the reference (an attribute whose type is deleted, a diagram member, a key, a foreign key), or, when only
-         *     the whole referrer would do (a table, view, sequence or mapping of a deleted database; a relation, mapping or overlay of a
-         *     deleted entity), it is deleted with its own dependents, recursively. A deleted database's `databases.<name>` conventions
+         *     the whole referrer would do (a table, view, sequence or mapping of a deleted database; a relation mapping of a
+         *     deleted relation), it is deleted with its own dependents, recursively. A deleted database's `databases.<name>` conventions
          *     entry in `maquettiste.json` goes in the same change. `GET /api/model/elements/{id}/delete-plan` shows all of it first.
          */
         delete: operations["deleteElement"];
@@ -537,7 +537,7 @@ export interface paths {
         put?: never;
         /**
          * Validate the whole model or a scope
-         * @description An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type an overlay pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a validation reports what generation would. With `against`, the whole model is also compared with a model snapshot.
+         * @description An empty body or `{}` validates everything. Load diagnostics (files that failed to parse) are included, and so are the resolver's findings once the whole model validates without error (the resolved MQ4005 of a foreign key column whose type its table pins, MQ4001, MQ4008, MQ4009, MQ4011; computed once per model version), scoped like the load diagnostics, so a validation reports what generation would. With `against`, the whole model is also compared with a model snapshot.
          */
         post: operations["validate"];
         delete?: never;
@@ -713,8 +713,7 @@ export interface paths {
         };
         /**
          * What can be materialized in one database
-         * @description What the database's materialize screens list (erratum E43): the entities with no binding to the database, each flagged
-         *     `projected` when the database still projects a table for it (by convention or a mapping element), and the database's
+         * @description What the database's materialize screens list (erratum E43): the entities with no binding to the database, and the database's
          *     designed and imported tables and its views with the entity bindings that read or write each (`boundBy`; several entities
          *     on one table are told apart by their constants). Materialize with the batch operations `materialize-tables`,
          *     `materialize-entities` and `materialize-attributes` (`POST /api/model/batch`), after a look at `POST .../materialize/preview`. The MCP tool
@@ -748,18 +747,18 @@ export interface paths {
          * What a materialize operation would do
          * @description Plans a materialize operation over the route's database and validates the result, writing nothing: the body is the batch
          *     operation without its database, `{ "op": "materialize-tables", "entities": [...], "schema"?: <schema id>, "hierarchy"?: <shape or root id to shape>, "listStorage"?: <choice or attribute id to choice> }` (a designed
-         *     table per entity with the shape its projection has, and a binding), `{ "op": "materialize-entities", "tables": [...],
+         *     table per entity and a binding), `{ "op": "materialize-entities", "tables": [...],
          *     "package": <package id> }` (an entity per table or view, bound to it, and a relation per foreign key between them) or
          *     `{ "op": "materialize-attributes", "entities": [...], "columns"?: [...] }` (per bound entity, an attribute per column of its
          *     binding's source that nothing in the binding names, or per column named for one entity, mapped to it) or
          *     `{ "op": "materialize-columns", "entities": [...], "attributes"?: [...] }` (per bound entity reading a table file, a column of
-         *     that table per attribute the binding leaves unmapped, shaped as the projection would make it, mapped to it). A refusal (an
+         *     that table per attribute the binding leaves unmapped, shaped from the attribute, mapped to it). A refusal (an
          *     entity or table already bound; for attributes, an entity with no binding, a query source, a column already mapped; for
          *     columns, a source that is not a table file, an attribute already mapped) is MQ4055 in `diagnostics`. The binding
          *     operations take the same route: `{ "op": "map-by-name", "entities": [...] }` (the attributes each binding leaves unmapped,
          *     mapped to the free columns of the same loose name) and `{ "op": "resync-binding", "entities": [...], "columns"?: [...],
          *     "keepNames"?: true }` (each binding whose source is a table file brought into step with it); both record provenance, read
-         *     files only, collect the binding rules (MQ4044 to MQ4054, MQ4087, MQ4088) from the conceptual layer and this database
+         *     files only, collect the binding rules (MQ4044 to MQ4053, MQ4087, MQ4088) from the conceptual layer and this database
          *     alone, and a refusal is MQ4089. The MCP tool `preview_materialize` answers the same.
          */
         post: operations["previewMaterialize"];
@@ -784,12 +783,10 @@ export interface paths {
         };
         /**
          * The resolved tables of one database
-         * @description The physical model after conventions, mappings and table overlays are applied: every table (synthesized,
-         *     designed or imported), its columns with the attribute each one stores, keys, foreign keys and indexes, and
+         * @description The physical model: every designed or imported table, its columns, keys, foreign keys and indexes, and
          *     every view, sequence, routine, database type, SQL object, query and schema. The database, each schema, table, column,
          *     view, sequence, routine, database type, SQL object and query carries the annotations of its own file or entry (display and plural names, description, stereotypes, tags, category,
-         *     properties, generation hints); a synthesized table without an overlay, or a synthesized column without an
-         *     overlay entry, has none, except the stereotypes a table's schema and package defaults give it. Columns, keys,
+         *     properties, generation hints). Columns, keys,
          *     foreign keys and indexes a stereotype contributes follow the table's own, keyed `<tableKey>.<memberId>`, with
          *     their `memberOrigin` (next-phase-2-design.md 3.1). The Database workspace draws table diagrams from it and an
          *     entity's Storage tab reads its binding sources' columns from it. A model with errors returns `view: null` and
@@ -820,7 +817,7 @@ export interface paths {
         /**
          * The table list of one database, without columns
          * @description E5c: a projection of the resolved database for the explorer's Databases and Mappings sections, table-name search and
-         *     the coverage line: every table's key, name, schema, origin, entity or relation and column count, without the columns.
+         *     the coverage line: every table's key, name, schema, relation and column count, without the columns.
          *     Unlike `/view` it answers on a model with errors: the tables whose owning elements are valid come back, the rest are
          *     left out, `partial` is true and the diagnostics say why. The editor keeps the last complete list per database and
          *     shows it with a stale badge while a response is partial. Per model version the server validates the model once and
@@ -846,14 +843,14 @@ export interface paths {
                  * @example 01J92P0V0FJ23CGSNKM7P1W5V7
                  */
                 id: components["parameters"]["ElementId"];
-                /** @description The table's key, as `TableSummary.key` (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`). */
+                /** @description The table's key, as `TableSummary.key` (a table file's id). */
                 key: string;
             };
             cookie?: never;
         };
         /**
          * One table of a database with its columns, keys and indexes
-         * @description E5f: one `TableView` (columns with `attributeId`, primary key, foreign keys, unique constraints, indexes) for a table's
+         * @description E5f: one `TableView` (columns, primary key, foreign keys, unique constraints, indexes) for a table's
          *     children in the explorer and column-level "mapped by", without `/view`'s every table. A projection of the same
          *     per-version resolve as `/tables`: after the first call for a database and model version, a lookup. Like `/tables` it
          *     answers on a model with errors; `table` is null when no table of the database has the key or when the table is left
@@ -1052,8 +1049,7 @@ export interface paths {
          * @description reference-types-seeds-localization.md section 3.9. Every attribute typed by the reference type, with its owner, domain, collection, required and the effective storage
          *     choice per database. `columns` lists the own and inherited columns of designed and imported tables that bindings map to
          *     attributes of the type (their bound type, next-phase-2-design.md 3.2, from bindings since 0.28.0), with their table,
-         *     database, domain, required, the effective storage choice in that database and the bound table; projected columns are
-         *     covered by their attributes.
+         *     database, domain, required, the effective storage choice in that database and the bound table.
          */
         get: operations["getReferenceTypeUsage"];
         put?: never;
@@ -1580,8 +1576,7 @@ export interface paths {
         put?: never;
         /**
          * Render one unit against one element, with no writes
-         * @description The Database workspace's DDL preview calls `sql-ddl`/`table` with a resolved table key (`<entityId>@<databaseId>`
-         *     for a synthesized entity table, a table file's id for a designed one) and `sql-ddl`/`schema` with a database id.
+         * @description The Database workspace's DDL preview calls `sql-ddl`/`table` with a table file's id and `sql-ddl`/`schema` with a database id.
          *     The unit renders even when its `where` filter would not plan it. A model with errors returns the errors and no
          *     files. An element outside the unit's scope (another kind than its `each`, one its selector does not return, an
          *     element for a `model` unit, or none for an element unit) returns MQ6026 and no files, before anything renders
@@ -2846,7 +2841,7 @@ export interface components {
          */
         StorageKind: "int" | "string" | "embedded" | "table" | "json";
         /** @enum {string} */
-        RelationShape: "foreign-key" | "junction" | "promoted";
+        RelationShape: "foreign-key" | "junction";
         /** @enum {string} */
         InheritanceStrategy: "tph" | "tpt" | "tpc";
         /** @enum {string} */
@@ -3078,7 +3073,6 @@ export interface components {
         ElementSummary: {
             id: components["schemas"]["Ulid"];
             kind: components["schemas"]["ElementKind"];
-            /** @description Empty for a table overlay without a name of its own. */
             name: string;
             package: components["schemas"]["Ulid"] | null;
             tags: string[];
@@ -3092,8 +3086,6 @@ export interface components {
             displayName?: string;
             /** @description The owning database's id, on table, view, sequence, routine, database-type, sql-object, query, mapping and migration rows (E5). */
             database?: components["schemas"]["Ulid"];
-            /** @description The entity a mapping maps or a table overlay applies to, on mapping and table rows that have one (E5). */
-            entity?: components["schemas"]["Ulid"];
             /** @description The number of members, on diagram rows (E5) and on custom element rows (next-phase-2-design.md section 4.2). */
             memberCount?: number;
             /** @description The relation's ends in document order, on relation rows (E5). */
@@ -3203,6 +3195,12 @@ export interface components {
              *     one. Left out otherwise.
              */
             signatures?: number;
+            /**
+             * @description On entity rows with bindings: per binding in file order, the table its writes go to, else its source (a table, view or query
+             *     id), distinct. Left out on entities without bindings and on other rows. The explorer's "Go to table" reads it: since 0.29.0
+             *     an entity has a table only through its binding.
+             */
+            boundTo?: components["schemas"]["Ulid"][];
             /**
              * @description The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted
              *     ordinally, on process rows (libraries too) that name at least one. Only ids of actors that exist count. Left out when the
@@ -3487,7 +3485,7 @@ export interface components {
             path: string;
         };
         /**
-         * @description `upsert` (`id` a qualified name, `element`, optional `expectedHash`) is a `create` when the model as loaded has no element of that name and an `update` of the whole document when it has one, with the file's hash unless `expectedHash` gives one. It never writes a seed. `id` must be one of the names the element will have, an update keeps the longest of them, and a document may not replace an existing part with one that has no id; each refusal is MQ1012 to MQ1015 at `/operations/<n>/id`. `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process, optional `entity` the subject whose enum binding it syncs, or `stereotype` the key of a stereotype entry, else the lifecycle's one enum binding; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `sync-codes` (lifecycle-design.md decision 19: `id` a lifecycle process, `entity` a subject or `stereotype` the key of a stereotype the lifecycle lists, `attribute` the subject's attribute that holds the state (on a stereotype, one of its own), optional `stateCodes` keyed by state id; it gives each state a binding maps a code, keeping the codes states have, matching the attribute type's codes by name and rows by label, and binds the attribute in the form the file has; see `POST /api/processes/{id}/sync-codes` for the matching and the plan. Refused with MQ9019 when `id` is not a lifecycle, `entity` is not its one-subject form's subject or follows it only through a stereotype entry, `stereotype` is not listed, `attribute` is not an attribute that can hold a state, a `stateCodes` key is not a state that rests, or another operation of the batch writes the process), `set-lifecycle` (`id` an entity, `target` a process: it becomes the entity's named lifecycle (lifecycle-design.md decision 9). A target in the one-subject form, or with no subject, takes the entity as its one subject (a target with no subject gets `subjects` with one entry) and the entity's previous lifecycle in the one-subject form becomes an orchestration, as before; a target that uses `subjects` gains an entry for the entity when it has none, the entity's previous lifecycle in the one-subject form still becomes an orchestration, and its other lifecycles that use `subjects` are left alone. Without `target` it clears the entity's lifecycle: its lifecycles in the one-subject form become orchestrations, the entity leaves the `subjects` of the others, and one left with no subject becomes an orchestration; an orchestration keeps its subjects and loses its bindings), `set-initial` (`id` a process or a compound state, `target` one of its direct children), `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process) and `use-subjects` (lifecycle-design.md decision 6: each process `elementIds` lists, or without it every process, that is in the one-subject form is rewritten with a `subjects` list of one entry, with a new id, holding its `subject` and `boundAttribute`; a listed process already using `subjects`, or with no subject, is left as it is, and nothing to convert writes nothing). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`, `hierarchy`, `listStorage`: a designed table per entity with the shape its projection has and a binding of the entity to it; `hierarchy` picks one table, a table per concrete entity or a table per type for each inheritance hierarchy, and `listStorage` a table of its own or a JSON column for each list attribute (the preview's `choices` lists both with their defaults); the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`. `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at its file and pointer, and nothing to convert writes nothing. `fold-into-stereotype` (next-phase-2-design.md section 3.1) makes the stereotype `id`'s members replace the matching own members of `tables`, or of every designed and imported table of `schema`; `redefine` and `excludeMissing` keep the database unchanged where a member differs or is missing, and a refusal is MQ4077. The binding operations (next-phase-2-design.md section 3.3) act on `database` and `entities`, read files only and never resolve the model: `map-by-name` maps every attribute a binding leaves unmapped to a free column of its source with the same loose name (case and every character that is not an ASCII letter or digit ignored; a member as `attributeMember`, a to-one navigation key with or without `Id`), fields naming a table file's columns by id and a view's by name; `resync-binding` brings a binding whose source is a table file into step with the table: it renames an own attribute that followed its column's name (unless `keepNames`), retypes an own attribute whose column was retyped, maps by name, adds an attribute per added column still free and removes the fields of removed columns, keeping every attribute; for one entity, `columns` (keys or physical names) limits it to those columns. Both record the binding's `provenance` (each column's name and type hashes) for a table file, expand the same way, take `expectedHashes`, and a refusal (an entity with no binding to the database, a source they cannot read, `columns` misused, nothing to map, or every binding named in step) is MQ4089 at `/operations/<n>`. The reference-type refactors (next-phase-2-design.md section 3.5) read the model as it was before the batch and find every use through the index: `rename-code` (`id` a reference type, `code`, `to`) gives the row the new code and rewrites every default, `allowedValues` entry, seed cell, typed column default, table seed cell, binding constant and state code under a lifecycle's binding (lifecycle-design.md decision 18) that named the old one; `retire-code` (`id`, `code`, `to` another live code) removes the code's row with its translations, rewrites its uses to `to` and the ids that named the row (`x-ref` values, former codes) to the row of `to`; `merge-reference-types` (`id` the type merged away, `target` the type merged into, optional `codes`) maps each code the target holds to it, `codes` maps others to live target codes, moves every other row into the target with its id, values and translations, retargets the seeds (one with the name of a target seed joins it), points every reference to the type at the target and deletes it; `rename-reference-type` (`id`, `name`) renames the type, its file and its seed folder following. Each keeps the old code as a former code of the type and answers `usage` on the item of the type it names (the merged-away type's delete for a merge). They expand the same way, take `expectedHashes`, refactor a type once per batch, and a refusal (an unknown or scripted code, a code taken or former, a code that does not fit, mismatched code types, a binding or scripted rows on the merged type, a field the target lacks, seeds of one name that differ in environments or apply, a second refactor of a type) is MQ7020 at `/operations/<n>`. When the batch's refactors are planned, a state code they rewrite must be a live code of every other reference type its lifecycle binds that held the old code, so a code two bound types share is renamed in both in one batch; and no lifecycle may be left with two states of one code. Either is MQ7020 at the operation that rewrote the code. The verb operations (verbs-design.md decision 9) act on the project's own verb whose key is `verb`: `rename-verb` (`verb`, `to`) gives it the key `to` and rewrites every event, transition and operation that names it, all or nothing; when `to` is another own verb's key or a built-in verb's, the two merge: the uses move to it and the definition goes with its translations, and `to` equal to `verb` when a built-in verb has that key adopts the built-in. `remove-verb` (`verb`) removes the own verb with its translations and clears `verb` from every use. Both take `expectedHashes` and `dryRun`, expand into updates, and a refusal (a key no own verb has, a malformed `to`, `to` equal to `verb` with no built-in of that key) is MQ1002 at `/operations/<n>`.
+         * @description `upsert` (`id` a qualified name, `element`, optional `expectedHash`) is a `create` when the model as loaded has no element of that name and an `update` of the whole document when it has one, with the file's hash unless `expectedHash` gives one. It never writes a seed. `id` must be one of the names the element will have, an update keeps the longest of them, and a document may not replace an existing part with one that has no id; each refusal is MQ1012 to MQ1015 at `/operations/<n>/id`. `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process, optional `entity` the subject whose enum binding it syncs, or `stereotype` the key of a stereotype entry, else the lifecycle's one enum binding; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `sync-codes` (lifecycle-design.md decision 19: `id` a lifecycle process, `entity` a subject or `stereotype` the key of a stereotype the lifecycle lists, `attribute` the subject's attribute that holds the state (on a stereotype, one of its own), optional `stateCodes` keyed by state id; it gives each state a binding maps a code, keeping the codes states have, matching the attribute type's codes by name and rows by label, and binds the attribute in the form the file has; see `POST /api/processes/{id}/sync-codes` for the matching and the plan. Refused with MQ9019 when `id` is not a lifecycle, `entity` is not its one-subject form's subject or follows it only through a stereotype entry, `stereotype` is not listed, `attribute` is not an attribute that can hold a state, a `stateCodes` key is not a state that rests, or another operation of the batch writes the process), `set-lifecycle` (`id` an entity, `target` a process: it becomes the entity's named lifecycle (lifecycle-design.md decision 9). A target in the one-subject form, or with no subject, takes the entity as its one subject (a target with no subject gets `subjects` with one entry) and the entity's previous lifecycle in the one-subject form becomes an orchestration, as before; a target that uses `subjects` gains an entry for the entity when it has none, the entity's previous lifecycle in the one-subject form still becomes an orchestration, and its other lifecycles that use `subjects` are left alone. Without `target` it clears the entity's lifecycle: its lifecycles in the one-subject form become orchestrations, the entity leaves the `subjects` of the others, and one left with no subject becomes an orchestration; an orchestration keeps its subjects and loses its bindings), `set-initial` (`id` a process or a compound state, `target` one of its direct children), `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process) and `use-subjects` (lifecycle-design.md decision 6: each process `elementIds` lists, or without it every process, that is in the one-subject form is rewritten with a `subjects` list of one entry, with a new id, holding its `subject` and `boundAttribute`; a listed process already using `subjects`, or with no subject, is left as it is, and nothing to convert writes nothing). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`, `hierarchy`, `listStorage`: a designed table per entity and a binding of the entity to it; `hierarchy` picks one table, a table per concrete entity or a table per type for each inheritance hierarchy, and `listStorage` a table of its own or a JSON column for each list attribute (the preview's `choices` lists both with their defaults); relation mappings name the foreign keys; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, shaped from the attribute, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`. `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at its file and pointer, and nothing to convert writes nothing. `fold-into-stereotype` (next-phase-2-design.md section 3.1) makes the stereotype `id`'s members replace the matching own members of `tables`, or of every designed and imported table of `schema`; `redefine` and `excludeMissing` keep the database unchanged where a member differs or is missing, and a refusal is MQ4077. The binding operations (next-phase-2-design.md section 3.3) act on `database` and `entities`, read files only and never resolve the model: `map-by-name` maps every attribute a binding leaves unmapped to a free column of its source with the same loose name (case and every character that is not an ASCII letter or digit ignored; a member as `attributeMember`, a to-one navigation key with or without `Id`), fields naming a table file's columns by id and a view's by name; `resync-binding` brings a binding whose source is a table file into step with the table: it renames an own attribute that followed its column's name (unless `keepNames`), retypes an own attribute whose column was retyped, maps by name, adds an attribute per added column still free and removes the fields of removed columns, keeping every attribute; for one entity, `columns` (keys or physical names) limits it to those columns. Both record the binding's `provenance` (each column's name and type hashes) for a table file, expand the same way, take `expectedHashes`, and a refusal (an entity with no binding to the database, a source they cannot read, `columns` misused, nothing to map, or every binding named in step) is MQ4089 at `/operations/<n>`. The reference-type refactors (next-phase-2-design.md section 3.5) read the model as it was before the batch and find every use through the index: `rename-code` (`id` a reference type, `code`, `to`) gives the row the new code and rewrites every default, `allowedValues` entry, seed cell, typed column default, table seed cell, binding constant and state code under a lifecycle's binding (lifecycle-design.md decision 18) that named the old one; `retire-code` (`id`, `code`, `to` another live code) removes the code's row with its translations, rewrites its uses to `to` and the ids that named the row (`x-ref` values, former codes) to the row of `to`; `merge-reference-types` (`id` the type merged away, `target` the type merged into, optional `codes`) maps each code the target holds to it, `codes` maps others to live target codes, moves every other row into the target with its id, values and translations, retargets the seeds (one with the name of a target seed joins it), points every reference to the type at the target and deletes it; `rename-reference-type` (`id`, `name`) renames the type, its file and its seed folder following. Each keeps the old code as a former code of the type and answers `usage` on the item of the type it names (the merged-away type's delete for a merge). They expand the same way, take `expectedHashes`, refactor a type once per batch, and a refusal (an unknown or scripted code, a code taken or former, a code that does not fit, mismatched code types, a binding or scripted rows on the merged type, a field the target lacks, seeds of one name that differ in environments or apply, a second refactor of a type) is MQ7020 at `/operations/<n>`. When the batch's refactors are planned, a state code they rewrite must be a live code of every other reference type its lifecycle binds that held the old code, so a code two bound types share is renamed in both in one batch; and no lifecycle may be left with two states of one code. Either is MQ7020 at the operation that rewrote the code. The verb operations (verbs-design.md decision 9) act on the project's own verb whose key is `verb`: `rename-verb` (`verb`, `to`) gives it the key `to` and rewrites every event, transition and operation that names it, all or nothing; when `to` is another own verb's key or a built-in verb's, the two merge: the uses move to it and the definition goes with its translations, and `to` equal to `verb` when a built-in verb has that key adopts the built-in. `remove-verb` (`verb`) removes the own verb with its translations and clears `verb` from every use. Both take `expectedHashes` and `dryRun`, expand into updates, and a refusal (a key no own verb has, a malformed `to`, `to` equal to `verb` with no built-in of that key) is MQ1002 at `/operations/<n>`.
          * @enum {string}
          */
         BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "sync-codes" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "use-subjects" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type" | "rename-verb" | "remove-verb" | "upsert";
@@ -3552,7 +3550,7 @@ export interface components {
              *     the request, or an object from a hierarchy's root entity id to its shape. `one-table`: one table for the whole
              *     hierarchy, with a type column; `per-concrete`: a table per concrete entity, with every attribute, inherited ones
              *     included; `per-type`: a table per entity, each derived table keyed by its base's table. Absent: each hierarchy
-             *     takes its default (the shape its entity mapping's `inheritance` gives, else one table).
+             *     takes its default (one table).
              */
             hierarchy?: components["schemas"]["HierarchyShape"] | {
                 [key: string]: components["schemas"]["HierarchyShape"];
@@ -3821,9 +3819,6 @@ export interface components {
             navigations: components["schemas"]["NavigationRecord"][];
             /** @description The ids of the relations with an end at this entity. */
             relations: string[];
-            mappings: components["schemas"]["EntityMappingRecord"][];
-            isPromoted: boolean;
-            promotedFrom: string | null;
             seeds: string[];
             /** @description The id of the process that is its lifecycle. */
             lifecycle: string | null;
@@ -4202,13 +4197,6 @@ export interface components {
         KeyRecord: {
             attributes: string[];
             strategy: string;
-            sequences: components["schemas"]["KeySequenceRecord"][];
-        };
-        /** @description The key sequence of an entity in one database. */
-        KeySequenceRecord: {
-            database: string;
-            /** @description As `SequenceView.id`. */
-            sequence: string;
         };
         /** @description An alternate key. */
         AlternateKeyRecord: {
@@ -4233,22 +4221,6 @@ export interface components {
             /** @description The types of the end it leads to, when that end has several types (the end's `types`, in order). Absent otherwise. */
             targets?: string[];
             isCollection: boolean;
-        };
-        /** @description An entity's mapping to one database. */
-        EntityMappingRecord: {
-            database: string;
-            /** @description The table key, as `TableView.key`. */
-            table: string;
-            inheritance: string | null;
-            discriminatorColumn: string | null;
-            discriminatorValue: unknown;
-            columns: components["schemas"]["ColumnMappingRecord"][];
-        };
-        /** @description The column that stores an attribute path. */
-        ColumnMappingRecord: {
-            attributePath: string;
-            /** @description The column key, as `ColumnView.key`. */
-            column: string;
         };
         /** @description A resolved relation. */
         RelationRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -4308,13 +4280,12 @@ export interface components {
          */
         RelationMappingRecord: {
             database: string;
-            /** @description `foreign-key`, `junction` or `promoted`. For a relation with an end of several types, `junction` when its links live in link tables, else `foreign-key`. */
+            /** @description `foreign-key` or `junction`. For a relation with an end of several types, `junction` when its links live in link tables, else `foreign-key`. */
             shape: string;
             /** @description The foreign key name; null for a relation with an end of several types. */
             foreignKey: string | null;
             /** @description The junction table key; for a relation with an end of several types, the one link table that holds every link, and null for a table per type. */
             junctionTable: string | null;
-            promotedEntity: string | null;
             /** @description One entry per pair of targets, one per end, in target order (decision 39). */
             links?: components["schemas"]["RelationLinkRecord"][];
             /** @description The link table's columns with a fixed value (decision 44). */
@@ -5517,8 +5488,8 @@ export interface components {
             /** @description Every validation and resolution diagnostic, sorted. */
             diagnostics: components["schemas"]["Diagnostic"][];
             /**
-             * @description The model has errors, so tables whose owning elements have errors (the entity, the relation, the table file or
-             *     overlay, a mapping of the entity or relation, or the database itself) are left out, and the
+             * @description The model has errors, so tables whose owning elements have errors (the entity, the relation, the table file,
+             *     a relation mapping, or the database itself) are left out, and the
              *     rest may change when the errors are fixed. False when the list is complete.
              */
             partial: boolean;
@@ -5536,16 +5507,7 @@ export interface components {
             key: string;
             name: string;
             schema: string | null;
-            /** @enum {string} */
-            origin: "synthesized" | "designed" | "imported";
-            entityId: components["schemas"]["Ulid"] | null;
             relationId: components["schemas"]["Ulid"] | null;
-            isJunction: boolean;
-            /**
-             * @deprecated
-             * @description Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse.
-             */
-            isLookup: boolean;
             columnCount: number;
         };
         /**
@@ -5577,13 +5539,6 @@ export interface components {
             quoting: "always" | "reserved" | "never";
             /** @description The effective identifier length limit (the dialect's when the file sets none), or null for none. */
             maxIdentifierLength: number | null;
-            /**
-             * @description Which entities map here by convention, as the resolver applies it (a file without the member reads as `all`, or `packages` when it lists packages).
-             * @enum {string}
-             */
-            byConvention: "all" | "packages" | "none";
-            /** @description The packages whose entities map here by convention, in file order. */
-            packages: components["schemas"]["ConventionPackageView"][];
             /** @description The display name the database file sets, or null; there is no fallback. */
             displayName: string | null;
             /** @description The plural name the database file sets, or null; there is no fallback. */
@@ -5663,33 +5618,17 @@ export interface components {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
         };
-        ConventionPackageView: {
-            packageId: components["schemas"]["Ulid"];
-            /** @description The schema name the package's conventional tables go to, or null for the default schema. */
-            schema: string | null;
-        };
         /**
          * @description One resolved table. The annotation members (`displayName` to `generation`) come from the table's own file: the
-         *     designed or imported table, or a synthesized table's overlay. A synthesized table without an overlay has none but
-         *     the stereotypes its schema and package defaults give it, with their default properties; it never takes its
-         *     entity's annotations, which `entityId` leads to. Members a stereotype contributes (next-phase-2-design.md 3.1)
+         *     designed or imported table. Members a stereotype contributes (next-phase-2-design.md 3.1)
          *     follow the own ones, keyed `<tableKey>.<memberId>`, each with its `memberOrigin`.
          */
         TableView: {
-            /** @description A table file's id, or a synthesized key such as `<entityId>@<databaseId>` (engine-design.md 7.3); the `elementId` for `sql-ddl`/`table` previews. */
+            /** @description A table file's id; the `elementId` for `sql-ddl`/`table` previews. */
             key: string;
             name: string;
             schema: string | null;
-            /** @enum {string} */
-            origin: "synthesized" | "designed" | "imported";
-            entityId: string | null;
             relationId: string | null;
-            isJunction: boolean;
-            /**
-             * @deprecated
-             * @description Always false. The enum lookup-table storage option is retired (MQ7012); kept so older clients still parse.
-             */
-            isLookup: boolean;
             comment: string | null;
             columns: components["schemas"]["ColumnView"][];
             primaryKey: components["schemas"]["KeyView"] | null;
@@ -5752,7 +5691,7 @@ export interface components {
         };
         /** @description One resolved sequence, with the annotations of its file (as `TableView`); a sequence the resolver creates for an entity key has none. */
         SequenceView: {
-            /** @description The sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`. */
+            /** @description The sequence file's id. */
             id: string;
             name: string;
             schema: string | null;
@@ -5841,7 +5780,7 @@ export interface components {
             deterministic: boolean;
             /** @enum {string} */
             security: "invoker" | "definer";
-            /** @description The ids (a synthesized table's key) of the tables, views, sequences, routines, database types and SQL objects its `dependsOn` names. */
+            /** @description The ids of the tables, views, sequences, routines, database types and SQL objects its `dependsOn` names. */
             dependsOn: string[];
             comment: string | null;
             displayName: string | null;
@@ -6060,7 +5999,7 @@ export interface components {
             texts?: {
                 [key: string]: string;
             };
-            /** @description The ids (a synthesized table's key) of the tables a query written as SQL text writes, in file order; left out when none. */
+            /** @description The ids of the tables a query written as SQL text writes, in file order; left out when none. */
             writes?: string[];
             /** @description The named queries (WITH) of a built query, in order; left out when none. */
             with?: components["schemas"]["NamedQueryView"][];
@@ -6079,7 +6018,7 @@ export interface components {
             sql: string | null;
             /** @description The parameters the SQL names, in first-appearance order. */
             sqlParameters: string[];
-            /** @description The ids (a synthesized table's key) of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order. */
+            /** @description The ids of the tables, views, routines and database types the query reads; for a query written as SQL text, its `reads`, resolved, in file order. */
             uses: string[];
             displayName: string | null;
             pluralName: string | null;
@@ -6475,8 +6414,6 @@ export interface components {
             id: components["schemas"]["Ulid"];
             name: string;
             package: string | null;
-            projected: boolean;
-            table: string | null;
         };
         MaterializeSourceStatus: {
             id: string;
@@ -6484,7 +6421,6 @@ export interface components {
             kind: "table" | "view";
             name: string;
             schema: string | null;
-            origin: string;
             boundBy: components["schemas"]["MaterializeBinder"][];
         };
         MaterializeBinder: {
@@ -6537,11 +6473,10 @@ export interface components {
         };
         /**
          * @description One resolved column. The annotation members (`displayName` to `generation`) come from the column's own entry in a table
-         *     file: a designed or extra column, or the overlay entry of a synthesized column. A synthesized column without an overlay
-         *     entry has none; it never takes its attribute's, which `attributeId` leads to.
+         *     file: a designed or extra column.
          */
         ColumnView: {
-            /** @description An attribute path, `discriminator`, `position`, `id`, or a column id. */
+            /** @description A column id, or the keyed id of an inherited column. */
             key: string;
             name: string;
             /** @description The built-in type keyword. */
@@ -6555,16 +6490,13 @@ export interface components {
             defaultSql: string | null;
             identity: boolean;
             computed: string | null;
-            attributeId: string | null;
-            attributePath: string | null;
             isPrimaryKey: boolean;
             isForeignKey: boolean;
-            isDiscriminator: boolean;
             position: number;
             /** @description The literal default as a plain JSON value, or null. */
             default: unknown;
             computedStored: boolean;
-            /** @description The id of the sequence that supplies values (a sequence file's id, or a synthesized key such as `<entityId>.sequence@<databaseId>`). */
+            /** @description The id of the sequence that supplies values (a sequence file's id). */
             sequenceId: string | null;
             /** @description The id of the database type the column uses (its file's `nativeType` names the type by id or name), or null. Always sent by this engine; optional for older servers. */
             dbTypeId?: components["schemas"]["Ulid"] | null;
@@ -6593,13 +6525,12 @@ export interface components {
             memberOrigin?: components["schemas"]["MemberOriginView"] | null;
             /**
              * @description Derived from bindings, like a table's bound-by list (0.28.0): the enum, reference type or scalar type of the attribute
-             *     the bindings map to the column, when they all agree; else null. A projected column has none: its attribute
-             *     (`attributeId`) types it. `type` keeps the physical keyword. Always sent by this engine; absent in recordings made
+             *     the bindings map to the column, when they all agree; else null. `type` keeps the physical keyword. Always sent by this engine; absent in recordings made
              *     before.
              */
             boundType?: components["schemas"]["TypeRecord"] | null;
             /**
-             * @description `pii` or `secret`: the column's own; else a projected column's attribute's own; else the strongest own value of the
+             * @description `pii` or `secret`: the column's own; else the strongest own value of the
              *     attributes bindings map to it; null when none says. Always sent by this engine; absent in recordings made before.
              * @enum {string|null}
              */
@@ -6714,7 +6645,7 @@ export interface components {
              */
             units?: string[] | null;
             /**
-             * @description Scoped generation: only the units of these elements, by id, never by name (a synthesized table's id is `<entityId>@<databaseId>`); units that run once for the whole model never match. Values OR, and AND with `units`. `null` or an empty list: every element. A filter that selects no unit and no earlier output is the warning MQ6034.
+             * @description Scoped generation: only the units of these elements, by id, never by name (a table's id is its file's id); units that run once for the whole model never match. Values OR, and AND with `units`. `null` or an empty list: every element. A filter that selects no unit and no earlier output is the warning MQ6034.
              * @default null
              */
             elements?: string[] | null;
@@ -8623,7 +8554,7 @@ export interface components {
             /** @enum {unknown} */
             valueObjectCollectionStorage?: "table" | "json";
             /** @enum {unknown} */
-            relationsWithAttributes?: "junction" | "promoted";
+            relationsWithAttributes?: "junction";
             /** @enum {unknown} */
             inheritance?: "tph" | "tpt" | "tpc";
             /** @description The storage choice for reference types: the project default under conventions, a per-database override under databases. */
@@ -8960,7 +8891,7 @@ export interface components {
                     /** @enum {unknown} */
                     valueObjectCollectionStorage?: "table" | "json";
                     /** @enum {unknown} */
-                    relationsWithAttributes?: "junction" | "promoted";
+                    relationsWithAttributes?: "junction";
                     /** @enum {unknown} */
                     inheritance?: "tph" | "tpt" | "tpc";
                     /** @description The storage choice for reference types: the project default under conventions, a per-database override under databases. */
@@ -9819,7 +9750,7 @@ export interface components {
             name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
-            /** @description The owning package. Membership only: packages routes the tables. */
+            /** @description The owning package. Membership only: it routes no table. */
             package?: components["schemas"]["id"];
             /** @enum {unknown} */
             dialect: "postgresql" | "sqlserver" | "mysql" | "sqlite" | "oracle";
@@ -9877,18 +9808,10 @@ export interface components {
             quoting?: "always" | "reserved" | "never";
             maxIdentifierLength?: number;
             /**
-             * @description Which entities map here by convention: all, the entities of packages (and their sub-packages; none when packages is empty), or none. Mapping elements add or ignore single entities either way. Absent (files written before 0.3.0): every entity when packages is empty, else the entities of packages.
+             * @description Written "none" by the editor on new databases, and what every database means since 0.29.0: a database holds only the tables written for it. The values all and packages, and the key packages, were removed with projection (MQ4145). A file with no byConvention gets warning MQ4146 while an entity is not bound to the database; its quick fix writes "none".
              * @enum {unknown}
              */
-            byConvention?: "all" | "packages" | "none";
-            /**
-             * @description The packages whose entities (and sub-packages') map here by convention. An entry is a package id, or an object that also names the schema (the id of one of this database's schemas) the package's conventional tables go to; an entry without a schema is written as the id.
-             * @default []
-             */
-            packages?: (components["schemas"]["id"] | {
-                package: components["schemas"]["id"];
-                schema?: components["schemas"]["id"];
-            })[];
+            byConvention?: "none";
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */
@@ -9913,8 +9836,6 @@ export interface components {
             name?: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
-            /** @description Overlay: the synthesized column key this column overrides. */
-            attribute?: string;
             type?: components["schemas"]["columnType"];
             /** @description The bound type of a range or multirange column, and only of one (MQ4057). A range column takes no length, precision or scale (MQ3013). */
             subtype?: components["schemas"]["rangeSubtype"];
@@ -10106,7 +10027,7 @@ export interface components {
         };
         /**
          * Table
-         * @description A physical table. A synthesized table's file holds only overrides.
+         * @description A physical table, designed or imported, with its full definition.
          */
         table: {
             $schema?: components["schemas"]["schemaPath"];
@@ -10114,24 +10035,13 @@ export interface components {
             kind: "table";
             id: components["schemas"]["id"];
             /** @default  */
-            name?: components["schemas"]["label"];
+            name: components["schemas"]["label"];
             displayName?: string;
             pluralName?: string;
             /** @description The owning package. Membership only: the database still decides where the object goes. */
             package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
             schema?: components["schemas"]["id"];
-            /**
-             * @default designed
-             * @enum {unknown}
-             */
-            origin?: "synthesized" | "designed" | "imported";
-            /** @description Synthesized: the entity whose table (or, with attribute, child table) this file overrides. */
-            entity?: components["schemas"]["id"];
-            /** @description Synthesized child table: the attribute of entity whose child table this file overrides. */
-            attribute?: components["schemas"]["id"];
-            /** @description Synthesized junction table: the relation. */
-            relation?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
             /** @description Markdown text: why the element is shaped this way. */
             rationale?: string;
@@ -11094,7 +11004,7 @@ export interface components {
         };
         /**
          * Mapping
-         * @description Binds one entity or relation to one database.
+         * @description Says how one relation is stored in one database: the foreign key or the designed junction table that holds its links.
          */
         mapping: {
             $schema?: components["schemas"]["schemaPath"];
@@ -11108,11 +11018,7 @@ export interface components {
             /** @description The owning package. Membership only: the database still decides where the object goes. */
             package?: components["schemas"]["id"];
             database: components["schemas"]["id"];
-            entity?: components["schemas"]["id"];
-            relation?: components["schemas"]["id"];
-            table?: components["schemas"]["id"];
-            /** @description For an entity mapping: the id of the database schema the entity's conventional table goes to; it wins over the database's convention package entry and its default schema. */
-            schema?: components["schemas"]["id"];
+            relation: components["schemas"]["id"];
             description?: components["schemas"]["description"];
             /** @description Markdown text: why the element is shaped this way. */
             rationale?: string;
@@ -11128,24 +11034,14 @@ export interface components {
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
-            /** @default false */
-            ignore?: boolean;
-            /** @enum {unknown} */
-            inheritance?: "tph" | "tpt" | "tpc";
-            discriminatorValue?: string | number;
             /** @default [] */
             attributes?: {
                 attribute: components["schemas"]["id"];
-                /** @description The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). On a relation mapping of the foreign-key shape: a column of the table that holds the foreign key, not one of the key's own columns (MQ4009). */
+                /** @description The id of the column that stores the relation attribute. With a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). On the foreign-key shape: a column of the table that holds the foreign key, not one of the key's own columns (MQ4009). */
                 column?: components["schemas"]["id"];
-                /** @enum {unknown} */
-                storage?: "int" | "string" | "embedded" | "table" | "json";
-                prefix?: string;
-                /** @default false */
-                ignore?: boolean;
             }[];
             /** @enum {unknown} */
-            shape?: "foreign-key" | "junction" | "promoted";
+            shape?: "foreign-key" | "junction";
             foreignKeyEnd?: components["schemas"]["id"];
             /** @description For a foreign-key shape between bound tables: the id of the existing foreign key in the dependent end's table. */
             foreignKey?: components["schemas"]["id"];
@@ -11192,13 +11088,12 @@ export interface components {
                 /** @description The value; absent or null is SQL NULL. */
                 value?: string | number | boolean | null;
             }[];
-            promotedName?: components["schemas"]["identifier"];
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
-        } & (unknown | unknown);
+        };
         /**
          * Diagram
          * @description A saved canvas: membership, positions and view state only.
@@ -16318,7 +16213,7 @@ export interface operations {
                  * @example 01J92P0V0FJ23CGSNKM7P1W5V7
                  */
                 id: components["parameters"]["ElementId"];
-                /** @description The table's key, as `TableSummary.key` (a table file's id, or a synthesized key such as `<entityId>@<databaseId>`). */
+                /** @description The table's key, as `TableSummary.key` (a table file's id). */
                 key: string;
             };
             cookie?: never;

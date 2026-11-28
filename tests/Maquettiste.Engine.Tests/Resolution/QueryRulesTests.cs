@@ -17,7 +17,8 @@ public sealed class QueryRulesTests
 {
     /// <summary>
     /// Customer (id, required name, email, visits) placing Invoices (id, required number, total, an optional Money price), the
-    /// navigations <c>customer</c> on Invoice and <c>invoices</c> on Customer, an abstract Party, in a database of the given dialect.
+    /// navigations <c>customer</c> on Invoice and <c>invoices</c> on Customer, an abstract Party, in a database of the given dialect
+    /// whose tables <c>customers</c> and <c>invoices</c> (with <c>customer_id</c>) Customer and Invoice are bound to.
     /// </summary>
     private sealed class Store
     {
@@ -32,7 +33,15 @@ public sealed class QueryRulesTests
             Party = Builder.Entity("Party").Abstract().Key("id", "uuid");
             Places = Builder.Relation("places", Customer, Invoice, fromMax: MaxCardinality.One, fromMin: 1, fromRole: "customer", toRole: "invoices",
                 fromNavigation: "customer", toNavigation: "invoices");
-            Main = Builder.Database("main", dialect).Id;
+            var main = Builder.Database("main", dialect);
+            Main = main.Id;
+            var customers = Builder.Table("customers", main).Column("id", "uuid", nullable: false).Column("name", "string", nullable: false, length: 100)
+                .Column("email", "string", length: 200).Column("visits", "int32").PrimaryKey("id").Binds(Customer);
+            var invoices = Builder.Table("invoices", main).Column("id", "uuid", nullable: false).Column("number", "string", nullable: false, length: 20)
+                .Column("total", "decimal").Column("customer_id", "uuid", nullable: false).PrimaryKey("id").ForeignKey(customers, "customer_id")
+                .Edit(t => t with { Columns = [.. t.Columns.Select(c => c.Name == "total" ? c with { Precision = 12, Scale = 2 } : c)] }).Binds(Invoice);
+            Builder.Mapping(main, Places).ForeignKey(((Table)Builder.BuildElements().First(e => e.Id == invoices.Id)).ForeignKeys[0].Id);
+            (Customers, Invoices) = (customers.Id, invoices.Id);
         }
 
         public ModelBuilder Builder { get; }
@@ -49,9 +58,9 @@ public sealed class QueryRulesTests
 
         public string Main { get; }
 
-        public string Invoices => Invoice.Id + "@" + Main;
+        public string Invoices { get; }
 
-        public string Customers => Customer.Id + "@" + Main;
+        public string Customers { get; }
 
         public string Query(string json)
         {

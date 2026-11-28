@@ -1,29 +1,22 @@
-// The database designer's editing paths against the mock server: a foreign key on a table not stored as a file yet (stored
-// first, the key written into the file whose ids the store's result names, never the preview's, which the server draws again),
-// the store's undo integrity (expected hashes, no empty undo items), a column's delete plan (whole keys, other tables' keys, one
+// The database designer's editing paths against the mock server: a column's delete plan (whole keys, other tables' keys, one
 // batch and one undo step), a column's rename (what names it follows), and schema operations as undo steps.
 import { describe, expect, it } from "vitest";
 import * as endpoints from "@/api/endpoints";
 import { databaseViewQuery, elementQuery } from "@/api/queries";
 import type { ModelJson, TableView } from "@/api/types";
-import { draftFromDrop } from "@/workspaces/database/fkEdits";
-import { saveForeignKey } from "@/workspaces/database/foreignKeys";
-import { storedFileOf, storeTables, updateTable } from "@/workspaces/database/storeTables";
-import { cancelPartDelete, executePartDelete, preparePartDelete } from "@/workspaces/database/PartDeleteDialog";
+import { updateTable } from "@/workspaces/database/tableQueue";
+import { executePartDelete, preparePartDelete } from "@/workspaces/database/PartDeleteDialog";
 import { planColumnRename } from "@/workspaces/database/renames";
 import { renameTableColumn, renameViewColumn } from "@/workspaces/database/columnRename";
 import { runSchemaOperation } from "@/inspector/DatabaseSchemas";
 import { useMockApi } from "./harness";
-import { billingProjectedSeed } from "@/mocks/model/seed";
 
 type Json = Record<string, unknown>;
 
 const DB = "01J92P0V1QRN2181XM2ZWE02W4";
-const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
-const PATTERN = "fk_{table}_{columns}";
 
 describe("the designer's writes against the mock", () => {
-  const api = useMockApi({ seed: billingProjectedSeed() });
+  const api = useMockApi();
 
   const view = async () => {
     const qc = api.services.queryClient;
@@ -31,68 +24,6 @@ describe("the designer's writes against the mock", () => {
     return (await qc.fetchQuery({ ...databaseViewQuery(qc, DB), staleTime: 0 })).view!;
   };
   const doc = async (id: string) => (await api.services.queryClient.fetchQuery({ ...elementQuery(id), staleTime: 0 })).json as unknown as Json;
-
-  it("writes a diagram's foreign key into the file a not-yet-stored table gets, whatever ids the preview drew", async () => {
-    const { services } = api;
-    const qc = services.queryClient;
-    const before = await view();
-    const customers = before.tables.find((t) => t.name === "customers")!;
-    const invoices = before.tables.find((t) => t.name === "invoices")!;
-    expect(customers.origin).toBe("synthesized");
-    // The server draws the new file's id again when it applies: the preview's is not the file's.
-    const preview = await endpoints.previewMaterialize(DB, { op: "materialize-tables", entities: [CUSTOMER] });
-    const previewId = preview.creates.find((c) => c.kind === "table")!.id;
-
-    const draft = draftFromDrop(before.tables, { sourceTable: customers.key, sourceColumn: null, targetTable: invoices.key, targetColumn: null }, PATTERN);
-    draft.pairs = [{ column: null, newColumn: "last_invoice_id", referenced: invoices.primaryKey!.columns[0] }];
-    draft.name = "fk_customers_last_invoice";
-    const undoBefore = services.store.getState().undo.length;
-    expect(await saveForeignKey(services, qc, { database: DB, draft, tables: before.tables, pattern: PATTERN })).toBe(true);
-
-    const file = storedFileOf(customers.key)!;
-    expect(file).toBeTruthy();
-    expect(file).not.toBe(previewId);
-    const stored = await doc(file);
-    const column = (stored.columns as Json[]).find((c) => c.name === "last_invoice_id")!;
-    expect(stored.foreignKeys).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "fk_customers_last_invoice", columns: [column.id], referencesTable: invoices.key })]),
-    );
-    // The store and the key are one undo step, every item of it something the undo can do.
-    const undo = services.store.getState().undo;
-    expect(undo.length).toBe(undoBefore + 1);
-    const step = undo[undo.length - 1];
-    expect(step.label).toBe("New foreign key on customers");
-    expect(step.ids).toContain(file);
-    expect(step.ids.every((_, i) => step.before[i] !== null || step.after[i] !== null)).toBe(true);
-    expect(step.ids).not.toContain(previewId);
-
-    // Undo puts the projection back; redo stores the table with its key again.
-    expect(await services.undo.undo()).toMatchObject({ ok: true });
-    expect((await view()).tables.find((t) => t.name === "customers")!.origin).toBe("synthesized");
-    expect(await services.undo.redo()).toMatchObject({ ok: true });
-    const again = (await view()).tables.find((t) => t.name === "customers")!;
-    expect(again.key).toBe(file);
-    expect(again.foreignKeys.map((f) => f.name)).toContain("fk_customers_last_invoice");
-  });
-
-  it("refuses a store whose documents changed since they were read, writing nothing", async () => {
-    const { services } = api;
-    const qc = services.queryClient;
-    const before = await view();
-    const customers = before.tables.find((t) => t.name === "customers")!;
-    // Read for the undo step, then changed by another save: the store's expected hash no longer matches.
-    const entity = await qc.fetchQuery({ ...elementQuery(CUSTOMER), staleTime: 0 });
-    const changed = { ...(entity.json as unknown as Json), displayName: "Client" };
-    expect((await endpoints.saveElement(CUSTOMER, changed as unknown as ModelJson, entity.hash)).outcome).toBe("saved");
-    const result = await endpoints.applyBatch({
-      operations: [{ op: "materialize-tables", database: DB, entities: [CUSTOMER], expectedHashes: { [CUSTOMER]: entity.hash } }],
-    } as never);
-    expect(endpoints.isBatchResult(result) && result.outcome).toBe("conflict");
-    expect((await view()).tables.find((t) => t.key === customers.key)?.origin).toBe("synthesized");
-    // The editor's store reads the hashes itself, so it goes through.
-    const stored = await storeTables(services, qc, DB, new Map([[customers.key, CUSTOMER]]), "Store customers");
-    expect(stored.ok).toBe(true);
-  });
 
   it("deletes a key column with what holds it and the other tables' keys to it, in one batch and one undo step", async () => {
     const { services } = api;
@@ -189,58 +120,11 @@ describe("the designer's writes against the mock", () => {
     expect(services.store.getState().undo.length).toBe(undoBefore);
   });
 
-  it("stores a laid-out table and the laid-out tables whose keys go first, plans on the files, and takes the store back on cancel", async () => {
-    const { services } = api;
-    const qc = services.queryClient;
-    const before = await view();
-    const customers = before.tables.find((t) => t.name === "customers")!;
-    const invoices = before.tables.find((t) => t.name === "invoices")!;
-    expect([customers.origin, invoices.origin]).toEqual(["synthesized", "synthesized"]);
-    expect(invoices.foreignKeys.some((f) => f.referencedTable === customers.key)).toBe(true);
-    const req = { database: DB, key: customers.key, part: { kind: "primary-key" as const, id: "primary-key" } };
-    const undoBefore = services.store.getState().undo.length;
-    const prepared = await preparePartDelete(services, qc, req);
-    if (typeof prepared === "string") throw new Error(prepared);
-    // Both were stored to make the plan, which is made on their files: invoices' key to customers goes with the primary key.
-    expect([...prepared.stored.keys()].sort()).toEqual([customers.key, invoices.key].sort());
-    expect(prepared.key).toBe(prepared.stored.get(customers.key));
-    const invoicesFile = prepared.stored.get(invoices.key)!;
-    expect(prepared.plan.others.map((o) => o.id)).toEqual([invoicesFile]);
-    expect(prepared.plan.others[0].lines.join(" ")).toContain("fk_invoices_customer_id goes");
-    expect(services.store.getState().undo.at(-1)!.label).toBe(prepared.label);
-
-    // Cancel: the store is taken back, and no step is left in the history.
-    await cancelPartDelete(services, qc, req, prepared);
-    expect(services.store.getState().undo.length).toBe(undoBefore);
-    expect(services.store.getState().redo.at(-1)?.label).not.toBe(prepared.label);
-    const back = await view();
-    expect(back.tables.find((t) => t.name === "customers")!.origin).toBe("synthesized");
-    expect(back.tables.find((t) => t.name === "invoices")!.origin).toBe("synthesized");
-
-    // Asked again and deleted: the store and the delete are one undo step; undo lays both tables out again.
-    const again = await preparePartDelete(services, qc, req);
-    if (typeof again === "string") throw new Error(again);
-    const files = new Map(again.stored);
-    expect(await executePartDelete(services, qc, req, again)).toBeNull();
-    expect(services.store.getState().undo.length).toBe(undoBefore + 1);
-    expect(services.store.getState().undo.at(-1)!.label).toBe(again.label);
-    const deleted = await view();
-    expect((await doc(again.key)).primaryKey).toBeUndefined();
-    const invoiceKeys = ((await doc(files.get(invoices.key)!)).foreignKeys as Json[] | undefined) ?? [];
-    expect(invoiceKeys.some((f) => f.name === "fk_invoices_customer_id")).toBe(false);
-    expect(deleted.tables.find((t) => t.name === "invoices")!.origin).not.toBe("synthesized");
-    expect(await services.undo.undo()).toMatchObject({ ok: true });
-    expect((await view()).tables.find((t) => t.name === "customers")!.origin).toBe("synthesized");
-  });
-
   it("renames a column and what names it in the table's SQL, one undo step", async () => {
     const { services } = api;
     const qc = services.queryClient;
-    const status = await endpoints.getMaterializeStatus(DB);
     const customers = (await view()).tables.find((t) => t.name === "customers")!;
-    expect((await storeTables(services, qc, DB, new Map([[customers.key, CUSTOMER]]), "Store customers")).ok).toBe(true);
-    expect(status.entities.length).toBeGreaterThan(0);
-    const file = storedFileOf(customers.key)!;
+    const file = customers.key;
     const stored = await doc(file);
     const email = (stored.columns as Json[]).find((c) => c.name === "email")!;
     // A check and a partial index that read email.

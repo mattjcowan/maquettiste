@@ -5,7 +5,6 @@
 // chain. Element children that the index answers (relationships, relation ends, seed data, mappings) are built on
 // demand by `childKeys`; children that need a document (attributes, enum members, a table's columns) are added by
 // `documentChildren` and `tableChildren` once it is loaded.
-import { EMPTY_DATABASE_HINT } from "@/model/databaseMapping";
 import type { Diagnostic, ElementDocument, ElementSummary, ExplorerFolder, TableSummary, TableView } from "@/api/types";
 import type { AttributeDoc } from "@/api/types";
 import { attributesOf, typeLabel } from "@/model/model";
@@ -33,6 +32,9 @@ import {
   placementOf,
   type KindFolder,
 } from "@/model/labels";
+
+/** The hint the Databases explorer shows under a database that holds nothing yet. */
+const EMPTY_DATABASE_HINT = "Empty: New table…, New view… or New query… adds one here";
 
 export type ExplorerId = keyof typeof EXPLORER_LABELS;
 /** The explorers in rail order. */
@@ -225,8 +227,6 @@ export interface RelatedMaps {
   derivedOf: Map<string, string[]>;
   /** Seed target → seeds. */
   seedsOf: Map<string, string[]>;
-  /** Entity → its mapping files. */
-  mappingsOf: Map<string, string[]>;
   /** Entity → the lifecycles that name it as a subject (not through a base entity: the folder walks the bases). */
   lifecyclesOf: Map<string, string[]>;
   /** Entity → the lifecycles that cover it through a stereotype entry (the index row's `covers`), with the stereotypes' ids. */
@@ -345,10 +345,9 @@ export function ownerOf(rows?: readonly Pick<ElementSummary, "id" | "path">[]): 
   };
 }
 
-/** An element row's label: its display name or name, an overlay's entity name, or "<kind> <id tail>". */
-function rowLabel(byId: ReadonlyMap<string, Row>, r: Row): string {
-  const e = r.entity ? byId.get(r.entity) : undefined;
-  return r.displayName || r.name || (e ? e.displayName || e.name : undefined) || `${kindFolder(r.kind)?.one ?? r.kind} ${r.id.slice(-6)}`;
+/** An element row's label: its display name or name, or "<kind> <id tail>". */
+function rowLabel(r: Row): string {
+  return r.displayName || r.name || `${kindFolder(r.kind)?.one ?? r.kind} ${r.id.slice(-6)}`;
 }
 
 /**
@@ -433,7 +432,7 @@ function newElementNode(
   stereotypeKeys?: ReadonlyMap<string, string>,
 ): TreeNode {
   const f = kindFolder(r.kind) ?? OTHER_FOLDER;
-  const label = rowLabel(byId, r);
+  const label = rowLabel(r);
   const node = newNode(key, "element", explorer, label, f.icon, label.toLowerCase());
   node.id = r.id;
   node.kind = r.kind;
@@ -560,17 +559,10 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
       if (!movable(r.kind) || state.projectKinds.has(r.kind) || !isDomain(r.package) || hasErrors(r.id) || r.base) return null;
       if (!nodes.has(folderKey(r))) return null;
       if (r.kind === "entity") {
+        // A bound entity links to its tables, which only a rebuild places.
+        if (r.boundTo?.length) return null;
         const id = r.id;
-        const maps = [
-          related.relationsOf,
-          related.derivedOf,
-          related.tablesOf,
-          related.seedsOf,
-          related.mappingsOf,
-          related.lookupOf,
-          related.lifecyclesOf,
-          related.processesOf,
-        ];
+        const maps = [related.relationsOf, related.derivedOf, related.tablesOf, related.seedsOf, related.lookupOf, related.lifecyclesOf, related.processesOf];
         if (maps.some((m) => m.get(id)?.length)) return null;
       }
       delta.set(folderKey(r), (delta.get(folderKey(r)) ?? 0) + (r === old ? -1 : 1));
@@ -581,11 +573,8 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
   for (const [key, d] of delta) if ((nodes.get(key)!.count ?? 0) + d < 1) return null;
   for (const [old] of renamed) {
     if (old.kind !== "entity") continue;
-    if (related.mappingsOf.get(old.id)?.length) return null;
     // A process row (a lifecycle's or an orchestration's) says its subject's name.
     if (related.processesOf.get(old.id)?.length) return null;
-    // Rows without a name of their own are labelled with their entity's name.
-    for (const r of byId.values()) if (r.entity === old.id && !r.name && !r.displayName && r.kind !== "relation") return null;
   }
 
   // Apply. Nodes whose shown fields change are replaced, never mutated (rows are memoized by node), and children
@@ -697,7 +686,7 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
   for (const [old, row] of renamed) {
     replaceInList(old, row);
     touch(row);
-    const label = rowLabel(byId, row);
+    const label = rowLabel(row);
     const node = edit(row.id, { label, sort: label.toLowerCase(), secondary: rowSecondary(byId, row, related.actsIn, forest.stereotypeKeys) });
     if (!node) continue;
     if (node.parent && nodes.get(node.parent)?.children) insertChild(node.parent, node);
@@ -745,7 +734,6 @@ export function buildForest(input: TreeInput): Forest {
     baseOf: new Map(),
     derivedOf: new Map(),
     seedsOf: new Map(),
-    mappingsOf: new Map(),
     lifecyclesOf: new Map(),
     stereotypeLifecyclesOf: new Map(),
     processesOf: new Map(),
@@ -755,7 +743,7 @@ export function buildForest(input: TreeInput): Forest {
     const r = id ? byId.get(id) : undefined;
     return r ? r.displayName || r.name : undefined;
   };
-  const labelOf = (r: Row) => rowLabel(byId, r);
+  const labelOf = (r: Row) => rowLabel(r);
   const isPackage = (id: string | null | undefined) => !!id && byId.get(id)?.kind === "package";
 
   const add = (node: TreeNode) => {
@@ -848,8 +836,6 @@ export function buildForest(input: TreeInput): Forest {
       for (const end of r.ends) for (const e of endCoveredEntities(end)) ends.push(e);
       for (let i = 0; i < ends.length; i++) if (ends.indexOf(ends[i]) === i) push(related.relationsOf, ends[i], r.id);
       related.endsOf.set(r.id, ends);
-    } else if (r.kind === "mapping") {
-      if (r.entity) push(related.mappingsOf, r.entity, r.id);
     } else if (r.kind === "seed" && r.target) {
       push(related.seedsOf, r.target, r.id);
     } else if (r.kind === "process") {
@@ -1274,7 +1260,7 @@ export function buildForest(input: TreeInput): Forest {
     if (!input.groupTablesByDomain) return folderNode(key, "databases", f, tables);
     const groups = new Map<string, TreeNode[]>();
     for (const t of tables) {
-      const owner = t.table ? (t.table.entityId ?? t.table.relationId ?? (t.table as Summary).enumId) : t.id ? byId.get(t.id)?.entity : null;
+      const owner = t.table ? (t.table.relationId ?? (t.table as Summary).enumId) : null;
       const domain = domainOfOwner(owner);
       push(groups, domain ?? (owner ? "" : "-"), t);
       if (t.markers) t.markers = t.markers.filter((m) => m !== "unlinked");
@@ -1313,6 +1299,8 @@ export function buildForest(input: TreeInput): Forest {
     return out;
   };
   let tableTotal = 0;
+  // Each table node by its table file's id, for the entities bound to it (below).
+  const tableNodeOf = new Map<string, string>();
   const databaseNodes = databases.map((db) => {
     const info = input.databases?.get(db.id);
     const loaded = input.tables?.get(db.id);
@@ -1326,14 +1314,13 @@ export function buildForest(input: TreeInput): Forest {
     // Declared schemas show even while empty, so a new schema appears at once (erratum E26).
     if ((info?.schemas?.length ?? 0) > 1) for (const name of info!.schemas!) bucket(name);
     const tableKey = new Map<string, string>();
-    const ownerTable = new Map<string, TreeNode>();
     if (loaded) {
       for (const t of loaded.tables as readonly Summary[]) {
         const key = tableKeyOf(db.id, t.key);
         // The database side shows tables only: no marker says what else a table relates to.
         const markers: string[] = [];
-        if (t.isJunction) markers.push("junction");
-        const owner = t.entityId ?? t.relationId ?? t.enumId ?? null;
+        if (t.relationId) markers.push("junction");
+        const owner = t.relationId ?? t.enumId ?? null;
         const node = add({
           key,
           type: "table",
@@ -1350,12 +1337,12 @@ export function buildForest(input: TreeInput): Forest {
         });
         if (markers.length) node.markers = markers;
         tableKey.set(t.key, key);
+        tableNodeOf.set(t.key, key);
         if (owner) {
           related.mappedBy.set(key, owner);
           push(related.tablesOf, owner, key);
-          if (t.entityId && !t.isJunction && !ownerTable.has(t.entityId)) ownerTable.set(t.entityId, node);
         }
-        if (t.isJunction && t.relationId) related.junctionOf.set(t.relationId, key);
+        if (t.relationId) related.junctionOf.set(t.relationId, key);
         if (t.enumId) push(related.lookupOf, t.enumId, key);
         bucket(t.schema ?? "").table.push(node);
       }
@@ -1363,8 +1350,8 @@ export function buildForest(input: TreeInput): Forest {
     const fallbackSchema = () => info?.defaultSchema ?? (schemas.size === 1 ? [...schemas.keys()][0] : "");
     for (const r of own) {
       if (r.kind === "table" && loaded) {
-        // A table file is its summary's row: by key (designed, imported), or by entity (an overlay).
-        const node = nodes.get(tableKey.get(r.id) ?? "") ?? (r.entity ? ownerTable.get(r.entity) : undefined);
+        // A table file is its summary's row, by key.
+        const node = nodes.get(tableKey.get(r.id) ?? "");
         if (node) {
           node.id = r.id;
           node.errors += errorsOf(r.id);
@@ -1466,6 +1453,17 @@ export function buildForest(input: TreeInput): Forest {
         children,
       ),
     );
+  }
+  // An entity has a table only through its binding (since 0.29.0): its index row's boundTo names the tables its bindings write or read,
+  // which "Go to table" and related-element highlighting follow.
+  for (const r of rows) {
+    if (r.kind !== "entity" || !r.boundTo?.length) continue;
+    for (const id of r.boundTo) {
+      const key = tableNodeOf.get(id);
+      if (!key) continue;
+      push(related.tablesOf, r.id, key);
+      if (!related.mappedBy.has(key)) related.mappedBy.set(key, r.id);
+    }
   }
   headers.databases = `${countOf(databases.length, "database")} · ${countOf(tableTotal, "table")}`;
   rootNode("databases", databaseNodes);
@@ -1750,7 +1748,7 @@ function newNode(key: string, type: NodeType, explorer: ExplorerId, label: strin
   };
 }
 
-/** The elements an element's index row names: relation ends, a mapping's or table's entity and database, a seed's target, a base entity. */
+/** The elements an element's index row names: relation ends, a database, a seed's target, a base entity. */
 export function usesOf(forest: Forest, id: string): string[] {
   const r = forest.byId.get(id);
   if (!r) return [];
@@ -1762,7 +1760,6 @@ export function usesOf(forest: Forest, id: string): string[] {
     for (const id of endListedEntities(e)) add(id);
     for (const id of e.stereotypes ?? []) add(id);
   }
-  add(r.entity);
   add(r.database);
   add(r.target);
   add(r.base);
@@ -2309,7 +2306,6 @@ export function tableChildren(forest: Forest, key: string, view: TableView, extr
       id: c.key,
       label: c.name,
       secondary: `${c.nativeType}${c.nullable ? "" : " not null"}${c.isPrimaryKey ? " · PK" : ""}${c.isForeignKey ? " · FK" : ""}`,
-      attribute: c.attributeId ?? null,
     })),
   );
   const nameOf = (column: string) => view.columns.find((c) => c.key === column)?.name ?? column;
@@ -2501,8 +2497,6 @@ export function relatedKeys(forest: Forest, key: string): Set<string> {
   } else if (r.kind === "enum") {
     for (const t of related.lookupOf.get(r.id) ?? []) addKey(t);
     for (const t of related.tablesOf.get(r.id) ?? []) addKey(t);
-  } else if (r.kind === "table") {
-    addId(r.entity ?? undefined);
   }
   return out;
 }

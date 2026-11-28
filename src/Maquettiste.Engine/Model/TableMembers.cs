@@ -147,17 +147,13 @@ internal static class TableMembers
         return ReferenceEquals(stored, entry) || stored.Matches(entry.Effective, entry.Redefines, entry.Excludes) ? stored.Set : entry.Set;
     }
 
-    /// <summary>The table key of a table file: its id, or the synthesized key an overlay targets (engine-design.md section 7.3).</summary>
+    /// <summary>The table key of a table file: its id.</summary>
     /// <param name="file">The table file.</param>
-    /// <returns>The key, or <see langword="null"/> for an overlay that names neither an entity nor a relation.</returns>
+    /// <returns>The key.</returns>
     public static string? TableKeyOf(Table file)
     {
         ArgumentNullException.ThrowIfNull(file);
-        if (file.Origin != TableOrigin.Synthesized)
-            return file.Id;
-        if (file.Entity is { } entity)
-            return (file.Attribute is { } attribute ? entity + "." + attribute : entity) + "@" + file.Database;
-        return file.Relation is { } relation ? relation + "@" + file.Database : null;
+        return file.Id;
     }
 
     /// <summary>The facets a redefinition may state for a member, by its kind, in ordinal order; empty for an unknown record.</summary>

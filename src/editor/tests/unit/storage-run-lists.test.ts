@@ -124,7 +124,7 @@ describe("the quick fixes", () => {
     expect(keptCodeOf(text("''", "'P'"))?.code).toBe("");
   });
   it("MQ4009: a top-level foreignKey moves only on a relation with an end of several types; otherwise the key is removed", () => {
-    expect(mappingKeyFix(mapping({ promotedName: "x" }), relation, "/promotedName")).toMatchObject({ label: "Remove the key" });
+    expect(mappingKeyFix(mapping({ foreignKey: "FK" }), relation, "/foreignKey")).toMatchObject({ label: "Remove the key" });
     const d = diag("MQ4009", "Remove it.", "MAP", "/foreignKey");
     // One-type relation: Remove the key, no move.
     const one = (id: string) => (id === "REL" ? relation : mapping({ foreignKey: "FK" }));

@@ -1,7 +1,7 @@
 # csharp-dapper
 
 A C# model and [Dapper](https://github.com/DapperLib/Dapper) data access layer from the resolved model: entity classes
-as generated and hand-written halves of one partial class, enums, value objects, a repository per mapped entity, one
+as generated and hand-written halves of one partial class, enums, value objects, a repository per bound entity, one
 registration file per package and Dapper type handlers; for operations, the request, result, error codes and handler
 interface, and with `endpointsFolder` one HTTP endpoint each (see Operations); for processes, their states, definitions
 and contracts, the handlers, services, machine and store as generated and hand-written pairs, HTTP endpoints with
@@ -128,40 +128,18 @@ else is left). Nothing here needs git: the file is plain text for whatever tool 
 
 ## Repositories
 
-A repository is generated for every concrete entity with a mapping in the chosen database (the `database` parameter, else the
-first database by name that maps the entity) whose columns live in the entity's own table. It takes an `IDbConnection` (and an
-optional `IDbTransaction`) and offers:
-
-| Method | SQL |
-| --- | --- |
-| `GetAsync(key…)` | `SELECT … WHERE <primary key>` |
-| `ListAsync(skip, take)` | `SELECT … ORDER BY <primary key>` with `LIMIT/OFFSET` or `OFFSET … FETCH` |
-| `InsertAsync(entity)` | `INSERT`, returning a database-generated key (`RETURNING` or `OUTPUT INSERTED`) into the entity; `uuid-v7` keys are filled with `Guid.CreateVersion7()` and `ulid` keys with `UlidGenerator.NewUlid()` when empty |
-| `UpdateAsync(entity)` | `UPDATE … SET <every column but the key, generated and immutable ones> WHERE <primary key>` |
-| `DeleteAsync(key…)` | `DELETE … WHERE <primary key>` |
-
-Table, column and key names come from the resolved model and are quoted for the database's dialect. Dapper maps a private `Row`
-class with one property per column (aliased in the `SELECT`), and `Row` converts to and from the entity: embedded value objects
-are rebuilt from their prefixed columns, enums stored as text go through `ToCode`/`Parse`, enums stored as integers or lookup
-keys are cast, and JSON columns are (de)serialized with `System.Text.Json`. A table-per-hierarchy discriminator is written on
-insert and filtered on read.
-
-Range and multirange columns (a column-only type: an overlay's extra column, so an entity property of its own) are held
-as their text form, a `string` such as `[1,10)` or `{[1,3),[5,8)}`, as JSON is. On PostgreSQL the repository reads
-`<column>::text` and writes `CAST(@<property> AS <native type>)`, such as `CAST(@Seats AS int4range)`; elsewhere the
-column is text already. A bound repository and a query class take their SQL from the engine (`binding_sql`,
-`query_sql`), which adds no casts: a binding or query over a range column needs them written by hand for now, until the
-engine's statements cast range columns (a follow-up, as typed C# ranges are).
+A repository is generated for every concrete entity bound to the chosen database (see Repositories from bindings below). Range
+and multirange columns are held as their text form, a `string` such as `[1,10)` or `{[1,3),[5,8)}`, as JSON is. A repository and a
+query class take their SQL from the engine (`binding_sql`, `query_sql`), which adds no casts: a binding or query over a range
+column needs them written by hand for now, until the engine's statements cast range columns (a follow-up, as typed C# ranges are).
 
 Not covered, by design of an example pack: navigations and junction tables (write queries for them in the companion or in your
-own repository class, which is `partial`), collections stored in child tables (their property is left empty), and table-per-type
-hierarchies, whose rows span tables (no repository is generated for them). This is about mapped entities; a bound entity's child
-tables and table per type are covered (see below).
+own repository class, which is `partial`).
 
 ### Repositories from bindings
 
 An entity with a binding (its `bindings` in the model, one per database) for the chosen database gets its repository from the
-binding instead: the chosen database is the `database` parameter, else the first database by name that binds or maps the entity.
+binding: the chosen database is the `database` parameter, else the first database by name that binds the entity.
 Its statements come from the engine (`binding_sql`), so the binding decides everything: the source it reads (a table, a view, or
 a query wrapped as a derived table), the constants (a filter on every read, a value on every insert, which is how several entities
 share one table through an `entity_type` column), the columns the database fills (never written), and the delete.
@@ -170,7 +148,7 @@ share one table through an `entity_type` column), the columns the database fills
 | --- | --- |
 | `GetAsync(query parameters…, key…)` | the binding's `select-by-key` |
 | `ListAsync(query parameters…, mq_skip, mq_take)` | the binding's `select`, ordered by the key fields, with `LIMIT/OFFSET` or `OFFSET … FETCH` |
-| `InsertAsync(entity)` | the binding's `insert`: fields and constants, one database-generated key read back into the entity; `uuid-v7` and `ulid` keys filled as above |
+| `InsertAsync(entity)` | the binding's `insert`: fields and constants, one database-generated key read back into the entity; `uuid-v7` keys are filled with `Guid.CreateVersion7()` and `ulid` keys with `UlidGenerator.NewUlid()` when empty |
 | `UpdateAsync(entity)` | the binding's `update`, by key with the constants in the where clause |
 | `DeleteAsync(key…)` | the binding's `delete`: by key, or the soft-delete update |
 
@@ -193,7 +171,7 @@ nested to any depth are built from, and written to, their own columns or JSON co
 A binding that does not write (a view or query source, or `write: "none"`) gets a read-only repository: no `InsertAsync`,
 `UpdateAsync` or `DeleteAsync`. The private `Row` class has one property per field, named exactly as the field, because the
 select's aliases and the statements' parameters carry the field names. A field that holds a relation's key becomes a property of
-the entity class. Entities without bindings generate exactly as before.
+the entity class. An entity without a binding gets no repository.
 
 ## Queries
 

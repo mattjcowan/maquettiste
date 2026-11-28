@@ -444,61 +444,46 @@ internal sealed partial class SyntheticModel
     private void BuildDatabasesAndMappings()
     {
         var packages = _packages.Count;
-        var main = new Database { Id = _ids.Next(), Name = "main", Dialect = Dialect.PostgreSql, Version = "16" };
+        var main = new Database { Id = _ids.Next(), Name = "main", Dialect = Dialect.PostgreSql, Version = "16", ByConvention = ConventionMapping.None };
         main = main with { Schemas = SchemasFor(main.Dialect), DefaultSchema = _options.Schemas > 0 ? SchemaNames[0] : null };
-        var reporting = new Database
-        {
-            Id = _ids.Next(),
-            Name = "reporting",
-            Dialect = Dialect.SqlServer,
-            Version = "2022",
-            Packages = [.. _packages.Take(Math.Max(1, packages / 5)).Select(p => p.Id)],
-        };
+        var reporting = new Database { Id = _ids.Next(), Name = "reporting", Dialect = Dialect.SqlServer, Version = "2022", ByConvention = ConventionMapping.None };
         reporting = reporting with { Schemas = SchemasFor(reporting.Dialect), DefaultSchema = _options.Schemas > 0 ? SchemaNames[0] : null };
-        var edge = new Database
-        {
-            Id = _ids.Next(),
-            Name = "edge",
-            Dialect = Dialect.Sqlite,
-            Packages = [.. _packages.Take(Math.Max(1, packages / 25)).Select(p => p.Id)],
-        };
+        var edge = new Database { Id = _ids.Next(), Name = "edge", Dialect = Dialect.Sqlite, ByConvention = ConventionMapping.None };
         _elements.Add(main);
         _elements.Add(reporting);
         _elements.Add(edge);
 
-        var reportingPackages = new HashSet<string>(reporting.Packages.Select(p => p.Package), StringComparer.Ordinal);
-        var enumIds = new HashSet<string>(_enums.Select(e => e.Id), StringComparer.Ordinal);
-        var valueObjectIds = new HashSet<string>(_valueObjects.Select(v => v.Id), StringComparer.Ordinal);
-        for (var i = 0; i < _entities.Count; i++)
+        // Every entity is stored in main; the entities of the first fifth of the packages (with their sub-packages) in reporting too, and of
+        // the first twenty-fifth in edge. StoreTables designs their tables, once every entity (the lookups too) is built.
+        _databasePackages[main.Id] = null;
+        _databasePackages[reporting.Id] = [.. _packages.Take(Math.Max(1, packages / 5)).Select(p => p.Id)];
+        _databasePackages[edge.Id] = [.. _packages.Take(Math.Max(1, packages / 25)).Select(p => p.Id)];
+    }
+
+    /// <summary>The packages whose entities (with their sub-packages') each database stores, by database id; null for every entity.</summary>
+    private readonly Dictionary<string, HashSet<string>?> _databasePackages = new(StringComparer.Ordinal);
+
+    /// <summary>The ids of the entities a database stores, in element order.</summary>
+    private List<string> EntitiesOf(string databaseId)
+    {
+        if (!_databasePackages.TryGetValue(databaseId, out var roots))
+            return [];
+        var parents = _packages.ToDictionary(p => p.Id, p => p.Parent, StringComparer.Ordinal);
+        bool Under(string? id)
         {
-            var entity = _entities[i];
-            if (i % 10 == 3 && entity.Attributes.FirstOrDefault(a => a.Type.Ref is { } r && enumIds.Contains(r)) is { } enumAttribute)
+            if (roots is null)
+                return true;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (; id is not null && seen.Add(id); id = parents.GetValueOrDefault(id))
             {
-                // Enums stored by their code in PostgreSQL for one entity in ten.
-                _elements.Add(new Mapping
-                {
-                    Id = _ids.Next(),
-                    Name = entity.Name + " in main",
-                    Database = main.Id,
-                    Entity = entity.Id,
-                    Attributes = [new AttributeMapping { Attribute = enumAttribute.Id, Storage = StorageKind.String }],
-                });
+                if (roots.Contains(id))
+                    return true;
             }
 
-            if (i % 5 == 1 && reportingPackages.Contains(entity.Package!)
-                && entity.Attributes.FirstOrDefault(a => a.Type.Ref is { } r && valueObjectIds.Contains(r)) is { } voAttribute)
-            {
-                // Value objects stored as JSON in SQL Server for some reporting entities.
-                _elements.Add(new Mapping
-                {
-                    Id = _ids.Next(),
-                    Name = entity.Name + " in reporting",
-                    Database = reporting.Id,
-                    Entity = entity.Id,
-                    Attributes = [new AttributeMapping { Attribute = voAttribute.Id, Storage = StorageKind.Json }],
-                });
-            }
+            return false;
         }
+
+        return [.. _elements.OfType<Entity>().Where(e => Under(e.Package)).Select(e => e.Id)];
     }
 
     private ProjectSettings BuildSettings() => new()

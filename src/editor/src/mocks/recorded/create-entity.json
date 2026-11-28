@@ -1,7 +1,7 @@
 {
   "outcome": "saved",
-  "id": "01M68CRCA02X86YRC50E3TYMN5",
-  "hash": "52f34cee447797f3a6017c20a619ea7fd2c77097500e68ccc32cebe3c2288d8c",
+  "id": "01M8FRSRYXD41N2CR12G5N2JFE",
+  "hash": "7714f6258648260261c4dd5c4d4d6022d87daf572ce143304b39520c74836502",
   "current": {
     "element": {
       "kind": "entity",
@@ -16,6 +16,7 @@
         "strategy": "application"
       },
       "alternateKeys": [],
+      "checks": [],
       "attributes": [
         {
           "type": "uuid",
@@ -39,6 +40,9 @@
           "displayName": null,
           "pluralName": null,
           "description": null,
+          "rationale": null,
+          "decision": null,
+          "status": null,
           "tags": [],
           "category": null,
           "stereotypes": [],
@@ -49,11 +53,16 @@
       ],
       "bindings": [],
       "$schema": "../../.schema/v1/entity.json",
-      "id": "01M68CRCA02X86YRC50E3TYMN5",
+      "excludeStereotypes": null,
+      "suppressions": [],
+      "id": "01M8FRSRYXD41N2CR12G5N2JFE",
       "name": "Refund",
       "displayName": null,
       "pluralName": null,
       "description": null,
+      "rationale": null,
+      "decision": null,
+      "status": null,
       "tags": [],
       "category": null,
       "stereotypes": [],
@@ -62,12 +71,13 @@
       "source": null
     },
     "path": ".maquettiste/model/entities/refund.json",
-    "hash": "52f34cee447797f3a6017c20a619ea7fd2c77097500e68ccc32cebe3c2288d8c",
-    "dependencyHash": "a5379ced60c904929f717a6eaa8d622c31586821c2b46b027f7e61e511103268",
+    "hash": "7714f6258648260261c4dd5c4d4d6022d87daf572ce143304b39520c74836502",
+    "dependencyHash": "9a936332723d36a51b8e2e1ea98eaa1e9e0d8f260ff4a4a707ad40c66ef519ed",
+    "sidecarText": null,
     "json": {
       "$schema": "../../.schema/v1/entity.json",
       "kind": "entity",
-      "id": "01M68CRCA02X86YRC50E3TYMN5",
+      "id": "01M8FRSRYXD41N2CR12G5N2JFE",
       "name": "Refund",
       "package": "01J92P0V01KDRN8GX5PGYCNKSX",
       "key": {
@@ -83,18 +93,17 @@
           "required": true
         }
       ]
-    },
-    "sidecarText": null
+    }
   },
   "diagnostics": [],
   "referrers": [],
   "changes": {
     "changed": [
       {
-        "id": "01M68CRCA02X86YRC50E3TYMN5",
+        "id": "01M8FRSRYXD41N2CR12G5N2JFE",
         "kind": "entity",
         "path": ".maquettiste/model/entities/refund.json",
-        "hash": "52f34cee447797f3a6017c20a619ea7fd2c77097500e68ccc32cebe3c2288d8c"
+        "hash": "7714f6258648260261c4dd5c4d4d6022d87daf572ce143304b39520c74836502"
       }
     ],
     "deleted": [],
@@ -102,5 +111,6 @@
     "truncated": false,
     "isEmpty": false
   },
-  "facts": []
+  "facts": [],
+  "usage": null
 }

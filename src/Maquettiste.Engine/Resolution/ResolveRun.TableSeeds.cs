@@ -182,9 +182,6 @@ internal sealed partial class ResolveRun
                 case REntity entity when entity.Bindings.TryGetValue(database.Name, out var binding):
                     sources = BindingSources(seed, entity, binding);
                     break;
-                case REntity entity when entity.Mappings.TryGetValue(database.Name, out var mapping) && _tables.Contains(mapping.Table):
-                    sources = [new Source(mapping.Table, "entity", seed.OrderedRows, row => ThroughMapping(seed, row, mapping, seedRowsById), [], [])];
-                    break;
                 case RRelation relation when relation.Mappings.TryGetValue(database.Name, out var link) && link.JunctionTable is { } junction
                     && _tables.Contains(junction):
                     sources = [new Source(junction, "relation", seed.OrderedRows, row => ThroughJunction(seed, row, link, junction, seedRowsById, database.Name), [],
@@ -923,48 +920,13 @@ internal sealed partial class ResolveRun
         return KeyOfReferenced(row, cellName, end, index, seedRowsById);
     }
 
-    /// <summary>An entity row through the mapping of a database that projects the entity: its attribute columns, its to-one keys, the discriminator.</summary>
-    private static IReadOnlyDictionary<string, object?> ThroughMapping(RSeed seed, RSeedRow row, REntityMapping mapping, Dictionary<string, RSeedRow> seedRowsById)
-    {
-        var table = mapping.Table;
-        var cells = new List<(RColumn, object?)>();
-        foreach (var sc in seed.Columns)
-        {
-            if (sc.Kind == "attribute" && sc.Attribute is { Collection: false } attribute)
-            {
-                var cell = row.Values.GetValueOrDefault(sc.Name);
-                foreach (var column in table.Columns)
-                {
-                    if (column.AttributePath == attribute.Id)
-                    {
-                        cells.Add((column, cell));
-                    }
-                    else if (column.AttributePath is { } path && path.StartsWith(attribute.Id + ".", StringComparison.Ordinal) && column.Attribute is { } member)
-                    {
-                        cells.Add((column, (cell as IReadOnlyDictionary<string, object?>)?.GetValueOrDefault(member.Name)));
-                    }
-                }
-            }
-            else if (sc.Kind == "end" && sc.End is { } end)
-            {
-                var key = table.ForeignKeys.FirstOrDefault(f => f.End?.Id == end.Id) ?? table.ForeignKeys.FirstOrDefault(f => f.End?.Opposite?.Id == end.Id);
-                for (var i = 0; key is not null && i < key.Columns.Count; i++)
-                    cells.Add((key.Columns[i], KeyOfReferenced(row, sc.Name, end, i, seedRowsById)));
-            }
-        }
-
-        if (mapping.DiscriminatorColumn is { } discriminator)
-            cells.Add((discriminator, mapping.DiscriminatorValue));
-        return Cells(cells);
-    }
-
     /// <summary>
     /// A relation row into its junction table: each end's key columns, the relation's attribute columns, then the mapping's constants
     /// (several-types-design.md decision 44 and answer 9), so the row is one of this relation's links and its key holds the constants' columns.
     /// When the mapping has its link (a designed link table with constants or attribute columns), each end's key comes from it: a table several
     /// relations share has one key per end for all of them, and that key's <see cref="RForeignKey.End"/> names only one relation's end. An
     /// end's key value is the one the named row's binding writes to the referenced column when its entity is bound to the database
-    /// (<see cref="EndKey"/>); a relation attribute's column is the one the mapping's <c>attributes</c> names, else the projected column.
+    /// (<see cref="EndKey"/>); a relation attribute's column is the one the mapping's <c>attributes</c> names.
     /// </summary>
     private static IReadOnlyDictionary<string, object?> ThroughJunction(RSeed seed, RSeedRow row, RRelationMapping mapping, RTable junction,
         Dictionary<string, RSeedRow> seedRowsById, string database)
@@ -979,7 +941,7 @@ internal sealed partial class ResolveRun
                     cells.Add((columns[i], EndKey(row, sc.Name, end, i < referenced.Count ? referenced[i] : null, i, seedRowsById, database)));
             }
             else if (sc.Kind == "attribute" && sc.Attribute is { } attribute
-                && (mapping.Attributes.FirstOrDefault(a => a.Attribute.Id == attribute.Id)?.Column ?? junction.Columns.FirstOrDefault(c => c.AttributePath == attribute.Id)) is { } column)
+                && mapping.Attributes.FirstOrDefault(a => a.Attribute.Id == attribute.Id)?.Column is { } column)
             {
                 cells.Add((column, row.Values.GetValueOrDefault(sc.Name)));
             }

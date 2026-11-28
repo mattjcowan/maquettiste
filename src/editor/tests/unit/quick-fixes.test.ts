@@ -279,3 +279,22 @@ describe("the Sync enum quick fix", () => {
     expect(drift()).toHaveLength(0);
   });
 });
+
+describe("MQ4146: a database with no byConvention", () => {
+  const database: ModelJson = { kind: "database", id: "D", name: "main", dialect: "postgresql" };
+
+  it("writes byConvention none as a plain update of the database", () => {
+    expect(hasQuickFix("MQ4146", null)).toBe(true);
+    expect(deriveQuickFix(diag("MQ4146", "D", ""), null, () => database)).toEqual({
+      kind: "update",
+      id: "D",
+      json: { ...database, byConvention: "none" },
+      label: 'Write "byConvention": "none"',
+    });
+  });
+
+  it("offers nothing once the database says it", () => {
+    const said: ModelJson = { ...database, byConvention: "none" };
+    expect(deriveQuickFix(diag("MQ4146", "D", ""), null, () => said)).toBeNull();
+  });
+});

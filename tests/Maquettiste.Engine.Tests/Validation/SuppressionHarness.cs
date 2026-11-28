@@ -17,7 +17,6 @@ internal static class SuppressionHarness
     public const string InvoiceStatusPath = "model/enums/invoice-status.json";
     public const string AuditedPath = "model/vocabularies/stereotypes/audited.json";
     public const string AuditedUpdatedAtId = "01J92P0V27P8NW8KPEDG0RBZ4W";
-    public const string RegisterPath = "model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json";
     public const string RegisterId = "01J92P0V1T0J6RH4MY9H81NYB4";
 
     /// <summary>The design's declaration (section 5.6): audited tables need an updated_at column.</summary>

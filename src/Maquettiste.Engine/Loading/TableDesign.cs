@@ -38,33 +38,16 @@ internal enum DesignedTableKind
 /// <param name="Expression">The condition in the database's dialect.</param>
 internal sealed record DesignedCheck(string Name, string Column, string Expression);
 
-/// <summary>How an attribute of an entity is stored, as the materialize request or an older mapping file says (hints only).</summary>
-/// <param name="Storage">The storage kind (embedded, table, json, int, string), or <see langword="null"/> for the conventions'.</param>
-/// <param name="Prefix">The column prefix of an embedded value object, or <see langword="null"/> for the attribute's name.</param>
-/// <param name="Ignore">Whether the attribute is left out of the table.</param>
-internal sealed record DesignAttributeHint(StorageKind? Storage, string? Prefix, bool Ignore);
-
-/// <summary>What an older entity mapping file says about an entity's table, read as hints by the designer.</summary>
-/// <param name="SchemaId">The schema the table goes to, or <see langword="null"/>.</param>
-/// <param name="Hierarchy">The hierarchy shape it gives, or <see langword="null"/>.</param>
-/// <param name="DiscriminatorValue">The entity's type code, or <see langword="null"/>.</param>
-/// <param name="Attributes">Attribute hints by attribute id.</param>
-internal sealed record DesignEntityHints(string? SchemaId, DesignHierarchy? Hierarchy, object? DiscriminatorValue,
-    IReadOnlyDictionary<string, DesignAttributeHint> Attributes);
-
-/// <summary>What an older relation mapping file says about a relation's storage, read as hints by the designer.</summary>
+/// <summary>What a relation's mapping to the database says about its storage, read by the designer.</summary>
 /// <param name="Shape">The shape it asks for, or <see langword="null"/>.</param>
 /// <param name="ForeignKeyEnd">The end whose table holds the foreign key, or <see langword="null"/>.</param>
-/// <param name="Ignore">Whether the relation is left out of the database.</param>
 /// <param name="Stored">Whether the mapping already names a designed junction table or foreign key (nothing to design).</param>
-/// <param name="Attributes">Relation attribute hints by attribute id.</param>
-internal sealed record DesignRelationHints(RelationShape? Shape, string? ForeignKeyEnd, bool Ignore, bool Stored,
-    IReadOnlyDictionary<string, DesignAttributeHint> Attributes);
+internal sealed record DesignRelationHints(RelationShape? Shape, string? ForeignKeyEnd, bool Stored);
 
 /// <summary>A key sequence the designer proposes for a hierarchy's key.</summary>
 internal sealed class DesignedSequence
 {
-    /// <summary>The key the projection gave it (<c>&lt;root&gt;.sequence@&lt;database&gt;</c>), kept for the snapshot's aliases.</summary>
+    /// <summary>Its key in the proposal (<c>&lt;root&gt;.sequence@&lt;database&gt;</c>), which a snapshot alias recorded before 0.29.0 may name.</summary>
     public required string Key { get; init; }
 
     /// <summary>The sequence name.</summary>
@@ -75,16 +58,13 @@ internal sealed class DesignedSequence
 
     /// <summary>The schema id, or <see langword="null"/> for the database's default.</summary>
     public string? SchemaId { get; init; }
-
-    /// <summary>An existing sequence file the column uses instead (an overlay's), or <see langword="null"/>.</summary>
-    public string? ExistingId { get; init; }
 }
 
 /// <summary>A column the designer proposes.</summary>
 internal sealed class DesignedColumn
 {
     /// <summary>The column's key: the attribute path, a foreign key column's <c>&lt;end&gt;.&lt;key attribute&gt;</c>, or a role
-    /// (<c>discriminator</c>, <c>position</c>, <c>id</c>), as the projection keyed it (the snapshot's aliases need it).</summary>
+    /// (<c>discriminator</c>, <c>position</c>, <c>id</c>), as the projection keyed it before 0.29.0 (a snapshot alias may name it).</summary>
     public required string Key { get; init; }
 
     public required string Name { get; set; }
@@ -103,7 +83,7 @@ internal sealed class DesignedColumn
 
     public object? Default { get; set; }
 
-    /// <summary>A default in SQL for the database's dialect (an overlay's, or an attribute's default expression).</summary>
+    /// <summary>A default in SQL for the database's dialect (an attribute's default expression).</summary>
     public string? DefaultSql { get; set; }
 
     public string? DefaultName { get; set; }
@@ -128,9 +108,6 @@ internal sealed class DesignedColumn
 
     public string? Comment { get; set; }
 
-    /// <summary>The overlay entry's description, which the comments convention reads first.</summary>
-    public string? Description { get; set; }
-
     public bool? Unicode { get; set; }
 
     public bool FixedLength { get; set; }
@@ -147,9 +124,6 @@ internal sealed class DesignedColumn
 
     /// <summary>The reference type a code column holds, or <see langword="null"/>.</summary>
     public RReferenceType? ReferenceType { get; init; }
-
-    /// <summary>The overlay entry that adjusts the column, or <see langword="null"/>.</summary>
-    public Column? Entry { get; set; }
 
     /// <summary>The custom scalar type whose native type the column takes.</summary>
     public RScalarType? Scalar { get; set; }
@@ -176,7 +150,7 @@ internal sealed class DesignTarget
     /// <summary>A table of the proposal.</summary>
     public DesignedTable? Designed { get; init; }
 
-    /// <summary>A table the database already has (a designed table an entity is bound to, or one still projected): its key.</summary>
+    /// <summary>A table the database already has (a designed table an entity is bound to): its key.</summary>
     public string? ExistingKey { get; init; }
 
     /// <summary>The existing table's name.</summary>
@@ -184,12 +158,6 @@ internal sealed class DesignTarget
 
     /// <summary>The existing table's primary key columns: key and shape.</summary>
     public IReadOnlyList<KeyColumnShape> ExistingKeyColumns { get; init; } = [];
-
-    /// <summary>Whether the existing table is still projected from an entity (a note says so).</summary>
-    public bool ExistingProjected { get; init; }
-
-    /// <summary>The entity the existing table holds, for the note.</summary>
-    public string? ExistingEntityName { get; init; }
 }
 
 /// <summary>The shape of a referenced key column, which a foreign key column follows.</summary>
@@ -206,9 +174,6 @@ internal sealed class DesignedForeignKey
 
     /// <summary>The referenced table, once known.</summary>
     public DesignTarget? Target { get; set; }
-
-    /// <summary>For an overlay's own foreign key: the referenced table's id as the file writes it.</summary>
-    public string? TargetFileKey { get; init; }
 
     /// <summary>The referenced columns' keys; empty for the referenced table's primary key.</summary>
     public IReadOnlyList<string> TargetColumns { get; init; } = [];
@@ -248,11 +213,11 @@ internal sealed class DesignedForeignKey
     public bool Resolved { get; set; }
 }
 
-/// <summary>A table the designer proposes, with the shape the projection gave the same entity, attribute or relation.</summary>
+/// <summary>A table the designer proposes, with the shape the projection gave the same entity, attribute or relation before 0.29.0.</summary>
 internal sealed class DesignedTable
 {
-    /// <summary>The key the projection gave the table (<c>&lt;entity&gt;@&lt;database&gt;</c>, <c>&lt;owner&gt;.&lt;attribute&gt;@&lt;database&gt;</c>,
-    /// <c>&lt;relation&gt;@&lt;database&gt;</c>), kept for the snapshot's aliases.</summary>
+    /// <summary>The table's key in the proposal (<c>&lt;entity&gt;@&lt;database&gt;</c>, <c>&lt;owner&gt;.&lt;attribute&gt;@&lt;database&gt;</c>,
+    /// <c>&lt;relation&gt;@&lt;database&gt;</c>): the key a snapshot alias recorded before 0.29.0 may name, and the key prefix of inherited members.</summary>
     public required string Key { get; init; }
 
     public required string Name { get; init; }
@@ -283,9 +248,6 @@ internal sealed class DesignedTable
     /// <summary>Whether a child table holds a reference type's codes (the shape the sql-ddl pack gave a template-defined collection).</summary>
     public bool IsReferenceList { get; init; }
 
-    /// <summary>The overlay table file that adjusted the projected table, folded into the proposal.</summary>
-    public Table? Overlay { get; init; }
-
     public string? Comment { get; set; }
 
     /// <summary>The package of the entity or relation the table is for (a child table: its owner's).</summary>
@@ -294,10 +256,6 @@ internal sealed class DesignedTable
     public List<DesignedColumn> Columns { get; } = [];
 
     public Dictionary<string, DesignedColumn> ByKey { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, Column> OverlayColumns { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, string> SequenceOverrides { get; } = new(StringComparer.Ordinal);
 
     public List<string> PrimaryKey { get; } = [];
 
@@ -333,7 +291,7 @@ internal sealed class DesignedTable
     /// <summary>After finishing: the indexes, named.</summary>
     public List<(DesignedIndex Index, string Name, List<(DesignedColumn? Column, DesignedIndexColumn Spec)> Columns, List<DesignedColumn> Include)> ResolvedIndexes { get; } = [];
 
-    /// <summary>A column by key, or by an overlay column id.</summary>
+    /// <summary>A column by key.</summary>
     public DesignedColumn? Resolve(string key) => ByKey.GetValueOrDefault(key);
 }
 
@@ -366,8 +324,6 @@ internal sealed class DesignedEntity
 
     /// <summary>The key attribute ids of the hierarchy root.</summary>
     public HashSet<string> KeyIds { get; } = new(StringComparer.Ordinal);
-
-    public DesignEntityHints? Hints { get; init; }
 
     /// <summary>For one table: the type column; for per type: the foreign key to the base's table.</summary>
     public DesignedColumn? Discriminator { get; set; }

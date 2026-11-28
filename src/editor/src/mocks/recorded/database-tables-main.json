@@ -4,77 +4,49 @@
       "key": "01M8EJPZN867GR1CJR5ZERBJ0V",
       "name": "customers",
       "schema": "billing",
-      "origin": "designed",
-      "entityId": null,
       "relationId": null,
-      "isJunction": false,
-      "isLookup": false,
       "columnCount": 6
     },
     {
       "key": "01M8EJPZN9VC241ZQY1P20V7D5",
       "name": "invoice_lines",
       "schema": "billing",
-      "origin": "designed",
-      "entityId": null,
       "relationId": null,
-      "isJunction": false,
-      "isLookup": false,
       "columnCount": 7
     },
     {
       "key": "01J92P0V1T0J6RH4MY9H81NYB4",
       "name": "invoices",
       "schema": "billing",
-      "origin": "designed",
-      "entityId": null,
       "relationId": null,
-      "isJunction": false,
-      "isLookup": false,
       "columnCount": 11
     },
     {
       "key": "01K6BND0000000000000000001",
       "name": "notes",
       "schema": "billing",
-      "origin": "designed",
-      "entityId": null,
       "relationId": null,
-      "isJunction": false,
-      "isLookup": false,
       "columnCount": 5
     },
     {
       "key": "01M8EJPZN9Y3HNXTC7V3Q7CP50",
       "name": "payment_invoice",
       "schema": "billing",
-      "origin": "designed",
-      "entityId": null,
       "relationId": "01J92P0V1DKHD5Q02DV6S5M53D",
-      "isJunction": true,
-      "isLookup": false,
       "columnCount": 4
     },
     {
       "key": "01M8EJPZN9C4NZBD1KXE8NG70G",
       "name": "payments",
       "schema": "billing",
-      "origin": "designed",
-      "entityId": null,
       "relationId": null,
-      "isJunction": false,
-      "isLookup": false,
       "columnCount": 7
     },
     {
       "key": "01M8EJPZN967ERTF2BPP3YM4QY",
       "name": "products",
       "schema": "billing",
-      "origin": "designed",
-      "entityId": null,
       "relationId": null,
-      "isJunction": false,
-      "isLookup": false,
       "columnCount": 6
     }
   ],

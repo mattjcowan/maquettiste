@@ -6,7 +6,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Cli.Tests;
 
 /// <summary><c>maquettiste model export|stats</c>: the model as data, the same pages the editor API and the MCP server serve.</summary>
-[UsesProjectedFixtures]
 public sealed class ModelCommandTests
 {
     [Fact]
@@ -145,39 +144,57 @@ public sealed class ModelCommandTests
     public async Task Materialize_tables_takes_the_hierarchy_and_list_storage_choices()
     {
         using var repo = CliRepo.Billing();
+        WriteCoupon(repo);
 
-        var plain = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--hierarchy", "one-table", "--list-storage", "table", "--dry-run");
+        var plain = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Coupon", "--hierarchy", "one-table", "--list-storage", "table", "--dry-run");
         Assert.True(plain.ExitCode == 0, plain.Error);
 
-        var shape = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--hierarchy", "tpt", "--dry-run");
+        var shape = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Coupon", "--hierarchy", "tpt", "--dry-run");
         Assert.Equal(1, shape.ExitCode);
         Assert.Contains("is not one-table, per-concrete or per-type", shape.Error, StringComparison.Ordinal);
 
-        var list = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--list-storage", "Invoice.number=json", "--dry-run");
+        var list = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Coupon", "--list-storage", "Coupon.code=json", "--dry-run");
         Assert.Equal(1, list.ExitCode);
         Assert.Contains("is not a list attribute", list.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Materialize_tables_takes_a_schema_by_name()
+    {
+        using var repo = CliRepo.Billing();
+        WriteCoupon(repo);
+
+        var named = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "--schema", "billing", "Coupon", "--dry-run");
+        Assert.True(named.ExitCode == 0, named.ToString());
+        Assert.Contains("create table", named.Out, StringComparison.Ordinal);
+
+        var unknown = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "--schema", "nowhere", "Coupon", "--dry-run");
+        Assert.Equal(4, unknown.ExitCode);
+        Assert.Contains("database 'main' has no schema 'nowhere'", unknown.Error, StringComparison.Ordinal);
+        Assert.Equal(4, (await repo.RunAsync("model", "materialize", "attributes", "--database", "main", "--schema", "billing", "Coupon")).ExitCode);
     }
 
     [Fact]
     public async Task Materialize_previews_with_dry_run_applies_and_refuses_what_is_bound()
     {
         using var repo = CliRepo.Billing();
-        var invoice = repo.PathOf(".maquettiste/model/entities/invoice.json");
-        var before = File.ReadAllText(invoice);
+        WriteCoupon(repo);
+        var coupon = repo.PathOf(CouponFile);
+        var before = File.ReadAllText(coupon);
 
-        var dry = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--dry-run");
+        var dry = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Coupon", "--dry-run");
         Assert.True(dry.ExitCode == 0, dry.Error);
         Assert.StartsWith("materialize-tables would:", dry.Out, StringComparison.Ordinal);
-        Assert.Contains("change table invoices", dry.Out, StringComparison.Ordinal);
-        Assert.Contains("delete mapping Invoice in main", dry.Out, StringComparison.Ordinal);
-        Assert.Equal(before, File.ReadAllText(invoice));
+        Assert.Contains("create table coupons", dry.Out, StringComparison.Ordinal);
+        Assert.Contains("change entity Coupon (binds entity Coupon to table coupons)", dry.Out, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllText(coupon));
 
-        var applied = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice", "--format", "json");
+        var applied = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Coupon", "--format", "json");
         Assert.True(applied.ExitCode == 0, applied.Error);
         Assert.Equal("saved", (string)JsonNode.Parse(applied.Out)!["result"]!["outcome"]!);
-        Assert.Contains("\"bindings\"", File.ReadAllText(invoice), StringComparison.Ordinal);
+        Assert.Contains("\"bindings\"", File.ReadAllText(coupon), StringComparison.Ordinal);
 
-        var again = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Invoice");
+        var again = await repo.RunAsync("model", "materialize", "tables", "--database", "main", "Coupon");
         Assert.Equal(1, again.ExitCode);
         Assert.Contains("MQ4055", again.Error, StringComparison.Ordinal);
 
@@ -188,7 +205,7 @@ public sealed class ModelCommandTests
         Assert.Equal(4, (await repo.RunAsync("model", "materialize", "views", "--database", "main", "x")).ExitCode);
         Assert.Equal(4, (await repo.RunAsync("model", "materialize", "entities", "--database", "main", "--schema", "x", "notes")).ExitCode);
 
-        // Attributes for a bound entity's columns: the materialized Invoice maps every column, and a constant is not a field.
+        // Attributes for a bound entity's columns: Invoice's binding maps every column, and a constant is not a field.
         var nothing = await repo.RunAsync("model", "materialize", "attributes", "--database", "main", "Invoice", "--dry-run");
         Assert.Equal(1, nothing.ExitCode);
         Assert.Contains("nothing to add", nothing.Error, StringComparison.Ordinal);
@@ -386,9 +403,9 @@ public sealed class ModelCommandTests
 
         var deleted = await repo.RunAsync("model", "delete", "01J92P0V0JR8BE8253SKT29ZG7", "--resolution", "delete-dependents");
         Assert.True(deleted.ExitCode == 0, deleted.Error);
-        // The products table and the lines' product column go: two drops, recorded as pending migration facts.
-        Assert.Contains("Deleted 2 elements and changed 1; recorded 2 migration facts (2 pending: maquettiste validate names what each needs).",
-            deleted.Error, StringComparison.Ordinal);
+        // Product, its relation and the relation's mapping go; InvoiceLine's binding and the diagram lose their entries. The tables stay.
+        Assert.Contains("Deleted 3 elements and changed 2.", deleted.Error, StringComparison.Ordinal);
+        Assert.True(File.Exists(repo.PathOf(".maquettiste/model/databases/main/tables/products.json")));
         Assert.False(File.Exists(repo.PathOf(product)));
         Assert.False(File.Exists(repo.PathOf(relation)));
 
@@ -435,13 +452,16 @@ public sealed class ModelCommandTests
         Assert.True(markdown.ExitCode == 0, markdown.Error);
         var lines = Text.Lines(markdown.Out);
         Assert.Equal($"# Model diff: `{id}` to `working`", lines[0]);
-        Assert.Contains("2 added, 0 removed, 1 changed.", lines);
+        Assert.Contains("2 added, 0 removed, 2 changed.", lines);
         var billing = Array.IndexOf(lines, "## Billing");
+        var noPackage = Array.IndexOf(lines, "## (no package)");
         var migrations = Array.IndexOf(lines, "## migrations of main");
-        Assert.True(billing > 0 && migrations > billing, markdown.Out);
+        Assert.True(billing > 0 && noPackage > billing && migrations > noPackage, markdown.Out);
         Assert.Equal($"- changed entity `Invoice` (`{Invoice}`)", lines[billing + 1]);
         Assert.Equal("  - attribute `code`, `/name` from `\"number\"` to `\"code\"`", lines[billing + 2]);
         Assert.StartsWith("- added table `payment_method` (`", lines[billing + 3], StringComparison.Ordinal);
+        Assert.Equal($"- changed table `invoices` (`{InvoicesTable}`)", lines[noPackage + 1]);
+        Assert.Equal("  - column `code`, `/name` from `\"number\"` to `\"code\"`", lines[noPackage + 2]);
         Assert.StartsWith("- added migration `rename column billing.invoices.number` (`", lines[migrations + 1], StringComparison.Ordinal);
 
         // Text, the default, is the same lines without the marks.
@@ -466,8 +486,8 @@ public sealed class ModelCommandTests
         Assert.True(json.ExitCode == 0, json.Error);
         var comparison = JsonNode.Parse(json.Out)!;
         Assert.Equal((copy.RepoRoot, after), ((string)comparison["from"]!, (string)comparison["to"]!));
-        Assert.Equal(["Billing", "migrations of main"], comparison["packages"]!.AsArray().Select(p => (string)p!["name"]!));
-        Assert.Equal(3, comparison["elements"]!.AsArray().Count);
+        Assert.Equal(["Billing", "(no package)", "migrations of main"], comparison["packages"]!.AsArray().Select(p => (string)p!["name"]!));
+        Assert.Equal(4, comparison["elements"]!.AsArray().Count);
         Assert.Null(comparison["next"]);
 
         // The folder renders the lines the snapshot of the same model renders, after the heading.
@@ -475,7 +495,7 @@ public sealed class ModelCommandTests
         var snapshot = Text.Lines((await repo.RunAsync("model", "diff", before, "--format", "markdown")).Out);
         Assert.Equal($"# Model diff: `{copy.RepoRoot}` to `working`", folder[0]);
         Assert.Equal(snapshot[1..], folder[1..]);
-        Assert.Equal(3, folder.Count(l => l.StartsWith("- ", StringComparison.Ordinal)));
+        Assert.Equal(4, folder.Count(l => l.StartsWith("- ", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -517,8 +537,28 @@ public sealed class ModelCommandTests
         Assert.Equal((0, "# Model diff: `working` to `working`\n\n0 added, 0 removed, 0 changed.\n"), (same.ExitCode, same.Out));
     }
 
+    internal const string CouponFile = ".maquettiste/model/entities/coupon.json";
+
+    /// <summary>Writes Coupon, an entity of Billing bound to no table, for "Create tables…" to design one for.</summary>
+    internal static void WriteCoupon(CliRepo repo) => repo.Write(CouponFile, """
+        {
+          "$schema": "../../.schema/v1/entity.json",
+          "kind": "entity",
+          "id": "01K9CPN0000000000000000001",
+          "name": "Coupon",
+          "package": "01J92P0V01KDRN8GX5PGYCNKSX",
+          "key": { "attributes": ["01K9CPN0000000000000000002"] },
+          "attributes": [
+            { "id": "01K9CPN0000000000000000002", "name": "id", "type": "uuid", "required": true },
+            { "id": "01K9CPN0000000000000000003", "name": "code", "type": "string", "length": 16, "required": true }
+          ]
+        }
+
+        """);
+
     private const string Invoice = "01J92P0V0FJ23CGSNKM7P1W5V7";
     private const string InvoiceNumber = "01J92P0V0R3VSP7D5238DTNZX1";
+    private const string InvoicesTable = "01J92P0V1T0J6RH4MY9H81NYB4";
 
     internal static async Task<string> SnapshotAsync(CliRepo repo, string name)
     {
@@ -528,19 +568,24 @@ public sealed class ModelCommandTests
     }
 
     /// <summary>
-    /// The review's change, one batch through <c>model apply</c>: attribute number of Invoice renamed to code (main records a rename
-    /// fact), and table payment_method created in main with package Billing.
+    /// The review's change, one batch through <c>model apply</c>: attribute number of Invoice and the column it is bound to renamed to
+    /// code (main records a rename fact), and table payment_method created in main with package Billing.
     /// </summary>
     internal static async Task ReviewChangeAsync(CliRepo repo)
     {
         const string Path = ".maquettiste/model/entities/invoice.json";
+        const string TablePath = ".maquettiste/model/databases/main/tables/invoices.json";
         var hash = Engine.Hashing.ContentHash.Of(File.ReadAllBytes(repo.PathOf(Path)));
         var invoice = JsonNode.Parse(repo.Read(Path))!.AsObject();
         invoice["attributes"]!.AsArray().Single(a => (string?)a!["id"] == InvoiceNumber)!["name"] = "code";
+        var tableHash = Engine.Hashing.ContentHash.Of(File.ReadAllBytes(repo.PathOf(TablePath)));
+        var table = JsonNode.Parse(repo.Read(TablePath))!.AsObject();
+        table["columns"]!.AsArray().Single(c => (string?)c!["name"] == "number")!["name"] = "code";
         var batch = new JsonObject
         {
             ["operations"] = new JsonArray(
                 new JsonObject { ["op"] = "update", ["id"] = Invoice, ["expectedHash"] = hash, ["element"] = invoice },
+                new JsonObject { ["op"] = "update", ["id"] = InvoicesTable, ["expectedHash"] = tableHash, ["element"] = table },
                 JsonNode.Parse("""
                     { "op": "create", "element": { "kind": "table", "name": "payment_method", "database": "@database:main",
                       "schema": "@schema:billing", "package": "01J92P0V01KDRN8GX5PGYCNKSX",

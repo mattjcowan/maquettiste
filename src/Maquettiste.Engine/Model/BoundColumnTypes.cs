@@ -171,7 +171,7 @@ internal sealed class BoundColumnTypes
     {
         if (!_tables.TryGetValue(key, out var lookup))
         {
-            lookup = model.Get<Table>(key) is { Origin: not TableOrigin.Synthesized } table ? new ColumnLookup(model, table) : null;
+            lookup = model.Get<Table>(key) is { } table ? new ColumnLookup(model, table) : null;
             _tables[key] = lookup;
         }
 

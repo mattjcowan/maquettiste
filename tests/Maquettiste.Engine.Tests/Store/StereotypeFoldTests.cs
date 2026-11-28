@@ -17,12 +17,12 @@ namespace Maquettiste.Engine.Tests.Store;
 /// the next migration changes no table. A difference the fold cannot hide from the database refuses the table (MQ4077) and nothing is
 /// written.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class StereotypeFoldTests
 {
     private const string Audited = "01J92P0V25BX5TMQ8N9F6AJE61";
     private const string AuditedPath = ".maquettiste/model/vocabularies/stereotypes/audited.json";
     private const string NotesPath = ".maquettiste/model/databases/main/tables/notes.json";
+    private const string InvoicesPath = ".maquettiste/model/databases/main/tables/invoices.json";
     private const string Notes = "01K6BND0000000000000000001";
     private const string NotesBody = "01K6BND0000000000000000005";
     private const string NotesCreatedAt = "01K6BND0000000000000000006";
@@ -52,15 +52,22 @@ public sealed class StereotypeFoldTests
         File.WriteAllText(r.Repo.PathOf(path), node.ToJsonString(), new UTF8Encoding(false));
     }
 
-    /// <summary>audited gains the given columns and indexes (its attributes stay).</summary>
+    /// <summary>
+    /// audited gains the given columns and indexes (its attributes stay). The invoices table carries audited and holds created_at and
+    /// updated_at as its own columns, so it excludes the new members.
+    /// </summary>
     private static void Members(EditorRepo r, string columns, string indexes = "")
     {
+        var members = new JsonArray();
         EditOnDisk(r, AuditedPath, s =>
         {
             s["columns"] = JsonNode.Parse("[" + columns + "]");
             if (indexes.Length > 0)
                 s["indexes"] = JsonNode.Parse("[" + indexes + "]");
+            foreach (var member in s["columns"]!.AsArray().Concat(s["indexes"]?.AsArray() ?? []))
+                members.Add((string?)member!["id"]);
         });
+        EditOnDisk(r, InvoicesPath, t => t["excludes"] = members);
     }
 
     /// <summary>notes gains an own index on created_at.</summary>
@@ -299,6 +306,9 @@ public sealed class StereotypeFoldTests
         Members(r, CreatedAtColumn + "," + UpdatedAtColumn, CreatedAtIndex);
         EditOnDisk(r, ".maquettiste/model/databases/main/database.json", d => d["schemas"]![0]!["defaultStereotypes"] = new JsonArray("audited"));
         EditOnDisk(r, NotesPath, t => t["excludes"] = new JsonArray(CreatedAt, CreatedIndex));
+        // customers and payments keep their own created_at and updated_at the same way.
+        foreach (var name in new[] { "customers", "payments" })
+            EditOnDisk(r, $".maquettiste/model/databases/main/tables/{name}.json", t => t["excludes"] = new JsonArray(CreatedAt, UpdatedAt, CreatedIndex));
         await AssertNoErrorsAsync(r);
 
         var result = await ApplyAsync(r, Fold());
@@ -328,7 +338,7 @@ public sealed class StereotypeFoldTests
         var vendorsHash = r.Store.Current!.GetDocument(Vendors)!.Hash;
 
         var result = await ApplyAsync(r, Fold($$"""
-            "schema": "{{BillingSchema}}"
+            "tables": ["{{Notes}}", "{{Vendors}}"]
             """, excludeMissing: true));
 
         AssertSaved(result);
@@ -337,21 +347,6 @@ public sealed class StereotypeFoldTests
         Assert.Empty(snapshot.Get<Table>(Vendors)!.Stereotypes);
         Assert.Equal(["audited"], snapshot.Get<Table>(Notes)!.Stereotypes);
         await AssertNoErrorsAsync(r);
-    }
-
-    [Fact]
-    public async Task Fold_refuses_a_synthesized_overlay()
-    {
-        await using var r = EditorRepo.Create(packs: false);
-        Members(r, CreatedAtColumn);
-        var files = r.Files();
-
-        var message = Assert.Single(Refusals(await ApplyAsync(r, Fold($$"""
-            "tables": ["{{EditorRepo.OverlayTableId}}"]
-            """))));
-
-        Assert.Contains("materialize it first", message, StringComparison.Ordinal);
-        Assert.Equal(files, r.Files());
     }
 
     [Fact]

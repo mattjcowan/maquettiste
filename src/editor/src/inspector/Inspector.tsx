@@ -252,10 +252,9 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   if (element.isPending && !json) return <Spinner label="Loading element" />;
   if (element.error && !json) return <EmptyState title="This element could not be loaded">{String((element.error as Error).message)}</EmptyState>;
   if (!json || !kind) return null;
-  // A table of its own (designed, imported) shows as the table inspector does on the Databases side: its physical fields and
-  // the column picked in its editor's grid.
-  const tableDoc = json as { origin?: string; database?: unknown };
-  if (kind === "table" && tableDoc.origin !== "synthesized" && typeof tableDoc.database === "string") {
+  // A table shows as the table inspector does on the Databases side: its physical fields and the column picked in its editor's grid.
+  const tableDoc = json as { database?: unknown };
+  if (kind === "table" && typeof tableDoc.database === "string") {
     const database = tableDoc.database;
     const shown = inspectedTable?.database === database && inspectedTable.key === id ? inspectedTable : null;
     return <TableInspector database={database} tableKey={id} column={shown?.column ?? null} part={shown?.part ?? null} />;

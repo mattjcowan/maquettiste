@@ -10,7 +10,6 @@ namespace Maquettiste.Packs.Tests;
 /// mapping (SalesOrder in the processes fixture, string codes) or its binding (Customer in the bindings fixture, integer codes).
 /// The scripts run twice on SQLite when sqlite3 is on the PATH, and on each database server whose container is set.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class ProcessLifecycleSqlTests
 {
     private const string Check = "ck_sales_orders_status_states";
@@ -26,6 +25,13 @@ public sealed class ProcessLifecycleSqlTests
         repo.EditJson(".maquettiste/model/entities/sales-order.json", entity =>
         {
             var status = entity["attributes"]!.AsArray().Single(a => (string?)a!["name"] == "status")!;
+            status["type"] = "string";
+            status["length"] = 32;
+            status["default"] = "draft";
+        });
+        repo.EditJson(".maquettiste/model/databases/main/tables/sales-orders.json", table =>
+        {
+            var status = table["columns"]!.AsArray().Single(c => (string?)c!["name"] == "status")!;
             status["type"] = "string";
             status["length"] = 32;
             status["default"] = "draft";

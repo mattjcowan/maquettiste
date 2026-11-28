@@ -299,7 +299,7 @@ export function storageAttributes(entityId: string, docs: ReadonlyMap<string, Js
 export type SourceKind = "table" | "view" | "query";
 
 export interface SourceColumn {
-  /** The column's key (a designed column's id, a projected column's attribute path) or, for a view or query, its name. */
+  /** The column's key (a table column's id) or, for a view or query, its name. */
   key: string;
   name: string;
   type: string | null;
@@ -316,8 +316,6 @@ export interface BindingSource {
   name: string;
   schema: string | null;
   columns: SourceColumn[];
-  /** A table that is not a file of its own (projected by the database's conventions). */
-  projected?: boolean;
   /** A query written as SQL text that writes tables or declares no columns: a binding cannot read through it (MQ4044). */
   changesData?: boolean;
   /** Why: it writes tables, or declares no columns (MQ4044's words). */
@@ -371,7 +369,6 @@ export function tableSource(t: TableViewLike): BindingSource {
     id: t.key,
     name: t.name,
     schema: t.schema,
-    projected: t.origin === "synthesized",
     columns: t.columns.map((c) => ({
       key: c.key,
       name: c.name,
@@ -929,8 +926,7 @@ export function autoMapRow(
   sources: readonly BindingSource[],
   options: { pluralTables?: boolean; picked?: string | null } = {},
 ): AutoMapRow {
-  // A projected table is not a target: binding to it would end the projection that makes it (Create tables… is for that).
-  const tables = sources.filter((s) => (s.kind === "table" && !s.projected) || s.kind === "view");
+  const tables = sources.filter((s) => s.kind === "table" || s.kind === "view");
   const source = options.picked ? (sources.find((s) => s.id === options.picked) ?? null) : (tableForEntity(entity.name, tables, options.pluralTables) ?? null);
   if (!source) return { entity: entity.id, entityName: entity.name, source: null, matches: [], missing: [], outcome: "miss" };
   const matches = matchByName({}, attributes, source.columns);

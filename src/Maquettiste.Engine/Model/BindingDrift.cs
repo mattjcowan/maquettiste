@@ -46,7 +46,7 @@ internal enum DriftSource
     /// <summary>A designed or imported table file of the binding's database: the only source whose columns have ids.</summary>
     TableFile,
 
-    /// <summary>A view, a query, a synthesized table key or an overlay file: provenance does not describe it.</summary>
+    /// <summary>A view or a query of the binding's database: provenance does not describe it.</summary>
     NotTableFile,
 
     /// <summary>Nothing of the binding's database (MQ4044 reports it): no drift is computed.</summary>
@@ -427,27 +427,17 @@ internal static class BindingDrift
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(binding);
         table = null;
-        var key = binding.Source;
-        switch (model.Get<Element>(key))
+        switch (model.Get<Element>(binding.Source))
         {
-            case Table { Origin: not TableOrigin.Synthesized } file when file.Database == binding.Database:
+            case Table file when file.Database == binding.Database:
                 table = file;
                 return DriftSource.TableFile;
-            case Table t when t.Database == binding.Database:
             case View v when v.Database == binding.Database:
             case Query q when q.Database == binding.Database:
-            case Entity or Relation: // a synthesized table key without its database
                 return DriftSource.NotTableFile;
-            case not null:
+            default:
                 return DriftSource.Unresolved;
         }
-
-        // A synthesized table key: <entity>[.<attribute>]@<database> or <relation>@<database>, or the same without the database.
-        var at = key.IndexOf('@', StringComparison.Ordinal);
-        if (at >= 0 && !string.Equals(key[(at + 1)..], binding.Database, StringComparison.Ordinal))
-            return DriftSource.Unresolved;
-        var owner = (at >= 0 ? key[..at] : key).Split('.')[0];
-        return model.Get<Element>(owner) is Entity or Relation ? DriftSource.NotTableFile : DriftSource.Unresolved;
     }
 
     /// <summary>A table file's columns as provenance sees them: own entries in file order, then inherited members in 3.1's order.</summary>

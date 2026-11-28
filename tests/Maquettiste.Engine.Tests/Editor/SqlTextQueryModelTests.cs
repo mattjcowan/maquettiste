@@ -9,7 +9,6 @@ namespace Maquettiste.Engine.Tests.Editor;
 /// The model half of queries written as SQL text and named queries (sql-queries-design.md decisions 1, 7, 8, 10, 12 and 17): the two forms
 /// the schema keeps apart, the canonical file, <c>reads</c> and <c>writes</c> as references, and deletes that keep a SQL text.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class SqlTextQueryModelTests
 {
     private const string SqlQueryId = "01KSQ000000000000000000001";
@@ -131,6 +130,10 @@ public sealed class SqlTextQueryModelTests
     {
         await using var r = EditorRepo.Create(packs: false);
         Assert.Equal(SaveOutcome.Saved, (await CreateAsync(r, SqlQuery())).Outcome);
+        // The settles relation goes first: its junction table names a key of invoices, which its relation mapping could not lose.
+        const string Settles = "01J92P0V1DKHD5Q02DV6S5M53D";
+        var settles = (await r.Store.GetElementAsync(Settles, Ct))!;
+        Assert.Equal(SaveOutcome.Saved, (await r.Store.DeleteAsync(Settles, settles.Hash, DeleteResolution.DeleteDependents, ChangeSource.Editor, Ct)).Outcome);
         var table = (await r.Store.GetElementAsync(EditorRepo.OverlayTableId, Ct))!;
 
         var refused = await r.Store.DeleteAsync(table.Element.Id, table.Hash, DeleteResolution.Refuse, ChangeSource.Editor, Ct);
@@ -140,13 +143,14 @@ public sealed class SqlTextQueryModelTests
         Assert.DoesNotContain(plan.Deletes, d => d.Id == SqlQueryId);
         Assert.DoesNotContain(plan.Refused, d => d.Id == SqlQueryId);
         Assert.Equal(["/reads/0", "/writes/0"], plan.Removes.Where(x => x.Id == SqlQueryId).Select(x => x.Pointer));
-        Assert.Contains(plan.Warnings, w => w.Message == "Query MarkOverdueInvoices's SQL text may still name table Invoice register; check the text.");
+        Assert.Contains(plan.Warnings, w => w.Message == "Query MarkOverdueInvoices's SQL text may still name table invoices; check the text.");
 
         // The built queries keep today's behavior: refused with remove-references, deleted whole with delete-dependents.
         string[] built = [InvoicesByCustomerId, RevenueByMonthId, FindCustomersWithIssuedInvoicesId];
         if (resolution == DeleteResolution.RemoveReferences)
         {
-            Assert.Equal(built, plan.Refused.Select(x => x.Id!).Distinct().Order(StringComparer.Ordinal));
+            // The foreign keys of invoice_lines and payment_invoice that reference invoices are refused too.
+            Assert.Equal([.. built, "01M8EJPZN9VC241ZQY1P20V7D5", "01M8EJPZN9Y3HNXTC7V3Q7CP50"], plan.Refused.Select(x => x.Id!).Distinct().Order(StringComparer.Ordinal));
             return;
         }
 
@@ -157,7 +161,8 @@ public sealed class SqlTextQueryModelTests
         Assert.Empty(kept.Reads);
         Assert.Empty(kept.Writes);
         Assert.Contains("UPDATE billing.invoices", kept.Sql!["postgresql"], StringComparison.Ordinal);
+        // The drop of the invoices table is a migration fact that waits for its acknowledgement (MQ4101); nothing else is an error.
         var validation = await r.Store.ValidateAsync(ValidationScope.All, Ct);
-        Assert.DoesNotContain(validation.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(validation.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Rule != "MQ4101");
     }
 }

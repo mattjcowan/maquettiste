@@ -46,11 +46,12 @@ test("related rows stay highlighted across a rail switch, and the preference tur
   await expect(side.getByTestId("explorer-row-Invoice")).toHaveAttribute("aria-selected", "true");
   await expect(side.locator('[data-related="true"]').first()).toBeVisible();
 
-  // Databases: a table names no entity (storage is a warehouse), so no database row is related to Invoice.
+  // Databases: a table names no entity (storage is a warehouse), but Invoice's binding names the invoices table, so the
+  // collapsed database shows one related row.
   await workspace(page, "Databases");
   const main = side.getByTestId("explorer-folder-main");
   await expect(main).toHaveAttribute("aria-expanded", "false");
-  await expect(main.locator('[data-part="related"]')).toHaveCount(0);
+  await expect(main.locator('[data-part="related"]')).toHaveCount(1);
   await main.click();
   await expect(main).toHaveAttribute("aria-expanded", "true");
 

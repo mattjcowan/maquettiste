@@ -42,8 +42,8 @@ internal static class PlanningKit
         var core = b.Category("Core");
         var billing = b.Category("Billing", core);
         b.Stereotype("audited");
-        b.Entity("Customer", sales).Key("id", "uuid").Tag("pii").Stereotype("audited").Category(billing);
-        b.Entity("Order", orders).Key("id", "uuid");
+        var customer = b.Entity("Customer", sales).Key("id", "uuid").Tag("pii").Stereotype("audited").Category(billing);
+        var order = b.Entity("Order", orders).Key("id", "uuid");
         var product = b.Entity("Product", catalog).Key("id", "uuid").Tag("external");
         b.Entity("Party").Abstract().Attr("name", "string");
         var hiddenKey = b.NewId();
@@ -56,7 +56,10 @@ internal static class PlanningKit
             Generation = new Dictionary<string, GenerationHints> { ["*"] = new() { Skip = true } },
         });
         var main = b.Database("main", Dialect.PostgreSql);
-        b.Mapping(main, product).Ignore();
+        // Customer and Order have rows in main through their bindings; Product has none there.
+        b.Table("customers", main).Column("id", "uuid", nullable: false).PrimaryKey("id").Binds(customer);
+        b.Table("orders", main).Column("id", "uuid", nullable: false).PrimaryKey("id").Binds(order);
+        _ = product;
         _ = core;
         return b;
     }

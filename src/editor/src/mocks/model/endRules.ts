@@ -1,7 +1,6 @@
 // The mock's rules for relation ends with several types (several-types-design.md section 6, part 1): MQ3041 an end with several
 // types where it can't be, MQ3042 a list of one entity, MQ3043 an entry another entry covers, MQ4115 (info) a database that stores
 // nothing for such a relation. The texts are the design's, word for word. Each check runs only for a relation that has such an end, so a model without them is untouched.
-import { conventionOf, placesEntity } from "@/model/databaseMapping";
 import { docEndHasSeveralTypes, docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
 import { appliesToEntities, Coverage } from "./coverage";
 import { severalEnds } from "./endCover";
@@ -127,7 +126,7 @@ export function storesRelation(mapping: Json): boolean {
 
 /**
  * MQ4115 (info): for each database where every end has a covered type placed, "Relation 'AttachedTo' has an end with several types, so
- * database 'main' stores nothing for it." A relation mapping that sets `ignore`, or that stores the relation, silences it.
+ * database 'main' stores nothing for it." A relation mapping that stores the relation silences it.
  */
 export function storageDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit): void {
   if (!relationHasSeveralTypes(json) || !ctx.all) return;
@@ -154,18 +153,12 @@ export function storageDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
       typeof t.entity === "string" ? chainOf(entity).includes(t.entity) : typeof t.stereotype === "string" && !!coverage?.covers(t.stereotype, str(entity.id)),
     );
   };
-  const parentOf = (id: string) => str(byId.get(id)?.parent) || null;
   for (const database of [...databases].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
     const mappings = entries.filter((e) => e.json.kind === "mapping" && e.json.database === database.id);
-    // A mapping that sets ignore says so already; one that stores the relation (a junctionTable or an ends entry) leaves nothing to say (decision 49).
-    if (mappings.some((m) => m.json.relation === json.id && (m.json.ignore === true || storesRelation(m.json)))) continue;
-    const convention = conventionOf(database.json as Parameters<typeof conventionOf>[0]);
-    // Placed: a binding there, else the mapping and the database's convention.
-    const placed = entities.filter(
-      (en) =>
-        arr(en.bindings).some((b) => b.database === database.id) ||
-        placesEntity(convention, str(en.package) || null, mappings.find((m) => m.json.entity === en.id)?.json as { ignore?: boolean } | undefined, parentOf),
-    );
+    // A mapping that stores the relation (a junctionTable or an ends entry) leaves nothing to say (decision 49).
+    if (mappings.some((m) => m.json.relation === json.id && storesRelation(m.json))) continue;
+    // Placed: bound to a table there.
+    const placed = entities.filter((en) => arr(en.bindings).some((b) => b.database === database.id));
     if (!ends.every((end) => placed.some((en) => covers(end, en)))) continue;
     emit(
       "MQ4115",
@@ -203,7 +196,7 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
   const entries = arr(json.ends);
   const junction = typeof json.junctionTable === "string" ? ctx.lookup?.(json.junctionTable)?.json : undefined;
   // The mapping's junction when it is a designed or imported table of the mapping's database (MappingRules.DesignedJunction).
-  const designed = junction !== undefined && junction.kind === "table" && junction.origin !== "synthesized" && junction.database === json.database;
+  const designed = junction !== undefined && junction.kind === "table" && junction.database === json.database;
   const stores = storesRelation(json);
   const roleOf = (endId: unknown) => str(relationEnds.find((e) => e.id === endId)?.role) || str(endId);
   const bad = (pointer: string, message: string) => emit("MQ4009", "error", message, pointer);
@@ -213,8 +206,7 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
     const refused: [string, boolean][] = [
       ["/foreignKeyEnd", json.foreignKeyEnd !== undefined],
       ["/foreignKey", json.foreignKey !== undefined],
-      ["/promotedName", json.promotedName !== undefined],
-      ["/shape", json.shape === "promoted" || (json.shape !== undefined && !stores)],
+      ["/shape", json.shape !== undefined && !stores],
       ["/attributes", !stores && arr(json.attributes).length > 0],
       ["/constants", !stores && arr(json.constants).length > 0],
     ];

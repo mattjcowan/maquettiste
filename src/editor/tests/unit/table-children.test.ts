@@ -4,19 +4,20 @@
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
 import type { TableSummary } from "@/api/types";
-import { buildForest, childKeys, databaseOf, nodeOf, readAheadIdOf, relatedKeys, tableChildren, tableOf, type TablesInput } from "@/explorer/tree";
+import { buildForest, childKeys, databaseOf, nodeOf, readAheadIdOf, tableChildren, tableOf, type TablesInput } from "@/explorer/tree";
 import { filterTables } from "@/workspaces/database/tableList";
-import { billingProjectedSeed } from "@/mocks/model/seed";
+import { tableKeyOf } from "@/search/engine";
 
 function billing() {
-  const backend = new MockBackend({ seed: billingProjectedSeed() });
+  const backend = new MockBackend();
   const rows = backend.model.index();
   const tables = new Map<string, TablesInput>();
   for (const db of rows.filter((r) => r.kind === "database")) tables.set(db.id, backend.generation.databaseTables(db.id)!);
   const forest = buildForest({ rows, tables });
-  const invoice = rows.find((r) => r.kind === "entity" && r.name === "Invoice")!;
-  const tableKey = forest.related.tablesOf.get(invoice.id)!.find((k) => !nodeOf(forest, k)!.table?.isJunction)!;
-  return { backend, rows, forest, invoice, tableKey };
+  const database = rows.find((r) => r.kind === "database")!;
+  const invoices = backend.generation.databaseTables(database.id)!.tables.find((t) => t.name === "invoices")!;
+  const tableKey = tableKeyOf(database.id, invoices.key);
+  return { backend, rows, forest, tableKey };
 }
 
 describe("table children", () => {
@@ -51,31 +52,6 @@ describe("table children", () => {
     expect(parts.map(readAheadIdOf).filter(Boolean)).toEqual([]);
     expect(readAheadIdOf(node)).toBe(node.id);
   });
-
-  it("highlights the entity and the attribute mapped onto a column, and the entity for a table", () => {
-    const { backend, forest, invoice, tableKey } = billing();
-    const database = databaseOf(forest, tableKey)!;
-    const view = backend.generation.databaseTable(database, nodeOf(forest, tableKey)!.table!.key)!.table!;
-    const folders = tableChildren(forest, tableKey, view);
-    const mapped = view.columns.find((c) => c.attributeId)!;
-    const column = childKeys(forest, folders[0])
-      .map((k) => nodeOf(forest, k)!)
-      .find((c) => c.label === mapped.name)!;
-    expect(column.attribute).toBe(mapped.attributeId);
-    const entityKey = forest.place.get(invoice.id)!;
-    const related = relatedKeys(forest, column.key);
-    expect(related.has(entityKey)).toBe(true);
-    expect(related.has(`${entityKey}/attributes/${mapped.attributeId}`)).toBe(true);
-    expect(relatedKeys(forest, tableKey).has(entityKey)).toBe(true);
-    // A column with no attribute (a key or discriminator column) highlights only the entity.
-    const unmapped = view.columns.find((c) => !c.attributeId);
-    if (unmapped) {
-      const row = childKeys(forest, folders[0])
-        .map((k) => nodeOf(forest, k)!)
-        .find((c) => c.label === unmapped.name)!;
-      expect([...relatedKeys(forest, row.key)]).toEqual([entityKey]);
-    }
-  });
 });
 
 describe("the Database screen's table list", () => {
@@ -83,11 +59,7 @@ describe("the Database screen's table list", () => {
     key: name,
     name,
     schema,
-    origin: "synthesized",
-    entityId: null,
     relationId: null,
-    isJunction: false,
-    isLookup: false,
     columnCount: 3,
   });
   it("filters by every word, sorts by name and caps the list", () => {

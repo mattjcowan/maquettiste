@@ -9,15 +9,8 @@
     {
       "rule": "MQ4009",
       "elementId": "01KST3MAP00000000000000007",
-      "pointer": "/attributes/0/prefix",
-      "message": "Relation 'EngineKeys' has an end with several types, so 'prefix' of attribute 0 can't shape engine-made columns; remove it.",
-      "severity": "error"
-    },
-    {
-      "rule": "MQ4009",
-      "elementId": "01KST3MAP00000000000000007",
-      "pointer": "/attributes/0/storage",
-      "message": "Relation 'EngineKeys' has an end with several types, so 'storage' of attribute 0 can't shape engine-made columns; remove it.",
+      "pointer": "/attributes",
+      "message": "Relation 'EngineKeys' has an end with several types, so a mapping of it doesn't take 'attributes'; its 'ends' entries say how it is stored. Remove it.",
       "severity": "error"
     },
     {
@@ -32,13 +25,6 @@
       "elementId": "01KST3MAP00000000000000007",
       "pointer": "/foreignKeyEnd",
       "message": "Relation 'EngineKeys' has an end with several types, so a mapping of it doesn't take 'foreignKeyEnd'; its 'ends' entries say how it is stored. Remove it.",
-      "severity": "error"
-    },
-    {
-      "rule": "MQ4009",
-      "elementId": "01KST3MAP00000000000000007",
-      "pointer": "/promotedName",
-      "message": "Relation 'EngineKeys' has an end with several types, so a mapping of it doesn't take 'promotedName'; its 'ends' entries say how it is stored. Remove it.",
       "severity": "error"
     },
     {
@@ -214,6 +200,20 @@
       "elementId": "01KST3END00000000000000001",
       "pointer": "/ends/0",
       "message": "Relation 'Unmapped' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST3END00000000000000004",
+      "pointer": "/ends/1",
+      "message": "Relation 'Ignored' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST3END00000000000000008",
+      "pointer": "/ends/1",
+      "message": "Relation 'EngineKeys' has an end with several types, so database 'main' stores nothing for it.",
       "severity": "info"
     }
   ]

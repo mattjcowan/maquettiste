@@ -4,76 +4,45 @@ using Maquettiste.Engine.Model;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// Mapping rules: MQ4004 (two mappings for one target), MQ4009 (option invalid for the element), MQ4011 (bound relations),
-/// MQ4012 (an entity in no database), MQ4013 (convention packages a database does not use), and MQ4115 through
+/// Relation mapping rules: MQ4004 (two mappings for one relation), MQ4009 (option invalid for the relation), MQ4011 (a designed junction
+/// that does not bind every end), MQ4146 (a database that laid out tables by convention before 0.29.0), and MQ4115 through
 /// <see cref="RelationTypeRules.CheckStoredNothing"/>.
 /// </summary>
 internal static class MappingRules
 {
-    /// <summary>MQ4012: an entity that no database holds, when the model has a database (a conceptual-only model is fine).</summary>
+    /// <summary>
+    /// MQ4146, a warning: a database file with no <c>byConvention</c> laid out a table for every entity not bound to it before 0.29.0, so
+    /// while an entity of the model is not bound to the database, a model brought from an older release would drop those tables at the next
+    /// migration (retire-projection-design.md section 9). It never blocks a save: a database converted on 0.28.0 has no key either, and
+    /// gets the finding as soon as a new entity is added. Its quick fix writes <c>"byConvention": "none"</c>.
+    /// </summary>
     /// <param name="context">The validation context.</param>
-    /// <param name="entity">The entity.</param>
-    /// <param name="report">The report.</param>
-    public static void CheckEntityPlacement(ValidationContext context, Entity entity, Report report)
-    {
-        // A binding places the entity in its database (erratum E43).
-        if (entity.Bindings.Any(b => context.Model.Get<Database>(b.Database) is not null))
-            return;
-        var any = false;
-        foreach (var database in context.Model.All<Database>())
-        {
-            any = true;
-            var mappings = context.MappingsOf(database.Id, entity.Id);
-            var mapping = mappings.Length > 0 ? mappings[0].Element as Mapping : null;
-            if (Resolution.DatabaseScope.Places(context.Model, database, entity.Package, mapping))
-                return;
-        }
-
-        if (any)
-        {
-            report.Add("MQ4012",
-                $"'{entity.Name}' lands in no database: no database takes its domain by convention and no mapping names it; map it from the entity's or the domain's menu (Map to database).",
-                "");
-        }
-    }
-
-    /// <summary>MQ4013: a database lists packages although <c>byConvention</c> is <c>all</c> or <c>none</c>, so the list is not used.</summary>
     /// <param name="database">The database.</param>
     /// <param name="report">The report.</param>
-    public static void CheckConventionPackages(Database database, Report report)
+    public static void CheckConventionLayout(ValidationContext context, Database database, Report report)
     {
-        if (database.Packages.Count > 0 && database.ByConvention is ConventionMapping.All or ConventionMapping.None)
-        {
-            var value = database.ByConvention == ConventionMapping.All ? "all" : "none";
-            report.Add("MQ4013",
-                $"byConvention is '{value}', so the packages listed here are not used; set byConvention to 'packages' or clear the list.",
-                "/packages");
-        }
-
-        for (var i = 0; i < database.Packages.Count; i++)
-        {
-            if (database.Packages[i].Schema is { } schema && !database.Schemas.Any(s => string.Equals(s.Id, schema, StringComparison.Ordinal)))
-            {
-                report.Add("MQ4014",
-                    $"The convention entry for package '{database.Packages[i].Package}' names schema '{schema}', which this database does not declare; add it to schemas or pick one of them.",
-                    Ptr.At("/packages", i) + "/schema");
-            }
-        }
-    }
-
-    /// <summary>MQ4014 and MQ4009 for a mapping's <c>schema</c>: an entity mapping may name a schema of its own database.</summary>
-    private static void CheckMappingSchema(ValidationContext context, Mapping mapping, Report report)
-    {
-        if (mapping.Schema is not { } schema)
+        if (database.ByConvention is not null)
             return;
-        if (mapping.Entity is null)
-        {
-            report.Add("MQ4009", "Only an entity mapping places a table in a schema.", "/schema");
+        var entities = context.Model.All<Entity>();
+        var unbound = entities
+            .Where(e => !e.Bindings.Any(b => string.Equals(b.Database, database.Id, StringComparison.Ordinal)))
+            .Select(e => e.Name)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (unbound.Count == 0)
             return;
-        }
-
-        if (context.Model.Get<Database>(mapping.Database) is { } database && !database.Schemas.Any(s => string.Equals(s.Id, schema, StringComparison.Ordinal)))
-            report.Add("MQ4014", $"Schema '{schema}' is not declared in database '{database.Name}'; add it to the database's schemas or pick one of them.", "/schema");
+        var listed = string.Join(", ", unbound.Take(5).Select(n => "'" + n + "'"));
+        var more = unbound.Count > 5 ? " (and " + (unbound.Count - 5).ToString(CultureInfo.InvariantCulture) + " more)" : "";
+        var bound = unbound.Count < entities.Count;
+        var what = bound
+            ? $"Database '{database.Name}' has no byConvention, and {(unbound.Count == 1 ? "entity" : "entities")} {listed}{more} {(unbound.Count == 1 ? "is" : "are")} not bound to it, "
+                + "as a new entity is until it gets a table. "
+            : $"Database '{database.Name}' has no byConvention, and no entity is bound to it ({listed}{more}). ";
+        report.Add("MQ4146",
+            what + "Before 0.29.0 a database with no byConvention laid out a table for every entity not bound to it; since then it holds only the tables "
+            + "written for it. Write \"byConvention\": \"none\" (the quick fix) to say so. If this model still lays out those tables on an older "
+            + "release, bind each entity to its table first (Create tables on 0.28.0), or the next migration drops them.",
+            "");
     }
 
     /// <summary>Checks a mapping file.</summary>
@@ -82,32 +51,14 @@ internal static class MappingRules
     /// <param name="report">The report.</param>
     public static void CheckMapping(ValidationContext context, Mapping mapping, Report report)
     {
-        CheckMappingSchema(context, mapping, report);
-        if (mapping.Entity is not null && mapping.Relation is not null)
-        {
-            report.Add("MQ4009", "A mapping names either an entity or a relation, not both.", "/relation");
-            return;
-        }
-
-        var targetId = mapping.Entity ?? mapping.Relation;
-        if (targetId is null)
-        {
-            report.Add("MQ4009", "A mapping names an entity or a relation.", "");
-            return;
-        }
-
-        var targetPointer = mapping.Entity is not null ? "/entity" : "/relation";
-        var mappings = context.MappingsOf(mapping.Database, targetId);
+        var mappings = context.MappingsOf(mapping.Database, mapping.Relation);
         if (mappings.Length > 1 && mappings[0] != report.Document)
         {
-            var targetName = context.Model.GetDocument(targetId)?.Element.Name ?? targetId;
-            report.Add("MQ4004", $"'{targetName}' is already mapped to this database by {mappings[0].Path}; one mapping per element and database.", targetPointer);
+            var targetName = context.Model.GetDocument(mapping.Relation)?.Element.Name ?? mapping.Relation;
+            report.Add("MQ4004", $"'{targetName}' is already mapped to this database by {mappings[0].Path}; one mapping per relation and database.", "/relation");
         }
 
-        if (mapping.Entity is not null)
-            CheckEntityMapping(context, mapping, report);
-        else
-            CheckRelationMapping(context, mapping, report);
+        CheckRelationMapping(context, mapping, report);
     }
 
     /// <summary>
@@ -135,101 +86,17 @@ internal static class MappingRules
 
     private static void Invalid(Report report, string pointer, string message) => report.Add("MQ4009", message, pointer);
 
-    private static void CheckEntityMapping(ValidationContext context, Mapping mapping, Report report)
+    /// <summary>MQ4009 for a relation attribute's column when the mapping names neither a designed junction table nor a foreign key that holds it.</summary>
+    private static void CheckAttributeMapping(AttributeMapping item, string pointer, Report report)
     {
-        var model = context.Model;
-        const string relationOnly = "applies to relation mappings only";
-        if (mapping.Shape is not null)
-            Invalid(report, "/shape", "'shape' " + relationOnly + ".");
-        if (mapping.ForeignKeyEnd is not null)
-            Invalid(report, "/foreignKeyEnd", "'foreignKeyEnd' " + relationOnly + ".");
-        if (mapping.ForeignKey is not null)
-            Invalid(report, "/foreignKey", "'foreignKey' " + relationOnly + ".");
-        if (mapping.JunctionTable is not null)
-            Invalid(report, "/junctionTable", "'junctionTable' " + relationOnly + ".");
-        if (mapping.Ends.Count > 0)
-            Invalid(report, "/ends", "'ends' " + relationOnly + ".");
-        if (mapping.Constants.Count > 0)
-            Invalid(report, "/constants", "'constants' " + relationOnly + ".");
-        if (mapping.PromotedName is not null)
-            Invalid(report, "/promotedName", "'promotedName' " + relationOnly + ".");
-
-        if (model.Get<Entity>(mapping.Entity!) is not { } entity)
-            return; // MQ2001 or MQ2002
-
-        Table? bound = null;
-        if (mapping.Table is { } tableId && model.Get<Table>(tableId) is { } table)
-        {
-            if (table.Origin == TableOrigin.Synthesized)
-                Invalid(report, "/table", $"'table' binds to '{table.Name}', a synthesized table's overlay; bind to a designed or imported table.");
-            else if (table.Database != mapping.Database)
-                Invalid(report, "/table", $"'table' binds to '{table.Name}', which belongs to another database.");
-            else
-                bound = table;
-        }
-
-        if (mapping.Inheritance is not null && entity.Base is not null)
-            Invalid(report, "/inheritance", $"Entity '{entity.Name}' derives from another entity; the inheritance strategy is set on the hierarchy root only.");
-        if (mapping.DiscriminatorValue is not null && entity.Base is null && !context.HasDerived(entity.Id) && !CoveredBySeveralTypes(context.Model, entity.Id))
-            Invalid(report, "/discriminatorValue", $"Entity '{entity.Name}' is not part of an inheritance hierarchy, so it has no discriminator.");
-
-        var flat = context.Flatten(entity);
-        for (var i = 0; i < mapping.Attributes.Count; i++)
-        {
-            var item = mapping.Attributes[i];
-            var pointer = Ptr.At("/attributes", i);
-            var attribute = flat.FirstOrDefault(a => a.Attribute.Id == item.Attribute)?.Attribute;
-            if (attribute is null)
-            {
-                if (model.TryGetEntry(item.Attribute, out _))
-                    Invalid(report, pointer + "/attribute", $"'{item.Attribute}' is not an attribute of entity '{entity.Name}'.");
-                continue;
-            }
-
-            CheckAttributeMapping(context, item, attribute, bound, pointer, report);
-        }
-    }
-
-    private static void CheckAttributeMapping(ValidationContext context, AttributeMapping item, ModelAttribute attribute, Table? bound, string pointer, Report report)
-    {
-        var type = AttributeRules.Resolve(context.Model, attribute.Type);
-        if (item.Storage is { } storage)
-        {
-            StorageKind[] allowed = type.Enum is not null && !attribute.Collection ? [StorageKind.Int, StorageKind.String]
-                : attribute.Collection ? [StorageKind.Table, StorageKind.Json]
-                : type.ValueObject is not null ? [StorageKind.Embedded, StorageKind.Table, StorageKind.Json]
-                : [];
-            if (!allowed.Contains(storage))
-            {
-                var options = allowed.Length == 0 ? "none" : string.Join(", ", allowed.Select(Kebab));
-                Invalid(report, pointer + "/storage", $"Storage '{Kebab(storage)}' does not fit attribute '{attribute.Name}' ({type.Describe()}{(attribute.Collection ? ", collection" : "")}); valid: {options}.");
-            }
-        }
-
-        if (item.Prefix is not null && type.ValueObject is null)
-            Invalid(report, pointer + "/prefix", $"'prefix' applies to embedded value objects; attribute '{attribute.Name}' is {type.Describe()}.");
-
-        if (item.Column is { } columnId)
-        {
-            if (bound is null)
-                Invalid(report, pointer + "/column", "'column' needs the mapping to bind a designed or imported 'table'.");
-            else if (!bound.Columns.Any(c => c.Id == columnId))
-                Invalid(report, pointer + "/column", $"'{columnId}' is not a column of the bound table '{bound.Name}'.");
-        }
+        if (item.Column is not null)
+            Invalid(report, pointer + "/column", "'column' needs the mapping to name a designed 'junctionTable' or the 'foreignKey' whose table holds the column.");
     }
 
     private static void CheckRelationMapping(ValidationContext context, Mapping mapping, Report report)
     {
         var model = context.Model;
-        const string entityOnly = "applies to entity mappings only";
-        if (mapping.Table is not null)
-            Invalid(report, "/table", "'table' " + entityOnly + "; a relation binds a designed junction with 'junctionTable'.");
-        if (mapping.Inheritance is not null)
-            Invalid(report, "/inheritance", "'inheritance' " + entityOnly + ".");
-        if (mapping.DiscriminatorValue is not null)
-            Invalid(report, "/discriminatorValue", "'discriminatorValue' " + entityOnly + ".");
-
-        if (model.Get<Relation>(mapping.Relation!) is not { } relation)
+        if (model.Get<Relation>(mapping.Relation) is not { } relation)
             return;
 
         // A relation with an end of several types (several-types-design.md decision 37): the per-end entries describe its storage, and the keys
@@ -254,18 +121,16 @@ internal static class MappingRules
             // A relation attribute's column is one of the designed junctionTable's (several-types-design.md decision 45, answer 9).
             if (item.Column is not null && DesignedJunction(context, mapping) is { } linkTable)
             {
-                CheckAttributeMapping(context, item with { Column = null }, attribute, null, Ptr.At("/attributes", i), report);
                 CheckAttributeColumn(context, item, attribute, linkTable, Ptr.At("/attributes", i), i, report);
             }
             else if (item.Column is not null && mapping.JunctionTable is null && ForeignKeyOwner(context, mapping) is { } holder)
             {
                 // On the foreign-key shape, the column is one of the table that holds the foreign key (retire-projection-design.md section 6).
-                CheckAttributeMapping(context, item with { Column = null }, attribute, null, Ptr.At("/attributes", i), report);
                 CheckForeignKeyAttributeColumn(context, item, attribute, holder, mapping.ForeignKey!, Ptr.At("/attributes", i), i, report);
             }
             else
             {
-                CheckAttributeMapping(context, item, attribute, null, Ptr.At("/attributes", i), report);
+                CheckAttributeMapping(item, Ptr.At("/attributes", i), report);
             }
         }
 
@@ -275,10 +140,6 @@ internal static class MappingRules
         var manyToMany = binary && relation.Ends.All(e => e.Max == MaxCardinality.Many);
         if (mapping.Shape == RelationShape.ForeignKey && (!binary || manyToMany))
             Invalid(report, "/shape", $"Relation '{relation.Name}' is {(binary ? "many to many" : "n-ary")} and cannot be a foreign key.");
-        if (mapping.Shape == RelationShape.Promoted && !binary)
-            Invalid(report, "/shape", $"Only a binary relation can be promoted; '{relation.Name}' has more ends.");
-        if (mapping.PromotedName is not null && mapping.Shape != RelationShape.Promoted)
-            Invalid(report, "/promotedName", "'promotedName' needs 'shape': 'promoted'.");
 
         if (mapping.ForeignKeyEnd is { } fkEnd)
         {
@@ -288,13 +149,9 @@ internal static class MappingRules
                 Invalid(report, "/foreignKeyEnd", "'foreignKeyEnd' breaks one-to-one ties only; the relation is not one to one.");
         }
 
-        // The per-entry ways (several-types-design.md decision 38) hold whether or not the mapping stores the relation: the schema required
-        // each entry's foreignKey, and refused the other keys, on an ignored mapping too (MQ1002). Its junction is the named designed table.
-        CheckOneTypeEntryWays(mapping, relation, mapping.Ignore ? DesignedJunction(context, mapping) : null, report);
-        if (mapping.Ignore)
-            return; // not stored in this database: nothing to bind, so no foreign key or junction checks (MQ4011 included)
-
-        var shape = EffectiveShape(context, relation, mapping.Database, mapping);
+        // The per-entry ways (several-types-design.md decision 38).
+        CheckOneTypeEntryWays(mapping, relation, report);
+        var shape = EffectiveShape(relation, mapping);
 
         if (mapping.ForeignKey is { } foreignKeyId)
             CheckForeignKeyBinding(context, relation, mapping, foreignKeyId, shape, report);
@@ -302,9 +159,7 @@ internal static class MappingRules
         Table? junction = null;
         if (mapping.JunctionTable is { } junctionId && model.Get<Table>(junctionId) is { } junctionTable)
         {
-            if (junctionTable.Origin == TableOrigin.Synthesized)
-                Invalid(report, "/junctionTable", $"'junctionTable' names '{junctionTable.Name}', a synthesized table's overlay; name a designed or imported table.");
-            else if (junctionTable.Database != mapping.Database)
+            if (junctionTable.Database != mapping.Database)
                 Invalid(report, "/junctionTable", $"'junctionTable' names '{junctionTable.Name}', which belongs to another database.");
             else if (shape != RelationShape.Junction)
                 Invalid(report, "/junctionTable", $"'junctionTable' needs the junction shape; the relation maps as {Kebab(shape)}.");
@@ -335,20 +190,13 @@ internal static class MappingRules
                     report.Add("MQ4011", $"Junction table '{junction.Name}' is designed, so end '{end.Role}' needs an 'ends' entry naming its foreign key.", "/junctionTable");
             }
         }
-
-        // MQ4011: both ends bound to designed or imported tables, foreign-key shape, and no foreign key named.
-        if (shape == RelationShape.ForeignKey && mapping.ForeignKey is null && BothEndsBound(context, relation, mapping.Database))
-        {
-            report.Add("MQ4011", $"Both ends of relation '{relation.Name}' are bound to designed or imported tables in this database; name the existing foreign key with 'foreignKey'.", "/relation");
-        }
     }
 
     /// <summary>
     /// MQ4009 on the <c>ends</c> entries of a one-type relation's mapping (several-types-design.md decision 38): the per-end ways of an end with
-    /// several types don't apply, and with <paramref name="junction"/> (an ignored mapping's designed junction) an entry with no way keeps the
-    /// words of a missing key, which the schema reported before (MQ1002). A stored mapping's missing keys are checked against its junction later.
+    /// several types don't apply. Missing keys are checked against the mapping's junction later.
     /// </summary>
-    private static void CheckOneTypeEntryWays(Mapping mapping, Relation relation, Table? junction, Report report)
+    private static void CheckOneTypeEntryWays(Mapping mapping, Relation relation, Report report)
     {
         for (var i = 0; i < mapping.Ends.Count; i++)
         {
@@ -363,9 +211,6 @@ internal static class MappingRules
                 if (set)
                     Invalid(report, pointer + "/" + key, $"End entry {i.ToString(CultureInfo.InvariantCulture)} of relation '{relation.Name}' sets '{key}', which needs a relation with an end of several types.");
             }
-
-            if (junction is not null && !end.HasWay)
-                MissingForeignKey(report, pointer, i, junction);
         }
     }
 
@@ -384,8 +229,8 @@ internal static class MappingRules
         var stores = mapping.JunctionTable is not null || mapping.Ends.Count > 0;
         foreach (var (pointer, set) in new (string, bool)[]
         {
-            ("/foreignKeyEnd", mapping.ForeignKeyEnd is not null), ("/foreignKey", mapping.ForeignKey is not null), ("/promotedName", mapping.PromotedName is not null),
-            ("/shape", mapping.Shape == RelationShape.Promoted || (mapping.Shape is not null && !stores)), ("/attributes", !stores && mapping.Attributes.Count > 0),
+            ("/foreignKeyEnd", mapping.ForeignKeyEnd is not null), ("/foreignKey", mapping.ForeignKey is not null),
+            ("/shape", mapping.Shape is not null && !stores), ("/attributes", !stores && mapping.Attributes.Count > 0),
             ("/constants", !stores && mapping.Constants.Count > 0),
         })
         {
@@ -406,9 +251,7 @@ internal static class MappingRules
         Table? junction = null;
         if (mapping.JunctionTable is { } junctionId && model.Get<Table>(junctionId) is { } junctionTable)
         {
-            if (junctionTable.Origin == TableOrigin.Synthesized)
-                Invalid(report, "/junctionTable", $"'junctionTable' names '{junctionTable.Name}', a synthesized table's overlay; name a designed or imported table.");
-            else if (junctionTable.Database != mapping.Database)
+            if (junctionTable.Database != mapping.Database)
                 Invalid(report, "/junctionTable", $"'junctionTable' names '{junctionTable.Name}', which belongs to another database.");
             else
                 junction = junctionTable;
@@ -508,12 +351,6 @@ internal static class MappingRules
                 continue;
             }
 
-            foreach (var (key, set) in new (string, bool)[] { ("storage", item.Storage is not null), ("prefix", item.Prefix is not null) })
-            {
-                if (set)
-                    Invalid(report, pointer + "/" + key, $"Relation '{relation.Name}' has an end with several types, so '{key}' of attribute {i.ToString(CultureInfo.InvariantCulture)} can't shape engine-made columns; remove it.");
-            }
-
             // Without a link table, the column is checked against the end's table that holds the links (MQ4117, from the run).
             if (item.Column is not null)
             {
@@ -534,8 +371,6 @@ internal static class MappingRules
             return; // MQ2001 or MQ2002
         if (owner.ForeignKeys.FirstOrDefault(f => f.Id == foreignKeyId) is not { } foreignKey)
             Invalid(report, pointer, $"'{foreignKeyId}' is a key of table '{owner.Name}' but not a foreign key.");
-        else if (owner.Origin == TableOrigin.Synthesized)
-            Invalid(report, pointer, $"Foreign key '{foreignKey.Name ?? foreignKeyId}' belongs to '{owner.Name}', a synthesized table's overlay; name a key of a designed or imported table.");
         else if (owner.Database != mapping.Database)
             Invalid(report, pointer, $"Foreign key '{foreignKey.Name ?? foreignKeyId}' belongs to table '{owner.Name}' of another database.");
         else
@@ -553,9 +388,7 @@ internal static class MappingRules
             return false;
         }
 
-        if (owner.Origin == TableOrigin.Synthesized)
-            Invalid(report, pointer, $"Column '{column.Name}' belongs to '{owner.Name}', a synthesized table's overlay; name a column of a designed or imported table.");
-        else if (owner.Database != mapping.Database)
+        if (owner.Database != mapping.Database)
             Invalid(report, pointer, $"Column '{column.Name}' belongs to table '{owner.Name}' of another database.");
         else
             return true;
@@ -564,7 +397,7 @@ internal static class MappingRules
 
     /// <summary>The mapping's <c>junctionTable</c> when it is a designed or imported table of the mapping's database; else <see langword="null"/>.</summary>
     private static Table? DesignedJunction(ValidationContext context, Mapping mapping) =>
-        mapping.JunctionTable is { } id && context.Model.Get<Table>(id) is { Origin: not TableOrigin.Synthesized } table && table.Database == mapping.Database ? table : null;
+        mapping.JunctionTable is { } id && context.Model.Get<Table>(id) is { } table && table.Database == mapping.Database ? table : null;
 
     /// <summary>Whether an attribute is a collection or typed by a value object: one column can't hold it (decision 45).</summary>
     private static bool IsCompound(ValidationContext context, ModelAttribute attribute) =>
@@ -572,7 +405,7 @@ internal static class MappingRules
 
     /// <summary>The designed or imported table of the mapping's database that declares the mapping's <c>foreignKey</c>, or <see langword="null"/>.</summary>
     private static Table? ForeignKeyOwner(ValidationContext context, Mapping mapping) =>
-        mapping.ForeignKey is { } id && context.Model.GetDocument(id)?.Element is Table { Origin: not TableOrigin.Synthesized } owner
+        mapping.ForeignKey is { } id && context.Model.GetDocument(id)?.Element is Table owner
         && owner.Database == mapping.Database && owner.ForeignKeys.Any(f => f.Id == id) ? owner : null;
 
     /// <summary>
@@ -642,7 +475,7 @@ internal static class MappingRules
             return;
         }
 
-        // A relation with an end of several types never gets here: its mapping sets only ignore (MQ4009, above).
+        // A relation with an end of several types never gets here (MQ4009, above).
         if (DependentEnd(relation, mapping) is { } dependent && relation.Ends[dependent].SingleEntity is { } dependentEntity
             && BoundTable(context, mapping.Database, dependentEntity) is { } boundId && boundId != owner.Id)
         {
@@ -650,67 +483,41 @@ internal static class MappingRules
         }
     }
 
-    /// <summary>Checks, on a relation file, the databases where both ends are bound but no mapping of the relation exists (MQ4011).</summary>
+    /// <summary>
+    /// On a relation file: a relation with an end of several types where its types are placed but nothing stores it (MQ4115). A one-type
+    /// relation between bound entities with no storage is MQ4011 from the database run.
+    /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="relation">The relation.</param>
     /// <param name="report">The report.</param>
     public static void CheckRelationBindings(ValidationContext context, Relation relation, Report report)
     {
-        if (relation.Ends.Count != 2)
-            return;
-        // A relation with an end of several types is never bound in part 1, so it never asks for a mapping; where its types are placed, the
-        // database stores nothing for it (MQ4115, several-types-design.md decision 22).
-        if (EndCoverage.HasSeveralTypes(relation))
-        {
+        if (relation.Ends.Count == 2 && EndCoverage.HasSeveralTypes(relation))
             RelationTypeRules.CheckStoredNothing(context, relation, report);
-            return;
-        }
-
-        foreach (var database in context.Model.All<Database>())
-        {
-            if (!context.MappingsOf(database.Id, relation.Id).IsEmpty)
-                continue; // the mapping file reports
-            if (EffectiveShape(context, relation, database.Id, null) == RelationShape.ForeignKey && BothEndsBound(context, relation, database.Id))
-            {
-                report.Add("MQ4011", $"Both ends of relation '{relation.Name}' are bound to designed or imported tables in database '{database.Name}'; add a mapping that names the existing foreign key.", "/ends");
-            }
-        }
     }
 
-    // An end with several types is never bound in part 1, so such a relation never asks for a mapping (MQ4011; CheckRelationBindings skips it).
-    private static bool BothEndsBound(ValidationContext context, Relation relation, string databaseId) =>
-        relation.Ends.Count == 2 && relation.Ends.All(e => e.SingleEntity is { } entityId && BoundTable(context, databaseId, entityId) is not null);
+    /// <summary>
+    /// The table an entity's binding to a database writes (else reads), the table whose foreign key stores the entity's to-one relations;
+    /// <see langword="null"/> when the entity has no binding there.
+    /// </summary>
+    private static string? BoundTable(ValidationContext context, string databaseId, string entityId) =>
+        context.Model.Get<Entity>(entityId)?.Bindings.FirstOrDefault(b => string.Equals(b.Database, databaseId, StringComparison.Ordinal)) is { } binding
+            ? binding.Write?.Table ?? binding.Source
+            : null;
 
-    private static string? BoundTable(ValidationContext context, string databaseId, string entityId)
+    /// <summary>
+    /// The shape a relation maps to: the mapping's; else a junction for an n-ary or many-to-many relation, or one that carries attributes and
+    /// names no foreign key; else a foreign key (engine-design.md section 7.4).
+    /// </summary>
+    private static RelationShape EffectiveShape(Relation relation, Mapping mapping)
     {
-        foreach (var doc in context.MappingsOf(databaseId, entityId))
-        {
-            if (doc.Element is Mapping { Ignore: false, Table: { } table } && context.Model.Get<Table>(table) is { Origin: not TableOrigin.Synthesized })
-                return table;
-        }
-
-        return null;
-    }
-
-    /// <summary>The shape a relation maps to in a database: the mapping's, else the S7 default (engine-design.md section 7.4).</summary>
-    private static RelationShape EffectiveShape(ValidationContext context, Relation relation, string databaseId, Mapping? mapping)
-    {
-        if (mapping?.Shape is { } shape)
+        if (mapping.Shape is { } shape)
             return shape;
-        if (relation.Ends.Count != 2)
+        if (relation.Ends.Count != 2 || relation.Ends.All(e => e.Max == MaxCardinality.Many))
             return RelationShape.Junction;
         if (relation.Attributes.Count > 0)
-        {
-            // A mapping that names its foreign key stores the relation on it, attributes included (retire-projection-design.md section 6).
-            if (mapping?.ForeignKey is not null && mapping.JunctionTable is null && !relation.Ends.All(e => e.Max == MaxCardinality.Many))
-                return RelationShape.ForeignKey;
-            var settings = context.Model.Settings;
-            var name = context.Model.Get<Database>(databaseId)?.Name;
-            var perDatabase = name is not null && settings.Databases.TryGetValue(name, out var conventions) ? conventions.RelationsWithAttributes : null;
-            return perDatabase ?? settings.Conventions.RelationsWithAttributes ?? RelationShape.Junction;
-        }
-
-        return relation.Ends.All(e => e.Max == MaxCardinality.Many) ? RelationShape.Junction : RelationShape.ForeignKey;
+            return mapping.ForeignKey is not null && mapping.JunctionTable is null ? RelationShape.ForeignKey : RelationShape.Junction;
+        return mapping.JunctionTable is not null ? RelationShape.Junction : RelationShape.ForeignKey;
     }
 
     /// <summary>The end whose table holds the foreign key of a binary foreign-key relation (engine-design.md section 7.4).</summary>
@@ -730,12 +537,5 @@ internal static class MappingRules
         return mapping.ForeignKeyEnd == a.Id ? 0 : 1;
     }
 
-    private static string Kebab(StorageKind kind) => kind.ToString().ToLowerInvariant();
-
-    private static string Kebab(RelationShape shape) => shape switch
-    {
-        RelationShape.ForeignKey => "foreign-key",
-        RelationShape.Junction => "junction",
-        _ => "promoted",
-    };
+    private static string Kebab(RelationShape shape) => shape == RelationShape.ForeignKey ? "foreign-key" : "junction";
 }

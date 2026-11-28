@@ -258,9 +258,8 @@ public sealed class ReferenceDataStoreTests
     public async Task Usage_lists_designed_columns_bound_to_attributes_of_the_type()
     {
         // next-phase-2-design.md section 3.2 (D24): the usage lists the own and inherited columns of designed tables that bindings map to
-        // attributes of the type, ordinal by table id then column id, with the effective storage choice in their database; the projected
-        // columns of attributes typed by it stay covered by their attributes, an overlay's extra column has no bound type, and a column
-        // bound to an attribute of another type is not listed.
+        // attributes of the type, ordinal by table id then column id, with the effective storage choice in their database; a column bound
+        // to an attribute of another type is not listed.
         var (h, store) = await OpenAsync(TypedPantry);
         using var _ = h;
         await using var __ = store;
@@ -294,23 +293,17 @@ public sealed class ReferenceDataStoreTests
     private const string PantryItemsId = "01JRDV00000000000000000020";
     private const string PantryUnitId = "01JRDV00000000000000000022";
     private const string PantryAllergenId = "01JRDV00000000000000000023";
-    private const string RecipeOverlayId = "01JRDV00000000000000000030";
-    private const string PantryStockUnitId = "01JRDV00000000000000000031";
 
     /// <summary>
     /// A database <c>pantry</c> where the designed table pantry_items has unit and allergen and inherits a nullable unit_code from the
     /// stereotype <c>measured</c>, which the entity PantryItem's binding maps to its attributes of UnitOfMeasure, Allergen and
-    /// UnitOfMeasure; Recipe alone maps there, and the overlay of its table adds an extra column stock_unit. Allergen states no storage; the project's lookup-table choice
+    /// UnitOfMeasure. Allergen states no storage; the project's lookup-table choice
     /// applies to it, and UnitOfMeasure's own <c>native</c> for the pantry to the other.
     /// </summary>
     private static void TypedPantry(LoaderHarness h)
     {
         h.Write("model/databases/pantry/database.json", $$"""
             { "kind": "database", "id": "{{PantryDatabaseId}}", "name": "pantry", "dialect": "postgresql", "byConvention": "none" }
-            """);
-        h.Write("model/mappings/recipe-in-pantry.json", $$"""
-            { "kind": "mapping", "id": "01JRDV00000000000000000040", "name": "Recipe in pantry", "database": "{{PantryDatabaseId}}",
-              "entity": "{{Recipe}}" }
             """);
         // The pantry stores units natively, which holds Ingredient's collection of units there, so MQ7006 stays quiet.
         var units = h.Model("model/reference-types/unit-of-measure.json");
@@ -339,10 +332,6 @@ public sealed class ReferenceDataStoreTests
                             { "attribute": "01JRDV00000000000000000052", "column": "{{PantryUnitId}}" },
                             { "attribute": "01JRDV00000000000000000053", "column": "{{PantryAllergenId}}" },
                             { "attribute": "01JRDV00000000000000000054", "column": "{{PantryItemsId}}.{{MeasuredUnitId}}" } ] } ] }
-            """);
-        h.Write("model/databases/pantry/tables/recipes.json", $$"""
-            { "kind": "table", "id": "{{RecipeOverlayId}}", "database": "{{PantryDatabaseId}}", "origin": "synthesized", "entity": "{{Recipe}}",
-              "columns": [ { "id": "{{PantryStockUnitId}}", "name": "stock_unit", "type": "string", "length": 8 } ] }
             """);
     }
 

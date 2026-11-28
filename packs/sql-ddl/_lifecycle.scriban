@@ -3,26 +3,17 @@
 # lifecycleChecks parameter is true. Needs _sql.scriban. Prints nothing.
 #
 # A subject that binds a plain status (a string, text or integer attribute; not an enum or a reference type) of a lifecycle whose
-# codes form a map gets a check on the attribute's column in each database where its entity keeps it, through the entity's mapping
-# or its binding: ck_<table>_<column>_states, listing the states' codes. Like a reference type's check, it is not in the schema
+# codes form a map gets a check on the attribute's column in each database where its entity keeps it, through the entity's binding: ck_<table>_<column>_states, listing the states' codes. Like a reference type's check, it is not in the schema
 # snapshot, so seed.sql reconciles it on every run: the check is dropped by name, then added with the current codes. SQLite cannot
 # add a constraint to a table it has, so there the check is two triggers with the same name plus _i (insert) and _u (update); MySQL
 # has no IF EXISTS for it, so there the drop is guarded. Lifecycles that bind one column share its check, which lists the codes of
-# all of them. A column whose table also holds rows of other entities (a derived subject's column in a single-table hierarchy or in
-# a base's table, or a binding with constant columns) gets no check, since the codes of one lifecycle need not cover their rows.
+# all of them. A column whose table also holds rows of other entities (a derived subject's column in a single-table hierarchy, or a
+# binding with constant columns) gets no check, since the codes of one lifecycle need not cover their rows.
 
-# The column of a table that holds attribute a of entity e in database db: through e's mapping, or through its binding (the column
-# the binding writes, else its source table's). [column, shared], where shared says the column's table also holds rows of other
+# The column of a table that holds attribute a of entity e in database db, through its binding (the column the binding writes, else
+# its source table's). [column, shared], where shared says the column's table also holds rows of other
 # entities; null when e keeps a in no table of db.
 func lifecycle_column(e, a, db)
-  $m = e.mappings[db.name]
-  if $m
-    for cm in $m.columns
-      if cm.attribute_path == a.id
-        ret [cm.column, e.base != null && ($m.inheritance == "tph" || cm.column.table.key != $m.table.key)]
-      end
-    end
-  end
   $b = e.bindings[db.name]
   if $b
     for f in $b.fields

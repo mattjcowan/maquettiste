@@ -722,7 +722,7 @@
   {
     "id": "MQ3102",
     "defaultSeverity": "error",
-    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, a context attribute named event, under which a process guard's condition reads the payload, the context or a payload in a right's condition, the context at a trigger point's when, condition or set value, current_actor() or a payload at a named signature's or an approval stage's when, a payload read by a trigger point whose verbs are not all move verbs or own verbs an event of its lifecycle names, or by a named trigger point, which has no lifecycle, a path in a named right's condition that the subjects of a lifecycle using it do not hold (reported at the use), or an overlay's column named like an attribute of its entity, which text reads as the attribute.",
+    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, a context attribute named event, under which a process guard's condition reads the payload, the context or a payload in a right's condition, the context at a trigger point's when, condition or set value, current_actor() or a payload at a named signature's or an approval stage's when, a payload read by a trigger point whose verbs are not all move verbs or own verbs an event of its lifecycle names, or by a named trigger point, which has no lifecycle, a path in a named right's condition that the subjects of a lifecycle using it do not hold (reported at the use).",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -859,7 +859,7 @@
   {
     "id": "MQ4004",
     "defaultSeverity": "error",
-    "description": "Two mappings for one element in one database.",
+    "description": "Two relation mappings for one relation in one database.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -881,14 +881,6 @@
     "canBeOff": true
   },
   {
-    "id": "MQ4007",
-    "defaultSeverity": "error",
-    "description": "Overlay references a missing column key.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
     "id": "MQ4008",
     "defaultSeverity": "error",
     "description": "Constraint or index names a missing column.",
@@ -899,7 +891,7 @@
   {
     "id": "MQ4009",
     "defaultSeverity": "error",
-    "description": "Mapping option invalid for the element: a key, column or option the element, its relation or its tables don't allow; an ends entry that says no way or two ways to point at its end, or a way only a relation with an end of several types takes; constants or an attribute column outside the mapping's designed junctionTable; or a discriminatorValue on an entity outside an inheritance hierarchy that no relation end with several types covers.",
+    "description": "Relation mapping option invalid for the relation: a key, column or option the relation or its tables don't allow; an ends entry that says no way or two ways to point at its end, or a way only a relation with an end of several types takes; constants or an attribute column outside the mapping's designed junctionTable or the table of its foreignKey; or a binding's discriminatorValue on an entity outside an inheritance hierarchy that no relation end with several types covers.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -915,31 +907,7 @@
   {
     "id": "MQ4011",
     "defaultSeverity": "error",
-    "description": "Relation between bound tables names no foreign key or junction end binding, or a designed junction or link table has no ends entry for one of the relation's ends.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4012",
-    "defaultSeverity": "info",
-    "description": "An entity lands in no database: no database takes its domain by convention and no mapping names it.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4013",
-    "defaultSeverity": "warning",
-    "description": "A database lists convention packages that its byConvention setting does not use.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4014",
-    "defaultSeverity": "error",
-    "description": "A convention package entry or an entity mapping names a schema that its database does not declare.",
+    "description": "A relation between entities bound to a database has no storage there: its relation mapping names no foreign key or junction table, or one the database does not have; or a designed junction or link table has no ends entry for one of the relation's ends.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -947,7 +915,7 @@
   {
     "id": "MQ4015",
     "defaultSeverity": "error",
-    "description": "A schema operation was refused: the schema is unknown or its name is taken, it still holds tables, views, sequences, convention entries or mappings and no target was given, or it is the default and no other schema becomes the default.",
+    "description": "A schema operation was refused: the schema is unknown or its name is taken, it still holds tables, views or sequences and no target was given, or it is the default and no other schema becomes the default.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1209,14 +1177,6 @@
     "canBeOff": true
   },
   {
-    "id": "MQ4054",
-    "defaultSeverity": "info",
-    "description": "An entity mapping element maps an entity to a database where the entity has a binding: the binding wins and the mapping is ignored.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
     "id": "MQ4055",
     "defaultSeverity": "error",
     "description": "A materialize operation is refused: an entity already bound to the database, a table an entity is already bound to, part of an inheritance hierarchy (name it whole), an unknown hierarchy shape or list storage, a name already taken, or an id that is not what the operation takes.",
@@ -1364,14 +1324,6 @@
     "id": "MQ4078",
     "defaultSeverity": "warning",
     "description": "A redefinition states a facet equal to the value the member inherits, so the table stops following the stereotype for that facet.",
-    "family": "MQ40xx",
-    "familyLabel": "Databases and mappings",
-    "canBeOff": true
-  },
-  {
-    "id": "MQ4079",
-    "defaultSeverity": "warning",
-    "description": "A synthesized table inherits a NOT NULL column with no default, identity or generation, which rows written through its entity or relation cannot fill.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1809,6 +1761,22 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4145",
+    "defaultSeverity": "error",
+    "description": "A file has a key removed in 0.29.0 with projection, so it does not load, and no setting changes the error: a database's byConvention set to all or packages, or packages (write the tables, bind each entity, then byConvention none); a mapping's entity, table, schema, ignore, inheritance or discriminatorValue, or an attribute's storage, prefix or ignore (an entity's binding, with discriminatorColumn, baseForeignKey or childTables); a table's origin, entity, attribute or relation, or a column's attribute (a designed table with its full definition); or the promoted shape (shape promoted, promotedName, relationsWithAttributes promoted: an entity with a relation to each end).",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": false
+  },
+  {
+    "id": "MQ4146",
+    "defaultSeverity": "warning",
+    "description": "A database file has no byConvention and an entity is not bound to the database, as a new entity is until it gets a table. Before 0.29.0 such a database laid out a table for every entity not bound to it, so a model still on an older release would drop those tables at the next migration. Write \"byConvention\": \"none\" (the quick fix); first bind every entity whose table the database still lays out.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations, bindings and queries",
+    "canBeOff": false
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",
@@ -1915,7 +1883,7 @@
   {
     "id": "MQ5018",
     "defaultSeverity": "error",
-    "description": "A suppression names a rule that cannot be suppressed: MQ1xxx, MQ4127, MQ7012 or MQ5018 to MQ5020.",
+    "description": "A suppression names a rule that cannot be suppressed: MQ1xxx, MQ4127, MQ4145, MQ4146, MQ7012 or MQ5018 to MQ5020.",
     "family": "MQ50xx",
     "familyLabel": "Extensions and script rules",
     "canBeOff": true

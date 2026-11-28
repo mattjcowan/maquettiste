@@ -664,7 +664,7 @@ public sealed partial class ModelStore
                     if (column.BoundType?.ReferenceType is not { } typed || !string.Equals(typed.Id, referenceTypeId, StringComparison.Ordinal))
                         continue;
                     var choice = typed.Storage.GetValueOrDefault(database.Name);
-                    var domain = table.Package ?? table.Entity?.Package ?? table.Relation?.Package;
+                    var domain = table.Package ?? table.Relation?.Package;
                     columns.Add(new ReferenceTypeColumnUse(table.Id, column.Id, database.Id, domain?.Id, !column.Nullable,
                         choice?.Strategy is null ? null : ToStorageChoice(choice), typed.Bindings.GetValueOrDefault(database.Name)?.Table.Id));
                 }

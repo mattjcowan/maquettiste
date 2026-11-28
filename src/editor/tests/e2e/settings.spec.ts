@@ -5,7 +5,7 @@ import { expect, test } from "./fixtures";
 const hex = (s: string) => `#${s}`;
 
 test("vocabularies and conventions", async ({ page }, testInfo) => {
-  await page.goto("/settings?mock=projected");
+  await page.goto("/settings");
   const settings = page.getByTestId("settings-workspace");
   await expect(settings.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
   await settings.getByRole("tab", { name: "Tags" }).click();
@@ -28,9 +28,9 @@ test("vocabularies and conventions", async ({ page }, testInfo) => {
   await expect(save).toBeDisabled();
   await expect(settings.getByRole("combobox", { name: "tableCase" })).toHaveValue("pascal");
 
-  // The saved convention reaches the database view.
+  // A table is its own file: the saved convention does not rename it.
   await page.getByRole("navigation", { name: "Explorers" }).getByRole("button", { name: "Databases", exact: true }).click();
-  await expect(page.getByRole("group", { name: "Table Invoices", exact: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Table invoices", exact: true })).toBeVisible();
 });
 
 test("Up and Down move through the stereotype list, picking each one, and so through the database's table list", async ({ page }) => {

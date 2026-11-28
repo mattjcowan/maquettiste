@@ -87,9 +87,9 @@ describe("mock model index", () => {
     expect(created.outcome, JSON.stringify(created.diagnostics)).toBe("saved");
     expect(model.owner("01M9KEY0000000000000000001")?.id).toBe(created.id);
 
-    // Deleting a relation drops it from the diagram that shows it (remove-references).
+    // Deleting a relation drops it from the diagram that shows it, and takes its mapping with it (delete-dependents).
     const link = entriesOf(model, "relation")[0];
-    const removed = model.delete(link.id, link.hash, "remove-references");
+    const removed = model.delete(link.id, link.hash, "delete-dependents");
     expect(removed.outcome, JSON.stringify(removed.diagnostics)).toBe("saved");
     expect(model.validate().diagnostics).toEqual(fromScratch(model));
     expect(model.owner(link.id)).toBeUndefined();

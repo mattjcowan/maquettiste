@@ -12,14 +12,14 @@ using Dapper;
 
 namespace App.Model.Billing;
 
-/// <summary>Reads and writes <see cref="Customer"/> rows in customers (database local, sqlite).</summary>
+/// <summary>Reads and writes <see cref="Customer"/> rows through its binding to table customers (database local, sqlite).</summary>
 public partial interface ICustomerRepository
 {
     /// <summary>Returns the entity with the given key, or null.</summary>
     Task<Customer?> GetAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>Returns a page of entities in key order.</summary>
-    Task<IReadOnlyList<Customer>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Customer>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default);
 
     /// <summary>Inserts the entity.</summary>
     Task InsertAsync(Customer entity, CancellationToken cancellationToken = default);
@@ -34,42 +34,44 @@ public partial interface ICustomerRepository
 /// <summary>The Dapper implementation of <see cref="ICustomerRepository"/> over an open or closed <see cref="IDbConnection"/>.</summary>
 public partial class CustomerRepository(IDbConnection connection, IDbTransaction? transaction = null) : ICustomerRepository
 {
-    private const string Columns = """
-        id AS Id,
-        name AS Name,
-        email AS Email,
-        customer_since AS CustomerSince,
-        created_at AS CreatedAt,
-        updated_at AS UpdatedAt
+    private const string SelectSql = """
+        SELECT t.id AS id, t.name AS name, t.email AS email, t.customer_since AS customerSince, t.created_at AS createdAt, t.updated_at AS updatedAt
+        FROM customers t
+        WHERE t.id = @id
         """;
 
-    private const string SelectSql = "SELECT " + Columns + " FROM customers WHERE id = @Id";
-
-    private const string ListSql = "SELECT " + Columns + " FROM customers ORDER BY id LIMIT @Take OFFSET @Skip";
+    private const string ListSql = """
+        SELECT t.id AS id, t.name AS name, t.email AS email, t.customer_since AS customerSince, t.created_at AS createdAt, t.updated_at AS updatedAt
+        FROM customers t
+        ORDER BY id LIMIT @mq_take OFFSET @mq_skip
+        """;
 
     private const string InsertSql = """
         INSERT INTO customers (id, name, email, customer_since, created_at, updated_at)
-        VALUES (@Id, @Name, @Email, @CustomerSince, @CreatedAt, @UpdatedAt)
+        VALUES (@id, @name, @email, @customerSince, @createdAt, @updatedAt)
         """;
 
     private const string UpdateSql = """
-        UPDATE customers SET name = @Name, email = @Email, customer_since = @CustomerSince, created_at = @CreatedAt, updated_at = @UpdatedAt
-        WHERE id = @Id
+        UPDATE customers SET name = @name, email = @email, customer_since = @customerSince
+        WHERE id = @id
         """;
 
-    private const string DeleteSql = "DELETE FROM customers WHERE id = @Id";
+    private const string DeleteSql = """
+        DELETE FROM customers
+        WHERE id = @id
+        """;
 
     /// <inheritdoc/>
     public async Task<Customer?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var row = await connection.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(SelectSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return row is null ? null : Row.ToEntity(row);
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<Customer>> ListAsync(int skip = 0, int take = 100, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Customer>> ListAsync(int mq_skip = 0, int mq_take = 100, CancellationToken cancellationToken = default)
     {
-        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { Skip = skip, Take = take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<Row>(new CommandDefinition(ListSql, new { mq_skip, mq_take }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return rows.Select(Row.ToEntity).ToList();
     }
 
@@ -92,37 +94,37 @@ public partial class CustomerRepository(IDbConnection connection, IDbTransaction
     /// <inheritdoc/>
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { Id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
+        return await connection.ExecuteAsync(new CommandDefinition(DeleteSql, new { id = id }, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false) > 0;
     }
 
-    /// <summary>One row of customers, column by column, as Dapper reads and writes it.</summary>
+    /// <summary>One row of table customers as the binding reads and writes it, field by field.</summary>
     private sealed class Row
     {
-        public Guid Id { get; set; }
-        public string Name { get; set; } = default!;
-        public string Email { get; set; } = default!;
-        public DateOnly? CustomerSince { get; set; }
-        public DateTimeOffset CreatedAt { get; set; }
-        public DateTimeOffset? UpdatedAt { get; set; }
+        public Guid id { get; set; }
+        public string name { get; set; } = default!;
+        public string email { get; set; } = default!;
+        public DateOnly? customerSince { get; set; }
+        public DateTimeOffset createdAt { get; set; }
+        public DateTimeOffset? updatedAt { get; set; }
 
         public static Customer ToEntity(Row row) => new()
         {
-            Id = row.Id,
-            Name = row.Name,
-            Email = row.Email,
-            CustomerSince = row.CustomerSince,
-            CreatedAt = row.CreatedAt,
-            UpdatedAt = row.UpdatedAt,
+            Id = row.id,
+            Name = row.name,
+            Email = row.email,
+            CustomerSince = row.customerSince,
+            CreatedAt = row.createdAt,
+            UpdatedAt = row.updatedAt,
         };
 
         public static Row From(Customer entity) => new()
         {
-            Id = entity.Id,
-            Name = entity.Name,
-            Email = entity.Email,
-            CustomerSince = entity.CustomerSince,
-            CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt,
+            id = entity.Id,
+            name = entity.Name,
+            email = entity.Email,
+            customerSince = entity.CustomerSince,
+            createdAt = entity.CreatedAt,
+            updatedAt = entity.UpdatedAt,
         };
     }
 }

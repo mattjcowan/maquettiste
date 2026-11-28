@@ -33,8 +33,6 @@ CREATE TABLE billing.invoices (
     created_at timestamptz(6) NOT NULL,
     updated_at timestamptz(6) NULL,
     deleted_at timestamptz(6) NULL,
-    reason varchar(200) NULL,
-    discriminator varchar(64) NOT NULL,
     customer_id uuid NOT NULL,
     CONSTRAINT pk_invoices PRIMARY KEY (id),
     CONSTRAINT uq_invoices_number UNIQUE (number),
@@ -90,10 +88,10 @@ CREATE TABLE billing.payments (
     amount_currency varchar(3) NOT NULL,
     received_at timestamptz(6) NOT NULL,
     reference varchar(64) NULL,
-    method varchar(16) NULL,
-    ledger_position pg_lsn NULL,
     created_at timestamptz(6) NOT NULL,
     updated_at timestamptz(6) NULL,
+    method varchar(16) NULL,
+    ledger_position pg_lsn NULL,
     CONSTRAINT pk_payments PRIMARY KEY (id)
 );
 

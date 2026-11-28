@@ -682,7 +682,7 @@
           "enum": ["table", "json"]
         },
         "relationsWithAttributes": {
-          "enum": ["junction", "promoted"]
+          "enum": ["junction"]
         },
         "inheritance": {
           "enum": ["tph", "tpt", "tpc"]

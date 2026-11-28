@@ -27,7 +27,6 @@
     "quoting",
     "maxIdentifierLength",
     "byConvention",
-    "packages",
     "properties",
     "generation",
     "source"
@@ -53,7 +52,7 @@
       "type": "string"
     },
     "package": {
-      "description": "The owning package. Membership only: packages routes the tables.",
+      "description": "The owning package. Membership only: it routes no table.",
       "$ref": "common.json#/$defs/id"
     },
     "dialect": {
@@ -198,36 +197,8 @@
       "minimum": 1
     },
     "byConvention": {
-      "description": "Which entities map here by convention: all, the entities of packages (and their sub-packages; none when packages is empty), or none. Mapping elements add or ignore single entities either way. Absent (files written before 0.3.0): every entity when packages is empty, else the entities of packages.",
-      "enum": ["all", "packages", "none"]
-    },
-    "packages": {
-      "description": "The packages whose entities (and sub-packages') map here by convention. An entry is a package id, or an object that also names the schema (the id of one of this database's schemas) the package's conventional tables go to; an entry without a schema is written as the id.",
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "$ref": "common.json#/$defs/id"
-          },
-          {
-            "title": "Convention package",
-            "type": "object",
-            "x-order": ["package", "schema"],
-            "x-collapse": "package",
-            "properties": {
-              "package": {
-                "$ref": "common.json#/$defs/id"
-              },
-              "schema": {
-                "$ref": "common.json#/$defs/id"
-              }
-            },
-            "required": ["package"],
-            "additionalProperties": false
-          }
-        ]
-      },
-      "default": []
+      "description": "Written \"none\" by the editor on new databases, and what every database means since 0.29.0: a database holds only the tables written for it. The values all and packages, and the key packages, were removed with projection (MQ4145). A file with no byConvention gets warning MQ4146 while an entity is not bound to the database; its quick fix writes \"none\".",
+      "enum": ["none"]
     },
     "properties": {
       "$ref": "common.json#/$defs/properties",

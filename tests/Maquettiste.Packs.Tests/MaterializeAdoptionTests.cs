@@ -9,23 +9,19 @@ using Maquettiste.Testing;
 namespace Maquettiste.Packs.Tests;
 
 /// <summary>
-/// What "Create tables…" takes over from the sql-ddl pack (a lookup table, a list's table, a reference column's constraint, a default
-/// expression) is adopted by the write's rekey fact: the next schema diff reads it as already there, once, and an undo leaves nothing
-/// behind. Also the refusals that never guess (a storage strategy the pack decides, a relation to an abstract base with no table) and
-/// the choices that come back with a refusal.
+/// What "Create tables…" takes over from the sql-ddl pack (a reference type's lookup table) is adopted by the write's rekey fact: the
+/// next schema diff reads it as already there, once, and an undo leaves nothing behind. Also the refusals that never guess (a storage
+/// strategy the pack decides, a relation to an abstract base with no table) and the choices that come back with a refusal, over the
+/// billing model's SQL Server database before its tables are made.
 /// </summary>
-[UsesProjectedFixtures]
 public sealed class MaterializeAdoptionTests
 {
-    private const string Main = "01J92P0V1QRN2181XM2ZWE02W4";
+    private const string Reporting = "01J92P0V2A0000000000000001";
     private const string Customer = "01J92P0V0ETQKXXP951CMMNHH3";
     private const string Ingredient = "01JRDE00000000000000000002";
     private const string Recipe = "01JRDE00000000000000000001";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-
-    private static string AllBilling => string.Join(",", new[] { Customer, "01J92P0V0FJ23CGSNKM7P1W5V7", "01J92P0V2C0000000000000001", "01J92P0V0GWFR78HZH0P8Z3GY7",
-        "01J92P0V0HEGSC6MW92CST5KA6", "01J92P0V0JR8BE8253SKT29ZG7" }.Select(e => "\"" + e + "\""));
 
     private static async Task<BatchResult> ApplyAsync(PackRepo repo, string operations)
     {
@@ -133,80 +129,7 @@ public sealed class MaterializeAdoptionTests
         return statements;
     }
 
-    [Fact]
-    public async Task Undoing_a_materialize_that_adopted_a_lookup_table_writes_no_drop()
-    {
-        using var repo = PackRepo.ReferenceData("lookup-table");
-        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
-        var request = $$"""{"op":"materialize-tables","database":"{{PackRepo.MainDatabaseId}}","entities":["{{Ingredient}}","{{Recipe}}"]}""";
-        var plan = await PlanAsync(repo, new MaterializeRequest("materialize-tables", PackRepo.MainDatabaseId, [Ingredient, Recipe]));
-        Dictionary<string, string> priors;
-        await using (var store = new ModelStore(repo.Repo.Options))
-        {
-            var snapshot = await store.GetSnapshotAsync(Ct);
-            priors = plan.Updates.Concat(plan.Deletes).ToDictionary(c => c.Id, c => snapshot.GetDocument(c.Id)!.Json.GetRawText(), StringComparer.Ordinal);
-        }
 
-        var stored = await ApplyAsync(repo, request);
-        Assert.Contains(stored.Facts!, f => f.Fact == "rekey");
-
-        // The editor's undo: every element the write touched goes back to what it was.
-        var ops = new List<string>();
-        foreach (var item in stored.Items.Where(i => i.Id is not null))
-        {
-            ops.Add(priors.TryGetValue(item.Id!, out var was)
-                ? $$"""{"op":"update","id":"{{item.Id}}","expectedHash":"{{item.Hash}}","element":{{was}}}"""
-                : $$"""{"op":"delete","id":"{{item.Id}}","expectedHash":"{{item.Hash}}"}""");
-        }
-
-        foreach (var (id, was) in priors.Where(p => stored.Items.All(i => i.Id != p.Key)))
-            ops.Add($$"""{"op":"create","element":{{was}}}""");
-        await ApplyAsync(repo, string.Join(",", ops));
-
-        var migrations = await NewMigrationsAsync(repo);
-        Assert.All(migrations, m => Assert.False(ChangesSchema(m), m));
-    }
-
-    [Fact]
-    public async Task A_check_materialize_adopted_migrates_when_it_changes_later()
-    {
-        using var repo = PackRepo.BillingDialects();
-        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
-        await ApplyAsync(repo, $$"""{"op":"materialize-tables","database":"{{Main}}","entities":[{{AllBilling}}]}""");
-        Assert.All(await NewMigrationsAsync(repo), m => Assert.True(!ChangesSchema(m), string.Join("\n", SchemaLines(m))));
-
-        var payments = Directory.EnumerateFiles(repo.PathOf(".maquettiste/model/databases/main/tables")).Single(p => File.ReadAllText(p).Contains("\"payments\"", StringComparison.Ordinal));
-        var relative = Path.GetRelativePath(repo.Repo.RepoRoot, payments);
-        repo.EditJson(relative, t =>
-        {
-            var check = t["checks"]!.AsArray().Single(c => (string?)c!["name"] == "ck_payments_method_ref")!;
-            check["expression"]!["postgresql"] = "method IN ('card', 'transfer')";
-        });
-
-        var migrations = await NewMigrationsAsync(repo);
-        Assert.Contains(migrations, m => m.Contains("ck_payments_method_ref", StringComparison.Ordinal) && ChangesSchema(m));
-    }
-
-    [Fact]
-    public async Task A_default_expression_moves_into_the_column_without_a_migration_and_a_later_change_migrates()
-    {
-        using var repo = PackRepo.BillingDialects();
-        repo.EditJson(".maquettiste/model/entities/customer.json", e => e["attributes"]!.AsArray().Add(new JsonObject
-        {
-            ["id"] = "01K9MATER00000000000000090", ["name"] = "joinedAt", ["type"] = "datetimeoffset", ["defaultExpression"] = "now",
-        }));
-        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
-        await ApplyAsync(repo, $$"""{"op":"materialize-tables","database":"{{Main}}","entities":[{{AllBilling}}]}""");
-        Assert.All(await NewMigrationsAsync(repo), m => Assert.True(!ChangesSchema(m), string.Join("\n", SchemaLines(m))));
-
-        var customers = Directory.EnumerateFiles(repo.PathOf(".maquettiste/model/databases/main/tables")).Single(p => File.ReadAllText(p).Contains("\"customers\"", StringComparison.Ordinal));
-        var column = JsonNode.Parse(File.ReadAllText(customers))!["columns"]!.AsArray().Single(c => (string?)c!["name"] == "joined_at")!;
-        Assert.Equal("CURRENT_TIMESTAMP", (string?)column["defaultSql"]!["postgresql"]);
-        repo.EditJson(Path.GetRelativePath(repo.Repo.RepoRoot, customers), t =>
-            t["columns"]!.AsArray().Single(c => (string?)c!["name"] == "joined_at")!["defaultSql"]!["postgresql"] = "now()");
-
-        Assert.Contains(await NewMigrationsAsync(repo), m => m.Contains("joined_at", StringComparison.Ordinal) && ChangesSchema(m));
-    }
 
     [Fact]
     public async Task A_lookup_table_keeps_the_schema_its_storage_names_and_the_database_declares_it()
@@ -214,9 +137,8 @@ public sealed class MaterializeAdoptionTests
         using var repo = PackRepo.ReferenceData("lookup-table");
         repo.EditJson(".maquettiste/maquettiste.json", s => s["conventions"]!["referenceStorage"]!["options"] = new JsonObject { ["schema"] = "ref" });
 
-        var proof = await MaterializeProof.RunAsync(repo.Repo.Options, "db", Ct);
+        await ApplyAsync(repo, $$"""{"op":"materialize-tables","database":"{{PackRepo.MainDatabaseId}}","entities":["{{Ingredient}}","{{Recipe}}"]}""");
 
-        MaterializeShapeTests.AssertSameDdl(proof);
         await using var store = new ModelStore(repo.Repo.Options);
         var snapshot = await store.GetSnapshotAsync(Ct);
         var main = snapshot.Get<Database>(PackRepo.MainDatabaseId)!;
@@ -252,25 +174,11 @@ public sealed class MaterializeAdoptionTests
         Assert.Contains("Set conventions.referenceStorage (or the type's own storage) to lookup-table, check or native", message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task A_list_of_a_reference_type_an_older_mapping_marks_json_keeps_the_table_the_pack_made()
-    {
-        using var repo = PackRepo.ReferenceData("lookup-table");
-        repo.Write(".maquettiste/model/mappings/ingredient-in-main.json", $$"""
-            { "kind": "mapping", "id": "01K9MATER000000000000000A1", "name": "Ingredient in main", "database": "{{PackRepo.MainDatabaseId}}", "entity": "{{Ingredient}}",
-              "attributes": [ { "attribute": "01JRDE00000000000000000025", "storage": "json" } ] }
-            """);
-
-        var proof = await MaterializeProof.RunAsync(repo.Repo.Options, "db", Ct);
-
-        MaterializeShapeTests.AssertSameDdl(proof);
-        Assert.Contains("CREATE TABLE public.ingredients_allergens (", proof.After["db/main/schema.sql"], StringComparison.Ordinal);
-    }
 
     [Fact]
     public async Task A_relation_to_an_abstract_base_stored_per_concrete_entity_is_refused_and_the_choices_come_back()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
         repo.Write(".maquettiste/model/entities/document.json", """
             { "kind": "entity", "id": "01K9MATER000000000000000B0", "name": "Document", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "abstract": true,
               "key": { "attributes": ["01K9MATER000000000000000B1"] },
@@ -286,7 +194,7 @@ public sealed class MaterializeAdoptionTests
                         { "id": "01K9MATER000000000000000B6", "role": "document", "entity": "01K9MATER000000000000000B0", "min": 0, "max": 1 } ] }
             """);
 
-        var plan = await PlanAsync(repo, new MaterializeRequest("materialize-tables", Main, [Customer, "01K9MATER000000000000000B0", "01K9MATER000000000000000B2"])
+        var plan = await PlanAsync(repo, new MaterializeRequest("materialize-tables", Reporting, [Customer, "01K9MATER000000000000000B0", "01K9MATER000000000000000B2"])
         {
             Hierarchy = new Dictionary<string, string> { ["*"] = "per-concrete" },
         });
@@ -295,7 +203,7 @@ public sealed class MaterializeAdoptionTests
         Assert.Contains("Relation 'files'", Assert.Single(plan.Diagnostics).Message, StringComparison.Ordinal);
         var choice = Assert.Single(plan.Choices!.Hierarchies);
         Assert.Equal(("Document", "per-concrete"), (choice.RootName, choice.Shape));
-        var again = await PlanAsync(repo, new MaterializeRequest("materialize-tables", Main, [Customer, "01K9MATER000000000000000B0", "01K9MATER000000000000000B2"])
+        var again = await PlanAsync(repo, new MaterializeRequest("materialize-tables", Reporting, [Customer, "01K9MATER000000000000000B0", "01K9MATER000000000000000B2"])
         {
             Hierarchy = new Dictionary<string, string> { ["01K9MATER000000000000000B0"] = "per-type" },
         });
@@ -305,18 +213,18 @@ public sealed class MaterializeAdoptionTests
     [Fact]
     public async Task A_relation_list_attribute_can_be_stored_as_json_by_its_id_from_the_choices()
     {
-        using var repo = PackRepo.BillingDialects();
+        using var repo = PackRepo.BillingDialectsWithoutTables();
         repo.EditJson(".maquettiste/model/relations/settles.json", r => r["attributes"]!.AsArray().Add(new JsonObject
         {
             ["id"] = "01K9MATER00000000000000050", ["name"] = "remarks", ["type"] = "string", ["length"] = 40, ["collection"] = true,
         }));
         var entities = new[] { Customer, "01J92P0V0FJ23CGSNKM7P1W5V7", "01J92P0V2C0000000000000001", "01J92P0V0GWFR78HZH0P8Z3GY7", "01J92P0V0HEGSC6MW92CST5KA6", "01J92P0V0JR8BE8253SKT29ZG7" };
 
-        var refused = await PlanAsync(repo, new MaterializeRequest("materialize-tables", Main, entities));
+        var refused = await PlanAsync(repo, new MaterializeRequest("materialize-tables", Reporting, entities));
         Assert.False(refused.Valid);
         Assert.Contains(refused.Choices!.Lists, l => l.Attribute == "01K9MATER00000000000000050" && l.EntityName == "settles");
 
-        var json = await PlanAsync(repo, new MaterializeRequest("materialize-tables", Main, entities)
+        var json = await PlanAsync(repo, new MaterializeRequest("materialize-tables", Reporting, entities)
         {
             ListStorage = new Dictionary<string, string> { ["01K9MATER00000000000000050"] = "json" },
         });

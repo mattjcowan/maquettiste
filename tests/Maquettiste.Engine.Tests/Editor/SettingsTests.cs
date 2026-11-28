@@ -9,7 +9,6 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Editor;
 
 /// <summary>E3: <see cref="ModelStore.GetSettingsAsync"/> and <see cref="ModelStore.SaveSettingsAsync"/> (phase2-design.md section 3.8).</summary>
-[UsesProjectedFixtures]
 public sealed class SettingsTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
@@ -76,10 +75,6 @@ public sealed class SettingsTests
         Assert.Equal(result.Hash, result.Current!.Hash);
         Assert.Equal(CaseStyle.Camel, result.Current.Settings.Conventions.ColumnCase);
         Assert.Equal(result.Hash, (await repo.Store.GetSettingsAsync(EditorRepo.Ct)).Hash);
-
-        // The new conventions reach the resolved model at once.
-        var view = (await repo.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, EditorRepo.Ct)).View!;
-        Assert.Contains(view.Tables.Single(t => t.EntityId == EditorRepo.CustomerId).Columns, c => c.Name == "customerSince");
     }
 
     [Fact]

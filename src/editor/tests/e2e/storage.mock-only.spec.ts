@@ -25,6 +25,40 @@ async function storage(page: Page, name: string): Promise<Locator> {
 
 const undo = (page: Page) => page.getByRole("button", { name: "Undo" }).click();
 
+/** Two entities with a relation between them, bound to nothing: a Ticket, and its many TicketNotes. */
+async function createTickets(page: Page) {
+  const outcome = await page.evaluate(async (pkg) => {
+    const entity = (id: string, name: string, key: string) => ({
+      kind: "entity",
+      id,
+      name,
+      package: pkg,
+      key: { attributes: [key], strategy: "uuid-v7" },
+      attributes: [
+        { id: key, name: "id", type: "uuid", required: true },
+        { id: key.replace(/.$/, "9"), name: "title", type: "string", length: 60 },
+      ],
+    });
+    const operations = [
+      entity("01K7TKT0000000000000000010", "Ticket", "01K7TKT0000000000000000011"),
+      entity("01K7TKT0000000000000000020", "TicketNote", "01K7TKT0000000000000000021"),
+      {
+        kind: "relation",
+        id: "01K7TKT0000000000000000030",
+        name: "ticket has notes",
+        package: pkg,
+        ends: [
+          { id: "01K7TKT0000000000000000031", entity: "01K7TKT0000000000000000010", role: "ticket", navigation: "ticket", min: 1, max: 1 },
+          { id: "01K7TKT0000000000000000032", entity: "01K7TKT0000000000000000020", role: "notes", navigation: "notes", min: 0, max: "*" },
+        ],
+      },
+    ].map((element) => ({ op: "create", element }));
+    const res = await fetch("/api/model/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operations }) });
+    return ((await res.json()) as { outcome: string }).outcome;
+  }, BILLING);
+  expect(outcome).toBe("saved");
+}
+
 test.beforeEach(async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 });
@@ -174,7 +208,7 @@ test("a bound entity takes attributes for its table's unmapped columns, all at o
 });
 
 test("the field map adds table columns for unmapped attributes, all at once or one from its Column, each one undo step", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
+  await openEditor(page, "/");
   // Bound to the notes table with its key mapped: entityId and body have columns of those names already, priority and summary none.
   const saved = await page.evaluate(async (pkg) => {
     const res = await fetch("/api/model/elements", {
@@ -235,17 +269,18 @@ test("the field map adds table columns for unmapped attributes, all at once or o
 });
 
 test("Create a table for this entity binds it to a new table, and undo takes it back", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
-  const tab = await storage(page, "Payment");
-  await expect(tab.getByTestId("storage-domain-only")).toContainText("main still projects a table for it");
+  await openEditor(page, "/");
+  await createTickets(page);
+  const tab = await storage(page, "Ticket");
+  await expect(tab.getByTestId("storage-domain-only")).toBeVisible();
   await tab.getByTestId("storage-create-table").click();
   const dialog = page.getByTestId("create-tables-dialog");
-  await expect(dialog.getByTestId("storage-plan")).toContainText("payments");
+  await expect(dialog.getByTestId("storage-plan")).toContainText("tickets");
   await dialog.getByTestId("create-tables-apply").click();
   await expect(dialog).toHaveCount(0);
   const card = tab.getByTestId("binding-card");
   await expect(card).toHaveAttribute("data-database", "main");
-  await expect(card.getByTestId("binding-source").locator("option:checked")).toHaveText("billing.payments");
+  await expect(card.getByTestId("binding-source").locator("option:checked")).toHaveText("billing.tickets");
   await expect(card.getByTestId("field-row-id")).toHaveAttribute("data-status", "mapped");
   await expect(card.getByTestId("binding-problems")).toHaveCount(0);
   await undo(page);
@@ -270,48 +305,45 @@ test("New entities from tables makes an entity of a view, in one undo step", asy
   await expect(side.getByTestId("explorer-row-OutstandingInvoice")).toHaveCount(0);
 });
 
-test("a relationship whose ends are not both bound asks for that; an older shape shows read only", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
+test("a relationship whose ends are not both bound asks for that", async ({ page }) => {
+  await openEditor(page, "/");
+  await createTickets(page);
   const side = explorer(page);
-  await side.getByLabel("Search the model").fill("places");
-  await side.getByTestId("explorer-row-places").dblclick();
-  const editor = page.getByRole("region", { name: "Editor: places" });
+  await side.getByLabel("Search the model").fill("ticket has notes");
+  await side.getByTestId("explorer-row-ticket has notes").dblclick();
+  const editor = page.getByRole("region", { name: "Editor: ticket has notes" });
   await editor.getByRole("tab", { name: "Storage" }).click();
   const main = editor.getByTestId("relation-storage-database").filter({ hasText: "main" });
   await expect(main.getByTestId("relation-storage-unbound")).toHaveText(/^Bind both ends to a table to name the foreign key\./);
-  // Nothing to pick: no shape choice that would make a mapping of the older format.
+  // Nothing to pick until both ends are bound.
   await expect(main.getByRole("combobox")).toHaveCount(0);
-  await expect(main).not.toContainText("conventions store it");
 });
 
 test("a relationship between two bound entities names the foreign key that realizes it", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
-  for (const name of ["Customer", "Invoice"]) {
+  await openEditor(page, "/");
+  await createTickets(page);
+  for (const name of ["Ticket", "TicketNote"]) {
     const tab = await storage(page, name);
-    // Invoice still has an older mapping element for main; Create a table replaces it.
-    if (name === "Invoice") await expect(tab.getByTestId("storage-legacy-mapping")).toContainText("older mapping element");
     await tab.getByTestId("storage-create-table").click();
     await page.getByTestId("create-tables-apply").click();
     await expect(tab.getByTestId("binding-card")).toBeVisible();
     // The field map names where an attribute comes from after its name, only when it is not the entity's own.
     const fields = tab.getByTestId("binding-fields");
     await expect(fields.getByRole("columnheader", { name: "From" })).toHaveCount(0);
-    if (name === "Invoice") await expect(fields.getByTestId("field-origin").filter({ hasText: "via places" }).first()).toBeVisible();
-    else await expect(fields.getByTestId("field-row-name").getByTestId("field-origin")).toHaveCount(0);
   }
   const side = explorer(page);
-  await side.getByLabel("Search the model").fill("places");
-  await side.getByTestId("explorer-row-places").dblclick();
-  const editor = page.getByRole("region", { name: "Editor: places" });
+  await side.getByLabel("Search the model").fill("ticket has notes");
+  await side.getByTestId("explorer-row-ticket has notes").dblclick();
+  const editor = page.getByRole("region", { name: "Editor: ticket has notes" });
   await editor.getByRole("tab", { name: "Storage" }).click();
   const main = editor.getByTestId("relation-storage-database").filter({ hasText: "main" });
   const picker = main.getByTestId("relation-foreign-key");
   // Create tables named it already; take it away, then pick it.
-  await expect(picker.locator("option:checked")).toContainText("invoices.fk_invoices");
+  await expect(picker.locator("option:checked")).toContainText("fk_ticket_notes");
   await picker.selectOption("");
   await expect(main.getByTestId("relation-storage-problems")).toContainText("MQ4011");
   await picker.selectOption({ index: 1 });
-  await expect(picker.locator("option:checked")).toContainText("customer_id → customers");
+  await expect(picker.locator("option:checked")).toContainText("→ tickets");
   await expect(main.getByTestId("relation-storage-problems")).toHaveCount(0);
 });
 

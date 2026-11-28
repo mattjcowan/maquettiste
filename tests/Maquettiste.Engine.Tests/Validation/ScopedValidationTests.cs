@@ -49,30 +49,6 @@ public sealed class ScopedValidationTests
     }
 
     [Fact]
-    public async Task A_second_mapping_for_one_target_is_seen_from_either_file_MQ4004()
-    {
-        var b = new ModelBuilder();
-        var db = b.Database("main", Dialect.PostgreSql);
-        var e = b.Entity("Customer").Key("id", "uuid");
-        var zzz = b.Mapping(db, e).Rename("zzz");
-        var aaa = b.Mapping(db, e).Rename("aaa");
-
-        await AssertEveryParticipantSees(b.Build(), "MQ4004", zzz.Id, aaa.Id);
-    }
-
-    [Fact]
-    public async Task A_second_overlay_for_one_synthesized_table_is_seen_from_either_file_MQ4004()
-    {
-        var b = new ModelBuilder();
-        var db = b.Database("main", Dialect.PostgreSql);
-        var e = b.Entity("Customer").Key("id", "uuid");
-        var first = b.Table("customers_a", db).OverlayFor(e);
-        var second = b.Table("customers_b", db).OverlayFor(e);
-
-        await AssertEveryParticipantSees(b.Build(), "MQ4004", first.Id, second.Id);
-    }
-
-    [Fact]
     public async Task A_duplicate_table_name_is_seen_from_either_file_MQ4002()
     {
         var b = new ModelBuilder();
@@ -107,43 +83,6 @@ public sealed class ScopedValidationTests
         var second = b.Relation("requests", customer, quote, fromMax: MaxCardinality.One, toNavigation: "items");
 
         await AssertEveryParticipantSees(b.Build(), "MQ3009", first.Id, second.Id);
-    }
-
-    [Fact]
-    public async Task Binding_the_second_end_through_a_new_mapping_reports_the_relation_MQ4011()
-    {
-        var b = new ModelBuilder();
-        var db = b.Database("main", Dialect.PostgreSql);
-        var customer = b.Entity("Customer").Key("id", "uuid");
-        var order = b.Entity("Order").Key("id", "uuid");
-        var places = b.Relation("places", customer, order, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many);
-        var customers = b.Table("customers", db).Column("id", "uuid").PrimaryKey("id");
-        var orders = b.Table("orders", db).Column("id", "uuid").PrimaryKey("id");
-        var first = b.Mapping(db, customer).Table(customers);
-        var second = b.Mapping(db, order).Table(orders);
-        var model = b.Build();
-
-        Assert.Equal(model.GetDocument(places.Id)!.Path, Assert.Single((await Validate(model)).Diagnostics, d => d.Rule == "MQ4011").FilePath);
-        await AssertEveryParticipantSees(model, "MQ4011", first.Id, second.Id);
-    }
-
-    [Fact]
-    public async Task A_relation_mapping_file_is_revalidated_when_an_entity_mapping_changes_MQ4011()
-    {
-        var b = new ModelBuilder();
-        var db = b.Database("main", Dialect.PostgreSql);
-        var customer = b.Entity("Customer").Key("id", "uuid");
-        var order = b.Entity("Order").Key("id", "uuid");
-        var places = b.Relation("places", customer, order, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many);
-        var customers = b.Table("customers", db).Column("id", "uuid").PrimaryKey("id");
-        var orders = b.Table("orders", db).Column("id", "uuid").PrimaryKey("id");
-        b.Mapping(db, customer).Table(customers);
-        var second = b.Mapping(db, order).Table(orders);
-        var relationMapping = b.Mapping(db, places);
-        var model = b.Build();
-
-        Assert.Equal(model.GetDocument(relationMapping.Id)!.Path, Assert.Single((await Validate(model)).Diagnostics, d => d.Rule == "MQ4011").FilePath);
-        await AssertEveryParticipantSees(model, "MQ4011", second.Id);
     }
 
     [Fact]

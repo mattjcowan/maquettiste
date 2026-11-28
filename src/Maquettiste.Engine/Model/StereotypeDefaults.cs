@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Model;
@@ -14,7 +13,7 @@ namespace Maquettiste.Engine.Model;
 /// <param name="Excludes">The element's <c>excludeStereotypes</c> keys.</param>
 /// <param name="Package">
 /// The package whose chain gives package defaults: the element's own (a package's parent), else the fallback of
-/// next-phase-1-design.md section 4.3 (a table overlay's entity's or relation's, a seed's target's, a scenario's process's);
+/// next-phase-1-design.md section 4.3 (a seed's target's, a scenario's process's);
 /// <see langword="null"/> outside the packages and for a migration fact.
 /// </param>
 /// <param name="Schema">
@@ -54,8 +53,7 @@ internal sealed class StereotypeDefaults
 
     /// <summary>
     /// The package whose chain gives an element its package defaults: its own (a package's parent), else the phase 1 fallback: a
-    /// synthesized table's entity's (a child table's owner entity's) or relation's, a seed's target's, a scenario's process's, an
-    /// operation's subject's (next-phase-2-design.md section 4.1).
+    /// seed's target's, a scenario's process's, an operation's subject's (next-phase-2-design.md section 4.1).
     /// </summary>
     /// <param name="element">The element.</param>
     /// <returns>The package id, or <see langword="null"/>.</returns>
@@ -66,8 +64,6 @@ internal sealed class StereotypeDefaults
         var lookups = _lookups.Value;
         return element switch
         {
-            Table { Origin: TableOrigin.Synthesized } overlay => overlay.Entity is { } entity ? OwnPackage(lookups.ElementById(entity))
-                : overlay.Relation is { } relation ? OwnPackage(lookups.ElementById(relation)) : null,
             Seed seed => lookups.ElementById(seed.Target) is { } target and not Seed ? PackageOf(target) : null,
             Scenario scenario => OwnPackage(lookups.ElementById(scenario.Process)),
             Operation { Subject: { } subject } => OwnPackage(lookups.ElementById(subject)),
@@ -79,39 +75,17 @@ internal sealed class StereotypeDefaults
 
     /// <summary>
     /// The schema entry whose defaults reach a physical object (tables, views, sequences, routines, database types and SQL objects),
-    /// by ids: the stated schema; else, for an entity's table, the schema the database routes it to
-    /// (<see cref="DatabaseScope.SchemaFor(Func{string, string?}, Database, string?, Mapping?)"/>); for a child table, its owner's
-    /// table's (an entity's table as above; a relation's table, junction or promoted, the schema its relation overlay states); else the
-    /// entry the database's default schema names. A stated or routed id that names no entry of the database falls back to that entry
-    /// too, as the resolver's schema name does. The resolver takes a table without a file through the same rule.
+    /// by ids: the stated schema, else the entry the database's default schema names. A stated id that names no entry of the database
+    /// falls back to that entry too, as the resolver's schema name does.
     /// </summary>
     /// <param name="databaseId">The object's database.</param>
     /// <param name="schema">The schema id the object's file states, or <see langword="null"/>.</param>
-    /// <param name="entity">For a synthesized table: its entity (a child table's owner); else <see langword="null"/>.</param>
-    /// <param name="attribute">For a synthesized child table: the owner's attribute; else <see langword="null"/>.</param>
-    /// <param name="relation">
-    /// For a relation's table (junction or promoted), or a child table without a file that it owns: the relation; else
-    /// <see langword="null"/>. (A table file cannot state an attribute without an entity, so such a child table never has a file.)
-    /// </param>
     /// <returns>The schema entry id, or <see langword="null"/> when the database has no such entry (or is unknown).</returns>
-    public string? SchemaOf(string databaseId, string? schema, string? entity = null, string? attribute = null, string? relation = null)
+    public string? SchemaOf(string databaseId, string? schema)
     {
         var lookups = _lookups.Value;
         if (lookups.ElementById(databaseId) is not Database database)
             return null;
-        if (schema is null && entity is not null)
-        {
-            if (attribute is not null)
-                return SchemaOf(databaseId, lookups.EntityOverlayOf(databaseId, entity)?.Schema, entity);
-            schema = DatabaseScope.SchemaFor(id => (lookups.ElementById(id) as Package)?.Parent, database, OwnPackageOf(lookups.ElementById(entity)),
-                lookups.MappingOf(databaseId, entity));
-        }
-        else if (schema is null && relation is not null)
-        {
-            // A relation's table is in the schema its overlay states (the database does not route relations), its child tables with it.
-            schema = lookups.RelationOverlayOf(databaseId, relation)?.Schema;
-        }
-
         if (schema is not null && Contains(database, schema))
             return schema;
         var defaultName = database.DefaultSchema ?? DialectInfo.DefaultSchema(database.Dialect);
@@ -122,8 +96,6 @@ internal sealed class StereotypeDefaults
         }
 
         return null;
-
-        static string? OwnPackageOf(Element? element) => element is null ? null : ModelIndexer.PackageOf(element);
 
         static bool Contains(Database database, string schemaId)
         {
@@ -139,7 +111,7 @@ internal sealed class StereotypeDefaults
 
     private string? SchemaOfElement(Element element) => element switch
     {
-        Table t => SchemaOf(t.Database, t.Schema, t.Origin == TableOrigin.Synthesized ? t.Entity : null, t.Origin == TableOrigin.Synthesized ? t.Attribute : null),
+        Table t => SchemaOf(t.Database, t.Schema),
         View v => SchemaOf(v.Database, v.Schema),
         Sequence s => SchemaOf(s.Database, s.Schema),
         Routine r => SchemaOf(r.Database, r.Schema),
@@ -297,18 +269,13 @@ internal sealed class StereotypeDefaults
     {
         private readonly Dictionary<string, Element> _elements = new(StringComparer.Ordinal);
         private readonly Dictionary<string, DbSchema> _schemas = new(StringComparer.Ordinal);
-        private readonly Dictionary<(string Database, string Entity), Mapping> _mappings = [];
-        private readonly Dictionary<(string Database, string Entity), Table> _entityOverlays = [];
-        private readonly Dictionary<(string Database, string Relation), Table> _relationOverlays = [];
 
         public Lookups(ImmutableArray<ElementDocument> documents)
         {
-            var mappings = new List<Mapping>();
-            var overlays = new List<Table>();
             foreach (var document in documents)
             {
                 var element = document.Element;
-                if (element is not (Package or Entity or Relation or Database or Process or Table or ReferenceType or Mapping)
+                if (element is not (Package or Entity or Relation or Database or Process or Table or ReferenceType)
                     || !_elements.TryAdd(element.Id, element))
                 {
                     continue;
@@ -327,24 +294,7 @@ internal sealed class StereotypeDefaults
                         }
 
                         break;
-                    case Mapping { Entity: not null } mapping:
-                        mappings.Add(mapping);
-                        break;
-                    case Table { Origin: TableOrigin.Synthesized, Attribute: null } overlay when overlay.Entity is not null || overlay.Relation is not null:
-                        overlays.Add(overlay);
-                        break;
                 }
-            }
-
-            // As the resolver: the mapping and the overlay with the ordinally first id win.
-            foreach (var mapping in mappings.OrderBy(m => m.Id, StringComparer.Ordinal))
-                _mappings.TryAdd((mapping.Database, mapping.Entity!), mapping);
-            foreach (var overlay in overlays.OrderBy(t => t.Id, StringComparer.Ordinal))
-            {
-                if (overlay.Entity is { } entity)
-                    _entityOverlays.TryAdd((overlay.Database, entity), overlay);
-                else
-                    _relationOverlays.TryAdd((overlay.Database, overlay.Relation!), overlay);
             }
         }
 
@@ -354,10 +304,7 @@ internal sealed class StereotypeDefaults
 
         public DbSchema? SchemaById(string id) => _schemas.GetValueOrDefault(id);
 
-        public Mapping? MappingOf(string databaseId, string entityId) => _mappings.GetValueOrDefault((databaseId, entityId));
 
-        public Table? EntityOverlayOf(string databaseId, string entityId) => _entityOverlays.GetValueOrDefault((databaseId, entityId));
 
-        public Table? RelationOverlayOf(string databaseId, string relationId) => _relationOverlays.GetValueOrDefault((databaseId, relationId));
     }
 }

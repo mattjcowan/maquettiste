@@ -48,7 +48,6 @@ public sealed class BulkReadTests
         Assert.Equal(Math.Min(100, index.Count), all.Json["items"]!.AsArray().Count);
     }
 
-    [UsesProjectedFixtures]
     [Fact]
     public async Task Elements_take_the_index_filters_ids_and_fields()
     {
@@ -66,8 +65,9 @@ public sealed class BulkReadTests
         Assert.Equal(7, billing.Json["items"]!.AsArray().Count);
         var byId = await host.GetAsync("/api/model/elements?kind=entity&package=" + EditorHost.BillingPackageId);
         Assert.True(JsonNode.DeepEquals(billing.Json["items"], byId.Json["items"]));
-        // The name filter matches Customer, CustomerNote and the two queries whose names say customer (FindCustomersWithIssuedInvoices, InvoicesByCustomer).
-        Assert.Equal([EditorHost.CustomerId, "01K6BND0000000000000000020", "01K6QRY0000000000000000003", "01K6QRY0000000000000000001"],
+        // The name filter matches Customer, CustomerNote, the two queries whose names say customer (FindCustomersWithIssuedInvoices,
+        // InvoicesByCustomer) and the customers table.
+        Assert.Equal([EditorHost.CustomerId, "01K6BND0000000000000000020", "01K6QRY0000000000000000003", "01K6QRY0000000000000000001", EditorHost.CustomersTableId],
             (await host.GetAsync("/api/model/elements?query=CUSTOM")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
         Assert.Contains(EditorHost.CustomerId, (await host.GetAsync("/api/model/elements?tag=pii")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
         Assert.Contains(EditorHost.InvoiceId, (await host.GetAsync("/api/model/elements?stereotype=audited")).Json["items"]!.AsArray().Select(r => r!["id"]!.GetValue<string>()));
@@ -204,7 +204,7 @@ public sealed class BulkReadTests
     }
 
     [Fact]
-    public async Task The_resolved_entities_carry_resolved_attributes_keys_relations_and_mappings()
+    public async Task The_resolved_entities_carry_resolved_attributes_keys_relations_and_bindings()
     {
         await using var host = EditorHost.Create();
 
@@ -224,8 +224,7 @@ public sealed class BulkReadTests
         Assert.True(customer["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == "id")!["isKey"]!.GetValue<bool>());
         Assert.False(email["isKey"]!.GetValue<bool>());
         Assert.NotEmpty(customer["relations"]!.AsArray());
-        // Customer is bound to its designed table, so nothing projects it.
-        Assert.Empty(customer["mappings"]!.AsArray());
+        // Customer is bound to its designed table.
         var binding = Assert.Single(customer["bindings"]!.AsArray())!;
         Assert.Equal(EditorHost.MainDatabaseId, binding["database"]!.GetValue<string>());
         Assert.Equal("customers", binding["sourceName"]!.GetValue<string>());
@@ -416,12 +415,27 @@ public sealed class BulkReadTests
         Assert.Equal("bad-request", (await host.GetAsync("/api/model/queries/" + invoicesByCustomer + "/sql?placeholder=%3F")).ProblemCode);
     }
 
-    [UsesProjectedFixtures]
     [Fact]
     public async Task Bindings_show_on_the_tables_their_sql_comes_back_and_materialize_previews_without_writing()
     {
         const string invoiceNote = "01K6BND0000000000000000010", binding = "01K6BND0000000000000000015", notes = "01K6BND0000000000000000001";
+        const string coupon = "01K9CPN0000000000000000001";
         await using var host = EditorHost.Create();
+        // Coupon is an entity bound to no table, for "Create tables…" to design one for.
+        await File.WriteAllTextAsync(host.PathOf(".maquettiste/model/entities/coupon.json"), $$"""
+            {
+              "kind": "entity",
+              "id": "{{coupon}}",
+              "name": "Coupon",
+              "package": "{{EditorHost.BillingPackageId}}",
+              "key": { "attributes": ["01K9CPN0000000000000000002"] },
+              "attributes": [
+                { "id": "01K9CPN0000000000000000002", "name": "id", "type": "uuid", "required": true },
+                { "id": "01K9CPN0000000000000000003", "name": "code", "type": "string", "length": 16, "required": true }
+              ]
+            }
+            """, EditorHost.Ct);
+        await host.Store.RescanAsync(false, EditorHost.Ct);
 
         var view = await host.GetAsync("/api/databases/" + EditorHost.MainDatabaseId + "/view");
         Contract.AssertResponse(view, "/api/databases/{id}/view");
@@ -441,15 +455,16 @@ public sealed class BulkReadTests
         var status = await host.GetAsync("/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize");
         Assert.Equal(200, status.Status);
         Contract.AssertResponse(status, "/api/model/databases/{id}/materialize");
-        Assert.Contains(status.Json["entities"]!.AsArray(), e => e!["name"]!.GetValue<string>() == "Invoice" && e["projected"]!.GetValue<bool>());
+        // The entities with no binding to the database.
+        Assert.Equal(["Coupon"], status.Json["entities"]!.AsArray().Select(e => e!["name"]!.GetValue<string>()));
         Assert.Equal("not-a-database", (await host.GetAsync("/api/model/databases/" + EditorHost.InvoiceId + "/materialize")).ProblemCode);
 
         var preview = await host.SendJsonAsync("POST", "/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize/preview",
-            new JsonObject { ["op"] = "materialize-tables", ["entities"] = new JsonArray(EditorHost.InvoiceId) });
+            new JsonObject { ["op"] = "materialize-tables", ["entities"] = new JsonArray(coupon) });
         Assert.Equal(200, preview.Status);
         Contract.AssertResponse(preview, "/api/model/databases/{id}/materialize/preview");
         Assert.True(preview.Json["valid"]!.GetValue<bool>());
-        Assert.Equal("table", preview.Json["updates"]![0]!["kind"]!.GetValue<string>());
+        Assert.Equal(("table", "coupons"), (preview.Json["creates"]![0]!["kind"]!.GetValue<string>(), preview.Json["creates"]![0]!["name"]!.GetValue<string>()));
         var refused = await host.SendJsonAsync("POST", "/api/model/databases/" + EditorHost.MainDatabaseId + "/materialize/preview",
             new JsonObject { ["op"] = "materialize-tables", ["entities"] = new JsonArray(invoiceNote) });
         Assert.Equal("MQ4055", refused.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());

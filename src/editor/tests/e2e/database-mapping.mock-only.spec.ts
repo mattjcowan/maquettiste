@@ -1,16 +1,11 @@
 // Explicit mapping on the entity side (engine-design.md D46, the owner, 2026-10-03: "treat the database as its own thing; do the
 // mapping on the entity side completely"): a new database starts empty and its dialog asks nothing about domains; a domain's
-// and an entity's menus offer the Storage bulk actions, never Map to database…; Settings > Conventions shows an older project's
-// convention read-only, with Stop laying out by convention, which stores the laid-out tables as table files first.
+// and an entity's menus offer the Storage bulk actions, never Map to database….
 import type { Page } from "@playwright/test";
 import { expect, openEditor, test, workspace } from "./fixtures";
 
 const explorer = (page: Page) => page.getByRole("complementary", { name: "Explorer" });
 const chevron = (row: import("@playwright/test").Locator) => row.locator("span[aria-hidden]").first();
-
-/** The billing database's document, read through the API. */
-const mainDoc = (page: Page) =>
-  page.evaluate(async () => ((await (await fetch("/api/model/elements/01J92P0V1QRN2181XM2ZWE02W4")).json()) as { json: Record<string, unknown> }).json);
 
 test("a new database starts empty, and domains and entities offer the Storage actions instead of Map to database…", async ({ page }) => {
   await openEditor(page);
@@ -55,36 +50,4 @@ test("a new database starts empty, and domains and entities offer the Storage ac
   await expect(menu.getByRole("menuitem", { name: "Map to database…" })).toHaveCount(0);
   await expect(menu.getByRole("menuitem", { name: "Create tables…" })).toBeVisible();
   await page.keyboard.press("Escape");
-});
-
-test("Settings shows an older project's convention read-only; Stop stores its tables as files first", async ({ page }) => {
-  await openEditor(page, "/?mock=projected");
-  await workspace(page, "Settings");
-  await page.getByRole("tab", { name: "Conventions" }).click();
-  const section = page.getByTestId("settings-tables-by-convention");
-  await expect(section.getByText("Older projects: tables laid out by convention")).toBeVisible();
-  // main was made before 0.3.0: its file says nothing, so it lays out every domain. Nothing here edits or adds a domain.
-  const main = section.getByTestId("database-mapping").filter({ hasText: "main" });
-  await expect(main.getByTestId("database-mapping-convention")).toContainText("By convention: all domains (unspecified)");
-  await expect(section.getByRole("checkbox")).toHaveCount(0);
-  await expect(section.getByRole("combobox")).toHaveCount(0);
-  await expect(main.getByTestId("convention-domain")).toHaveText(["Every domainStop laying out by convention"]);
-
-  await main.getByTestId("convention-stop").click();
-  const dialog = page.getByTestId("convention-stop-dialog");
-  await expect(dialog.getByTestId("convention-stop-summary")).toContainText("laid out by this convention");
-  await dialog.getByTestId("convention-stop-store").click();
-  await expect(dialog).toHaveCount(0);
-  await expect.poll(async () => (await mainDoc(page)).byConvention).toBe("none");
-  // The panel has nothing left to show, and the stored tables stay in the database as table files.
-  await expect(section).toHaveCount(0);
-  const tables = await page.evaluate(async () => {
-    const view = (await (await fetch("/api/databases/01J92P0V1QRN2181XM2ZWE02W4/view")).json()) as {
-      view: { tables: { name: string; origin: string; isJunction: boolean }[] };
-    };
-    // A junction table stays as the model lays it out while both its ends are stored here.
-    return view.view.tables.filter((t) => !t.isJunction).map((t) => `${t.name}:${t.origin}`);
-  });
-  for (const name of ["customers", "invoices", "payments"]) expect(tables).toContain(`${name}:designed`);
-  expect(tables.filter((t) => t.endsWith(":synthesized"))).toEqual([]);
 });

@@ -19,7 +19,6 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// <c>MAQUETTISTE_TEST_POSTGRES_CONTAINER</c>, once every other step has passed.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
-[UsesProjectedFixtures]
 public sealed class ExpressionAcceptanceTests
 {
     private const string Main = E2ERepo.MainDatabaseId;
@@ -45,8 +44,7 @@ public sealed class ExpressionAcceptanceTests
         foreach (var pack in new[] { "sql-ddl", "csharp-dapper" })
             E2ERepo.CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", pack), Path.Combine(repo.Repo.ModelRoot, "templates", pack));
 
-        // Invoice reads and writes a designed invoices table, and gains the optional dueOn with its due_on column and field.
-        await ApplyAsync(repo, $$"""{ "op": "materialize-tables", "database": "{{Main}}", "entities": ["{{Invoice}}"] }""");
+        // Invoice reads and writes the designed invoices table, and gains the optional dueOn with its due_on column and field.
         await repo.EditAsync(Invoice, e => e["attributes"]!.AsArray().Add(new JsonObject { ["id"] = DueOn, ["name"] = "dueOn", ["type"] = "date" }));
         await ApplyAsync(repo, $$"""{ "op": "materialize-columns", "database": "{{Main}}", "entities": ["{{Invoice}}"], "attributes": ["{{DueOn}}"] }""");
 

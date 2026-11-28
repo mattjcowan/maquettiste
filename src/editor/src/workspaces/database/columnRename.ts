@@ -1,7 +1,6 @@
 // A table column's rename, from the column grid, the inspector, the explorer and the table editor: the column and what names it
 // (renames.ts: the table's checks, index filters, computed expressions and defaults, the database's views and queries where the
-// match is certain, the storage bindings that name it) in one batch and one undo step, after the table's earlier writes. A
-// table not stored as a file yet is stored first (the same undo step). The notice says where the name was rewritten, how many
+// match is certain, the storage bindings that name it) in one batch and one undo step, after the table's earlier writes. The notice says where the name was rewritten, how many
 // storage bindings follow (never whose), and what to check by hand (routines and SQL objects that name it among them). A
 // view's declared column renamed: its body's select list follows when CREATE VIEW names no column list, and so do the
 // bindings that read it. A view's or query's column renamed anywhere else (its JSON): the same, as part of the same undo
@@ -9,13 +8,11 @@
 import { useEffect } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import * as endpoints from "@/api/endpoints";
-import { databaseViewQuery, elementQuery, indexQuery, keys } from "@/api/queries";
-import type { ElementSummary } from "@/api/types";
+import { databaseViewQuery, elementQuery, indexQuery } from "@/api/queries";
 import { useServices, type AppServices as Services } from "@/app/context";
 import { bindingsFollow, planColumnRename, planTableRename, renameBindingColumns, renamedOutputColumns, renameViewOutput } from "./renames";
-import { enqueueTableWrite, liveStoredFile, storeTables } from "./storeTables";
+import { enqueueTableWrite } from "./tableQueue";
 import { commitDocuments, readDocuments } from "./tableBatch";
-import { columnIdMap, isLaidOutKey, storableTables } from "./tableParts";
 
 type Json = Record<string, unknown>;
 
@@ -43,42 +40,27 @@ async function bindersOf(qc: QueryClient, id: string): Promise<string[]> {
 }
 
 /**
- * Renames column `column` (its key in the resolved view) of table `key` to `to`. Resolves to whether it was saved, or null when
- * the table is neither a file nor storable as one (the caller writes the name where such a table keeps it).
+ * Renames column `column` (its key in the resolved view) of table `key` to `to`. Resolves to whether it was saved.
  */
 export function renameTableColumn(
   services: Pick<Services, "store" | "drafts">,
   qc: QueryClient,
   args: { database: string; key: string; column: string; to: string },
-): Promise<boolean | null> {
+): Promise<boolean> {
   const { database, key, column } = args;
   const to = args.to.trim();
   return enqueueTableWrite(database, key, async () => {
     if (!to) return false;
     const view = await qc.fetchQuery(databaseViewQuery(qc, database));
-    const tables = view.view?.tables ?? [];
-    const table = tables.find((t) => t.key === key);
-    let file = isLaidOutKey(key) ? await liveStoredFile(qc, key) : key;
-    let join = false;
-    if (!file) {
-      if (!table) return false;
-      const status = await endpoints.getMaterializeStatus(database);
-      const owner = storableTables([table], database, status.entities, qc.getQueryData<ElementSummary[]>(keys.index)).get(key);
-      if (!owner) return null;
-      const stored = await storeTables(services, qc, database, new Map([[key, owner]]), `Rename column to ${to}`);
-      file = stored.files.get(key);
-      if (!file) return false;
-      services.store.getState().notify(`${table.name} is now stored as a table file.`);
-      join = true;
-    }
+    const file = key;
     const doc = (await qc.fetchQuery({ ...elementQuery(file), staleTime: 0 })).json as unknown as Json;
-    const columnId = isLaidOutKey(key) && table ? (columnIdMap(table.columns, doc).get(column) ?? column) : column;
+    const columnId = column;
     const from = String(((doc.columns as Json[] | undefined) ?? []).find((c) => c.id === columnId)?.name ?? "");
     if (!from || from === to) return !!from;
     const docs = await readDocuments([...(await sqlDocumentIds(qc, database)), ...(await bindersOf(qc, file))]);
     const plan = planColumnRename({ table: doc, column: columnId, to, docs, tables: view.view?.tables ?? [], dialect: view.view?.dialect });
     const label = `Rename column ${from} of ${String(doc.name ?? "")} to ${to}`;
-    const why = await commitDocuments(services, qc, label, plan.edits, { join });
+    const why = await commitDocuments(services, qc, label, plan.edits);
     if (why) return false;
     const s = services.store.getState();
     s.notify(renameNotice(`Renamed column ${from} to ${to}.`, plan.rewritten, plan.bindings.length, plan.check));
